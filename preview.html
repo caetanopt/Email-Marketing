@@ -67,6 +67,7 @@
   <a href="#" onclick="showDoc('15')" id="nav-15">15 — User Stories</a>
   <a href="#" onclick="showDoc('16')" id="nav-16">16 — Requisitos NF</a>
   <a href="#" onclick="showDoc('17')" id="nav-17">17 — Ordem de Desenvolvimento</a>
+  <a href="#" onclick="showDoc('18')" id="nav-18">18 — Projeto Laravel</a>
 </nav><main class="content">
 <div class="doc-section active" id="doc-readme">
 <h1>Caetano PrimeMail</h1>
@@ -6333,6 +6334,290 @@ Fase 6:                                                          █████
 <hr>
 <p><em>Fim da documentação principal do Caetano PrimeMail.</em>
 <em>Ver <a href="../README.md">README.md</a> para índice completo.</em></p>
+
+</div>
+
+<div class="doc-section" id="doc-18">
+<h1>18 — Projeto Laravel: Fundação Técnica</h1>
+<blockquote><p>Resumo completo de tudo o que foi construído na Fase 0 do Caetano PrimeMail — a fundação técnica do projeto Laravel 11.</p></blockquote>
+<hr>
+
+<h2>Estrutura de Ficheiros</h2>
+<pre><code>primemail/
+├── app/
+│   ├── Enums/
+│   │   ├── CampaignStatus.php   ← 7 estados + canBeSent(), isFinal(), label()
+│   │   ├── ImportStatus.php     ← 6 estados + isTerminal()
+│   │   └── UserRole.php         ← 6 papéis + canManageBrands(), canSendCampaigns()
+│   ├── Http/Middleware/
+│   │   ├── BrandAccessMiddleware.php    ← Redis cache 15min, 403 nunca 404
+│   │   ├── EnsureActiveBrand.php        ← Verifica sessão active_brand_id
+│   │   └── ValidateWebhookSignature.php ← HMAC SHA-256 (Mailgun)
+│   ├── Models/                          ← 18 modelos Eloquent
+│   │   ├── AuditLog.php         ← Imutável (RuntimeException no update)
+│   │   ├── Brand.php            ← smtp_config: encrypted:json
+│   │   ├── Campaign.php         ← BrandScope, CampaignStatus enum
+│   │   ├── Contact.php          ← email_hash automático (SHA-256)
+│   │   ├── SuppressionList.php  ← isSuppressed() via email_hash
+│   │   ├── Template.php         ← brand_id NULL = partilhado
+│   │   ├── User.php             ← hasAccessToBrand(), isSuperAdmin()
+│   │   └── ...                  ← mais 11 modelos
+│   ├── Providers/
+│   │   ├── AppServiceProvider.php
+│   │   └── HorizonServiceProvider.php
+│   └── Scopes/
+│       └── BrandScope.php       ← Global scope multi-marca
+├── bootstrap/
+│   └── app.php                  ← Aliases: active_brand, brand.access, webhook.signature
+├── config/
+│   ├── hashing.php              ← Argon2id (memory=64MB, threads=2, time=4)
+│   └── horizon.php              ← 4 supervisors de produção
+├── database/
+│   ├── migrations/              ← 18 migrações ordenadas
+│   └── seeders/
+│       ├── RolesAndPermissionsSeeder.php  ← 6 papéis, 26 permissões
+│       ├── BrandsSeeder.php               ← 8 marcas do Grupo Caetano
+│       └── AdminUserSeeder.php            ← admin@caetano.pt / PrimeMail@2026!
+└── docker-compose.yml           ← 7 serviços Docker
+</code></pre>
+
+<hr>
+<h2>Docker — 7 Serviços</h2>
+<table>
+<thead><tr><th>Serviço</th><th>Imagem</th><th>Porto</th><th>Função</th></tr></thead>
+<tbody>
+<tr><td><code>app</code></td><td>PHP 8.3-FPM custom</td><td>9000</td><td>Aplicação Laravel</td></tr>
+<tr><td><code>nginx</code></td><td>nginx:alpine</td><td>8000→80</td><td>Reverse proxy, client_max_body 105M</td></tr>
+<tr><td><code>mysql</code></td><td>mysql:8.0</td><td>3306</td><td>Base de dados (InnoDB, buffer 512M)</td></tr>
+<tr><td><code>redis</code></td><td>redis:7-alpine</td><td>6379</td><td>Cache, sessões, filas</td></tr>
+<tr><td><code>minio</code></td><td>minio/minio</td><td>9001→9001</td><td>S3-compatible storage (dev)</td></tr>
+<tr><td><code>mailpit</code></td><td>axllent/mailpit</td><td>8025→8025</td><td>SMTP/UI de email (dev)</td></tr>
+<tr><td><code>horizon</code></td><td>PHP 8.3-FPM custom</td><td>—</td><td>Queue workers (Laravel Horizon)</td></tr>
+</tbody>
+</table>
+<pre><code>docker-compose up -d      # arrancar ambiente
+docker-compose exec app php artisan migrate --seed   # migrar e popular
+</code></pre>
+
+<hr>
+<h2>18 Migrações — Esquema de Dados</h2>
+<table>
+<thead><tr><th>#</th><th>Tabela(s)</th><th>Destaques</th></tr></thead>
+<tbody>
+<tr><td>001</td><td>roles, permissions, role_permissions</td><td>RBAC base</td></tr>
+<tr><td>002</td><td>brands</td><td>smtp_config JSON, softDeletes, cor hex</td></tr>
+<tr><td>003</td><td>users, password_reset_tokens, user_invitations</td><td>email_verified_at, locked_until</td></tr>
+<tr><td>004</td><td>user_brand_roles</td><td>UNIQUE(user_id, brand_id, role_id), revoked_at</td></tr>
+<tr><td>005</td><td>contacts</td><td>email UNIQUE, email_hash CHAR(64) UNIQUE (SHA-256)</td></tr>
+<tr><td>006</td><td>contact_lists</td><td>BrandScope, counters (active_count, etc.)</td></tr>
+<tr><td>007</td><td>imports</td><td>status enum 6 valores, progress counters</td></tr>
+<tr><td>008</td><td>contact_list_members</td><td>UNIQUE(contact_id, list_id), status, subscribed_at</td></tr>
+<tr><td>009</td><td>contact_brand_relations</td><td>consent_given, consent_at — RGPD por marca</td></tr>
+<tr><td>010</td><td>tags, contact_tag_relations</td><td>BrandScope, UNIQUE(contact_id, tag_id)</td></tr>
+<tr><td>011</td><td>segments</td><td>conditions JSON (filtros dinâmicos)</td></tr>
+<tr><td>012</td><td>templates</td><td>brand_id NULL = template partilhado entre marcas</td></tr>
+<tr><td>013</td><td>campaigns, campaign_lists</td><td>Index (brand_id, status, scheduled_at)</td></tr>
+<tr><td>014</td><td>campaign_recipients</td><td>Index (campaign_id, status), unsubscribed_at</td></tr>
+<tr><td>015</td><td>email_events</td><td>type enum, múltiplos índices compostos</td></tr>
+<tr><td>016</td><td>unsubscribes, suppression_list</td><td>UNIQUE(brand_id, email_hash) na suppression</td></tr>
+<tr><td>017</td><td>sessions</td><td>Driver Redis — user_id, ip_address</td></tr>
+<tr><td>018</td><td>audit_logs, cache, jobs, job_batches, failed_jobs</td><td>Auditoria imutável</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Padrão Principal: BrandScope</h2>
+<p>Todas as queries Eloquent com <code>brand_id</code> são automaticamente filtradas pela marca activa na sessão. Zero risco de cross-brand data leakage.</p>
+<pre><code>// app/Scopes/BrandScope.php
+class BrandScope implements Scope
+{
+    public function apply(Builder $builder, Model $model): void
+    {
+        if ($brandId = session('active_brand_id')) {
+            $builder->where($model->getTable() . '.brand_id', $brandId);
+        }
+    }
+}
+
+// Uso num Model (ex: Campaign)
+protected static function booted(): void
+{
+    static::addGlobalScope(new BrandScope());
+}
+
+// Para queries cross-brand (admins):
+Campaign::withoutGlobalScope(BrandScope::class)->get();
+</code></pre>
+
+<hr>
+<h2>Padrão: AuditLog Imutável</h2>
+<p>Registos de auditoria nunca podem ser alterados após criação — garantia técnica de integridade para RGPD e compliance.</p>
+<pre><code>// app/Models/AuditLog.php
+public function save(array $options = []): bool
+{
+    if ($this->exists) {
+        throw new RuntimeException(
+            'Audit logs são imutáveis e não podem ser alterados.'
+        );
+    }
+    return parent::save($options);
+}
+
+// Criação facilitada via helper estático:
+AuditLog::record(
+    action: 'campaign.sent',
+    newValues: ['campaign_id' => 42, 'recipients' => 1500],
+);
+</code></pre>
+
+<hr>
+<h2>Padrão: email_hash para Deduplicação</h2>
+<p>O campo <code>email_hash</code> (SHA-256) permite deduplicação rápida sem comparação de strings longas, e é compatível com anonimização RGPD (apagar o email, manter o hash para supressão).</p>
+<pre><code>// app/Models/Contact.php — gerado automaticamente
+protected static function booted(): void
+{
+    static::creating(function (Contact $contact) {
+        $contact->email      = strtolower(trim($contact->email));
+        $contact->email_hash = hash('sha256', $contact->email);
+    });
+}
+
+// app/Models/SuppressionList.php — lookup sem expor email
+public static function isSuppressed(int $brandId, string $email): bool
+{
+    $hash = hash('sha256', strtolower(trim($email)));
+    return static::where('brand_id', $brandId)
+        ->where('email_hash', $hash)
+        ->exists();
+}
+</code></pre>
+
+<hr>
+<h2>Enums PHP 8.1+</h2>
+<pre><code>// CampaignStatus — lógica de negócio embutida no enum
+enum CampaignStatus: string {
+    case Draft     = 'draft';
+    case Scheduled = 'scheduled';
+    case Sending   = 'sending';
+    case Sent      = 'sent';
+    case Paused    = 'paused';
+    case Cancelled = 'cancelled';
+    case Failed    = 'failed';
+
+    public function canBeSent(): bool   { return in_array($this, [self::Draft, self::Scheduled]); }
+    public function isFinal(): bool     { return in_array($this, [self::Sent, self::Cancelled, self::Failed]); }
+    public function label(): string     { return match($this) { self::Draft => 'Rascunho', ... }; }
+}
+
+// Uso no Model:
+$campaign->status->canBeSent();  // true/false
+$campaign->status->label();      // "Rascunho"
+$campaign->status->isFinal();    // true/false
+</code></pre>
+
+<hr>
+<h2>Middleware Stack</h2>
+<table>
+<thead><tr><th>Alias</th><th>Classe</th><th>Função</th></tr></thead>
+<tbody>
+<tr><td><code>active_brand</code></td><td>EnsureActiveBrand</td><td>Garante que há uma marca ativa na sessão, redireciona para seletor se não houver</td></tr>
+<tr><td><code>brand.access</code></td><td>BrandAccessMiddleware</td><td>Valida que o utilizador tem acesso à marca activa — cache Redis 15min, 403 (nunca 404)</td></tr>
+<tr><td><code>webhook.signature</code></td><td>ValidateWebhookSignature</td><td>HMAC SHA-256 das assinaturas Mailgun — 401 se inválida</td></tr>
+</tbody>
+</table>
+<pre><code>// Uso nas rotas:
+Route::middleware(['auth', 'active_brand', 'brand.access'])->group(function () {
+    Route::resource('campaigns', CampaignController::class);
+    Route::resource('contacts', ContactController::class);
+});
+
+Route::middleware(['webhook.signature:mailgun'])->group(function () {
+    Route::post('/webhooks/mailgun', MailgunWebhookController::class);
+});
+</code></pre>
+
+<hr>
+<h2>Horizon — 4 Supervisors de Produção</h2>
+<table>
+<thead><tr><th>Supervisor</th><th>Filas</th><th>Processos</th><th>Timeout</th><th>Função</th></tr></thead>
+<tbody>
+<tr><td>supervisor-critical</td><td>critical, high</td><td>2</td><td>60s</td><td>Reset de password, verificação de email</td></tr>
+<tr><td>supervisor-campaigns</td><td>default</td><td>4</td><td>120s</td><td>Envio de campanhas (auto-scaling)</td></tr>
+<tr><td>supervisor-imports</td><td>imports</td><td>2</td><td>3600s</td><td>Importação de contactos em chunks</td></tr>
+<tr><td>supervisor-maintenance</td><td>reports, cleanup</td><td>1</td><td>600s</td><td>Relatórios e limpeza</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Seeders</h2>
+<h3>6 Papéis (Roles)</h3>
+<table>
+<thead><tr><th>Papel</th><th>Permissões</th><th>Descrição</th></tr></thead>
+<tbody>
+<tr><td>super_admin</td><td>Tudo (26)</td><td>Acesso total ao sistema</td></tr>
+<tr><td>group_admin</td><td>Tudo exceto config interna</td><td>Admin de grupo, gere marcas e utilizadores</td></tr>
+<tr><td>brand_admin</td><td>Tudo dentro da marca</td><td>Admin de marca específica</td></tr>
+<tr><td>marketing_manager</td><td>Campanhas + Contactos + Listas + Templates + Reports</td><td>Cria e envia campanhas</td></tr>
+<tr><td>marketing_coordinator</td><td>Sem permissão de envio</td><td>Cria rascunhos e importa listas</td></tr>
+<tr><td>analyst</td><td>Só leitura + relatórios</td><td>Acesso de visualização</td></tr>
+</tbody>
+</table>
+
+<h3>8 Marcas do Grupo Caetano</h3>
+<table>
+<thead><tr><th>Slug</th><th>Nome</th><th>Cor</th></tr></thead>
+<tbody>
+<tr><td>caetano</td><td>Caetano Retail</td><td style="background:#1A1A2E;color:#fff">#1A1A2E</td></tr>
+<tr><td>bmw</td><td>BMW Caetano</td><td style="background:#1C69D4;color:#fff">#1C69D4</td></tr>
+<tr><td>hyundai</td><td>Hyundai Caetano</td><td style="background:#002C5F;color:#fff">#002C5F</td></tr>
+<tr><td>byd</td><td>BYD Caetano</td><td style="background:#1DB954;color:#fff">#1DB954</td></tr>
+<tr><td>audi</td><td>Audi Caetano</td><td style="background:#BB0A21;color:#fff">#BB0A21</td></tr>
+<tr><td>alpine</td><td>Alpine Caetano</td><td style="background:#0055A4;color:#fff">#0055A4</td></tr>
+<tr><td>dacia</td><td>Dacia Caetano</td><td style="background:#FFBE00;color:#000">#FFBE00</td></tr>
+<tr><td>caetano-parts</td><td>Caetano Parts</td><td style="background:#E63946;color:#fff">#E63946</td></tr>
+</tbody>
+</table>
+
+<h3>Utilizador Admin</h3>
+<pre><code>Email:    admin@caetano.pt
+Password: PrimeMail@2026!
+Role:     super_admin em todas as 8 marcas
+</code></pre>
+
+<hr>
+<h2>Configuração: Argon2id</h2>
+<pre><code>// config/hashing.php
+'driver' => 'argon2id',
+'argon'  => [
+    'memory'  => env('ARGON_MEMORY', 65536),  // 64 MB
+    'threads' => env('ARGON_THREADS', 2),
+    'time'    => env('ARGON_TIME', 4),
+],
+// Resistente a ataques de GPU — memory-hard algorithm
+// Custo ~100-300ms por hash em hardware normal (intencional)
+</code></pre>
+
+<hr>
+<h2>Estado Actual do Projeto</h2>
+<table>
+<thead><tr><th>Item</th><th>Estado</th></tr></thead>
+<tbody>
+<tr><td>Projeto Laravel 11 criado</td><td>✅ Completo</td></tr>
+<tr><td>Docker Compose (7 serviços)</td><td>✅ Completo</td></tr>
+<tr><td>18 migrações com índices</td><td>✅ Completo</td></tr>
+<tr><td>BrandScope global scope</td><td>✅ Completo</td></tr>
+<tr><td>18 modelos Eloquent</td><td>✅ Completo</td></tr>
+<tr><td>3 Enums PHP 8.1+</td><td>✅ Completo</td></tr>
+<tr><td>3 Middleware personalizados</td><td>✅ Completo</td></tr>
+<tr><td>Seeders (roles, brands, admin)</td><td>✅ Completo</td></tr>
+<tr><td>Horizon (4 supervisors)</td><td>✅ Completo</td></tr>
+<tr><td>Argon2id hashing</td><td>✅ Completo</td></tr>
+<tr><td>Autenticação (Login, Rate Limit)</td><td>⏳ A seguir</td></tr>
+<tr><td>Brand Selector UI</td><td>⏳ A seguir</td></tr>
+<tr><td>Controllers + Actions</td><td>⏳ A seguir</td></tr>
+<tr><td>Frontend Vue 3 + Inertia</td><td>⏳ A seguir</td></tr>
+</tbody>
+</table>
 
 </div>
 </main>
