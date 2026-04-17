@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Mail\CampaignMail;
 use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\Contact;
@@ -13,6 +14,7 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class SendCampaignEmailsJob implements ShouldQueue
 {
@@ -32,7 +34,7 @@ class SendCampaignEmailsJob implements ShouldQueue
     {
         $campaign = Campaign::find($this->campaignId);
         if (!$campaign || empty($campaign->compiled_html)) {
-            $this->markFailed();
+            CampaignRecipient::whereIn('id', $this->recipientIds)->update(['status' => 'failed']);
             return;
         }
 
@@ -44,38 +46,47 @@ class SendCampaignEmailsJob implements ShouldQueue
         foreach ($recipients as $recipient) {
             $contact = $recipient->contact;
             if (!$contact) {
-                $recipient->update(['status' => 'failed']);
+                $recipient->update(['status' => 'failed', 'failed_at' => now()]);
                 continue;
             }
 
-            // Última verificação de supressão (pode ter mudado desde BuildCampaignRecipientsJob)
-            if (SuppressionList::isSuppressed($campaign->brand_id, $contact->email)) {
+            // Final suppression check (may have changed since BuildCampaignRecipientsJob)
+            if (SuppressionList::isSuppressed($contact->email, $campaign->brand_id)) {
                 $recipient->update(['status' => 'suppressed', 'suppressed_at' => now()]);
                 continue;
+            }
+
+            // Assign tracking token if not set
+            if (!$recipient->tracking_token) {
+                $recipient->update(['tracking_token' => Str::random(32)]);
             }
 
             try {
                 $html = $this->personalise($campaign->compiled_html, $campaign, $contact);
                 $text = $this->personalise($campaign->content_text ?? '', $campaign, $contact);
 
-                // Envio via Laravel Mail (driver configurado por marca — Mailgun em produção)
-                Mail::send([], [], function ($message) use ($campaign, $contact, $html, $text) {
-                    $message
-                        ->to($contact->email, $contact->full_name)
-                        ->from($campaign->from_email, $campaign->from_name)
-                        ->replyTo($campaign->reply_to ?? $campaign->from_email)
-                        ->subject($campaign->subject)
-                        ->setBody($html, 'text/html')
-                        ->addPart($text ?: strip_tags($html), 'text/plain');
-                });
+                // Clone campaign with personalised content for the Mailable
+                $personalised = $campaign->replicate();
+                $personalised->compiled_html = $html;
+                $personalised->content_text  = $text;
 
-                $recipient->update(['status' => 'sent', 'sent_at' => now()]);
+                $sent = Mail::to($contact->email, $contact->full_name)
+                    ->send(new CampaignMail($personalised, $contact, $recipient));
+
+                $messageId = $sent?->getSymfonyMessage()->generateMessageId() ?? null;
+
+                $recipient->update([
+                    'status'     => 'sent',
+                    'sent_at'    => now(),
+                    'message_id' => $messageId,
+                ]);
 
                 EmailEvent::create([
                     'campaign_id' => $campaign->id,
                     'contact_id'  => $contact->id,
                     'brand_id'    => $campaign->brand_id,
-                    'type'        => 'sent',
+                    'email'       => $contact->email,
+                    'event_type'  => 'delivered',
                     'occurred_at' => now(),
                 ]);
 
@@ -85,27 +96,19 @@ class SendCampaignEmailsJob implements ShouldQueue
         }
     }
 
-    /**
-     * Substitui variáveis {{ var }} no HTML/texto por valores do contacto.
-     */
     private function personalise(string $content, Campaign $campaign, Contact $contact): string
     {
         $vars = [
-            '{{ first_name }}'    => $contact->first_name ?? '',
-            '{{ last_name }}'     => $contact->last_name  ?? '',
-            '{{ email }}'         => $contact->email,
-            '{{ company }}'       => $contact->company    ?? '',
-            '{{ brand_name }}'    => $campaign->brand?->name ?? '',
-            '{{ subject }}'       => $campaign->subject,
-            '{{ year }}'          => now()->year,
+            '{{ first_name }}'      => $contact->first_name ?? '',
+            '{{ last_name }}'       => $contact->last_name  ?? '',
+            '{{ email }}'           => $contact->email,
+            '{{ company }}'         => $contact->company    ?? '',
+            '{{ brand_name }}'      => $campaign->brand?->name ?? '',
+            '{{ subject }}'         => $campaign->subject,
+            '{{ year }}'            => now()->year,
             '{{ unsubscribe_url }}' => url("/unsubscribe/{$campaign->brand_id}/{$contact->email_hash}"),
         ];
 
         return str_replace(array_keys($vars), array_values($vars), $content);
-    }
-
-    private function markFailed(): void
-    {
-        CampaignRecipient::whereIn('id', $this->recipientIds)->update(['status' => 'failed']);
     }
 }

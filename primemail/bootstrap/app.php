@@ -15,8 +15,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Encrypt cookies except for public/webhook endpoints
-        $middleware->encryptCookies(except: []);
+        // Exempt webhook + tracking routes from CSRF (validated by HMAC instead)
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/*',
+            'track/*',
+            'unsubscribe/*',
+        ]);
 
         // Session-based Inertia SPA — trust these headers
         $middleware->trustProxies(at: '*');

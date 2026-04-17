@@ -5,12 +5,24 @@ use App\Http\Controllers\Brand\BrandSelectorController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactListController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\TemplateController;
+use App\Http\Controllers\TrackingController;
+use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', fn () => redirect()->route('login'));
+
+// ── Tracking público (sem auth) ────────────────────────────────────────────
+Route::get('track/open/{token}',          [TrackingController::class, 'open'])->name('track.open');
+Route::get('track/click/{token}/{url}',   [TrackingController::class, 'click'])->name('track.click')->where('url', '.*');
+Route::get('unsubscribe/{brandId}/{emailHash}',  [TrackingController::class, 'unsubscribeConfirm'])->name('unsubscribe.confirm');
+Route::post('unsubscribe/{brandId}/{emailHash}', [TrackingController::class, 'unsubscribe'])->name('unsubscribe');
+
+// ── Mailgun Webhook (sem auth, HMAC-protegido) ─────────────────────────────
+Route::post('webhooks/mailgun', [WebhookController::class, 'mailgun'])->name('webhooks.mailgun');
 
 // ── Autenticação ──────────────────────────────────────────────────────────
 Route::middleware('guest')->group(function () {
@@ -28,7 +40,7 @@ Route::middleware('auth')->group(function () {
 
     // ── Rotas protegidas por marca ativa ─────────────────────────────────
     Route::middleware(['active_brand', 'brand.access'])->group(function () {
-        Route::get('dashboard', fn () => Inertia::render('Dashboard'))->name('dashboard');
+        Route::get('dashboard', DashboardController::class)->name('dashboard');
 
         // Contactos
         Route::resource('contacts', ContactController::class);
