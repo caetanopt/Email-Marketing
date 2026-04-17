@@ -5,6 +5,7 @@ use App\Http\Controllers\Brand\BrandSelectorController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactListController;
+use App\Http\Controllers\BrandSettingsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\SuppressionController;
@@ -69,5 +70,10 @@ Route::middleware('auth')->group(function () {
         // Supressão
         Route::get('suppression',               [SuppressionController::class, 'index'])->name('suppression.index');
         Route::delete('suppression/{suppression}', [SuppressionController::class, 'destroy'])->name('suppression.destroy');
+
+        // Definições da marca
+        Route::get('brand/settings',         [BrandSettingsController::class, 'edit'])->name('brand.settings.edit');
+        Route::put('brand/settings',         [BrandSettingsController::class, 'update'])->name('brand.settings.update');
+        Route::delete('brand/settings/smtp', [BrandSettingsController::class, 'clearSmtp'])->name('brand.settings.clear-smtp');
     });
 });

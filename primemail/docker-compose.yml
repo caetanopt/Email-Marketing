@@ -100,6 +100,22 @@ services:
     networks:
       - primemail
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: primemail_scheduler
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+    command: sh -c "while true; do php artisan schedule:run --no-interaction; sleep 60; done"
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - primemail
+
 networks:
   primemail:
     driver: bridge
