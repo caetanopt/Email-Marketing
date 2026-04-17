@@ -8,16 +8,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CampaignRecipient extends Model
 {
-    public $timestamps = false;
+    public $timestamps = true;
 
     protected $fillable = [
         'campaign_id', 'brand_id', 'contact_id',
-        'email', 'status', 'message_id', 'sent_at',
+        'email', 'status', 'message_id',
+        'sent_at', 'failed_at', 'suppressed_at',
     ];
 
     protected function casts(): array
     {
-        return ['sent_at' => 'datetime', 'created_at' => 'datetime'];
+        return [
+            'sent_at'       => 'datetime',
+            'failed_at'     => 'datetime',
+            'suppressed_at' => 'datetime',
+            'created_at'    => 'datetime',
+        ];
     }
 
     protected static function booted(): void

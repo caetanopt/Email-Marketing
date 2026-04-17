@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Brand\BrandSelectorController;
+use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactListController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\TemplateController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -43,8 +45,12 @@ Route::middleware('auth')->group(function () {
             Route::get('/{import}/progress', [ImportController::class, 'progress'])->name('progress');
         });
 
-        // Campanhas e Templates — a seguir
-        // Route::resource('campaigns', CampaignController::class);
-        // Route::resource('templates', TemplateController::class);
+        // Templates MJML
+        Route::post('templates/preview', [TemplateController::class, 'preview'])->name('templates.preview');
+        Route::resource('templates', TemplateController::class);
+
+        // Campanhas
+        Route::post('campaigns/{campaign}/send', [CampaignController::class, 'send'])->name('campaigns.send');
+        Route::resource('campaigns', CampaignController::class);
     });
 });
