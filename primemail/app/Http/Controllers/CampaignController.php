@@ -3,11 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Campaigns\CreateCampaignAction;
+use App\Actions\Campaigns\DuplicateCampaignAction;
 use App\Actions\Campaigns\SendCampaignAction;
+use App\Actions\Campaigns\SendTestEmailAction;
 use App\Enums\CampaignStatus;
 use App\Http\Requests\StoreCampaignRequest;
 use App\Models\Campaign;
+use App\Models\CampaignRecipient;
 use App\Models\ContactList;
+use App\Models\EmailEvent;
 use App\Models\Template;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -63,16 +67,18 @@ class CampaignController extends Controller
     {
         $campaign->load(['creator', 'campaignLists.list', 'template']);
 
+        $sent = $campaign->recipients()->where('status', 'sent')->count();
+
         $stats = [
-            'sent'      => $campaign->recipients()->where('status', 'sent')->count(),
-            'failed'    => $campaign->recipients()->where('status', 'failed')->count(),
-            'suppressed'=> $campaign->recipients()->where('status', 'suppressed')->count(),
-            'opens'     => $campaign->emailEvents()->where('event_type', 'open')->count(),
-            'clicks'    => $campaign->emailEvents()->where('event_type', 'click')->distinct('contact_id')->count('contact_id'),
+            'sent'       => $sent,
+            'failed'     => $campaign->recipients()->where('status', 'failed')->count(),
+            'suppressed' => $campaign->recipients()->where('status', 'suppressed')->count(),
+            'opens'      => $campaign->emailEvents()->where('event_type', 'open')->distinct('contact_id')->count('contact_id'),
+            'clicks'     => $campaign->emailEvents()->where('event_type', 'click')->distinct('contact_id')->count('contact_id'),
         ];
 
-        $stats['open_rate']  = $stats['sent'] ? round($stats['opens']  / $stats['sent'] * 100, 1) : 0;
-        $stats['click_rate'] = $stats['sent'] ? round($stats['clicks'] / $stats['sent'] * 100, 1) : 0;
+        $stats['open_rate']  = $sent > 0 ? round($stats['opens']  / $sent * 100, 1) : 0;
+        $stats['click_rate'] = $sent > 0 ? round($stats['clicks'] / $sent * 100, 1) : 0;
 
         return Inertia::render('Campaigns/Show', compact('campaign', 'stats'));
     }
@@ -99,7 +105,6 @@ class CampaignController extends Controller
 
         $campaign->update($request->safe()->except('list_ids'));
 
-        // Actualizar listas associadas
         $campaign->campaignLists()->delete();
         foreach ($request->validated()['list_ids'] as $listId) {
             $campaign->campaignLists()->create(['list_id' => $listId, 'is_exclusion' => false]);
@@ -118,9 +123,6 @@ class CampaignController extends Controller
         return redirect()->route('campaigns.index')->with('success', 'Campanha eliminada.');
     }
 
-    /**
-     * Inicia o envio da campanha ou agenda para a data definida.
-     */
     public function send(Campaign $campaign, SendCampaignAction $action): RedirectResponse
     {
         try {
@@ -131,5 +133,82 @@ class CampaignController extends Controller
 
         return redirect()->route('campaigns.show', $campaign)
             ->with('success', 'Campanha em envio. Acompanha o progresso nesta página.');
+    }
+
+    /** POST /campaigns/{campaign}/test — envia email de teste para o endereço indicado */
+    public function sendTest(Request $request, Campaign $campaign, SendTestEmailAction $action): RedirectResponse
+    {
+        $data = $request->validate([
+            'email' => 'required|email|max:320',
+        ]);
+
+        try {
+            $action->execute($campaign, $data['email']);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['email' => $e->getMessage()]);
+        }
+
+        return back()->with('success', "Email de teste enviado para {$data['email']}.");
+    }
+
+    /** POST /campaigns/{campaign}/duplicate — clona campanha como rascunho */
+    public function duplicate(Campaign $campaign, DuplicateCampaignAction $action): RedirectResponse
+    {
+        $clone = $action->execute($campaign);
+
+        return redirect()->route('campaigns.edit', $clone)
+            ->with('success', 'Campanha duplicada. Edita e envia quando estiveres pronto.');
+    }
+
+    /** GET /campaigns/{campaign}/report — relatório detalhado de destinatários */
+    public function report(Request $request, Campaign $campaign): Response
+    {
+        $campaign->load(['creator']);
+
+        $recipients = CampaignRecipient::with('contact:id,first_name,last_name,email')
+            ->where('campaign_id', $campaign->id)
+            ->when($request->status, fn ($q, $s) => $q->where('status', $s))
+            ->when($request->search, fn ($q, $s) => $q->where('email', 'like', "%{$s}%"))
+            ->orderByDesc('sent_at')
+            ->paginate(50)
+            ->withQueryString()
+            ->through(function ($r) use ($campaign) {
+                $opens  = EmailEvent::where('campaign_id', $campaign->id)
+                    ->where('contact_id', $r->contact_id)
+                    ->where('event_type', 'open')
+                    ->count();
+                $clicks = EmailEvent::where('campaign_id', $campaign->id)
+                    ->where('contact_id', $r->contact_id)
+                    ->where('event_type', 'click')
+                    ->count();
+
+                return [
+                    'id'           => $r->id,
+                    'email'        => $r->email,
+                    'name'         => $r->contact
+                        ? trim($r->contact->first_name . ' ' . $r->contact->last_name) ?: null
+                        : null,
+                    'status'       => $r->status,
+                    'sent_at'      => $r->sent_at,
+                    'failed_at'    => $r->failed_at,
+                    'suppressed_at'=> $r->suppressed_at,
+                    'opens'        => $opens,
+                    'clicks'       => $clicks,
+                ];
+            });
+
+        $totals = [
+            'sent'       => CampaignRecipient::where('campaign_id', $campaign->id)->where('status', 'sent')->count(),
+            'failed'     => CampaignRecipient::where('campaign_id', $campaign->id)->where('status', 'failed')->count(),
+            'suppressed' => CampaignRecipient::where('campaign_id', $campaign->id)->where('status', 'suppressed')->count(),
+            'bounced'    => CampaignRecipient::where('campaign_id', $campaign->id)->where('status', 'bounced')->count(),
+        ];
+
+        return Inertia::render('Campaigns/Report', [
+            'campaign'   => $campaign,
+            'recipients' => $recipients,
+            'totals'     => $totals,
+            'filters'    => $request->only('status', 'search'),
+        ]);
     }
 }

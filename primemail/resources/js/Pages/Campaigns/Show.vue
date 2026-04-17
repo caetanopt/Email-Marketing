@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue';
-import { router, Link } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { router, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -21,13 +21,25 @@ const labelPT = {
     sent: 'Enviada', failed: 'Falhada',
 };
 
-const canSend    = computed(() => ['draft', 'scheduled'].includes(props.campaign.status));
-const canEdit    = computed(() => !['sending', 'sent', 'cancelled', 'failed'].includes(props.campaign.status));
-const isSending  = computed(() => props.campaign.status === 'sending');
+const canSend   = computed(() => ['draft', 'scheduled'].includes(props.campaign.status));
+const canEdit   = computed(() => !['sending', 'sent', 'cancelled', 'failed'].includes(props.campaign.status));
+const isSending = computed(() => props.campaign.status === 'sending');
+const isSent    = computed(() => props.campaign.status === 'sent');
+
+// Envio de teste
+const showTestForm = ref(false);
+const testForm = useForm({ email: '' });
+const sendTest = () => testForm.post(route('campaigns.test', props.campaign.id), {
+    onSuccess: () => { testForm.reset('email'); showTestForm.value = false; },
+});
 
 const sendCampaign = () => {
     if (!confirm('Enviar a campanha agora para todos os destinatários das listas seleccionadas?')) return;
     router.post(route('campaigns.send', props.campaign.id));
+};
+
+const duplicate = () => {
+    router.post(route('campaigns.duplicate', props.campaign.id));
 };
 
 const deleteCampaign = () => {
@@ -39,6 +51,14 @@ const deleteCampaign = () => {
 <template>
     <AppLayout :title="campaign.name">
         <template #actions>
+            <Link v-if="isSent" :href="route('campaigns.report', campaign.id)"
+                  class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                Relatório
+            </Link>
+            <button @click="duplicate"
+                    class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                Duplicar
+            </button>
             <Link v-if="canEdit" :href="route('campaigns.edit', campaign.id)"
                   class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                 Editar
@@ -87,6 +107,30 @@ const deleteCampaign = () => {
                     </dl>
                 </div>
 
+                <!-- Envio de teste -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-semibold text-slate-900 text-sm">Enviar email de teste</h3>
+                        <button @click="showTestForm = !showTestForm"
+                                class="text-xs text-slate-500 hover:text-slate-900">
+                            {{ showTestForm ? 'Fechar' : 'Abrir' }}
+                        </button>
+                    </div>
+                    <form v-if="showTestForm" @submit.prevent="sendTest" class="flex items-start gap-3">
+                        <div class="flex-1">
+                            <input v-model="testForm.email" type="email" required
+                                   :class="['w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900', testForm.errors.email ? 'border-red-400' : 'border-slate-200']"
+                                   placeholder="o-teu-email@exemplo.pt" />
+                            <p v-if="testForm.errors.email" class="mt-1 text-xs text-red-600">{{ testForm.errors.email }}</p>
+                        </div>
+                        <button type="submit" :disabled="testForm.processing"
+                                class="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-900 disabled:opacity-50 transition-colors whitespace-nowrap">
+                            Enviar Teste
+                        </button>
+                    </form>
+                    <p v-else class="text-xs text-slate-400">Envia uma pré-visualização personalizada para o teu email antes de lançar a campanha.</p>
+                </div>
+
                 <!-- Listas -->
                 <div class="bg-white border border-slate-200 rounded-xl p-5">
                     <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas destinatárias</h3>
@@ -99,7 +143,7 @@ const deleteCampaign = () => {
                     </div>
                 </div>
 
-                <!-- Preview HTML (se enviada) -->
+                <!-- Preview HTML -->
                 <div v-if="campaign.compiled_html" class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
                         <div class="w-3 h-3 rounded-full bg-red-400"></div>
@@ -115,7 +159,11 @@ const deleteCampaign = () => {
             <!-- ── Métricas ─────────────────────────────────────────────── -->
             <div class="space-y-4">
                 <div class="bg-white border border-slate-200 rounded-xl p-5">
-                    <h3 class="font-semibold text-slate-900 mb-4 text-sm">Desempenho</h3>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-semibold text-slate-900 text-sm">Desempenho</h3>
+                        <Link v-if="isSent" :href="route('campaigns.report', campaign.id)"
+                              class="text-xs text-slate-400 hover:text-slate-700">Ver detalhes →</Link>
+                    </div>
                     <div class="space-y-4">
                         <div>
                             <div class="flex justify-between text-sm mb-1">
@@ -129,7 +177,7 @@ const deleteCampaign = () => {
                                 <span class="font-semibold text-green-700">{{ stats.open_rate }}%</span>
                             </div>
                             <div class="w-full bg-slate-100 rounded-full h-1.5">
-                                <div class="h-1.5 bg-green-500 rounded-full" :style="{ width: stats.open_rate + '%' }" />
+                                <div class="h-1.5 bg-green-500 rounded-full" :style="{ width: Math.min(stats.open_rate, 100) + '%' }" />
                             </div>
                         </div>
                         <div>
@@ -138,7 +186,7 @@ const deleteCampaign = () => {
                                 <span class="font-semibold text-blue-700">{{ stats.click_rate }}%</span>
                             </div>
                             <div class="w-full bg-slate-100 rounded-full h-1.5">
-                                <div class="h-1.5 bg-blue-500 rounded-full" :style="{ width: stats.click_rate + '%' }" />
+                                <div class="h-1.5 bg-blue-500 rounded-full" :style="{ width: Math.min(stats.click_rate, 100) + '%' }" />
                             </div>
                         </div>
                     </div>

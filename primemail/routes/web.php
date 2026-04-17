@@ -7,6 +7,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactListController;
 use App\Http\Controllers\BrandSettingsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\TeamController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\SuppressionController;
 use App\Http\Controllers\TemplateController;
@@ -64,8 +65,17 @@ Route::middleware('auth')->group(function () {
         Route::resource('templates', TemplateController::class);
 
         // Campanhas
-        Route::post('campaigns/{campaign}/send', [CampaignController::class, 'send'])->name('campaigns.send');
+        Route::post('campaigns/{campaign}/send',      [CampaignController::class, 'send'])->name('campaigns.send');
+        Route::post('campaigns/{campaign}/test',      [CampaignController::class, 'sendTest'])->name('campaigns.test');
+        Route::post('campaigns/{campaign}/duplicate', [CampaignController::class, 'duplicate'])->name('campaigns.duplicate');
+        Route::get('campaigns/{campaign}/report',     [CampaignController::class, 'report'])->name('campaigns.report');
         Route::resource('campaigns', CampaignController::class);
+
+        // Equipa da marca
+        Route::get('team',                     [TeamController::class, 'index'])->name('team.index');
+        Route::post('team/invite',             [TeamController::class, 'invite'])->name('team.invite');
+        Route::delete('team/{member}',         [TeamController::class, 'remove'])->name('team.remove');
+        Route::put('team/{member}/role',       [TeamController::class, 'updateRole'])->name('team.update-role');
 
         // Supressão
         Route::get('suppression',               [SuppressionController::class, 'index'])->name('suppression.index');
