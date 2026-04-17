@@ -7,6 +7,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactListController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\SuppressionController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\TrackingController;
 use App\Http\Controllers\WebhookController;
@@ -64,5 +65,9 @@ Route::middleware('auth')->group(function () {
         // Campanhas
         Route::post('campaigns/{campaign}/send', [CampaignController::class, 'send'])->name('campaigns.send');
         Route::resource('campaigns', CampaignController::class);
+
+        // Supressão
+        Route::get('suppression',               [SuppressionController::class, 'index'])->name('suppression.index');
+        Route::delete('suppression/{suppression}', [SuppressionController::class, 'destroy'])->name('suppression.destroy');
     });
 });

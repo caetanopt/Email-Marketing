@@ -92,9 +92,9 @@ class ContactController extends Controller
         ]);
 
         $stats = [
-            'emails_sent'   => $contact->emailEvents()->where('type', 'sent')->count(),
-            'emails_opened' => $contact->emailEvents()->where('type', 'open')->count(),
-            'emails_clicked'=> $contact->emailEvents()->where('type', 'click')->count(),
+            'emails_sent'    => $contact->emailEvents()->where('event_type', 'delivered')->count(),
+            'emails_opened'  => $contact->emailEvents()->where('event_type', 'open')->count(),
+            'emails_clicked' => $contact->emailEvents()->where('event_type', 'click')->count(),
         ];
 
         return Inertia::render('Contacts/Show', compact('contact', 'stats'));

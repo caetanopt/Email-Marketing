@@ -45,10 +45,9 @@ class CampaignController extends Controller
             'lists' => ContactList::select('id', 'name', 'active_contacts')
                 ->orderBy('name')
                 ->get(),
-            'brand' => [
-                'from_name'  => auth()->user()->activeBrands()->first()?->from_name ?? '',
-                'from_email' => auth()->user()->activeBrands()->first()?->from_email ?? '',
-            ],
+            'brand' => \App\Models\Brand::find(session('active_brand_id'))
+                ?->only('from_name', 'from_email')
+                ?? ['from_name' => '', 'from_email' => ''],
         ]);
     }
 
@@ -68,8 +67,8 @@ class CampaignController extends Controller
             'sent'      => $campaign->recipients()->where('status', 'sent')->count(),
             'failed'    => $campaign->recipients()->where('status', 'failed')->count(),
             'suppressed'=> $campaign->recipients()->where('status', 'suppressed')->count(),
-            'opens'     => $campaign->emailEvents()->where('type', 'open')->count(),
-            'clicks'    => $campaign->emailEvents()->where('type', 'click')->distinct('contact_id')->count(),
+            'opens'     => $campaign->emailEvents()->where('event_type', 'open')->count(),
+            'clicks'    => $campaign->emailEvents()->where('event_type', 'click')->distinct('contact_id')->count('contact_id'),
         ];
 
         $stats['open_rate']  = $stats['sent'] ? round($stats['opens']  / $stats['sent'] * 100, 1) : 0;
