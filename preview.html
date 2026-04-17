@@ -68,6 +68,8 @@
   <a href="#" onclick="showDoc('16')" id="nav-16">16 — Requisitos NF</a>
   <a href="#" onclick="showDoc('17')" id="nav-17">17 — Ordem de Desenvolvimento</a>
   <a href="#" onclick="showDoc('18')" id="nav-18">18 — Projeto Laravel</a>
+  <a href="#" onclick="showDoc('19')" id="nav-19">19 — Templates MJML</a>
+  <a href="#" onclick="showDoc('20')" id="nav-20">20 — Autenticação e UI</a>
 </nav><main class="content">
 <div class="doc-section active" id="doc-readme">
 <h1>Caetano PrimeMail</h1>
@@ -6616,6 +6618,377 @@ Role:     super_admin em todas as 8 marcas
 <tr><td>Brand Selector UI</td><td>⏳ A seguir</td></tr>
 <tr><td>Controllers + Actions</td><td>⏳ A seguir</td></tr>
 <tr><td>Frontend Vue 3 + Inertia</td><td>⏳ A seguir</td></tr>
+</tbody>
+</table>
+
+</div>
+
+<div class="doc-section" id="doc-19">
+<h1>19 — Sistema de Templates MJML</h1>
+<blockquote><p>Os templates de email são escritos em <strong>MJML</strong> (Mailjet Markup Language) — não em HTML cru. O sistema compila automaticamente para HTML cross-client responsivo (Gmail, Outlook, Apple Mail, Yahoo, etc.).</p></blockquote>
+<hr>
+
+<h2>Porquê MJML?</h2>
+<table>
+<thead><tr><th>Problema do HTML de email</th><th>Solução MJML</th></tr></thead>
+<tbody>
+<tr><td>Outlook renderiza com motor Word (1997)</td><td>MJML gera <code>&lt;table&gt;</code>s aninhadas corretas automaticamente</td></tr>
+<tr><td>Responsividade manual é inferno (dezenas de media queries)</td><td>Componentes <code>&lt;mj-column&gt;</code> gerem breakpoints sozinhos</td></tr>
+<tr><td>Testar em 30+ clientes de email é caro</td><td>MJML já foi testado e corrigido para todos os principais clientes</td></tr>
+<tr><td>Código verboso, pouco legível</td><td>Sintaxe declarativa simples (~70% menos linhas)</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Arquitetura de Compilação</h2>
+<pre><code>┌──────────────────┐       ┌─────────────────────┐       ┌──────────────────┐
+│  Editor (Vue 3)  │  →→→  │  Template.saving()  │  →→→  │  MjmlCompiler    │
+│  Textarea MJML   │       │  (hook Eloquent)    │       │  (Service)       │
+└──────────────────┘       └─────────────────────┘       └────────┬─────────┘
+                                                                   │ Symfony Process
+                                                                   ▼
+                                                         ┌──────────────────┐
+                                                         │  Node MJML CLI   │
+                                                         │  (no container)  │
+                                                         └────────┬─────────┘
+                                                                   │
+                                                                   ▼
+                                             Redis Cache ←→  Compiled HTML
+                                             (SHA-256 key)
+</code></pre>
+<p><strong>Fluxo:</strong></p>
+<ol>
+<li>Autor edita MJML na UI → guarda</li>
+<li>Hook <code>saving()</code> do model deteta <code>isDirty('mjml_source')</code></li>
+<li><code>MjmlCompiler::compile()</code> invoca o CLI via Symfony Process</li>
+<li>HTML resultante é guardado em <code>compiled_html</code> + cached em Redis por 1h</li>
+<li>Se falhar, <code>compile_error</code> é preenchido e o editor mostra o erro — o save não bloqueia</li>
+<li>Ao enviar uma campanha, o <code>compiled_html</code> é <em>congelado</em> (snapshot imutável)</li>
+</ol>
+
+<hr>
+<h2>Docker — Node.js + MJML CLI</h2>
+<pre><code># docker/php/Dockerfile
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    &amp;&amp; apt-get install -y nodejs \
+    &amp;&amp; npm install -g mjml@4
+</code></pre>
+
+<hr>
+<h2>Colunas MJML nas Tabelas</h2>
+<h3>templates</h3>
+<table>
+<thead><tr><th>Coluna</th><th>Tipo</th><th>Propósito</th></tr></thead>
+<tbody>
+<tr><td><code>mjml_source</code></td><td>LONGTEXT</td><td>Código MJML — fonte de verdade</td></tr>
+<tr><td><code>compiled_html</code></td><td>LONGTEXT NULL</td><td>HTML gerado pelo MJML CLI</td></tr>
+<tr><td><code>content_text</code></td><td>TEXT NULL</td><td>Alternativa plain-text (acessibilidade + anti-spam)</td></tr>
+<tr><td><code>compiled_at</code></td><td>TIMESTAMP NULL</td><td>Última compilação bem-sucedida</td></tr>
+<tr><td><code>compile_error</code></td><td>TEXT NULL</td><td>Última mensagem de erro (stderr do CLI)</td></tr>
+</tbody>
+</table>
+
+<h3>campaigns</h3>
+<p>As campanhas partilham as mesmas colunas MJML, mas com comportamento de <strong>congelamento</strong>: após a campanha entrar em estado <code>Sending</code>, <code>Sent</code>, <code>Cancelled</code> ou <code>Failed</code>, tentativas de editar <code>mjml_source</code> são silenciosamente ignoradas pelo hook do model — garante reprodutibilidade e auditoria.</p>
+
+<hr>
+<h2>Serviço MjmlCompiler</h2>
+<pre><code>// app/Services/MjmlCompiler.php
+public function compile(string $mjml, bool $useCache = true): string
+{
+    $trimmed = trim($mjml);
+    if ($trimmed === '') throw new MjmlCompilationException('Código MJML vazio.');
+
+    if ($useCache) {
+        $key = 'mjml.compiled.' . hash('sha256', $trimmed);
+        if ($cached = Cache::get($key)) return $cached;
+    }
+
+    $process = new Process([$this-&gt;binary, '-i', '-s', '--config.minify=true']);
+    $process-&gt;setTimeout($this-&gt;timeout);
+    $process-&gt;setInput($trimmed);
+
+    try {
+        $process-&gt;mustRun();
+    } catch (ProcessFailedException $e) {
+        throw new MjmlCompilationException(
+            'Falha a compilar MJML: ' . $process-&gt;getErrorOutput(),
+            mjmlSource: $trimmed,
+            stderr:     $process-&gt;getErrorOutput(),
+        );
+    }
+
+    $html = trim($process-&gt;getOutput());
+    if ($useCache) Cache::put($key, $html, now()-&gt;addHour());
+    return $html;
+}
+</code></pre>
+
+<hr>
+<h2>Hook Automático no Model Template</h2>
+<pre><code>// app/Models/Template.php
+static::saving(function (Template $template) {
+    if ($template-&gt;isDirty('mjml_source') &amp;&amp; !empty($template-&gt;mjml_source)) {
+        try {
+            $compiler = app(MjmlCompiler::class);
+            $template-&gt;compiled_html = $compiler-&gt;compile($template-&gt;mjml_source);
+            $template-&gt;compiled_at   = now();
+            $template-&gt;compile_error = null;
+        } catch (MjmlCompilationException $e) {
+            // Não bloqueia o save — erro é guardado para o editor mostrar
+            $template-&gt;compile_error = $e-&gt;getMessage();
+            $template-&gt;compiled_html = null;
+            $template-&gt;compiled_at   = null;
+        }
+    }
+});
+</code></pre>
+
+<hr>
+<h2>Estratégia de Cache</h2>
+<p>O cache Redis usa a chave <code>mjml.compiled.&lt;sha256(mjml)&gt;</code>. Isto significa:</p>
+<ul>
+<li>Dois templates idênticos só compilam uma vez</li>
+<li>Alterar um byte qualquer (espaço, pontuação) invalida automaticamente</li>
+<li>TTL de 1h por defeito — configurável via <code>MJML_CACHE_MINUTES</code></li>
+<li>Compilação típica: 100–300ms (sem cache), &lt;1ms (com cache)</li>
+</ul>
+
+<hr>
+<h2>Exemplo: Template Newsletter Multi-Marca</h2>
+<pre><code>&lt;mjml&gt;
+  &lt;mj-head&gt;
+    &lt;mj-title&gt;Newsletter&lt;/mj-title&gt;
+    &lt;mj-preview&gt;{{ preview_text }}&lt;/mj-preview&gt;
+    &lt;mj-attributes&gt;
+      &lt;mj-all font-family="Helvetica, Arial, sans-serif" /&gt;
+      &lt;mj-button background-color="#1A1A2E" color="#ffffff" border-radius="6px" /&gt;
+    &lt;/mj-attributes&gt;
+  &lt;/mj-head&gt;
+  &lt;mj-body background-color="#f5f7fa"&gt;
+    &lt;mj-section background-color="#1A1A2E" padding="24px"&gt;
+      &lt;mj-column&gt;
+        &lt;mj-image src="{{ brand_logo_url }}" alt="{{ brand_name }}" width="160px" /&gt;
+      &lt;/mj-column&gt;
+    &lt;/mj-section&gt;
+
+    &lt;mj-section background-color="#ffffff" padding="40px 24px"&gt;
+      &lt;mj-column&gt;
+        &lt;mj-text font-size="26px" font-weight="700" align="center"&gt;
+          {{ headline }}
+        &lt;/mj-text&gt;
+        &lt;mj-text&gt;Olá {{ first_name }}, {{ body_paragraph_1 }}&lt;/mj-text&gt;
+        &lt;mj-button href="{{ cta_url }}"&gt;{{ cta_label }}&lt;/mj-button&gt;
+      &lt;/mj-column&gt;
+    &lt;/mj-section&gt;
+
+    &lt;mj-section background-color="#1A1A2E" padding="24px"&gt;
+      &lt;mj-column&gt;
+        &lt;mj-text color="#8b949e" font-size="12px" align="center"&gt;
+          © {{ year }} {{ brand_name }} &nbsp;|&nbsp;
+          &lt;a href="{{ unsubscribe_url }}"&gt;Cancelar subscrição&lt;/a&gt;
+        &lt;/mj-text&gt;
+      &lt;/mj-column&gt;
+    &lt;/mj-section&gt;
+  &lt;/mj-body&gt;
+&lt;/mjml&gt;
+</code></pre>
+
+<hr>
+<h2>Variáveis Disponíveis (Personalização)</h2>
+<p>Os placeholders <code>{{ variavel }}</code> são substituídos <strong>depois</strong> da compilação MJML, por contacto, no momento do envio. MJML compila primeiro (HTML genérico cacheado) e depois o Blade/Twig faz a substituição por destinatário.</p>
+<table>
+<thead><tr><th>Grupo</th><th>Variáveis</th></tr></thead>
+<tbody>
+<tr><td>Contacto</td><td><code>first_name</code>, <code>last_name</code>, <code>email</code>, <code>company</code></td></tr>
+<tr><td>Marca</td><td><code>brand_name</code>, <code>brand_logo_url</code>, <code>brand_primary_color</code></td></tr>
+<tr><td>Campanha</td><td><code>subject</code>, <code>preview_text</code>, <code>headline</code>, <code>cta_url</code>, <code>cta_label</code></td></tr>
+<tr><td>Sistema</td><td><code>unsubscribe_url</code>, <code>preferences_url</code>, <code>year</code>, <code>site_url</code></td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Templates Seed (Exemplos Já Criados)</h2>
+<table>
+<thead><tr><th>Nome</th><th>Marca</th><th>Tipo</th></tr></thead>
+<tbody>
+<tr><td>Base — Newsletter Simples</td><td>Partilhado</td><td>Newsletter genérica multi-marca</td></tr>
+<tr><td>Base — Promoção de Produto</td><td>Partilhado</td><td>Destaque de produto com CTA forte</td></tr>
+<tr><td>Caetano — Convite para Evento</td><td>Caetano</td><td>Template corporativo exclusivo</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Próximos Passos (V2)</h2>
+<ul>
+<li>Drag-and-drop visual editor (BEEFree, GrapesJS ou custom Vue) que emite MJML</li>
+<li>Preview em tempo real lado-a-lado (MJML → HTML)</li>
+<li>Biblioteca de blocos reutilizáveis (cabeçalhos, CTAs, footers)</li>
+<li>Renderização para <code>mjml-browser</code> no cliente (preview instantâneo sem round-trip)</li>
+<li>Microserviço MJML dedicado (Node container) se volume justificar</li>
+<li>A/B testing de templates ao nível de subject e CTA</li>
+</ul>
+
+</div>
+
+<div class="doc-section" id="doc-20">
+<h1>20 — Autenticação + Frontend Inertia/Vue</h1>
+<blockquote><p>A camada de autenticação com rate limiting, seletor de marca, layout guest e primeira página do dashboard — tudo construído com Laravel + Inertia + Vue 3 + Tailwind CSS 4.</p></blockquote>
+<hr>
+
+<h2>Stack Frontend</h2>
+<table>
+<thead><tr><th>Componente</th><th>Versão</th><th>Função</th></tr></thead>
+<tbody>
+<tr><td>Vue 3</td><td>^3.5</td><td>Framework SPA</td></tr>
+<tr><td>@inertiajs/vue3</td><td>^2.0</td><td>Ponte server-side routing ↔ SPA</td></tr>
+<tr><td>Tailwind CSS</td><td>^4.0</td><td>Styling utility-first</td></tr>
+<tr><td>Vite</td><td>^8.0</td><td>Bundler dev/build</td></tr>
+<tr><td>Ziggy</td><td>^2.5</td><td>Helper <code>route()</code> no frontend</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Fluxo de Login</h2>
+<pre><code>1. GET /login                          → Inertia::render('Auth/Login')
+2. POST /login (LoginRequest)          → RateLimiter::hit() em falhas
+                                         RateLimiter::clear() em sucesso
+3. Se 1 só marca acessível             → session('active_brand_id') = brand.id
+                                         → redirect('/dashboard')
+4. Se múltiplas marcas                  → redirect('/brands/select')
+5. AuditLog::record('auth.login', ...)
+</code></pre>
+
+<h3>Rate Limiting</h3>
+<ul>
+<li>Chave: <code>strtolower(email) | ip_address</code> (protege contra ataques distribuídos <em>e</em> brute-force a contas específicas)</li>
+<li>5 tentativas falhadas / 60 segundos → bloqueio</li>
+<li>Evento <code>Lockout</code> emitido → pode disparar email de alerta</li>
+<li>Mensagem localizada em PT indica tempo restante</li>
+</ul>
+
+<hr>
+<h2>Brand Selector</h2>
+<p>Após login, se o utilizador tiver acesso a mais do que uma marca, é obrigado a escolher. Esta escolha é gravada em <code>session('active_brand_id')</code> e usada pelo <code>BrandScope</code> em todas as queries.</p>
+<pre><code>// BrandSelectorController::store()
+$hasAccess = $user-&gt;activeBrands()-&gt;where('brands.id', $brandId)-&gt;exists();
+if (!$hasAccess) abort(403, 'Não tem acesso a esta marca.');
+
+session(['active_brand_id' =&gt; $brandId]);
+Cache::forget("brand_access.{$user-&gt;id}.{$brandId}");
+
+AuditLog::record('brand.selected', userId: $user-&gt;id, brandId: $brandId, ...);
+</code></pre>
+
+<hr>
+<h2>Partilha Global via Inertia</h2>
+<p>O <code>HandleInertiaRequests</code> partilha automaticamente com todas as páginas Vue:</p>
+<pre><code>return [
+    'auth' =&gt; ['user' =&gt; [...]],
+    'activeBrand' =&gt; Brand::find(session('active_brand_id')),
+    'flash' =&gt; [
+        'success' =&gt; fn() =&gt; $request-&gt;session()-&gt;get('success'),
+        'error'   =&gt; fn() =&gt; $request-&gt;session()-&gt;get('error'),
+    ],
+    'csrf_token' =&gt; csrf_token(),
+];
+</code></pre>
+<p>No Vue: <code>usePage().props.activeBrand</code> — sem ter que pedir novamente ao servidor.</p>
+
+<hr>
+<h2>Estrutura de Ficheiros Frontend</h2>
+<pre><code>resources/
+├── css/
+│   └── app.css                 # Tailwind 4 imports
+├── js/
+│   ├── app.js                  # Bootstrap Inertia + Vue
+│   ├── bootstrap.js
+│   ├── Layouts/
+│   │   └── GuestLayout.vue     # Layout público (gradient escuro + card)
+│   └── Pages/
+│       ├── Auth/
+│       │   ├── Login.vue       # Form de login com erros inline
+│       │   └── SelectBrand.vue # Cards por marca com as cores reais
+│       └── Dashboard.vue       # Landing pós-login (KPIs placeholder)
+└── views/
+    └── app.blade.php           # Root template (monta @inertia)
+</code></pre>
+
+<hr>
+<h2>Rotas</h2>
+<table>
+<thead><tr><th>Método</th><th>URI</th><th>Controller</th><th>Middleware</th></tr></thead>
+<tbody>
+<tr><td>GET</td><td>/login</td><td>AuthenticatedSessionController@create</td><td>guest</td></tr>
+<tr><td>POST</td><td>/login</td><td>AuthenticatedSessionController@store</td><td>guest</td></tr>
+<tr><td>POST</td><td>/logout</td><td>AuthenticatedSessionController@destroy</td><td>auth</td></tr>
+<tr><td>GET</td><td>/brands/select</td><td>BrandSelectorController@show</td><td>auth</td></tr>
+<tr><td>POST</td><td>/brands/select</td><td>BrandSelectorController@store</td><td>auth</td></tr>
+<tr><td>POST</td><td>/brands/switch</td><td>BrandSelectorController@switch</td><td>auth</td></tr>
+<tr><td>GET</td><td>/dashboard</td><td>(Inertia::render)</td><td>auth, active_brand, brand.access</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Testes Feature</h2>
+<table>
+<thead><tr><th>Teste</th><th>Verifica</th></tr></thead>
+<tbody>
+<tr><td>test_login_screen_can_be_rendered</td><td>GET /login → 200</td></tr>
+<tr><td>test_user_can_authenticate_with_valid_credentials</td><td>Auth::check() após POST</td></tr>
+<tr><td>test_invalid_credentials_fail</td><td>Session errors, utilizador continua guest</td></tr>
+<tr><td>test_rate_limit_after_5_failed_attempts</td><td>6ª tentativa é bloqueada</td></tr>
+<tr><td>test_user_with_single_brand_is_redirected_to_dashboard</td><td>session active_brand_id definida</td></tr>
+<tr><td>test_user_with_multiple_brands_goes_to_selector</td><td>Redirect para /brands/select</td></tr>
+</tbody>
+</table>
+
+<hr>
+<h2>Visual da Login (mockup ASCII)</h2>
+<pre><code>╔════════════════════════════════════════════════╗
+║      [ gradient slate-900 de fundo ]           ║
+║                                                ║
+║            ┌───────────────┐                   ║
+║            │      ✉        │                   ║
+║            └───────────────┘                   ║
+║          Caetano PrimeMail                     ║
+║       Email Marketing Multi-Marca              ║
+║                                                ║
+║   ┌──────────────────────────────────────┐    ║
+║   │  Iniciar Sessão                      │    ║
+║   │                                      │    ║
+║   │  Email                               │    ║
+║   │  [ admin@caetano.pt          ]       │    ║
+║   │                                      │    ║
+║   │  Palavra-passe                       │    ║
+║   │  [ •••••••••••               ]       │    ║
+║   │                                      │    ║
+║   │  ☐ Manter sessão   Esqueci-me...     │    ║
+║   │                                      │    ║
+║   │  [      Entrar (escuro)         ]    │    ║
+║   └──────────────────────────────────────┘    ║
+║                                                ║
+║      © 2026 Grupo Caetano                      ║
+╚════════════════════════════════════════════════╝
+</code></pre>
+
+<hr>
+<h2>Progresso Atualizado</h2>
+<table>
+<thead><tr><th>Fase</th><th>Item</th><th>Estado</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Fundação Laravel (migrations, models, enums)</td><td>✅</td></tr>
+<tr><td>0</td><td>Docker + MJML CLI</td><td>✅</td></tr>
+<tr><td>0</td><td>Seeders (roles, brands, admin, templates MJML)</td><td>✅</td></tr>
+<tr><td>1</td><td>Autenticação (Login + rate limiting)</td><td>✅</td></tr>
+<tr><td>1</td><td>Brand Selector (UI + backend)</td><td>✅</td></tr>
+<tr><td>1</td><td>Layout guest + Dashboard placeholder</td><td>✅</td></tr>
+<tr><td>1</td><td>Partilha Inertia global (auth, activeBrand, flash)</td><td>✅</td></tr>
+<tr><td>2</td><td>CRUD Contactos + Importação CSV</td><td>⏳</td></tr>
+<tr><td>2</td><td>CRUD Listas + Segmentos</td><td>⏳</td></tr>
+<tr><td>3</td><td>Editor MJML + Preview em tempo real</td><td>⏳</td></tr>
+<tr><td>4</td><td>Envio de Campanhas + Mailgun</td><td>⏳</td></tr>
+<tr><td>5</td><td>Tracking (pixel + clicks) + Relatórios</td><td>⏳</td></tr>
 </tbody>
 </table>
 

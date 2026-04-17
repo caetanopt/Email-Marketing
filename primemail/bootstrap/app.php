@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\BrandAccessMiddleware;
 use App\Http\Middleware\EnsureActiveBrand;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ValidateWebhookSignature;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -19,6 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Session-based Inertia SPA — trust these headers
         $middleware->trustProxies(at: '*');
+
+        // Inertia middleware — partilha `auth.user`, `activeBrand`, flash
+        $middleware->web(append: [
+            HandleInertiaRequests::class,
+        ]);
 
         // Named middleware aliases for route-level usage
         $middleware->alias([

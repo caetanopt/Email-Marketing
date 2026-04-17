@@ -13,8 +13,18 @@ return new class extends Migration
             $table->foreignId('brand_id')->nullable()->constrained()->nullOnDelete();
             $table->string('name');
             $table->text('description')->nullable();
-            $table->longText('content_html');
-            $table->text('content_text')->nullable();
+
+            // ── MJML ──────────────────────────────────────────────────────
+            // Os autores escrevem em MJML; o sistema compila para HTML
+            // cross-client responsivo. Guardamos ambos para performance:
+            // - compilação pesada (~200ms) feita uma vez por save
+            // - envio usa o compiled_html em cache
+            $table->longText('mjml_source');                    // código MJML (fonte de verdade)
+            $table->longText('compiled_html')->nullable();      // HTML gerado pelo MJML CLI
+            $table->text('content_text')->nullable();           // alternativa plain-text (fallback)
+            $table->timestamp('compiled_at')->nullable();       // última compilação OK
+            $table->text('compile_error')->nullable();          // último erro (se falhar)
+
             $table->string('thumbnail_path', 500)->nullable();
             $table->boolean('is_shared')->default(false);
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();

@@ -56,6 +56,15 @@ class User extends Authenticatable implements MustVerifyEmail
         );
     }
 
+    /**
+     * Alias explícito usado no fluxo de autenticação / brand selector.
+     * Retorna query pronta a usar para ->get() ou ->count().
+     */
+    public function activeBrands()
+    {
+        return $this->brandsWithAccess()->orderBy('name');
+    }
+
     public function hasAccessToBrand(int $brandId): bool
     {
         return $this->brandRoles()

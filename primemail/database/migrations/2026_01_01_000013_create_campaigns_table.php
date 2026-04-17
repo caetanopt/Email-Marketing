@@ -17,8 +17,17 @@ return new class extends Migration
             $table->string('from_name');
             $table->string('from_email');
             $table->string('reply_to')->nullable();
-            $table->longText('content_html')->nullable();
+
+            // ── Conteúdo MJML ─────────────────────────────────────────────
+            // mjml_source: código editável (fonte de verdade durante draft)
+            // compiled_html: snapshot do HTML compilado — congelado ao enviar
+            //                para que alterações posteriores ao template não
+            //                afetem campanhas já enviadas
+            $table->longText('mjml_source')->nullable();
+            $table->longText('compiled_html')->nullable();
             $table->text('content_text')->nullable();
+            $table->timestamp('compiled_at')->nullable();
+            $table->text('compile_error')->nullable();
             $table->foreignId('template_id')->nullable()->constrained('templates')->nullOnDelete();
             $table->enum('status', ['draft', 'scheduled', 'sending', 'sent', 'paused', 'cancelled', 'failed'])->default('draft');
             $table->timestamp('scheduled_at')->nullable();
