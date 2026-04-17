@@ -13,11 +13,12 @@ class Import extends Model
     use HasFactory;
 
     protected $fillable = [
-        'brand_id', 'list_id', 'user_id', 'file_name', 'file_path',
-        'file_size', 'file_type', 'column_mapping', 'headers', 'status',
-        'total_rows', 'processed_rows', 'imported_count', 'updated_count',
-        'skipped_count', 'error_count', 'error_file_path',
-        'started_at', 'completed_at', 'error_message',
+        'brand_id', 'list_id', 'user_id', 'created_by',
+        'file_name', 'filename', 'file_path', 'file_size', 'file_type',
+        'column_mapping', 'headers', 'status',
+        'total_rows', 'processed_rows',
+        'imported_count', 'updated_count', 'skipped_count', 'error_count', 'failed_count',
+        'error_file_path', 'started_at', 'completed_at', 'finished_at', 'error_message',
     ];
 
     protected function casts(): array
@@ -28,6 +29,7 @@ class Import extends Model
             'status'         => ImportStatus::class,
             'started_at'     => 'datetime',
             'completed_at'   => 'datetime',
+            'finished_at'    => 'datetime',
         ];
     }
 
@@ -36,23 +38,15 @@ class Import extends Model
         static::addGlobalScope(new BrandScope());
     }
 
-    public function brand(): BelongsTo { return $this->belongsTo(Brand::class); }
-    public function list(): BelongsTo  { return $this->belongsTo(ContactList::class, 'list_id'); }
-    public function user(): BelongsTo  { return $this->belongsTo(User::class); }
+    public function brand(): BelongsTo   { return $this->belongsTo(Brand::class); }
+    public function list(): BelongsTo    { return $this->belongsTo(ContactList::class, 'list_id'); }
+    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'user_id'); }
 
     public function getProgressPercentageAttribute(): int
     {
-        if (!$this->total_rows || $this->total_rows === 0) return 0;
-        return (int) round(($this->processed_rows / $this->total_rows) * 100);
-    }
-
-    public function isProcessing(): bool
-    {
-        return $this->status === ImportStatus::Processing;
-    }
-
-    public function isCompleted(): bool
-    {
-        return $this->status === ImportStatus::Completed;
+        $total = $this->total_rows;
+        if (!$total) return 0;
+        $done = ($this->imported_count ?? 0) + ($this->skipped_count ?? 0) + ($this->error_count ?? $this->failed_count ?? 0);
+        return (int) min(100, round(($done / $total) * 100));
     }
 }

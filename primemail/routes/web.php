@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Brand\BrandSelectorController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactListController;
+use App\Http\Controllers\ImportController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -16,7 +19,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
-    // ── Seletor de Marca (sem active_brand) ──────────────────────────────
+    // ── Seletor de Marca ─────────────────────────────────────────────────
     Route::get('brands/select',  [BrandSelectorController::class, 'show'])->name('brands.select');
     Route::post('brands/select', [BrandSelectorController::class, 'store'])->name('brands.store');
     Route::post('brands/switch', [BrandSelectorController::class, 'switch'])->name('brands.switch');
@@ -24,8 +27,24 @@ Route::middleware('auth')->group(function () {
     // ── Rotas protegidas por marca ativa ─────────────────────────────────
     Route::middleware(['active_brand', 'brand.access'])->group(function () {
         Route::get('dashboard', fn () => Inertia::render('Dashboard'))->name('dashboard');
+
+        // Contactos
+        Route::resource('contacts', ContactController::class);
+
+        // Listas
+        Route::resource('lists', ContactListController::class)->except(['show']);
+
+        // Importações
+        Route::prefix('imports')->name('imports.')->group(function () {
+            Route::get('/',          [ImportController::class, 'index'])->name('index');
+            Route::get('/create',    [ImportController::class, 'create'])->name('create');
+            Route::post('/',         [ImportController::class, 'store'])->name('store');
+            Route::get('/{import}',  [ImportController::class, 'show'])->name('show');
+            Route::get('/{import}/progress', [ImportController::class, 'progress'])->name('progress');
+        });
+
+        // Campanhas e Templates — a seguir
         // Route::resource('campaigns', CampaignController::class);
-        // Route::resource('contacts',  ContactController::class);
         // Route::resource('templates', TemplateController::class);
     });
 });

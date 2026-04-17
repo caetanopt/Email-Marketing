@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('imports', function (Blueprint $table) {
             $table->id();
             $table->foreignId('brand_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('list_id')->constrained('contact_lists')->cascadeOnDelete();
+            $table->foreignId('list_id')->nullable()->constrained('contact_lists')->nullOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('file_name', 500);
             $table->string('file_path', 500);
