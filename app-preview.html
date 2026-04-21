@@ -1496,9 +1496,10 @@
 
                 <!-- Formulário de upload -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                    <!-- Cabeçalho com zona de upload -->
-                    <div class="px-6 pt-6 pb-4 border-b border-slate-100">
-                        <div class="flex items-center justify-between mb-4">
+
+                    <!-- Cabeçalho: título + tabs à esquerda -->
+                    <div class="px-6 pt-5 pb-4">
+                        <div class="flex items-center gap-3 mb-4">
                             <h2 class="font-semibold text-slate-900">Importar contactos</h2>
                             <div class="flex gap-1 bg-slate-100 p-1 rounded-lg">
                                 <button onclick="setImportTab('csv')" id="tab-csv"
@@ -1508,65 +1509,68 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-5 gap-4" style="min-height:130px">
-                            <!-- Zona de drag (3/5) -->
-                            <div id="mockDropZone"
-                                 ondragover="event.preventDefault();mockDragOver(this)"
-                                 ondragleave="mockDragLeave(this)"
-                                 ondrop="event.preventDefault();mockDropFile(event)"
-                                 onclick="mockPickFile()"
-                                 class="col-span-3 border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all hover:border-slate-400 hover:bg-white py-6 px-4 text-center select-none">
-                                <!-- Estado: sem ficheiro -->
-                                <div id="dropEmpty">
-                                    <svg class="w-10 h-10 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <!-- Zona de upload unificada — horizontal -->
+                        <div id="mockDropZone"
+                             ondragover="event.preventDefault();mockDragOver(this)"
+                             ondragleave="mockDragLeave(this)"
+                             ondrop="event.preventDefault();mockDropFile(event)"
+                             class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl transition-all select-none overflow-hidden">
+
+                            <!-- Estado: sem ficheiro -->
+                            <div id="dropEmpty" class="flex items-stretch min-h-[110px]">
+                                <!-- Lado drag -->
+                                <div onclick="mockPickFile()"
+                                     class="flex-1 flex flex-col items-center justify-center py-6 px-8 cursor-pointer hover:bg-slate-100 transition-colors text-center">
+                                    <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                     </svg>
-                                    <p class="text-sm font-medium text-slate-600 mb-1">Arrasta o ficheiro aqui</p>
+                                    <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro aqui</p>
                                     <p id="dropHintSub" class="text-xs text-slate-400">Ficheiro .csv — separador auto-detectado</p>
                                 </div>
-                                <!-- Estado: ficheiro seleccionado -->
-                                <div id="dropFilled" class="hidden w-full flex items-center justify-between px-2">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                                            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                            </svg>
-                                        </div>
-                                        <div class="text-left">
-                                            <p id="dropFileName" class="text-sm font-semibold text-slate-900">ficheiro.csv</p>
-                                            <p class="text-xs text-slate-500">pronto para importar</p>
-                                        </div>
-                                    </div>
-                                    <button onclick="event.stopPropagation();clearMockFile()"
-                                        class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0 ml-2">
-                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+                                <!-- Divisor vertical -->
+                                <div class="flex items-center px-2">
+                                    <div class="w-px bg-slate-200 self-stretch my-4"></div>
+                                    <span class="text-xs text-slate-400 font-medium px-3">ou</span>
+                                    <div class="w-px bg-slate-200 self-stretch my-4"></div>
+                                </div>
+                                <!-- Lado botão -->
+                                <div class="flex flex-col items-center justify-center py-6 px-8 min-w-[220px]">
+                                    <button type="button" onclick="mockPickFile()"
+                                        class="flex items-center justify-center gap-2 w-full px-5 py-2.5 border-2 border-slate-900 text-slate-900 font-semibold text-sm rounded-xl hover:bg-slate-900 hover:text-white transition-all">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
                                         </svg>
+                                        Escolher ficheiro
                                     </button>
+                                    <p id="btnHint" class="text-xs text-slate-400 mt-2">.csv, max. 100 MB</p>
                                 </div>
                             </div>
 
-                            <!-- "ou" + botão (2/5) -->
-                            <div class="col-span-2 flex flex-col items-center justify-center gap-3">
-                                <div class="flex items-center gap-3 w-full">
-                                    <div class="flex-1 h-px bg-slate-200"></div>
-                                    <span class="text-xs text-slate-400 font-medium">ou</span>
-                                    <div class="flex-1 h-px bg-slate-200"></div>
+                            <!-- Estado: ficheiro seleccionado -->
+                            <div id="dropFilled" class="hidden items-center justify-between px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p id="dropFileName" class="text-sm font-semibold text-slate-900">ficheiro.csv</p>
+                                        <p class="text-xs text-slate-500">pronto para importar</p>
+                                    </div>
                                 </div>
-                                <button type="button" onclick="mockPickFile()"
-                                    class="w-full flex items-center justify-center gap-2 px-5 py-3 border-2 border-slate-900 text-slate-900 font-semibold text-sm rounded-xl hover:bg-slate-900 hover:text-white transition-all">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                                <button onclick="clearMockFile()"
+                                    class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
                                     </svg>
-                                    Escolher ficheiro
                                 </button>
-                                <p id="btnHint" class="text-xs text-slate-400 text-center">.csv, max. 100 MB</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Opções de lista + submissão -->
-                    <div class="px-6 py-5 bg-slate-50 border-t border-slate-100 space-y-4">
+                    <!-- Opções de lista + submissão (empilhadas) -->
+                    <div class="px-6 py-5 bg-slate-50 border-t border-slate-100 space-y-3">
                         <!-- Info CSV/TXT -->
                         <div id="import-info-csv" class="text-xs text-slate-500">
                             <span class="font-medium text-slate-700">CSV:</span> colunas detectadas automaticamente — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais.
@@ -1574,45 +1578,41 @@
                         <div id="import-info-txt" class="hidden text-xs text-slate-500">
                             <span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco são ignoradas.
                         </div>
-                        <!-- Card pickers + select + submit -->
-                        <div class="flex items-stretch gap-4">
-                            <!-- Cards de lista (lado esquerdo) -->
-                            <div class="flex gap-3 flex-1">
-                                <button onclick="selectListMode('existing')" id="card-existing"
-                                    class="relative flex-1 text-left p-4 rounded-xl border-2 border-slate-900 bg-slate-900 transition-all">
-                                    <svg class="absolute top-3 right-3 w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                                    <span class="block text-sm font-semibold mb-0.5 text-white">Lista existente</span>
-                                    <span class="block text-xs text-slate-300">Seleccionar de entre as listas criadas</span>
-                                </button>
-                                <button onclick="selectListMode('new')" id="card-new"
-                                    class="relative flex-1 text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-indigo-300">
-                                    <span class="block text-sm font-semibold mb-0.5 text-slate-900">Criar nova lista</span>
-                                    <span class="block text-xs text-slate-400">Cria a lista e importa em simultâneo</span>
-                                </button>
-                            </div>
-                            <!-- Input + botão (lado direito) -->
-                            <div class="flex flex-col justify-between gap-3 min-w-56">
-                                <div id="existing-input">
-                                    <select class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
-                                        <option>Nenhuma — só base de dados</option>
-                                        <option>Clientes Premium</option>
-                                        <option>Newsletter Geral</option>
-                                        <option>VIP — Fidelização</option>
-                                    </select>
-                                </div>
-                                <div id="new-list-input" class="hidden">
-                                    <input type="text" placeholder="Nome da nova lista"
-                                        class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                                </div>
-                                <button id="importSubmitBtn" onclick="mockStartImport()" disabled
-                                    class="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                                    </svg>
-                                    Importar
-                                </button>
-                            </div>
+                        <!-- Card pickers (largura total) -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="selectListMode('existing')" id="card-existing"
+                                class="relative text-left p-4 rounded-xl border-2 border-slate-900 bg-slate-900 transition-all">
+                                <svg class="absolute top-3 right-3 w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span class="block text-sm font-semibold mb-0.5 text-white">Lista existente</span>
+                                <span class="block text-xs text-slate-300">Seleccionar de entre as listas criadas</span>
+                            </button>
+                            <button onclick="selectListMode('new')" id="card-new"
+                                class="relative text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-indigo-300">
+                                <span class="block text-sm font-semibold mb-0.5 text-slate-900">Criar nova lista</span>
+                                <span class="block text-xs text-slate-400">Cria a lista e importa em simultâneo</span>
+                            </button>
                         </div>
+                        <!-- Select / input (largura total) -->
+                        <div id="existing-input">
+                            <select class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                <option>Nenhuma — só base de dados</option>
+                                <option>Clientes Premium</option>
+                                <option>Newsletter Geral</option>
+                                <option>VIP — Fidelização</option>
+                            </select>
+                        </div>
+                        <div id="new-list-input" class="hidden">
+                            <input type="text" placeholder="Nome da nova lista"
+                                class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                        </div>
+                        <!-- Botão importar (largura total) -->
+                        <button id="importSubmitBtn" onclick="mockStartImport()" disabled
+                            class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            Importar
+                        </button>
                     </div>
                 </div>
 
