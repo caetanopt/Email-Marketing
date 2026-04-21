@@ -20,7 +20,9 @@ class ImportController extends Controller
             ->latest()
             ->paginate(20);
 
-        return Inertia::render('Contacts/Imports/Index', compact('imports'));
+        $lists = ContactList::select('id', 'name')->orderBy('name')->get();
+
+        return Inertia::render('Contacts/Imports/Index', compact('imports', 'lists'));
     }
 
     public function create(): Response
