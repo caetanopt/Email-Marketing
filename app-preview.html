@@ -4,7 +4,140 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Caetano PrimeMail — Preview da Plataforma</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com">
+    // ── Toast notification ─────────────────────────────
+    function showToast(msg, type) {
+        const colors = { success:'bg-green-600', error:'bg-red-600', info:'bg-slate-800' };
+        const bg = colors[type] || colors.success;
+        const t = document.createElement('div');
+        t.className = `fixed bottom-6 right-6 z-[999] px-4 py-3 rounded-xl text-white text-sm font-medium shadow-lg transition-all ${bg}`;
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; }, 2400);
+        setTimeout(() => t.remove(), 2800);
+    }
+
+    // ── Suppression ─────────────────────────────────────
+    function mockRemoveSuppression(btn) {
+        if (!confirm('Remover este endereço da lista de supressão?')) return;
+        btn.closest('tr').remove();
+        showToast('Endereço removido da supressão.');
+    }
+
+    // ── Team ─────────────────────────────────────────────
+    function mockInviteTeam() {
+        const inp = document.getElementById('inviteEmailInput');
+        const roleEl = document.getElementById('inviteRoleSelect');
+        const email = inp ? inp.value.trim() : '';
+        if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
+        const role = roleEl ? roleEl.value : 'editor';
+        const tbody = document.getElementById('teamMembersBody');
+        if (tbody) {
+            const initials = email[0].toUpperCase();
+            const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600'];
+            const c = colors[tbody.rows.length % colors.length];
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50';
+            tr.innerHTML = `<td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${c} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${email}</p><p class="text-xs text-slate-400">${email}</p></div></div></td><td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">pendente</span></td><td class="px-4 py-3 text-slate-500">hoje</td><td class="px-4 py-3 text-right"><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>`;
+            tbody.appendChild(tr);
+        }
+        inp.value = '';
+        showToast(`Convite enviado para ${email}.`);
+    }
+    function mockRemoveTeamMember(btn) {
+        if (!confirm('Remover este membro da equipa?')) return;
+        btn.closest('tr').remove();
+        showToast('Membro removido.');
+    }
+    function mockUpdateRole(select) {
+        showToast('Função actualizada.');
+    }
+
+    // ── Templates ────────────────────────────────────────
+    function mockDuplicateTemplate(btn) {
+        const card = btn.closest('.tmpl-card');
+        if (card) {
+            const clone = card.cloneNode(true);
+            clone.querySelectorAll('p.font-semibold').forEach(p => { if (p.textContent) p.textContent = p.textContent + ' (cópia)'; });
+            card.parentNode.insertBefore(clone, card.nextSibling);
+        }
+        showToast('Template duplicado.');
+    }
+    function mockDeleteTemplate(btn) {
+        if (!confirm('Apagar este template?')) return;
+        btn.closest('.tmpl-card').remove();
+        showToast('Template apagado.');
+    }
+    function mockSaveTemplate() { showToast('Template guardado com sucesso.'); }
+    function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
+
+    // ── Lists ─────────────────────────────────────────────
+    function mockShowNewListModal() {
+        const name = prompt('Nome da nova lista:');
+        if (!name || !name.trim()) return;
+        const tbody = document.getElementById('listsTableBody');
+        if (tbody) {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50';
+            const today = new Date().toLocaleDateString('pt-PT');
+            tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-900">${name.trim()}</td><td class="px-4 py-3 text-slate-600">0</td><td class="px-4 py-3 text-slate-600">0</td><td class="px-4 py-3 text-slate-500">${today}</td><td class="px-4 py-3 text-right flex items-center justify-end gap-2"><button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button><button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button></td>`;
+            tbody.appendChild(tr);
+        }
+        showToast(`Lista "${name.trim()}" criada.`);
+    }
+    function mockEditList(btn) { showScreen('listEdit'); }
+    function mockDeleteList(btn) {
+        if (!confirm('Apagar esta lista? Os contactos não serão eliminados.')) return;
+        btn.closest('tr').remove();
+        showToast('Lista apagada.');
+    }
+    function mockSaveListEdit() {
+        const n = document.getElementById('listEditName')?.value?.trim();
+        if (!n) { showToast('O nome é obrigatório.', 'error'); return; }
+        showToast('Lista guardada.');
+        showScreen('lists');
+    }
+
+    // ── Campaigns ─────────────────────────────────────────
+    let _wizStep = 2;
+    function mockCampaignNext() {
+        if (_wizStep >= 3) { showScreen('campaigns'); showToast('Campanha criada!'); _wizStep = 2; return; }
+        _wizStep++;
+        showToast(_wizStep === 3 ? 'Passo 3 — Revisão e envio.' : 'Passo seguinte.');
+    }
+    function mockCampaignPrev() {
+        if (_wizStep <= 1) return;
+        _wizStep--;
+        showToast('Passo anterior.');
+    }
+    function mockDuplicateCampaign() { showToast('Campanha duplicada. Pode editá-la em Rascunhos.'); }
+    function mockSendTestEmail() {
+        const inp = document.querySelector('#campaignShow input[type=email]');
+        const email = inp ? inp.value.trim() : '';
+        if (!email) { showToast('Insira um email de destino.', 'error'); return; }
+        showToast(`Email de teste enviado para ${email}.`);
+    }
+
+    // ── Contacts ──────────────────────────────────────────
+    function mockRemoveFromList(btn) {
+        if (!confirm('Remover da lista?')) return;
+        btn.closest('div.flex').remove();
+        showToast('Contacto removido da lista.');
+    }
+    function mockDeleteContact() {
+        if (!confirm('Eliminar este contacto permanentemente?')) return;
+        showScreen('contacts');
+        showToast('Contacto eliminado.');
+    }
+
+    // ── Settings ──────────────────────────────────────────
+    function mockSaveSettings() { showToast('Definições guardadas com sucesso.'); }
+    function mockClearSmtp() {
+        if (!confirm('Limpar configuração SMTP?')) return;
+        document.querySelectorAll('#brandSettings input[type=text], #brandSettings input[type=password]').forEach((el,i) => { if(i>1) el.value=''; });
+        showToast('Configuração SMTP limpa.', 'info');
+    }
+</script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         .screen { display: none; }
@@ -37,6 +170,7 @@
         <option value="templates">Templates</option>
         <option value="templateEdit">Editor MJML</option>
         <option value="lists">Listas</option>
+        <option value="listEdit">Editar Lista</option>
         <option value="imports">Importações</option>
         <option value="suppression">Supressão</option>
         <option value="team">Equipa</option>
@@ -221,6 +355,13 @@
             screen.classList.add('active');
             document.getElementById('screenSelector').value = id;
             window.scrollTo(0, 0);
+            // Re-inject sidebar if slot is empty
+            screen.querySelectorAll('[data-sidebar-slot]').forEach(slot => {
+                if (!slot.innerHTML.trim()) {
+                    const tpl = document.getElementById('sidebar');
+                    if (tpl) slot.innerHTML = tpl.innerHTML;
+                }
+            });
             // Highlight active nav item
             document.querySelectorAll('.nav-item').forEach(n => {
                 n.classList.remove('bg-slate-700', 'text-white');
@@ -302,7 +443,11 @@
         if (!btn || btn.disabled) return;
         btn.disabled = true;
         btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-2 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…';
-        setTimeout(() => { showScreen('imports'); }, 1400);
+        setTimeout(() => {
+            clearMockFile();
+            showScreen('imports');
+            showToast('Importação iniciada com sucesso! A processar em segundo plano.');
+        }, 1400);
     }
 
     function selectListMode(mode) {
@@ -544,7 +689,7 @@
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">8 421</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">18/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a class="text-xs text-slate-500 hover:text-slate-900">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
                             <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
                                 <td class="px-4 py-3">
@@ -554,9 +699,9 @@
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">4 218</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">15/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a class="text-xs text-slate-500">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Promoção Série 3 — Maio</p>
                                     <p class="text-xs text-slate-500">Condições especiais no fim de mês</p>
@@ -564,9 +709,9 @@
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span></td>
                                 <td class="px-4 py-3 text-slate-700">~ 12 000</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">📅 01/05/2026</td>
-                                <td class="px-4 py-3 text-right"><a class="text-xs text-slate-500">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Convite Evento M Performance</p>
                                     <p class="text-xs text-slate-500">Evento exclusivo no Estoril</p>
@@ -574,7 +719,7 @@
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span></td>
                                 <td class="px-4 py-3 text-slate-700">—</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">20/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a class="text-xs text-slate-500">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
                             <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
                                 <td class="px-4 py-3">
@@ -584,7 +729,7 @@
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">9 127</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">10/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a class="text-xs text-slate-500">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
                             <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
                                 <td class="px-4 py-3">
@@ -594,7 +739,7 @@
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">3 892</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">03/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a class="text-xs text-slate-500">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
                         </tbody>
                     </table>
@@ -658,10 +803,10 @@
                     </div>
 
                     <div class="flex items-center justify-between pt-4">
-                        <button class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
+                        <button onclick="mockCampaignPrev()" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
                         <div class="flex items-center gap-3">
                             <button onclick="showScreen('campaigns')" class="px-5 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
-                            <button class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
+                            <button onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
                         </div>
                     </div>
                 </div>
@@ -681,7 +826,7 @@
                 <h1 class="text-xl font-semibold text-slate-900">Newsletter BMW — Abril 2026</h1>
                 <div class="flex items-center gap-3">
                     <button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
-                    <button class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>
+                    <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>
                 </div>
             </header>
             <main class="flex-1 px-8 py-6">
@@ -715,7 +860,7 @@
                             <h3 class="font-semibold text-slate-900 text-sm mb-3">Enviar email de teste</h3>
                             <div class="flex gap-3">
                                 <input type="email" placeholder="o-teu-email@exemplo.pt" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                <button class="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-900">Enviar Teste</button>
+                                <button onclick="mockSendTestEmail()" class="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-900">Enviar Teste</button>
                             </div>
                         </div>
 
@@ -929,7 +1074,7 @@
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Contactos</h1>
-                <button onclick="showScreen('contacts')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Contacto</button>
+                <button onclick="showScreen('contactShow')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Contacto</button>
             </header>
             <main class="flex-1 px-8 py-6">
                 <!-- Search bar -->
@@ -960,7 +1105,7 @@
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Clientes Premium</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span></td>
                                 <td class="px-4 py-3 text-slate-500">12/01/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
                             <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Ana Costa</td>
@@ -968,31 +1113,31 @@
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Newsletter Geral</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span></td>
                                 <td class="px-4 py-3 text-slate-500">03/02/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50">
+                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Pedro Nunes</td>
                                 <td class="px-4 py-3 text-slate-600">pedro.nunes@hotmail.com</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Clientes Premium</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span></td>
                                 <td class="px-4 py-3 text-slate-500">18/11/2025</td>
-                                <td class="px-4 py-3 text-right"><button class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50">
+                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Marta Ferreira</td>
                                 <td class="px-4 py-3 text-slate-600">marta.f@gmail.com</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Newsletter Geral</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span></td>
                                 <td class="px-4 py-3 text-slate-500">07/03/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50">
+                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Rui Oliveira</td>
                                 <td class="px-4 py-3 text-slate-600">rui.oliveira@empresa.pt</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Clientes Premium</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span></td>
                                 <td class="px-4 py-3 text-slate-500">22/12/2025</td>
-                                <td class="px-4 py-3 text-right"><button class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1026,7 +1171,7 @@
                     <h1 class="text-xl font-semibold text-slate-900">João Silva</h1>
                     <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>
                 </div>
-                <button class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                <button onclick="showToast('Modo de edição activado.', 'info')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
             </header>
             <main class="flex-1 px-8 py-6">
                 <div class="grid grid-cols-3 gap-6">
@@ -1078,17 +1223,17 @@
                             <div class="space-y-2">
                                 <div class="flex items-center justify-between py-1.5 text-sm">
                                     <span class="text-slate-700">Clientes Premium</span>
-                                    <button class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                                    <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                                 </div>
                                 <div class="flex items-center justify-between py-1.5 text-sm">
                                     <span class="text-slate-700">Newsletter Geral</span>
-                                    <button class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                                    <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                                 </div>
                             </div>
                         </div>
                         <div class="bg-white border border-red-200 rounded-xl p-4">
                             <h4 class="text-sm font-medium text-red-700 mb-2">Zona de perigo</h4>
-                            <button class="text-sm text-red-600 hover:text-red-800">Eliminar contacto</button>
+                            <button onclick="mockDeleteContact()" class="text-sm text-red-600 hover:text-red-800">Eliminar contacto</button>
                         </div>
                     </div>
                 </div>
@@ -1111,7 +1256,7 @@
             <main class="flex-1 px-8 py-6">
                 <div class="grid grid-cols-3 gap-5">
                     <!-- Template card -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onclick="showScreen('templateEdit')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" onclick="showScreen('templateEdit')">
                         <div class="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-blue-300 rounded mx-auto mb-2"></div>
@@ -1124,12 +1269,12 @@
                             <p class="text-xs text-slate-400 mt-1">Editado em 17/04/2026</p>
                             <div class="flex items-center gap-2 mt-3">
                                 <button onclick="event.stopPropagation();showScreen('templateEdit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                <button onclick="event.stopPropagation()" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                <button onclick="event.stopPropagation()" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                                <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" onclick="showScreen('templateEdit')">
                         <div class="h-40 bg-gradient-to-br from-orange-50 to-red-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-orange-300 rounded mx-auto mb-2"></div>
@@ -1141,13 +1286,13 @@
                             <p class="font-semibold text-slate-900 text-sm">Promoção Flash — Verão</p>
                             <p class="text-xs text-slate-400 mt-1">Editado em 02/03/2026</p>
                             <div class="flex items-center gap-2 mt-3">
-                                <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                <button class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                <button onclick="event.stopPropagation();showScreen('templateEdit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                                <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" onclick="showScreen('templateEdit')">
                         <div class="h-40 bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-green-300 rounded mx-auto mb-2"></div>
@@ -1159,9 +1304,9 @@
                             <p class="font-semibold text-slate-900 text-sm">Boas-vindas — Welcome</p>
                             <p class="text-xs text-slate-400 mt-1">Editado em 15/01/2026</p>
                             <div class="flex items-center gap-2 mt-3">
-                                <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                <button class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                <button onclick="event.stopPropagation();showScreen('templateEdit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                                <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                             </div>
                         </div>
                     </div>
@@ -1195,8 +1340,8 @@
                     <h1 class="text-xl font-semibold text-slate-900">Newsletter Primavera 2026</h1>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Preview</button>
-                    <button class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
+                    <button onclick="mockPreviewTemplate()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Preview</button>
+                    <button onclick="mockSaveTemplate()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
                 </div>
             </header>
             <main class="flex-1 px-8 py-6">
@@ -1274,7 +1419,7 @@
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Listas</h1>
-                <button class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Nova Lista</button>
+                <button onclick="mockShowNewListModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Nova Lista</button>
             </header>
             <main class="flex-1 px-8 py-6">
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -1288,15 +1433,15 @@
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
+                        <tbody id="listsTableBody" class="divide-y divide-slate-100">
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3 font-medium text-slate-900">Clientes Premium</td>
                                 <td class="px-4 py-3 text-slate-600">4 231</td>
                                 <td class="px-4 py-3 text-slate-600">4 089</td>
                                 <td class="px-4 py-3 text-slate-500">10/01/2026</td>
                                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                    <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
                             <tr class="hover:bg-slate-50">
@@ -1305,8 +1450,8 @@
                                 <td class="px-4 py-3 text-slate-600">7 941</td>
                                 <td class="px-4 py-3 text-slate-500">05/01/2026</td>
                                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                    <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
                             <tr class="hover:bg-slate-50">
@@ -1315,8 +1460,8 @@
                                 <td class="px-4 py-3 text-slate-600">1 453</td>
                                 <td class="px-4 py-3 text-slate-500">20/02/2026</td>
                                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                    <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
                             <tr class="hover:bg-slate-50">
@@ -1325,8 +1470,8 @@
                                 <td class="px-4 py-3 text-slate-600">653</td>
                                 <td class="px-4 py-3 text-slate-500">01/03/2026</td>
                                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                    <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -1420,40 +1565,54 @@
                         </div>
                     </div>
 
-                    <!-- Barra de opções -->
-                    <div class="px-6 py-4 bg-slate-50 flex items-end gap-4 flex-wrap">
-                        <div id="import-info-csv" class="text-xs text-slate-500 flex-1 min-w-48">
-                            <span class="font-medium text-slate-700">CSV:</span> colunas detectadas — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais.
+                    <!-- Opções de lista + submissão -->
+                    <div class="px-6 py-5 bg-slate-50 border-t border-slate-100 space-y-4">
+                        <!-- Info CSV/TXT -->
+                        <div id="import-info-csv" class="text-xs text-slate-500">
+                            <span class="font-medium text-slate-700">CSV:</span> colunas detectadas automaticamente — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais.
                         </div>
-                        <div id="import-info-txt" class="hidden text-xs text-slate-500 flex-1 min-w-48">
+                        <div id="import-info-txt" class="hidden text-xs text-slate-500">
                             <span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco são ignoradas.
                         </div>
-                        <div class="flex items-end gap-3 flex-wrap">
-                            <div class="flex gap-2">
+                        <!-- Card pickers + select + submit -->
+                        <div class="flex items-stretch gap-4">
+                            <!-- Cards de lista (lado esquerdo) -->
+                            <div class="flex gap-3 flex-1">
                                 <button onclick="selectListMode('existing')" id="card-existing"
-                                    class="px-3 py-1.5 rounded-lg border text-xs font-medium bg-slate-900 text-white border-slate-900 transition-all">Lista existente</button>
+                                    class="relative flex-1 text-left p-4 rounded-xl border-2 border-slate-900 bg-slate-900 transition-all">
+                                    <svg class="absolute top-3 right-3 w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    <span class="block text-sm font-semibold mb-0.5 text-white">Lista existente</span>
+                                    <span class="block text-xs text-slate-300">Seleccionar de entre as listas criadas</span>
+                                </button>
                                 <button onclick="selectListMode('new')" id="card-new"
-                                    class="px-3 py-1.5 rounded-lg border text-xs font-medium bg-white text-slate-600 border-slate-200 hover:border-indigo-300 transition-all">Nova lista</button>
+                                    class="relative flex-1 text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-indigo-300">
+                                    <span class="block text-sm font-semibold mb-0.5 text-slate-900">Criar nova lista</span>
+                                    <span class="block text-xs text-slate-400">Cria a lista e importa em simultâneo</span>
+                                </button>
                             </div>
-                            <div id="existing-input">
-                                <select class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white min-w-48">
-                                    <option>Nenhuma — só base de dados</option>
-                                    <option>Clientes Premium</option>
-                                    <option>Newsletter Geral</option>
-                                </select>
-                            </div>
-                            <div id="new-list-input" class="hidden">
-                                <input type="text" placeholder="Nome da nova lista"
-                                    class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm min-w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                            <!-- Input + botão (lado direito) -->
+                            <div class="flex flex-col justify-between gap-3 min-w-56">
+                                <div id="existing-input">
+                                    <select class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                        <option>Nenhuma — só base de dados</option>
+                                        <option>Clientes Premium</option>
+                                        <option>Newsletter Geral</option>
+                                        <option>VIP — Fidelização</option>
+                                    </select>
+                                </div>
+                                <div id="new-list-input" class="hidden">
+                                    <input type="text" placeholder="Nome da nova lista"
+                                        class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                                </div>
+                                <button id="importSubmitBtn" onclick="mockStartImport()" disabled
+                                    class="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                    </svg>
+                                    Importar
+                                </button>
                             </div>
                         </div>
-                        <button id="importSubmitBtn" onclick="mockStartImport()" disabled
-                            class="flex items-center gap-2 px-5 py-2 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap opacity-40 cursor-not-allowed">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                            </svg>
-                            Importar
-                        </button>
                     </div>
                 </div>
 
@@ -1551,31 +1710,31 @@
                                 <td class="px-4 py-3 text-slate-900">pedro.nunes@hotmail.com</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span></td>
                                 <td class="px-4 py-3 text-slate-500">15/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3 text-slate-900">rui.oliveira@empresa.pt</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span></td>
                                 <td class="px-4 py-3 text-slate-500">10/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3 text-slate-900">spam.report@dominio.net</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span></td>
                                 <td class="px-4 py-3 text-slate-500">08/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3 text-slate-900">invalido@naoexiste.pt</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span></td>
                                 <td class="px-4 py-3 text-slate-500">05/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3 text-slate-900">manuel.sousa@correo.es</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span></td>
                                 <td class="px-4 py-3 text-slate-500">01/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1610,17 +1769,17 @@
                     <div class="flex items-end gap-3">
                         <div class="flex-1">
                             <label class="text-xs text-slate-500 block mb-1">Email</label>
-                            <input type="email" placeholder="novo@utilizador.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            <input id="inviteEmailInput" type="email" placeholder="novo@utilizador.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                         </div>
                         <div class="w-36">
                             <label class="text-xs text-slate-500 block mb-1">Função</label>
-                            <select class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
+                            <select id="inviteRoleSelect" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
                                 <option value="admin">Admin</option>
                                 <option value="editor" selected>Editor</option>
                                 <option value="viewer">Viewer</option>
                             </select>
                         </div>
-                        <button class="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 whitespace-nowrap">Enviar convite</button>
+                        <button onclick="mockInviteTeam()" class="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 whitespace-nowrap">Enviar convite</button>
                     </div>
                 </div>
                 <!-- Members list -->
@@ -1637,7 +1796,7 @@
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
+                        <tbody id="teamMembersBody" class="divide-y divide-slate-100">
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3">
                                     <div class="flex items-center gap-3">
@@ -1659,14 +1818,14 @@
                                     </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <select class="px-2 py-1 border border-slate-200 rounded text-xs bg-white">
+                                    <select onchange="mockUpdateRole(this)" class="px-2 py-1 border border-slate-200 rounded text-xs bg-white">
                                         <option>admin</option>
                                         <option selected>editor</option>
                                         <option>viewer</option>
                                     </select>
                                 </td>
                                 <td class="px-4 py-3 text-slate-500">15/01/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3">
@@ -1676,14 +1835,14 @@
                                     </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <select class="px-2 py-1 border border-slate-200 rounded text-xs bg-white">
+                                    <select onchange="mockUpdateRole(this)" class="px-2 py-1 border border-slate-200 rounded text-xs bg-white">
                                         <option>admin</option>
                                         <option>editor</option>
                                         <option selected>viewer</option>
                                     </select>
                                 </td>
                                 <td class="px-4 py-3 text-slate-500">03/02/2026</td>
-                                <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1702,7 +1861,7 @@
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Definições da Marca</h1>
-                <button class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar alterações</button>
+                <button onclick="mockSaveSettings()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar alterações</button>
             </header>
             <main class="flex-1 px-8 py-6">
                 <div class="max-w-2xl space-y-6">
@@ -1731,7 +1890,7 @@
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="font-semibold text-slate-900 text-sm">Configuração SMTP / Mailgun</h3>
-                            <button class="text-xs text-red-500 hover:text-red-700">Limpar SMTP</button>
+                            <button onclick="mockClearSmtp()" class="text-xs text-red-500 hover:text-red-700">Limpar SMTP</button>
                         </div>
                         <div class="space-y-4">
                             <div>
@@ -1779,6 +1938,107 @@
                                 <label class="block text-xs text-slate-500 mb-1">Email do remetente</label>
                                 <input type="email" value="noreply@caetanoretail.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ECRÃ — EDITAR LISTA
+═══════════════════════════════════════════════════════════════════ -->
+<div id="listEdit" class="screen fade-in">
+    <div class="min-h-screen bg-slate-50 flex">
+        <div data-sidebar-slot></div>
+        <div class="flex-1 ml-64 flex flex-col min-h-screen">
+            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button onclick="showScreen('lists')" class="text-slate-400 hover:text-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <h1 class="text-xl font-semibold text-slate-900">Editar Lista</h1>
+                </div>
+                <button onclick="mockSaveListEdit()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
+            </header>
+            <main class="flex-1 px-8 py-6 space-y-6">
+                <!-- Formulário -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5 max-w-xl">
+                    <h3 class="font-semibold text-slate-900 mb-4 text-sm">Informação da lista</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Nome</label>
+                            <input id="listEditName" type="text" value="Clientes Premium" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Descrição (opcional)</label>
+                            <input type="text" placeholder="Descrição da lista…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        </div>
+                    </div>
+                </div>
+                <!-- Contactos da lista -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-900 text-sm">Contactos <span class="text-slate-400 font-normal">(4 231)</span></h3>
+                        <input type="text" placeholder="Filtrar por email ou nome…" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 w-56" />
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Email</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Nome</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Estado</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Subscrito em</th>
+                                <th class="px-4 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 text-slate-900 font-medium">joao.silva@empresa.pt</td>
+                                <td class="px-4 py-3 text-slate-600">João Silva</td>
+                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Subscrito</span></td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">12/01/2026</td>
+                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 text-slate-900 font-medium">ana.costa@mail.pt</td>
+                                <td class="px-4 py-3 text-slate-600">Ana Costa</td>
+                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Subscrito</span></td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">03/02/2026</td>
+                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 text-slate-900 font-medium">marta.f@gmail.com</td>
+                                <td class="px-4 py-3 text-slate-600">Marta Ferreira</td>
+                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Subscrito</span></td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">07/03/2026</td>
+                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 text-slate-900 font-medium">rui.oliveira@empresa.pt</td>
+                                <td class="px-4 py-3 text-slate-600">Rui Oliveira</td>
+                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span></td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">22/12/2025</td>
+                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-3 text-slate-900 font-medium">pedro.nunes@hotmail.com</td>
+                                <td class="px-4 py-3 text-slate-600">Pedro Nunes</td>
+                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span></td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">18/11/2025</td>
+                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                        <span>Mostrando 1–5 de 4 231 contactos</span>
+                        <div class="flex gap-2">
+                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
+                            <button class="px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
+                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
+                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
                         </div>
                     </div>
                 </div>
