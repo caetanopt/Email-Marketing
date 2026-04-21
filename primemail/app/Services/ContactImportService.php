@@ -114,7 +114,7 @@ class ContactImportService
                     if ($listId) {
                         $member = ContactListMember::firstOrCreate(
                             ['contact_id' => $contact->id, 'list_id' => $listId],
-                            ['status' => 'active', 'subscribed_at' => now()]
+                            ['brand_id' => $brandId, 'status' => 'active', 'subscribed_at' => now()]
                         );
 
                         if ($member->wasRecentlyCreated) {

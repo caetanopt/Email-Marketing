@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
 
         // Listas
         Route::resource('lists', ContactListController::class)->except(['show']);
+        Route::delete('lists/{list}/members/{contact}', [ContactListController::class, 'removeMember'])->name('lists.members.remove');
 
         // Importações
         Route::prefix('imports')->name('imports.')->group(function () {
