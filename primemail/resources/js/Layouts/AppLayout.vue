@@ -72,6 +72,17 @@ const logout      = () => router.post(route('logout'));
                 </template>
             </nav>
 
+            <!-- Preview download -->
+            <div class="px-4 pb-2">
+                <a href="/app-preview.html" download="app-preview.html"
+                   class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors w-full">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Download preview
+                </a>
+            </div>
+
             <!-- Utilizador -->
             <div class="px-4 py-4 border-t border-slate-700">
                 <div class="flex items-center gap-3">
