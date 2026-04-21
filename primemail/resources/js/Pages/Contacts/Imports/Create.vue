@@ -152,23 +152,67 @@ pedro@exemplo.com</pre>
                 </div>
 
                 <!-- Lista destino -->
-                <div class="space-y-2">
+                <div class="space-y-3">
                     <label class="block text-sm font-medium text-slate-700">Adicionar a lista</label>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Opção A — Lista existente -->
+                        <button
+                            type="button"
+                            @click="form.list_id = ''; form.new_list_name = ''"
+                            :class="[
+                                'relative text-left p-4 rounded-xl border-2 transition-all',
+                                !isNewList
+                                    ? 'border-slate-900 bg-slate-900 text-white'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                            ]"
+                        >
+                            <span :class="['block text-sm font-semibold mb-0.5', !isNewList ? 'text-white' : 'text-slate-900']">
+                                Lista existente
+                            </span>
+                            <span :class="['block text-xs', !isNewList ? 'text-slate-300' : 'text-slate-400']">
+                                Seleccionar de entre as listas criadas
+                            </span>
+                            <svg v-if="!isNewList" class="absolute top-3 right-3 w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+
+                        <!-- Opção B — Nova lista -->
+                        <button
+                            type="button"
+                            @click="form.list_id = LIST_NEW_SENTINEL"
+                            :class="[
+                                'relative text-left p-4 rounded-xl border-2 transition-all',
+                                isNewList
+                                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300'
+                            ]"
+                        >
+                            <span :class="['block text-sm font-semibold mb-0.5', isNewList ? 'text-white' : 'text-slate-900']">
+                                Criar nova lista
+                            </span>
+                            <span :class="['block text-xs', isNewList ? 'text-indigo-200' : 'text-slate-400']">
+                                Cria a lista e importa em simultâneo
+                            </span>
+                            <svg v-if="isNewList" class="absolute top-3 right-3 w-4 h-4 text-indigo-200" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Dropdown — só visível na opção "existente" -->
                     <select
+                        v-if="!isNewList"
                         v-model="form.list_id"
                         class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                     >
                         <option value="">Nenhuma — só actualizar base de dados</option>
-                        <optgroup label="Listas existentes" v-if="lists.length">
-                            <option v-for="list in lists" :key="list.id" :value="list.id">
-                                {{ list.name }}
-                            </option>
-                        </optgroup>
-                        <option :value="LIST_NEW_SENTINEL">+ Criar nova lista…</option>
+                        <option v-for="list in lists" :key="list.id" :value="list.id">{{ list.name }}</option>
                     </select>
 
-                    <!-- Campo de nome da nova lista — aparece só quando "+ Criar nova lista…" está selecionado -->
-                    <div v-if="isNewList" class="flex items-center gap-2 pt-1">
+                    <!-- Campo de nome — só visível na opção "nova lista" -->
+                    <div v-if="isNewList">
                         <input
                             v-model="form.new_list_name"
                             type="text"
@@ -176,13 +220,12 @@ pedro@exemplo.com</pre>
                             maxlength="255"
                             autofocus
                             :class="[
-                                'flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900',
+                                'w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500',
                                 form.errors.new_list_name ? 'border-red-400' : 'border-slate-200'
                             ]"
                         />
-                        <span class="text-xs text-slate-400 whitespace-nowrap">será criada ao importar</span>
+                        <p v-if="form.errors.new_list_name" class="mt-1 text-xs text-red-600">{{ form.errors.new_list_name }}</p>
                     </div>
-                    <p v-if="form.errors.new_list_name" class="text-xs text-red-600">{{ form.errors.new_list_name }}</p>
                 </div>
 
                 <!-- Acções -->

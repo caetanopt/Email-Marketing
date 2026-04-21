@@ -245,9 +245,29 @@
         showScreen('login');
     });
 
-    function handleMockListSelect(sel) {
-        const field = document.getElementById('newListField');
-        if (field) field.classList.toggle('hidden', sel.value !== '__new__');
+    function selectListMode(mode) {
+        const isNew = mode === 'new';
+        const cardExisting  = document.getElementById('card-existing');
+        const cardNew       = document.getElementById('card-new');
+        const inputExisting = document.getElementById('existing-input');
+        const inputNew      = document.getElementById('new-list-input');
+        if (!cardExisting) return;
+
+        const tick = '<svg class="absolute top-3 right-3 w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+
+        if (isNew) {
+            cardNew.className      = 'relative text-left p-4 rounded-xl border-2 border-indigo-600 bg-indigo-600 transition-all';
+            cardNew.innerHTML      = '<span class="block text-sm font-semibold mb-0.5 text-white">Criar nova lista</span><span class="block text-xs text-indigo-200">Cria a lista e importa em simultâneo</span>' + tick.replace('class="absolute', 'class="absolute text-indigo-200');
+            cardExisting.className = 'relative text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-slate-400';
+            cardExisting.innerHTML = '<span class="block text-sm font-semibold mb-0.5 text-slate-900">Lista existente</span><span class="block text-xs text-slate-400">Seleccionar de entre as listas criadas</span>';
+        } else {
+            cardExisting.className = 'relative text-left p-4 rounded-xl border-2 border-slate-900 bg-slate-900 transition-all';
+            cardExisting.innerHTML = '<span class="block text-sm font-semibold mb-0.5 text-white">Lista existente</span><span class="block text-xs text-slate-300">Seleccionar de entre as listas criadas</span>' + tick.replace('class="absolute', 'class="absolute text-slate-300');
+            cardNew.className      = 'relative text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-indigo-300';
+            cardNew.innerHTML      = '<span class="block text-sm font-semibold mb-0.5 text-slate-900">Criar nova lista</span><span class="block text-xs text-slate-400">Cria a lista e importa em simultâneo</span>';
+        }
+        inputExisting.classList.toggle('hidden', isNew);
+        inputNew.classList.toggle('hidden', !isNew);
     }
 
     function setImportTab(tab) {
@@ -1288,19 +1308,31 @@ pedro@exemplo.com</pre>
                         <p class="text-xs text-slate-400 mt-2">Linhas em branco e espaços extra são ignorados.</p>
                     </div>
                     <!-- Lista + botão -->
-                    <div class="space-y-2">
+                    <div class="space-y-3">
                         <label class="text-sm font-medium text-slate-700 block">Adicionar a lista</label>
-                        <select id="mockListSelect" onchange="handleMockListSelect(this)" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
-                            <option value="">Nenhuma — só actualizar base de dados</option>
-                            <optgroup label="Listas existentes">
+                        <div class="grid grid-cols-2 gap-3">
+                            <button type="button" id="card-existing" onclick="selectListMode('existing')"
+                                class="relative text-left p-4 rounded-xl border-2 border-slate-900 bg-slate-900 text-white transition-all">
+                                <span class="block text-sm font-semibold mb-0.5 text-white">Lista existente</span>
+                                <span class="block text-xs text-slate-300">Seleccionar de entre as listas criadas</span>
+                                <svg class="absolute top-3 right-3 w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                            </button>
+                            <button type="button" id="card-new" onclick="selectListMode('new')"
+                                class="relative text-left p-4 rounded-xl border-2 border-slate-200 bg-white text-slate-700 hover:border-indigo-300 transition-all">
+                                <span class="block text-sm font-semibold mb-0.5 text-slate-900">Criar nova lista</span>
+                                <span class="block text-xs text-slate-400">Cria a lista e importa em simultâneo</span>
+                            </button>
+                        </div>
+                        <div id="existing-input">
+                            <select class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
+                                <option value="">Nenhuma — só actualizar base de dados</option>
                                 <option>Clientes Premium</option>
                                 <option>Newsletter Geral</option>
-                            </optgroup>
-                            <option value="__new__">+ Criar nova lista…</option>
-                        </select>
-                        <div id="newListField" class="hidden flex items-center gap-2 pt-1">
-                            <input type="text" placeholder="Nome da nova lista" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                            <span class="text-xs text-slate-400 whitespace-nowrap">será criada ao importar</span>
+                            </select>
+                        </div>
+                        <div id="new-list-input" class="hidden">
+                            <input type="text" placeholder="Nome da nova lista"
+                                class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                         </div>
                     </div>
                     <div>
