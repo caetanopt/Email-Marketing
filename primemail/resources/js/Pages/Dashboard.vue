@@ -124,7 +124,7 @@ const openRateColor  = computed(() => {
                         <span class="w-8 h-8 bg-purple-100 text-purple-700 rounded-lg flex items-center justify-center text-base">🎨</span>
                         Novo template MJML
                     </Link>
-                    <Link :href="route('imports.create')"
+                    <Link :href="route('imports.index')"
                           class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors text-sm text-slate-700">
                         <span class="w-8 h-8 bg-blue-100 text-blue-700 rounded-lg flex items-center justify-center text-base">📥</span>
                         Importar contactos

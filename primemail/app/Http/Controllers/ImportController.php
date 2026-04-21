@@ -25,11 +25,9 @@ class ImportController extends Controller
         return Inertia::render('Contacts/Imports/Index', compact('imports', 'lists'));
     }
 
-    public function create(): Response
+    public function create(): RedirectResponse
     {
-        $lists = ContactList::select('id', 'name')->orderBy('name')->get();
-
-        return Inertia::render('Contacts/Imports/Create', compact('lists'));
+        return redirect()->route('imports.index');
     }
 
     public function store(Request $request, ImportContactsAction $action): RedirectResponse

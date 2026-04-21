@@ -4,9 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use App\Models\CampaignRecipient;
-use App\Models\Contact;
+use App\Models\ContactBrandRelation;
 use App\Models\EmailEvent;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,8 +16,7 @@ class DashboardController extends Controller
         $brandId = session('active_brand_id');
         $since   = now()->subDays(30);
 
-        $activeContacts = Contact::withoutGlobalScopes()
-            ->where('brand_id', $brandId)
+        $activeContacts = ContactBrandRelation::where('brand_id', $brandId)
             ->where('status', 'active')
             ->count();
 
