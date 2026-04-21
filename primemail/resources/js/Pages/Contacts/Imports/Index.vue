@@ -78,11 +78,10 @@ const statusKey = (imp) => imp.status?.value ?? imp.status;
             <!-- ── Formulário de upload ──────────────────────── -->
             <form @submit.prevent="submit" class="bg-white border border-slate-200 rounded-xl overflow-hidden">
 
-                <!-- Cabeçalho da zona de upload -->
-                <div class="px-6 pt-6 pb-4 border-b border-slate-100">
-                    <div class="flex items-center justify-between mb-4">
+                <!-- Cabeçalho: título + tabs à esquerda -->
+                <div class="px-6 pt-5 pb-4">
+                    <div class="flex items-center gap-3 mb-4">
                         <h2 class="font-semibold text-slate-900">Importar contactos</h2>
-                        <!-- Abas CSV / TXT -->
                         <div class="flex gap-1 bg-slate-100 p-1 rounded-lg">
                             <button type="button" @click="switchMode('csv')"
                                 :class="['px-3 py-1 rounded-md text-xs font-medium transition-colors',
@@ -97,138 +96,152 @@ const statusKey = (imp) => imp.status?.value ?? imp.status;
                         </div>
                     </div>
 
-                    <!-- Zona de drop + botão -->
-                    <div class="grid grid-cols-5 gap-4 items-stretch">
+                    <!-- Zona de upload unificada — strip horizontal -->
+                    <div
+                        @dragenter.prevent="isDragging = true"
+                        @dragleave.prevent="isDragging = false"
+                        @dragover.prevent
+                        @drop.prevent="onDrop"
+                        :class="[
+                            'border-2 border-dashed rounded-xl transition-all overflow-hidden',
+                            isDragging
+                                ? 'border-slate-900 bg-slate-100 scale-[1.005]'
+                                : form.file
+                                    ? 'border-green-400 bg-green-50'
+                                    : 'border-slate-200 bg-slate-50'
+                        ]"
+                    >
+                        <input ref="fileInput" type="file" :accept="acceptAttr" class="sr-only" @change="onFileChange" />
 
-                        <!-- Drop zone — ocupa 3/5 -->
-                        <div
-                            @dragenter.prevent="isDragging = true"
-                            @dragleave.prevent="isDragging = false"
-                            @dragover.prevent
-                            @drop.prevent="onDrop"
-                            :class="[
-                                'col-span-3 border-2 border-dashed rounded-xl transition-all',
-                                isDragging
-                                    ? 'border-slate-900 bg-slate-50 scale-[1.01]'
-                                    : form.file
-                                        ? 'border-green-400 bg-green-50'
-                                        : 'border-slate-200 bg-slate-50 hover:border-slate-400 hover:bg-white'
-                            ]"
-                        >
-                            <input ref="fileInput" type="file" :accept="acceptAttr" class="sr-only" @change="onFileChange" />
-
-                            <!-- Sem ficheiro -->
-                            <div v-if="!form.file" class="flex flex-col items-center justify-center h-full py-8 px-4 text-center">
-                                <svg class="w-10 h-10 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <!-- Estado: sem ficheiro — linha horizontal -->
+                        <div v-if="!form.file" class="flex items-stretch min-h-[110px]">
+                            <!-- Lado esquerdo: drag -->
+                            <div @click="pickFile"
+                                 class="flex-1 flex flex-col items-center justify-center py-6 px-8 cursor-pointer hover:bg-slate-100 transition-colors text-center select-none">
+                                <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                                           d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                 </svg>
-                                <p class="text-sm font-medium text-slate-600 mb-1">
-                                    Arrasta o ficheiro aqui
-                                </p>
+                                <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro aqui</p>
                                 <p class="text-xs text-slate-400">
                                     {{ mode === 'txt' ? 'Ficheiro .txt — um email por linha' : 'Ficheiro .csv — separador auto-detectado' }}
                                 </p>
                             </div>
 
-                            <!-- Ficheiro seleccionado -->
-                            <div v-else class="flex items-center justify-between h-full px-5 py-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <p class="text-sm font-semibold text-slate-900">{{ form.file.name }}</p>
-                                        <p class="text-xs text-slate-500">{{ (form.file.size / 1024 / 1024).toFixed(2) }} MB</p>
-                                    </div>
-                                </div>
-                                <button type="button" @click="clearFile"
-                                        class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+                            <!-- Divisor vertical -->
+                            <div class="flex items-center px-2">
+                                <div class="w-px bg-slate-200 self-stretch my-4"></div>
+                                <span class="text-xs text-slate-400 font-medium px-3">ou</span>
+                                <div class="w-px bg-slate-200 self-stretch my-4"></div>
+                            </div>
+
+                            <!-- Lado direito: botão escolher ficheiro -->
+                            <div class="flex flex-col items-center justify-center py-6 px-8 min-w-[220px]">
+                                <button type="button" @click="pickFile"
+                                    class="flex items-center justify-center gap-2 w-full px-5 py-2.5 border-2 border-slate-900 text-slate-900 font-semibold text-sm rounded-xl hover:bg-slate-900 hover:text-white transition-all">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
                                     </svg>
+                                    Escolher ficheiro
                                 </button>
+                                <p class="text-xs text-slate-400 mt-2">
+                                    {{ mode === 'txt' ? '.txt, max. 100 MB' : '.csv, max. 100 MB' }}
+                                </p>
                             </div>
                         </div>
 
-                        <!-- Separador "ou" + botão — ocupa 2/5 -->
-                        <div class="col-span-2 flex flex-col items-center justify-center gap-3">
-                            <div class="flex items-center gap-3 w-full">
-                                <div class="flex-1 h-px bg-slate-200"></div>
-                                <span class="text-xs text-slate-400 font-medium">ou</span>
-                                <div class="flex-1 h-px bg-slate-200"></div>
+                        <!-- Estado: ficheiro seleccionado -->
+                        <div v-else class="flex items-center justify-between px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-slate-900">{{ form.file.name }}</p>
+                                    <p class="text-xs text-slate-500">{{ (form.file.size / 1024 / 1024).toFixed(2) }} MB</p>
+                                </div>
                             </div>
-                            <button
-                                type="button"
-                                @click="pickFile"
-                                class="w-full flex items-center justify-center gap-2 px-5 py-3 border-2 border-slate-900 text-slate-900 font-semibold text-sm rounded-xl hover:bg-slate-900 hover:text-white transition-all"
-                            >
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                            <button type="button" @click="clearFile"
+                                    class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
                                 </svg>
-                                Escolher ficheiro
                             </button>
-                            <p class="text-xs text-slate-400 text-center">
-                                {{ mode === 'txt' ? '.txt, max. 100 MB' : '.csv, max. 100 MB' }}
-                            </p>
                         </div>
                     </div>
 
                     <p v-if="form.errors.file" class="mt-2 text-xs text-red-600">{{ form.errors.file }}</p>
                 </div>
 
-                <!-- Opções inferiores: lista + submeter -->
-                <div class="px-6 py-4 bg-slate-50 flex items-end gap-4 flex-wrap">
+                <!-- Opções inferiores: lista + submeter (empilhadas) -->
+                <div class="px-6 py-5 bg-slate-50 border-t border-slate-100 space-y-3">
 
                     <!-- Info formato -->
-                    <div v-if="mode === 'txt'" class="text-xs text-slate-500 flex-1 min-w-[200px]">
+                    <p v-if="mode === 'txt'" class="text-xs text-slate-500">
                         <span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco são ignoradas.
-                    </div>
-                    <div v-else class="text-xs text-slate-500 flex-1 min-w-[200px]">
+                    </p>
+                    <p v-else class="text-xs text-slate-500">
                         <span class="font-medium text-slate-700">CSV:</span> colunas detectadas automaticamente —
                         <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais.
-                    </div>
+                    </p>
 
-                    <!-- Seletor de lista -->
-                    <div class="flex items-end gap-3 flex-wrap">
-                        <!-- Cartões Lista existente / Nova lista -->
-                        <div class="flex gap-2">
-                            <button type="button"
-                                @click="form.list_id = ''; form.new_list_name = ''"
-                                :class="['px-3 py-1.5 rounded-lg border text-xs font-medium transition-all',
-                                         !isNewList
-                                            ? 'bg-slate-900 text-white border-slate-900'
-                                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400']">
+                    <!-- Cartões: Lista existente / Nova lista -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button"
+                            @click="form.list_id = ''; form.new_list_name = ''"
+                            :class="['relative text-left p-4 rounded-xl border-2 transition-all',
+                                     !isNewList
+                                        ? 'bg-slate-900 border-slate-900'
+                                        : 'bg-white border-slate-200 hover:border-slate-400']">
+                            <svg v-if="!isNewList" class="absolute top-3 right-3 w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                            <span :class="['block text-sm font-semibold mb-0.5', !isNewList ? 'text-white' : 'text-slate-900']">
                                 Lista existente
-                            </button>
-                            <button type="button"
-                                @click="form.list_id = LIST_NEW_SENTINEL"
-                                :class="['px-3 py-1.5 rounded-lg border text-xs font-medium transition-all',
-                                         isNewList
-                                            ? 'bg-indigo-600 text-white border-indigo-600'
-                                            : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300']">
-                                Nova lista
-                            </button>
-                        </div>
+                            </span>
+                            <span :class="['block text-xs', !isNewList ? 'text-slate-300' : 'text-slate-400']">
+                                Seleccionar de entre as listas criadas
+                            </span>
+                        </button>
 
-                        <!-- Input dinâmico -->
-                        <select v-if="!isNewList" v-model="form.list_id"
-                                class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 min-w-[200px]">
-                            <option value="">Nenhuma — só base de dados</option>
-                            <option v-for="list in lists" :key="list.id" :value="list.id">{{ list.name }}</option>
-                        </select>
-                        <input v-else v-model="form.new_list_name" type="text"
-                               placeholder="Nome da nova lista" maxlength="255"
-                               :class="['px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]',
-                                        form.errors.new_list_name ? 'border-red-400' : 'border-slate-200']" />
+                        <button type="button"
+                            @click="form.list_id = LIST_NEW_SENTINEL"
+                            :class="['relative text-left p-4 rounded-xl border-2 transition-all',
+                                     isNewList
+                                        ? 'bg-indigo-600 border-indigo-600'
+                                        : 'bg-white border-slate-200 hover:border-indigo-300']">
+                            <svg v-if="isNewList" class="absolute top-3 right-3 w-4 h-4 text-indigo-200" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                            <span :class="['block text-sm font-semibold mb-0.5', isNewList ? 'text-white' : 'text-slate-900']">
+                                Criar nova lista
+                            </span>
+                            <span :class="['block text-xs', isNewList ? 'text-indigo-200' : 'text-slate-400']">
+                                Cria a lista e importa em simultâneo
+                            </span>
+                        </button>
                     </div>
 
-                    <!-- Botão submeter -->
+                    <!-- Select / input (largura total) -->
+                    <select v-if="!isNewList" v-model="form.list_id"
+                            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <option value="">Nenhuma — só base de dados</option>
+                        <option v-for="list in lists" :key="list.id" :value="list.id">{{ list.name }}</option>
+                    </select>
+                    <div v-else>
+                        <input v-model="form.new_list_name" type="text"
+                               placeholder="Nome da nova lista" maxlength="255"
+                               :class="['w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500',
+                                        form.errors.new_list_name ? 'border-red-400' : 'border-slate-200']" />
+                        <p v-if="form.errors.new_list_name" class="mt-1 text-xs text-red-600">{{ form.errors.new_list_name }}</p>
+                    </div>
+
+                    <!-- Botão importar (largura total) -->
                     <button type="submit" :disabled="!canSubmit"
-                            class="flex items-center gap-2 px-5 py-2 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap">
+                            class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                         <svg v-if="form.processing" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
