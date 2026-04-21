@@ -88,7 +88,7 @@ class ContactListController extends Controller
 
         $list->update($data);
 
-        return redirect()->route('lists.index')->with('success', 'Lista actualizada.');
+        return redirect()->route('lists.edit', $list)->with('success', 'Lista actualizada.');
     }
 
     public function destroy(ContactList $list): RedirectResponse

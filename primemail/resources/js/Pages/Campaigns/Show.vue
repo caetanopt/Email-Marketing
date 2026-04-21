@@ -100,6 +100,10 @@ const deleteCampaign = () => {
                             <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Remetente</dt>
                             <dd class="text-slate-900">{{ campaign.from_name }} &lt;{{ campaign.from_email }}&gt;</dd>
                         </div>
+                        <div v-if="campaign.reply_to">
+                            <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Reply-To</dt>
+                            <dd class="text-slate-700">{{ campaign.reply_to }}</dd>
+                        </div>
                         <div v-if="campaign.sent_at">
                             <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Enviado em</dt>
                             <dd class="text-slate-900">{{ new Date(campaign.sent_at).toLocaleString('pt-PT') }}</dd>

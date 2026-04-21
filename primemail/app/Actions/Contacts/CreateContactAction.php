@@ -17,7 +17,7 @@ class CreateContactAction
         $emailHash = hash('sha256', $email);
 
         // Verificar supressão antes de qualquer operação
-        if (SuppressionList::isSuppressed($brandId, $email)) {
+        if (SuppressionList::isSuppressed($email, $brandId)) {
             throw ValidationException::withMessages([
                 'email' => 'Este email está na lista de supressão desta marca.',
             ]);

@@ -85,7 +85,7 @@ class ContactImportService
                 }
 
                 // Skip se suprimido para esta marca
-                if (SuppressionList::isSuppressed($brandId, $email)) {
+                if (SuppressionList::isSuppressed($email, $brandId)) {
                     $skipped++;
                     continue;
                 }
