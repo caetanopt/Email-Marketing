@@ -113,42 +113,20 @@ const statusKey = (imp) => imp.status?.value ?? imp.status;
                     >
                         <input ref="fileInput" type="file" :accept="acceptAttr" class="sr-only" @change="onFileChange" />
 
-                        <!-- Estado: sem ficheiro — linha horizontal -->
-                        <div v-if="!form.file" class="flex items-stretch min-h-[110px]">
-                            <!-- Lado esquerdo: drag -->
-                            <div @click="pickFile"
-                                 class="flex-1 flex flex-col items-center justify-center py-6 px-8 cursor-pointer hover:bg-slate-100 transition-colors text-center select-none">
-                                <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                                </svg>
-                                <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro aqui</p>
-                                <p class="text-xs text-slate-400">
-                                    {{ mode === 'txt' ? 'Ficheiro .txt — um email por linha' : 'Ficheiro .csv — separador auto-detectado' }}
-                                </p>
-                            </div>
-
-                            <!-- Divisor vertical -->
-                            <div class="flex items-center px-2">
-                                <div class="w-px bg-slate-200 self-stretch my-4"></div>
-                                <span class="text-xs text-slate-400 font-medium px-3">ou</span>
-                                <div class="w-px bg-slate-200 self-stretch my-4"></div>
-                            </div>
-
-                            <!-- Lado direito: botão escolher ficheiro -->
-                            <div class="flex flex-col items-center justify-center py-6 px-8 min-w-[220px]">
-                                <button type="button" @click="pickFile"
-                                    class="flex items-center justify-center gap-2 w-full px-5 py-2.5 border-2 border-slate-900 text-slate-900 font-semibold text-sm rounded-xl hover:bg-slate-900 hover:text-white transition-all">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                                    </svg>
-                                    Escolher ficheiro
-                                </button>
-                                <p class="text-xs text-slate-400 mt-2">
-                                    {{ mode === 'txt' ? '.txt, max. 100 MB' : '.csv, max. 100 MB' }}
-                                </p>
-                            </div>
+                        <!-- Estado: sem ficheiro -->
+                        <div v-if="!form.file"
+                             @click="pickFile"
+                             class="flex flex-col items-center justify-center min-h-[110px] py-7 px-8 cursor-pointer select-none text-center hover:bg-slate-100 transition-colors">
+                            <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            <p class="text-sm font-medium text-slate-600 mb-0.5">
+                                Arrasta o ficheiro aqui ou clica para escolher
+                            </p>
+                            <p class="text-xs text-slate-400">
+                                {{ mode === 'txt' ? '.txt — um email por linha, max. 100 MB' : '.csv — separador auto-detectado, max. 100 MB' }}
+                            </p>
                         </div>
 
                         <!-- Estado: ficheiro seleccionado -->
