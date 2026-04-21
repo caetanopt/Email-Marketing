@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -7,13 +7,23 @@ defineProps({
     lists: { type: Array, default: () => [] },
 });
 
-const mode       = ref('csv'); // 'csv' | 'txt'
-const isDragging = ref(false);
-const fileInput  = ref(null);
+const mode        = ref('csv'); // 'csv' | 'txt'
+const isDragging  = ref(false);
+const fileInput   = ref(null);
+
+const LIST_NEW_SENTINEL = '__new__';
 
 const form = useForm({
-    file:    null,
-    list_id: '',
+    file:          null,
+    list_id:       '',
+    new_list_name: '',
+});
+
+const isNewList = computed(() => form.list_id === LIST_NEW_SENTINEL);
+
+// Quando muda para outra opção limpa o nome
+watch(() => form.list_id, (val) => {
+    if (val !== LIST_NEW_SENTINEL) form.new_list_name = '';
 });
 
 const acceptAttr   = computed(() => mode.value === 'txt' ? '.txt' : '.csv');
@@ -29,8 +39,8 @@ const dropHintSub = computed(() =>
 );
 
 const switchMode = (newMode) => {
-    mode.value  = newMode;
-    form.file   = null;
+    mode.value = newMode;
+    form.file  = null;
     form.clearErrors('file');
 };
 
@@ -42,13 +52,10 @@ const onDrop = (e) => {
     isDragging.value = false;
     const file = e.dataTransfer.files[0];
     if (!file) return;
-
     const isCsv = file.name.endsWith('.csv');
     const isTxt = file.name.endsWith('.txt');
-
     if (mode.value === 'csv' && isCsv) { form.file = file; return; }
     if (mode.value === 'txt' && isTxt) { form.file = file; return; }
-    // Ficheiro do tipo errado — trocar de tab automaticamente
     if (isCsv) { mode.value = 'csv'; form.file = file; }
     if (isTxt) { mode.value = 'txt'; form.file = file; }
 };
@@ -72,9 +79,7 @@ const submit = () => {
                             'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
                             mode === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                         ]"
-                    >
-                        CSV
-                    </button>
+                    >CSV</button>
                     <button
                         type="button"
                         @click="switchMode('txt')"
@@ -82,9 +87,7 @@ const submit = () => {
                             'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
                             mode === 'txt' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                         ]"
-                    >
-                        TXT (só emails)
-                    </button>
+                    >TXT (só emails)</button>
                 </div>
 
                 <!-- Drop zone -->
@@ -106,7 +109,6 @@ const submit = () => {
                         class="sr-only"
                         @change="onFileChange"
                     />
-
                     <div v-if="!form.file">
                         <svg class="w-10 h-10 mx-auto text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -115,7 +117,6 @@ const submit = () => {
                         <p class="text-sm font-medium text-slate-700">{{ dropHintMain }}</p>
                         <p class="text-xs text-slate-400 mt-1">{{ dropHintSub }}</p>
                     </div>
-
                     <div v-else class="flex items-center justify-center gap-3">
                         <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -134,7 +135,7 @@ const submit = () => {
 
                 <p v-if="form.errors.file" class="text-xs text-red-600 -mt-2">{{ form.errors.file }}</p>
 
-                <!-- Informação contextual -->
+                <!-- Info contextual -->
                 <div v-if="mode === 'txt'" class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700">
                     <p class="font-medium mb-1">Formato TXT — um email por linha</p>
                     <pre class="text-xs text-slate-500 mt-1 leading-relaxed">joao@empresa.pt
@@ -142,7 +143,6 @@ ana.costa@mail.pt
 pedro@exemplo.com</pre>
                     <p class="text-xs text-slate-400 mt-2">Linhas em branco e espaços extra são ignorados. Emails inválidos são descartados.</p>
                 </div>
-
                 <div v-else class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
                     <p class="font-medium mb-1">Colunas reconhecidas automaticamente</p>
                     <p class="text-xs text-blue-700">
@@ -152,25 +152,54 @@ pedro@exemplo.com</pre>
                 </div>
 
                 <!-- Lista destino -->
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Adicionar a lista (opcional)</label>
-                    <select v-model="form.list_id" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-700">Adicionar a lista</label>
+                    <select
+                        v-model="form.list_id"
+                        class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    >
                         <option value="">Nenhuma — só actualizar base de dados</option>
-                        <option v-for="list in lists" :key="list.id" :value="list.id">{{ list.name }}</option>
+                        <optgroup label="Listas existentes" v-if="lists.length">
+                            <option v-for="list in lists" :key="list.id" :value="list.id">
+                                {{ list.name }}
+                            </option>
+                        </optgroup>
+                        <option :value="LIST_NEW_SENTINEL">+ Criar nova lista…</option>
                     </select>
+
+                    <!-- Campo de nome da nova lista — aparece só quando "+ Criar nova lista…" está selecionado -->
+                    <div v-if="isNewList" class="flex items-center gap-2 pt-1">
+                        <input
+                            v-model="form.new_list_name"
+                            type="text"
+                            placeholder="Nome da nova lista"
+                            maxlength="255"
+                            autofocus
+                            :class="[
+                                'flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900',
+                                form.errors.new_list_name ? 'border-red-400' : 'border-slate-200'
+                            ]"
+                        />
+                        <span class="text-xs text-slate-400 whitespace-nowrap">será criada ao importar</span>
+                    </div>
+                    <p v-if="form.errors.new_list_name" class="text-xs text-red-600">{{ form.errors.new_list_name }}</p>
                 </div>
 
                 <!-- Acções -->
                 <div class="flex items-center gap-3">
-                    <button type="submit" :disabled="!form.file || form.processing"
-                            class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors">
+                    <button
+                        type="submit"
+                        :disabled="!form.file || (isNewList && !form.new_list_name.trim()) || form.processing"
+                        class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                    >
                         <span v-if="form.processing">A importar…</span>
                         <span v-else>Iniciar Importação</span>
                     </button>
-                    <Link :href="route('contacts.index')" class="px-5 py-2 text-sm text-slate-600 hover:text-slate-900">
+                    <Link :href="route('imports.index')" class="px-5 py-2 text-sm text-slate-600 hover:text-slate-900">
                         Cancelar
                     </Link>
                 </div>
+
             </form>
         </div>
     </AppLayout>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Contacts\ImportContactsAction;
 use App\Models\ContactList;
 use App\Models\Import;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,15 +33,29 @@ class ImportController extends Controller
     public function store(Request $request, ImportContactsAction $action): RedirectResponse
     {
         $data = $request->validate([
-            'file'    => ['required', 'file', 'mimes:csv,txt', 'max:102400'], // 100MB
-            'list_id' => ['nullable', 'integer', 'exists:contact_lists,id'],
+            'file'          => ['required', 'file', 'mimes:csv,txt', 'max:102400'], // 100MB
+            'list_id'       => ['nullable', 'integer', 'exists:contact_lists,id'],
+            'new_list_name' => ['nullable', 'string', 'max:255'],
         ]);
+
+        $brandId = session('active_brand_id');
+
+        // Criar nova lista se pedido
+        $listId = $data['list_id'] ?? null;
+        if (!$listId && !empty($data['new_list_name'])) {
+            $list   = ContactList::create([
+                'brand_id'   => $brandId,
+                'name'       => Str::limit(trim($data['new_list_name']), 255),
+                'created_by' => auth()->id(),
+            ]);
+            $listId = $list->id;
+        }
 
         try {
             $import = $action->execute(
                 file:    $data['file'],
-                brandId: session('active_brand_id'),
-                listId:  $data['list_id'] ?? null,
+                brandId: $brandId,
+                listId:  $listId,
             );
         } catch (\InvalidArgumentException $e) {
             return back()->withErrors(['file' => $e->getMessage()]);
