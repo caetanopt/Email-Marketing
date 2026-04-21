@@ -69,12 +69,13 @@ class ContactController extends Controller
         );
 
         // Adicionar às listas seleccionadas
+        $brandId = session('active_brand_id');
         if ($listIds = $request->validated()['list_ids'] ?? []) {
             foreach ($listIds as $listId) {
                 \App\Models\ContactListMember::firstOrCreate([
                     'contact_id' => $contact->id,
                     'list_id'    => $listId,
-                ], ['status' => 'active', 'subscribed_at' => now()]);
+                ], ['brand_id' => $brandId, 'status' => 'active', 'subscribed_at' => now()]);
             }
         }
 
@@ -97,7 +98,14 @@ class ContactController extends Controller
             'emails_clicked' => $contact->emailEvents()->where('event_type', 'click')->count(),
         ];
 
-        return Inertia::render('Contacts/Show', compact('contact', 'stats'));
+        $events = $contact->emailEvents()
+            ->with('campaign:id,name')
+            ->whereIn('event_type', ['open', 'click', 'bounce', 'unsubscribe', 'spam', 'delivered'])
+            ->orderByDesc('occurred_at')
+            ->limit(50)
+            ->get(['id', 'campaign_id', 'event_type', 'event_data', 'occurred_at']);
+
+        return Inertia::render('Contacts/Show', compact('contact', 'stats', 'events'));
     }
 
     public function edit(Contact $contact): Response
