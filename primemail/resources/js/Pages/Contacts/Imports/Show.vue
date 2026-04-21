@@ -49,12 +49,12 @@ onUnmounted(() => clearInterval(polling.value));
 </script>
 
 <template>
-    <AppLayout :title="`Importação — ${data.filename}`">
+    <AppLayout :title="`Importação — ${data.file_name ?? data.filename}`">
         <div class="max-w-2xl space-y-5">
             <!-- Status card -->
             <div class="bg-white rounded-xl border border-slate-200 p-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="font-semibold text-slate-900 truncate mr-4">{{ data.filename }}</h2>
+                    <h2 class="font-semibold text-slate-900 truncate mr-4">{{ data.file_name ?? data.filename }}</h2>
                     <span :class="['px-2.5 py-1 rounded-full text-xs font-medium', statusColor]">
                         {{ statusLabel }}
                     </span>
