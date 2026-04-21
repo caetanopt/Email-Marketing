@@ -244,6 +244,24 @@
         injectSidebar();
         showScreen('login');
     });
+
+    function setImportTab(tab) {
+        const isTxt = tab === 'txt';
+        document.getElementById('tab-csv').className = !isTxt
+            ? 'px-4 py-1.5 rounded-md text-sm font-medium bg-white text-slate-900 shadow-sm transition-colors'
+            : 'px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors';
+        document.getElementById('tab-txt').className = isTxt
+            ? 'px-4 py-1.5 rounded-md text-sm font-medium bg-white text-slate-900 shadow-sm transition-colors'
+            : 'px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors';
+        document.getElementById('import-hint-main').textContent = isTxt
+            ? 'Arrastar TXT aqui ou clicar para seleccionar'
+            : 'Arrastar CSV aqui ou clicar para seleccionar';
+        document.getElementById('import-hint-sub').textContent = isTxt
+            ? 'TXT, max. 100 MB — um email por linha'
+            : 'CSV, max. 100 MB — separadores: vírgula, ponto-e-vírgula ou tab';
+        document.getElementById('import-info-csv').classList.toggle('hidden', isTxt);
+        document.getElementById('import-info-txt').classList.toggle('hidden', !isTxt);
+    }
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════
@@ -1239,23 +1257,42 @@
             </header>
             <main class="flex-1 px-8 py-6 space-y-5">
                 <!-- Upload card -->
-                <div class="bg-white border border-slate-200 rounded-xl p-6">
-                    <h3 class="font-semibold text-slate-900 mb-4 text-sm">Importar contactos via CSV</h3>
+                <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                    <h3 class="font-semibold text-slate-900 text-sm">Importar contactos</h3>
+                    <!-- Abas -->
+                    <div class="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit" id="importTabs">
+                        <button onclick="setImportTab('csv')" id="tab-csv" class="px-4 py-1.5 rounded-md text-sm font-medium bg-white text-slate-900 shadow-sm transition-colors">CSV</button>
+                        <button onclick="setImportTab('txt')" id="tab-txt" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">TXT (só emails)</button>
+                    </div>
+                    <!-- Drop zone -->
                     <div class="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-slate-400 transition-colors cursor-pointer">
                         <svg class="w-10 h-10 text-slate-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                        <p class="text-sm font-medium text-slate-700">Arrastar CSV aqui ou clicar para seleccionar</p>
-                        <p class="text-xs text-slate-400 mt-1">Máximo 50 MB · Formato: nome, email, [atributos...]</p>
+                        <p id="import-hint-main" class="text-sm font-medium text-slate-700">Arrastar CSV aqui ou clicar para seleccionar</p>
+                        <p id="import-hint-sub" class="text-xs text-slate-400 mt-1">CSV, max. 100 MB — separadores: vírgula, ponto-e-vírgula ou tab</p>
                     </div>
-                    <div class="mt-4 flex items-center gap-3">
+                    <!-- Info box -->
+                    <div id="import-info-csv" class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+                        <p class="font-medium mb-1">Colunas reconhecidas automaticamente</p>
+                        <p class="text-xs text-blue-700"><strong>Obrigatório:</strong> email (ou e-mail, mail) · <strong>Opcional:</strong> first_name, last_name, phone, company</p>
+                    </div>
+                    <div id="import-info-txt" class="hidden bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700">
+                        <p class="font-medium mb-1">Formato TXT — um email por linha</p>
+                        <pre class="text-xs text-slate-500 mt-1 leading-relaxed">joao@empresa.pt
+ana.costa@mail.pt
+pedro@exemplo.com</pre>
+                        <p class="text-xs text-slate-400 mt-2">Linhas em branco e espaços extra são ignorados.</p>
+                    </div>
+                    <!-- Lista + botão -->
+                    <div class="flex items-end gap-3">
                         <div class="flex-1">
                             <label class="text-xs text-slate-500 block mb-1">Adicionar à lista</label>
                             <select class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
-                                <option>Seleccionar lista…</option>
+                                <option>Nenhuma</option>
                                 <option>Clientes Premium</option>
                                 <option>Newsletter Geral</option>
                             </select>
                         </div>
-                        <div class="pt-5">
+                        <div>
                             <button class="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700">Iniciar importação</button>
                         </div>
                     </div>
