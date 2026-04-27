@@ -1062,15 +1062,126 @@ ${body}
     }
 
     // ── Contacts ──────────────────────────────────────────
+    let _contactMode = 'view'; // 'view' | 'edit' | 'new'
+    let _contactsPage = 1;
+    const _contactsTotal = 12483, _contactsPerPage = 5;
+
+    function showContact(mode) {
+        _contactMode = mode || 'view';
+        const hTitle    = document.getElementById('contactShowTitle');
+        const hBadge    = document.getElementById('contactShowBadge');
+        const hActions  = document.getElementById('contactShowActions');
+        const viewPanel = document.getElementById('contactViewPanel');
+        const editPanel = document.getElementById('contactEditPanel');
+        const editDanger = document.getElementById('contactEditDangerZone');
+
+        if (_contactMode === 'new') {
+            if (hTitle)    hTitle.textContent = 'Novo Contacto';
+            if (hBadge)    hBadge.className = 'hidden';
+            if (hActions)  hActions.innerHTML = `
+                <button onclick="showScreen('contacts')" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
+                <button onclick="mockSaveContact()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Criar Contacto</button>`;
+            if (viewPanel)  viewPanel.classList.add('hidden');
+            if (editPanel)  { editPanel.classList.remove('hidden'); clearContactForm(); }
+            if (editDanger) editDanger.classList.add('hidden');
+        } else if (_contactMode === 'edit') {
+            if (hTitle)    hTitle.textContent = 'Editar — João Silva';
+            if (hBadge)    hBadge.className = 'hidden';
+            if (hActions)  hActions.innerHTML = `
+                <button onclick="showContact('view')" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
+                <button onclick="mockSaveContact()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Guardar</button>`;
+            if (viewPanel)  viewPanel.classList.add('hidden');
+            if (editPanel)  editPanel.classList.remove('hidden');
+            if (editDanger) editDanger.classList.remove('hidden');
+            fillContactForm();
+        } else {
+            if (hTitle)    hTitle.textContent = 'João Silva';
+            if (hBadge)    { hBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700'; hBadge.textContent = 'Activo'; }
+            if (hActions)  hActions.innerHTML = `<button onclick="showContact('edit')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>`;
+            if (viewPanel)  viewPanel.classList.remove('hidden');
+            if (editPanel)  editPanel.classList.add('hidden');
+        }
+        showScreen('contactShow');
+    }
+
+    function fillContactForm() {
+        const f = { ctName:'João Silva', ctEmail:'joao.silva@empresa.pt', ctPhone:'+351 912 345 678', ctCompany:'Empresa Lda.', ctStatus:'active' };
+        Object.entries(f).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
+    }
+
+    function clearContactForm() {
+        ['ctName','ctEmail','ctPhone','ctCompany'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+        const st = document.getElementById('ctStatus'); if (st) st.value='active';
+    }
+
+    function mockSaveContact() {
+        const name  = document.getElementById('ctName')?.value.trim();
+        const email = document.getElementById('ctEmail')?.value.trim();
+        if (!name)  { showToast('O nome é obrigatório.', 'error'); return; }
+        if (!email) { showToast('O email é obrigatório.', 'error'); return; }
+        if (!email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        if (_contactMode === 'new') {
+            showScreen('contacts');
+            showToast(`Contacto ${name} criado com sucesso.`);
+        } else {
+            showContact('view');
+            showToast('Contacto guardado com sucesso.');
+        }
+    }
+
     function mockRemoveFromList(btn) {
         if (!confirm('Remover da lista?')) return;
-        btn.closest('div.flex').remove();
+        btn.closest('.list-item')?.remove();
         showToast('Contacto removido da lista.');
     }
+
+    function mockAddToList() {
+        const sel = document.getElementById('addListSelect');
+        if (!sel?.value) { showToast('Selecciona uma lista.', 'error'); return; }
+        const name = sel.options[sel.selectedIndex].text;
+        const panel = document.getElementById('contactListsPanel');
+        if (panel) {
+            const div = document.createElement('div');
+            div.className = 'list-item flex items-center justify-between py-1.5 text-sm';
+            div.innerHTML = `<span class="text-slate-700">${name}</span><button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>`;
+            panel.insertBefore(div, panel.querySelector('.add-list-row'));
+        }
+        sel.value = '';
+        showToast(`Contacto adicionado a "${name}".`);
+    }
+
     function mockDeleteContact() {
         if (!confirm('Eliminar este contacto permanentemente?')) return;
         showScreen('contacts');
         showToast('Contacto eliminado.');
+    }
+
+    function filterContacts() {
+        const q   = (document.getElementById('contactSearch')?.value || '').toLowerCase();
+        const lst = document.getElementById('contactListFilter')?.value || '';
+        const st  = document.getElementById('contactStatusFilter')?.value || '';
+        document.querySelectorAll('#contactsTbody tr').forEach(tr => {
+            const ok = (!q  || (tr.dataset.name||'').toLowerCase().includes(q) || (tr.dataset.email||'').toLowerCase().includes(q))
+                    && (!lst || tr.dataset.list === lst)
+                    && (!st  || tr.dataset.status === st);
+            tr.style.display = ok ? '' : 'none';
+        });
+    }
+
+    function contactsGoPage(p) {
+        const total = _contactsTotal, per = _contactsPerPage;
+        const pages = Math.ceil(total / per);
+        if (p < 1 || p > pages) return;
+        _contactsPage = p;
+        const start = (p-1)*per+1, end = Math.min(p*per, total);
+        const info = document.getElementById('contactsPageInfo');
+        if (info) info.textContent = `Mostrando ${start}–${end} de ${total.toLocaleString('pt-PT')} contactos`;
+        document.querySelectorAll('.contacts-page-btn').forEach(btn => {
+            const pg = parseInt(btn.dataset.page);
+            btn.classList.toggle('bg-slate-900', pg === p);
+            btn.classList.toggle('text-white', pg === p);
+            btn.classList.toggle('hover:bg-slate-50', pg !== p);
+        });
     }
 
     // ── Settings ──────────────────────────────────────────
@@ -2103,16 +2214,24 @@ ${body}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Contactos</h1>
-                <button onclick="showScreen('contactShow')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Contacto</button>
+                <button onclick="showContact('new')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Contacto</button>
             </header>
             <main class="flex-1 px-8 py-6">
-                <!-- Search bar -->
-                <div class="mb-4 flex gap-3">
-                    <input type="text" placeholder="Pesquisar por nome ou email…" class="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                    <select class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
-                        <option>Todas as listas</option>
-                        <option>Clientes Premium</option>
-                        <option>Newsletter Geral</option>
+                <!-- Filtros -->
+                <div class="mb-4 flex gap-3 flex-wrap">
+                    <input id="contactSearch" type="text" placeholder="Pesquisar por nome ou email…" oninput="filterContacts()" class="flex-1 min-w-48 px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <select id="contactListFilter" onchange="filterContacts()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <option value="">Todas as listas</option>
+                        <option value="premium">Clientes Premium</option>
+                        <option value="newsletter">Newsletter Geral</option>
+                        <option value="leads">Leads — Test Drive</option>
+                    </select>
+                    <select id="contactStatusFilter" onchange="filterContacts()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <option value="">Todos os estados</option>
+                        <option value="active">Activo</option>
+                        <option value="suppressed">Suprimido</option>
+                        <option value="unsubscribed">Dessubscrito</option>
+                        <option value="bounced">Bounce</option>
                     </select>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -2127,56 +2246,57 @@ ${body}
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
+                        <tbody id="contactsTbody" class="divide-y divide-slate-100">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-name="joão silva" data-email="joao.silva@empresa.pt" data-list="premium" data-status="active" onclick="showContact('view')">
                                 <td class="px-4 py-3 font-medium text-slate-900">João Silva</td>
                                 <td class="px-4 py-3 text-slate-600">joao.silva@empresa.pt</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Clientes Premium</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span></td>
                                 <td class="px-4 py-3 text-slate-500">12/01/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-name="ana costa" data-email="ana.costa@mail.pt" data-list="newsletter" data-status="active" onclick="showContact('view')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Ana Costa</td>
                                 <td class="px-4 py-3 text-slate-600">ana.costa@mail.pt</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Newsletter Geral</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span></td>
                                 <td class="px-4 py-3 text-slate-500">03/02/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-name="pedro nunes" data-email="pedro.nunes@hotmail.com" data-list="premium" data-status="suppressed" onclick="showContact('view')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Pedro Nunes</td>
                                 <td class="px-4 py-3 text-slate-600">pedro.nunes@hotmail.com</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Clientes Premium</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span></td>
                                 <td class="px-4 py-3 text-slate-500">18/11/2025</td>
-                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-name="marta ferreira" data-email="marta.f@gmail.com" data-list="newsletter" data-status="active" onclick="showContact('view')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Marta Ferreira</td>
                                 <td class="px-4 py-3 text-slate-600">marta.f@gmail.com</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Newsletter Geral</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span></td>
                                 <td class="px-4 py-3 text-slate-500">07/03/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('contactShow')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-name="rui oliveira" data-email="rui.oliveira@empresa.pt" data-list="premium" data-status="unsubscribed" onclick="showContact('view')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Rui Oliveira</td>
                                 <td class="px-4 py-3 text-slate-600">rui.oliveira@empresa.pt</td>
                                 <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Clientes Premium</span></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span></td>
                                 <td class="px-4 py-3 text-slate-500">22/12/2025</td>
-                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showScreen('contactShow')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
+                                <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-slate-400 hover:text-slate-700 text-xs">Editar</button></td>
                             </tr>
                         </tbody>
                     </table>
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-                        <span>Mostrando 1–5 de 12 483 contactos</span>
+                        <span id="contactsPageInfo">Mostrando 1–5 de 12 483 contactos</span>
                         <div class="flex gap-2">
-                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
-                            <button class="px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
-                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
-                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
+                            <button onclick="contactsGoPage(_contactsPage-1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
+                            <button data-page="1" onclick="contactsGoPage(1)" class="contacts-page-btn px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
+                            <button data-page="2" onclick="contactsGoPage(2)" class="contacts-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
+                            <button data-page="3" onclick="contactsGoPage(3)" class="contacts-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">3</button>
+                            <button onclick="contactsGoPage(_contactsPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
                         </div>
                     </div>
                 </div>
@@ -2197,14 +2317,17 @@ ${body}
                     <button onclick="showScreen('contacts')" class="text-slate-400 hover:text-slate-700">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     </button>
-                    <h1 class="text-xl font-semibold text-slate-900">João Silva</h1>
-                    <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>
+                    <h1 id="contactShowTitle" class="text-xl font-semibold text-slate-900">João Silva</h1>
+                    <span id="contactShowBadge" class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>
                 </div>
-                <button onclick="showToast('Modo de edição activado.', 'info')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                <div id="contactShowActions" class="flex items-center gap-3">
+                    <button onclick="showContact('edit')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                </div>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="grid grid-cols-3 gap-6">
-                    <!-- Dados -->
+
+                <!-- ── MODO VIEW ─────────────────────────────── -->
+                <div id="contactViewPanel" class="grid grid-cols-3 gap-6">
                     <div class="col-span-2 space-y-5">
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-4 text-sm">Informação do contacto</h3>
@@ -2217,7 +2340,6 @@ ${body}
                                 <div><dt class="text-xs text-slate-500 uppercase tracking-wide mb-0.5">Fonte</dt><dd class="text-slate-900">Importação CSV</dd></div>
                             </dl>
                         </div>
-                        <!-- Atributos personalizados -->
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-4 text-sm">Atributos personalizados</h3>
                             <dl class="grid grid-cols-2 gap-3 text-sm">
@@ -2226,46 +2348,114 @@ ${body}
                                 <div><dt class="text-xs text-slate-500">data_aniversario</dt><dd class="text-slate-900">15/06/1985</dd></div>
                             </dl>
                         </div>
-                        <!-- Histórico de eventos -->
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-4 text-sm">Histórico de eventos</h3>
                             <div class="space-y-3">
                                 <div class="flex items-start gap-3 text-sm">
-                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 mt-0.5">open</span>
+                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 mt-0.5 flex-shrink-0">open</span>
                                     <div><p class="text-slate-900">Campanha Primavera 2026</p><p class="text-xs text-slate-400">18/04/2026, 09:32</p></div>
                                 </div>
                                 <div class="flex items-start gap-3 text-sm">
-                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mt-0.5">click</span>
-                                    <div><p class="text-slate-900">Campanha Primavera 2026 — https://loja.pt/primavera</p><p class="text-xs text-slate-400">18/04/2026, 09:35</p></div>
+                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mt-0.5 flex-shrink-0">click</span>
+                                    <div><p class="text-slate-900">Campanha Primavera 2026</p><p class="text-xs text-slate-400">18/04/2026, 09:35</p></div>
                                 </div>
                                 <div class="flex items-start gap-3 text-sm">
-                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 mt-0.5">open</span>
-                                    <div><p class="text-slate-900">Newsletter Março</p><p class="text-xs text-slate-400">05/03/2026, 14:12</p></div>
+                                    <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 mt-0.5 flex-shrink-0">open</span>
+                                    <div><p class="text-slate-900">Newsletter Março 2026</p><p class="text-xs text-slate-400">05/03/2026, 14:12</p></div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <!-- Listas -->
+                    <!-- Sidebar direita -->
                     <div class="space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas</h3>
-                            <div class="space-y-2">
-                                <div class="flex items-center justify-between py-1.5 text-sm">
+                            <div id="contactListsPanel" class="space-y-1 mb-3">
+                                <div class="list-item flex items-center justify-between py-1.5 text-sm">
                                     <span class="text-slate-700">Clientes Premium</span>
                                     <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                                 </div>
-                                <div class="flex items-center justify-between py-1.5 text-sm">
+                                <div class="list-item flex items-center justify-between py-1.5 text-sm">
                                     <span class="text-slate-700">Newsletter Geral</span>
                                     <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                                 </div>
+                                <div class="add-list-row pt-2 border-t border-slate-100 flex gap-2">
+                                    <select id="addListSelect" class="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                        <option value="">Adicionar a lista…</option>
+                                        <option value="leads">Leads — Test Drive</option>
+                                        <option value="events">Evento M Performance</option>
+                                        <option value="ix1">Promoção iX1</option>
+                                    </select>
+                                    <button onclick="mockAddToList()" class="px-3 py-1.5 bg-slate-900 text-white text-xs rounded hover:bg-slate-800">+</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="bg-white border border-red-200 rounded-xl p-4">
+                        <div id="contactDangerZone" class="bg-white border border-red-200 rounded-xl p-4">
                             <h4 class="text-sm font-medium text-red-700 mb-2">Zona de perigo</h4>
                             <button onclick="mockDeleteContact()" class="text-sm text-red-600 hover:text-red-800">Eliminar contacto</button>
                         </div>
                     </div>
                 </div>
+
+                <!-- ── MODO EDIT / CREATE ─────────────────────── -->
+                <div id="contactEditPanel" class="hidden grid grid-cols-3 gap-6">
+                    <div class="col-span-2 space-y-5">
+                        <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                            <h3 class="font-semibold text-slate-900 text-sm">Informação do contacto</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome *</label>
+                                    <input id="ctName" type="text" placeholder="Nome completo" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email *</label>
+                                    <input id="ctEmail" type="email" placeholder="email@exemplo.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Telefone</label>
+                                    <input id="ctPhone" type="text" placeholder="+351 9XX XXX XXX" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Empresa</label>
+                                    <input id="ctCompany" type="text" placeholder="Nome da empresa" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Estado</label>
+                                <select id="ctStatus" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                    <option value="active">Activo</option>
+                                    <option value="suppressed">Suprimido</option>
+                                    <option value="unsubscribed">Dessubscrito</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Sidebar direita (listas + perigo) -->
+                    <div class="space-y-4">
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas</h3>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2.5 text-sm cursor-pointer">
+                                    <input type="checkbox" class="rounded" checked /><span class="text-slate-700">Clientes Premium</span>
+                                </label>
+                                <label class="flex items-center gap-2.5 text-sm cursor-pointer">
+                                    <input type="checkbox" class="rounded" checked /><span class="text-slate-700">Newsletter Geral</span>
+                                </label>
+                                <label class="flex items-center gap-2.5 text-sm cursor-pointer">
+                                    <input type="checkbox" class="rounded" /><span class="text-slate-700">Leads — Test Drive</span>
+                                </label>
+                                <label class="flex items-center gap-2.5 text-sm cursor-pointer">
+                                    <input type="checkbox" class="rounded" /><span class="text-slate-700">Evento M Performance</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="contactEditDangerZone" class="bg-white border border-red-200 rounded-xl p-4">
+                            <h4 class="text-sm font-medium text-red-700 mb-2">Zona de perigo</h4>
+                            <button onclick="mockDeleteContact()" class="text-sm text-red-600 hover:text-red-800">Eliminar contacto</button>
+                        </div>
+                    </div>
+                </div>
+
             </main>
         </div>
     </div>
