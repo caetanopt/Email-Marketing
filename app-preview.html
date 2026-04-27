@@ -66,10 +66,116 @@
     }
     function mockDeleteTemplate(btn) {
         if (!confirm('Apagar este template?')) return;
-        btn.closest('.tmpl-card').remove();
+        const card = btn.closest('.tmpl-card');
+        const id = card?.getAttribute('data-tpl-id');
+        card?.remove();
+        // Also remove from list view
+        if (id) {
+            const listRow = document.querySelector(`#tplListBody [data-tpl-id="${id}"]`);
+            listRow?.remove();
+        }
         showToast('Template apagado.');
     }
-    function mockSaveTemplate() { showToast('Template guardado com sucesso.'); }
+    function mockSaveTemplate() {
+        const nameEl = document.querySelector('#templateEdit input[type=text]');
+        const name = nameEl?.value?.trim() || 'Template';
+        if (teTemplateId) {
+            teTemplateStates[teTemplateId] = JSON.parse(JSON.stringify(teState.blocks));
+            const card = document.querySelector(`[data-tpl-id="${teTemplateId}"]`);
+            if (card) {
+                const t = card.querySelector('p.font-semibold');
+                if (t) t.textContent = name;
+                const d = card.querySelector('p.text-xs.text-slate-400');
+                if (d) d.textContent = 'Editado agora';
+            }
+        } else {
+            const newId = 'tpl' + Date.now();
+            teTemplateId = newId;
+            teTemplateStates[newId] = JSON.parse(JSON.stringify(teState.blocks));
+            teAddTemplateCard(newId, name);
+        }
+        showToast('Template guardado com sucesso.');
+    }
+    function teEditTemplate(id) {
+        teTemplateId = id;
+        const saved = teTemplateStates[id];
+        const preset = teTemplatePresets[id];
+        teState.blocks = saved ? JSON.parse(JSON.stringify(saved)) : (preset ? preset() : []);
+        teState.selected = null;
+        showScreen('templateEdit');
+        const titleMap = { tpl1:'Newsletter Primavera 2026', tpl2:'Promoção Flash — Verão', tpl3:'Boas-vindas — Welcome' };
+        const nameEl = document.querySelector('#templateEdit input[type=text]');
+        if (nameEl) nameEl.value = titleMap[id] || '';
+        const h1El = document.querySelector('#templateEdit h1');
+        if (h1El) h1El.textContent = `Editar — ${titleMap[id] || 'Template'}`;
+        teSetMode('visual');
+        teRender();
+    }
+    function teNewTemplate() {
+        teTemplateId = null;
+        teState.blocks = [];
+        teState.selected = null;
+        showScreen('templateEdit');
+        const nameEl = document.querySelector('#templateEdit input[type=text]');
+        if (nameEl) nameEl.value = '';
+        const h1El = document.querySelector('#templateEdit h1');
+        if (h1El) h1El.textContent = 'Novo Template';
+        teSetMode('visual');
+        teRender();
+    }
+    function teAddTemplateCard(id, name) {
+        const grid = document.getElementById('tplGrid');
+        if (!grid) return;
+        const dummy = grid.querySelector('.border-dashed');
+        const grads = ['from-violet-50 to-purple-100','from-sky-50 to-blue-100','from-pink-50 to-rose-100','from-amber-50 to-orange-100','from-teal-50 to-green-100'];
+        const g = grads[Object.keys(teTemplateStates).length % grads.length];
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card';
+        card.setAttribute('data-tpl-id', id);
+        card.onclick = () => teEditTemplate(id);
+        card.innerHTML = `
+            <div class="h-40 bg-gradient-to-br ${g} flex items-center justify-center">
+                <div class="text-center px-6">
+                    <div class="w-12 h-1 bg-slate-300 rounded mx-auto mb-2"></div>
+                    <div class="w-20 h-2 bg-slate-200 rounded mx-auto mb-1"></div>
+                    <div class="w-16 h-1.5 bg-slate-100 rounded mx-auto"></div>
+                </div>
+            </div>
+            <div class="p-4">
+                <p class="font-semibold text-slate-900 text-sm">${name}</p>
+                <p class="text-xs text-slate-400 mt-1">Criado agora</p>
+                <div class="flex items-center gap-2 mt-3">
+                    <button onclick="event.stopPropagation();teEditTemplate('${id}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                </div>
+            </div>`;
+        if (dummy) grid.insertBefore(card, dummy);
+        else grid.appendChild(card);
+        // Also add to list view
+        const listBody = document.getElementById('tplListBody');
+        if (listBody) {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 cursor-pointer';
+            tr.setAttribute('data-tpl-id', id);
+            tr.onclick = () => teEditTemplate(id);
+            tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-900">${name}</td><td class="px-4 py-3 text-slate-500 text-xs">—</td><td class="px-4 py-3 text-xs text-slate-400">Criado agora</td><td class="px-4 py-3 text-right flex items-center justify-end gap-2"><button onclick="event.stopPropagation();teEditTemplate('${id}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button><button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button><button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button></td>`;
+            listBody.appendChild(tr);
+        }
+    }
+    // Templates view toggle (grid / list)
+    let teTplView = 'grid';
+    function teTplSetView(v) {
+        teTplView = v;
+        const gridEl = document.getElementById('tplGrid');
+        const listEl = document.getElementById('tplList');
+        const btnG = document.getElementById('tplBtnGrid');
+        const btnL = document.getElementById('tplBtnList');
+        if (gridEl) gridEl.style.display = v === 'grid' ? '' : 'none';
+        if (listEl) listEl.style.display = v === 'list' ? '' : 'none';
+        if (btnG) { btnG.classList.toggle('bg-slate-900',v==='grid'); btnG.classList.toggle('text-white',v==='grid'); btnG.classList.toggle('text-slate-500',v!=='grid'); }
+        if (btnL) { btnL.classList.toggle('bg-slate-900',v==='list'); btnL.classList.toggle('text-white',v==='list'); btnL.classList.toggle('text-slate-500',v!=='list'); }
+    }
     function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
 
     // ════════════════════════════════════════════════════════════════════
@@ -85,14 +191,14 @@
         columns2:'2 Colunas', columns3:'3 Colunas'
     };
     const teDefaults = {
-        header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', padding:24 },
-        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', padding:16 },
-        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:14, fontWeight:'400', align:'left', lineHeight:1.6, padding:16 },
-        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', padding:14 },
+        header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', paddingTop:24, paddingRight:24, paddingBottom:24, paddingLeft:24 },
+        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
+        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:14, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'Imagem', width:600, align:'center' },
-        divider: { color:'#e2e8f0', padding:8 },
+        divider: { color:'#e2e8f0', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
-        footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, padding:16 }
+        footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 }
     };
     const teFieldSchemas = {
         header:  ['text','bgColor','textColor','fontSize','fontWeight','align','padding'],
@@ -118,23 +224,45 @@
         align:      { label:'Alinhamento',   type:'select', options:[['left','Esquerda'],['center','Centro'],['right','Direita']] },
         level:      { label:'Nível',         type:'select', options:[['h1','H1'],['h2','H2'],['h3','H3']] },
         lineHeight: { label:'Altura linha',  type:'number',  step:'0.1' },
-        padding:    { label:'Padding (px)',  type:'number' },
+        padding:    { label:'Padding (px)',  type:'padding4' },
         height:     { label:'Altura (px)',   type:'number' }
     };
 
     let teNextId = 100;
     const teId   = () => 'b' + (++teNextId);
 
+    // Per-template isolated state
+    let teTemplateId = 'tpl1';
+    const teTemplateStates = {};
+    const teTemplatePresets = {
+        tpl1: () => [
+            { id:'b1', type:'header',  ...JSON.parse(JSON.stringify(teDefaults.header)),  text:'Caetano Retail' },
+            { id:'b2', type:'heading', ...JSON.parse(JSON.stringify(teDefaults.heading)), text:'Primavera 2026' },
+            { id:'b3', type:'text',    ...JSON.parse(JSON.stringify(teDefaults.text)),    text:'Olá {{first_name}}, descubra as ofertas seleccionadas para si.' },
+            { id:'b4', type:'button',  ...JSON.parse(JSON.stringify(teDefaults.button)),  text:'Ver ofertas' },
+            { id:'b5', type:'footer',  ...JSON.parse(JSON.stringify(teDefaults.footer)) }
+        ],
+        tpl2: () => [
+            { id:'c1', type:'header',  ...JSON.parse(JSON.stringify(teDefaults.header)),  text:'BMW Caetano', bgColor:'#1C69D4' },
+            { id:'c2', type:'image',   ...JSON.parse(JSON.stringify(teDefaults.image)),   src:'https://placehold.co/600x250?text=BMW+Promo' },
+            { id:'c3', type:'heading', ...JSON.parse(JSON.stringify(teDefaults.heading)), text:'Promoção Flash de Verão', color:'#e63946' },
+            { id:'c4', type:'text',    ...JSON.parse(JSON.stringify(teDefaults.text)),    text:'Condições exclusivas disponíveis apenas até ao final do mês de Verão.' },
+            { id:'c5', type:'button',  ...JSON.parse(JSON.stringify(teDefaults.button)),  text:'Aproveitar oferta', bgColor:'#e63946' },
+            { id:'c6', type:'footer',  ...JSON.parse(JSON.stringify(teDefaults.footer)),  bgColor:'#1A1A2E', color:'#94a3b8', text:'© 2026 BMW Caetano · Cancelar subscrição' }
+        ],
+        tpl3: () => [
+            { id:'d1', type:'header',  ...JSON.parse(JSON.stringify(teDefaults.header)),  text:'Bem-vindo(a)!', bgColor:'#10b981' },
+            { id:'d2', type:'heading', ...JSON.parse(JSON.stringify(teDefaults.heading)), text:'A tua conta foi criada', color:'#10b981' },
+            { id:'d3', type:'text',    ...JSON.parse(JSON.stringify(teDefaults.text)),    text:'Olá {{first_name}}! A tua conta na plataforma foi activada com sucesso. Explora todas as funcionalidades disponíveis.' },
+            { id:'d4', type:'button',  ...JSON.parse(JSON.stringify(teDefaults.button)),  text:'Aceder à plataforma', bgColor:'#10b981' },
+            { id:'d5', type:'footer',  ...JSON.parse(JSON.stringify(teDefaults.footer)) }
+        ]
+    };
+
     const teState = {
         selected: null,
         viewport: 'desktop',
-        blocks: [
-            { id:'b1', type:'header',  ...teDefaults.header,  text:'Caetano Retail' },
-            { id:'b2', type:'heading', ...teDefaults.heading, text:'Primavera 2026' },
-            { id:'b3', type:'text',    ...teDefaults.text,    text:'Olá {{first_name}}, descubra as ofertas seleccionadas para si.' },
-            { id:'b4', type:'button',  ...teDefaults.button,  text:'Ver ofertas' },
-            { id:'b5', type:'footer',  ...teDefaults.footer  }
-        ]
+        blocks: []
     };
 
     // ── Tree helpers ─────────────────────────────────────────────────
@@ -210,7 +338,7 @@
         const f = teFind(id);
         if (!f) return;
         // Coerce numbers
-        if (['fontSize','padding','width','height','lineHeight'].includes(key)) value = Number(value);
+        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','width','height','lineHeight'].includes(key)) value = Number(value);
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
@@ -264,6 +392,14 @@
         const m = document.getElementById('te_previewModal');
         m.classList.add('hidden');
         m.classList.remove('flex');
+    }
+
+    // ── Padding helpers ─────────────────────────────────────────────
+    function tePadding(b) {
+        return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
+    }
+    function teMjmlPad(b) {
+        return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
     }
 
     // ── Rendering ───────────────────────────────────────────────────
@@ -350,11 +486,11 @@
         const d = document.createElement('div');
         switch(b.type) {
             case 'header':
-                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${b.padding}px;`;
+                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${tePadding(b)};`;
                 d.textContent = b.text;
                 break;
             case 'heading': {
-                d.style.cssText = `background:${b.bgColor};padding:${b.padding}px;`;
+                d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
                 const h = document.createElement(b.level || 'h2');
                 h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;`;
                 h.textContent = b.text;
@@ -362,11 +498,11 @@
                 break;
             }
             case 'text':
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${b.padding}px;white-space:pre-wrap;`;
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${tePadding(b)};white-space:pre-wrap;`;
                 d.textContent = b.text;
                 break;
             case 'button':
-                d.style.cssText = `background:#ffffff;padding:${b.padding}px;text-align:center;`;
+                d.style.cssText = `background:#ffffff;padding:${tePadding(b)};text-align:center;`;
                 d.innerHTML = `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:6px;text-decoration:none;">${teEscape(b.text)}</a>`;
                 break;
             case 'image':
@@ -374,22 +510,44 @@
                 d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;" />`;
                 break;
             case 'divider':
-                d.style.cssText = `background:#ffffff;padding:${b.padding}px 16px;`;
+                d.style.cssText = `background:#ffffff;padding:${tePadding(b)};`;
                 d.innerHTML = `<hr style="border:none;border-top:1px solid ${b.color};margin:0;" />`;
                 break;
             case 'spacer':
                 d.style.cssText = `background:#ffffff;height:${b.height}px;`;
                 break;
             case 'footer':
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${b.padding}px;white-space:pre-wrap;`;
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};white-space:pre-wrap;`;
                 d.textContent = b.text;
                 break;
             case 'columns':
                 d.style.cssText = `display:flex;gap:8px;background:#ffffff;padding:8px;`;
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
-                    col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
+                    col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;border:2px dashed transparent;transition:border-color 0.15s,background 0.15s;';
+                    const colIdx = c;
                     const childArr = b.children[c] || [];
+                    // Column-level drop handler (catches drops not on specific drop zones)
+                    col.addEventListener('dragover', (ev) => {
+                        ev.preventDefault(); ev.stopPropagation();
+                        ev.dataTransfer.dropEffect = teDrag?.kind === 'block' ? 'move' : 'copy';
+                        col.style.borderColor = 'rgb(59,130,246)';
+                        col.style.background = 'rgba(59,130,246,0.04)';
+                    });
+                    col.addEventListener('dragleave', () => {
+                        col.style.borderColor = 'transparent';
+                        col.style.background = '';
+                    });
+                    col.addEventListener('drop', (ev) => {
+                        ev.preventDefault(); ev.stopPropagation();
+                        col.style.borderColor = 'transparent';
+                        col.style.background = '';
+                        if (!teDrag) return;
+                        const target = { kind:'col', parentId:b.id, colIdx, idx:childArr.length };
+                        if (teDrag.kind === 'palette') teInsertBlock(teDrag.type, target);
+                        else teMoveTo(teDrag.id, target);
+                        teDrag = null;
+                    });
                     col.appendChild(teMakeDropZone({ kind:'col', parentId:b.id, colIdx:c, idx:0 }));
                     childArr.forEach((child, ci) => {
                         col.appendChild(teRenderBlock(child));
@@ -397,8 +555,27 @@
                     });
                     if (childArr.length === 0) {
                         const ph = document.createElement('div');
-                        ph.className = 'border border-dashed border-slate-300 text-slate-400 text-xs text-center py-6 rounded';
+                        ph.style.cssText = 'border:2px dashed #cbd5e1;border-radius:4px;color:#94a3b8;font-size:11px;text-align:center;padding:20px 8px;transition:border-color 0.15s,background 0.15s;flex:1;';
                         ph.textContent = 'Solta blocos aqui';
+                        ph.addEventListener('dragover', (ev) => {
+                            ev.preventDefault(); ev.stopPropagation();
+                            ph.style.borderColor = 'rgb(59,130,246)';
+                            ph.style.background = 'rgba(59,130,246,0.06)';
+                        });
+                        ph.addEventListener('dragleave', () => {
+                            ph.style.borderColor = '#cbd5e1';
+                            ph.style.background = '';
+                        });
+                        ph.addEventListener('drop', (ev) => {
+                            ev.preventDefault(); ev.stopPropagation();
+                            ph.style.borderColor = '#cbd5e1';
+                            ph.style.background = '';
+                            if (!teDrag) return;
+                            const target = { kind:'col', parentId:b.id, colIdx, idx:0 };
+                            if (teDrag.kind === 'palette') teInsertBlock(teDrag.type, target);
+                            else teMoveTo(teDrag.id, target);
+                            teDrag = null;
+                        });
                         col.appendChild(ph);
                     }
                     d.appendChild(col);
@@ -442,6 +619,12 @@
     function teRenderField(b, key) {
         const f = teFields[key];
         if (!f) return '';
+        if (f.type === 'padding4') {
+            const PT = b.paddingTop  ?? 0, PR = b.paddingRight  ?? 0;
+            const PB = b.paddingBottom ?? 0, PL = b.paddingLeft ?? 0;
+            const inp4 = (k, lbl, val) => `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" value="${val}" oninput="teUpdateField('${b.id}','${k}',this.value)" onchange="teUpdateField('${b.id}','${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
+            return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><div class="grid grid-cols-2 gap-1">${inp4('paddingTop','Topo',PT)}${inp4('paddingRight','Dir.',PR)}${inp4('paddingBottom','Base',PB)}${inp4('paddingLeft','Esq.',PL)}</div></div>`;
+        }
         const v = b[key] ?? '';
         const handler = `oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)"`;
         let input;
@@ -477,8 +660,15 @@
         const lines = document.getElementById('te_mjmlLines');
         if (!code) return;
         const mjml = teBuildMjml();
-        code.textContent = mjml;
+        code.value = mjml;
         if (lines) lines.textContent = mjml.split('\n').map((_,i) => i+1).join('\n');
+    }
+    function teSyncMjmlLines() {
+        const code  = document.getElementById('te_mjmlCode');
+        const lines = document.getElementById('te_mjmlLines');
+        if (!code || !lines) return;
+        lines.textContent = code.value.split('\n').map((_,i) => i+1).join('\n');
+        lines.scrollTop = code.scrollTop;
     }
     function teBuildMjml() {
         const body = teState.blocks.map(b => teBlockToMjml(b, '    ')).join('\n');
@@ -498,21 +688,21 @@ ${body}
         const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${b.text}</mj-text>`;
         switch(b.type) {
             case 'header':
-                return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+                return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'heading':
-                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'text':
-                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight), ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'button':
-                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`, ` padding="${b.padding}px"`);
+                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
             case 'image':
                 return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align}" />`);
             case 'divider':
-                return wrap(`${i}    <mj-divider border-color="${b.color}" />`, ` padding="${b.padding}px"`);
+                return wrap(`${i}    <mj-divider border-color="${b.color}" />`, ` padding="${teMjmlPad(b)}"`);
             case 'spacer':
                 return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
             case 'footer':
-                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${b.text}</mj-text>`, ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${b.text}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'columns': {
                 const cols = b.children.map((children) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
@@ -527,14 +717,14 @@ ${body}
         switch(b.type) {
             case 'text': case 'header': case 'heading': case 'footer': {
                 const c = b.color || b.textColor || '#000';
-                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}">${b.text}</mj-text>`;
+                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" padding="${teMjmlPad(b)}">${b.text}</mj-text>`;
             }
             case 'button':
-                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`;
+                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
             case 'image':
                 return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" />`;
             case 'divider':
-                return `${i}<mj-divider border-color="${b.color}" />`;
+                return `${i}<mj-divider border-color="${b.color}" padding="${teMjmlPad(b)}" />`;
             case 'spacer':
                 return `${i}<mj-spacer height="${b.height}px" />`;
         }
@@ -858,7 +1048,18 @@ ${body}
     document.addEventListener('DOMContentLoaded', () => {
         injectSidebar();
         showScreen('login');
+        // Load tpl1 preset as initial editor state
+        if (typeof teTemplatePresets !== 'undefined') {
+            teState.blocks = teTemplatePresets.tpl1();
+        }
         if (typeof teRender === 'function') teRender();
+        // Sync MJML line numbers with textarea scroll
+        document.addEventListener('scroll', (ev) => {
+            if (ev.target && ev.target.id === 'te_mjmlCode') {
+                const lines = document.getElementById('te_mjmlLines');
+                if (lines) lines.scrollTop = ev.target.scrollTop;
+            }
+        }, true);
     });
 
     function _showFileFilled(name) {
@@ -1113,7 +1314,7 @@ ${body}
                                 <span class="w-8 h-8 bg-green-100 text-green-700 rounded-lg flex items-center justify-center">📢</span>
                                 Nova campanha
                             </a>
-                            <a onclick="showScreen('templateEdit')" data-nav class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 text-sm text-slate-700">
+                            <a onclick="teNewTemplate()" data-nav class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 text-sm text-slate-700">
                                 <span class="w-8 h-8 bg-purple-100 text-purple-700 rounded-lg flex items-center justify-center">🎨</span>
                                 Novo template MJML
                             </a>
@@ -1726,12 +1927,28 @@ ${body}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Templates</h1>
-                <button onclick="showScreen('templateEdit')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Template</button>
+                <div class="flex items-center gap-3">
+                    <!-- View toggle -->
+                    <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                        <button id="tplBtnGrid" type="button" onclick="teTplSetView('grid')"
+                                class="px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors bg-slate-900 text-white"
+                                title="Vista em grelha">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                        </button>
+                        <button id="tplBtnList" type="button" onclick="teTplSetView('list')"
+                                class="px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500"
+                                title="Vista em lista">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                        </button>
+                    </div>
+                    <button onclick="teNewTemplate()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Template</button>
+                </div>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="grid grid-cols-3 gap-5">
-                    <!-- Template card -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" onclick="showScreen('templateEdit')">
+                <!-- ── Grid view ── -->
+                <div id="tplGrid" class="grid grid-cols-3 gap-5">
+                    <!-- Template card 1 -->
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl1" onclick="teEditTemplate('tpl1')">
                         <div class="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-blue-300 rounded mx-auto mb-2"></div>
@@ -1743,13 +1960,14 @@ ${body}
                             <p class="font-semibold text-slate-900 text-sm">Newsletter Primavera 2026</p>
                             <p class="text-xs text-slate-400 mt-1">Editado em 17/04/2026</p>
                             <div class="flex items-center gap-2 mt-3">
-                                <button onclick="event.stopPropagation();showScreen('templateEdit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                <button onclick="event.stopPropagation();teEditTemplate('tpl1')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
                                 <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
                                 <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" onclick="showScreen('templateEdit')">
+                    <!-- Template card 2 -->
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl2" onclick="teEditTemplate('tpl2')">
                         <div class="h-40 bg-gradient-to-br from-orange-50 to-red-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-orange-300 rounded mx-auto mb-2"></div>
@@ -1761,13 +1979,14 @@ ${body}
                             <p class="font-semibold text-slate-900 text-sm">Promoção Flash — Verão</p>
                             <p class="text-xs text-slate-400 mt-1">Editado em 02/03/2026</p>
                             <div class="flex items-center gap-2 mt-3">
-                                <button onclick="event.stopPropagation();showScreen('templateEdit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                <button onclick="event.stopPropagation();teEditTemplate('tpl2')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
                                 <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
                                 <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" onclick="showScreen('templateEdit')">
+                    <!-- Template card 3 -->
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl3" onclick="teEditTemplate('tpl3')">
                         <div class="h-40 bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-green-300 rounded mx-auto mb-2"></div>
@@ -1779,14 +1998,14 @@ ${body}
                             <p class="font-semibold text-slate-900 text-sm">Boas-vindas — Welcome</p>
                             <p class="text-xs text-slate-400 mt-1">Editado em 15/01/2026</p>
                             <div class="flex items-center gap-2 mt-3">
-                                <button onclick="event.stopPropagation();showScreen('templateEdit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                <button onclick="event.stopPropagation();teEditTemplate('tpl3')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
                                 <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
                                 <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                             </div>
                         </div>
                     </div>
-                    <!-- Empty state card -->
-                    <div class="bg-white border-2 border-dashed border-slate-200 rounded-xl h-48 flex items-center justify-center cursor-pointer hover:border-slate-400 transition-colors" onclick="showScreen('templateEdit')">
+                    <!-- New template card -->
+                    <div class="bg-white border-2 border-dashed border-slate-200 rounded-xl h-48 flex items-center justify-center cursor-pointer hover:border-slate-400 transition-colors" onclick="teNewTemplate()">
                         <div class="text-center">
                             <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2">
                                 <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -1794,6 +2013,52 @@ ${body}
                             <p class="text-sm text-slate-500">Novo template</p>
                         </div>
                     </div>
+                </div>
+
+                <!-- ── List view ── -->
+                <div id="tplList" class="bg-white border border-slate-200 rounded-xl overflow-hidden" style="display:none">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Nome</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Descrição</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Editado em</th>
+                                <th class="px-4 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="tplListBody" class="divide-y divide-slate-100">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl1" onclick="teEditTemplate('tpl1')">
+                                <td class="px-4 py-3 font-medium text-slate-900">Newsletter Primavera 2026</td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">Newsletter trimestral com ofertas de Primavera</td>
+                                <td class="px-4 py-3 text-xs text-slate-400">17/04/2026</td>
+                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                                    <button onclick="event.stopPropagation();teEditTemplate('tpl1')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl2" onclick="teEditTemplate('tpl2')">
+                                <td class="px-4 py-3 font-medium text-slate-900">Promoção Flash — Verão</td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">Campanha de promoção sazonal de Verão</td>
+                                <td class="px-4 py-3 text-xs text-slate-400">02/03/2026</td>
+                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                                    <button onclick="event.stopPropagation();teEditTemplate('tpl2')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl3" onclick="teEditTemplate('tpl3')">
+                                <td class="px-4 py-3 font-medium text-slate-900">Boas-vindas — Welcome</td>
+                                <td class="px-4 py-3 text-slate-500 text-xs">Email automático enviado após registo</td>
+                                <td class="px-4 py-3 text-xs text-slate-400">15/01/2026</td>
+                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                                    <button onclick="event.stopPropagation();teEditTemplate('tpl3')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </main>
         </div>
@@ -1976,9 +2241,9 @@ ${body}
                                     Compilado
                                 </span>
                             </div>
-                            <div class="flex-1 overflow-auto flex font-mono text-xs leading-[1.6]">
-                                <pre id="te_mjmlLines" class="bg-[#21252b] text-slate-500 text-right px-3 py-3 select-none border-r border-slate-700"></pre>
-                                <pre id="te_mjmlCode" class="px-3 py-3 text-slate-300 flex-1 whitespace-pre"></pre>
+                            <div class="flex-1 overflow-hidden flex font-mono text-xs leading-[1.6]">
+                                <pre id="te_mjmlLines" class="bg-[#21252b] text-slate-500 text-right px-3 py-3 select-none border-r border-slate-700 overflow-hidden"></pre>
+                                <textarea id="te_mjmlCode" spellcheck="false" oninput="teSyncMjmlLines()" class="px-3 py-3 text-slate-300 flex-1 bg-transparent border-none outline-none resize-none whitespace-pre overflow-auto" style="font-family:inherit;font-size:inherit;line-height:inherit;tab-size:2;"></textarea>
                             </div>
                         </div>
                     </div>
