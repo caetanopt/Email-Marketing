@@ -60,7 +60,7 @@ class TemplateController extends Controller
     public function edit(Template $template): Response
     {
         return Inertia::render('Templates/Edit', [
-            'template'   => $template->only('id', 'name', 'description', 'mjml_source', 'content_text', 'is_shared', 'compile_error', 'compiled_at'),
+            'template'   => $template->only('id', 'name', 'description', 'mjml_source', 'content_text', 'is_shared', 'compile_error', 'compiled_at', 'builder_data'),
             'isCreating' => false,
         ]);
     }

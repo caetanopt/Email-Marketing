@@ -15,7 +15,7 @@ class Template extends Model
 
     protected $fillable = [
         'brand_id', 'name', 'description',
-        'mjml_source', 'compiled_html', 'content_text',
+        'mjml_source', 'compiled_html', 'content_text', 'builder_data',
         'compiled_at', 'compile_error',
         'thumbnail_path', 'is_shared', 'created_by',
     ];
@@ -23,8 +23,9 @@ class Template extends Model
     protected function casts(): array
     {
         return [
-            'is_shared'   => 'boolean',
-            'compiled_at' => 'datetime',
+            'is_shared'    => 'boolean',
+            'compiled_at'  => 'datetime',
+            'builder_data' => 'array',
         ];
     }
 

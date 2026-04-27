@@ -16,6 +16,7 @@ class StoreTemplateRequest extends FormRequest
             'mjml_source'  => ['required', 'string', 'min:10'],
             'content_text' => ['nullable', 'string'],
             'is_shared'    => ['boolean'],
+            'builder_data' => ['nullable', 'array'],
         ];
     }
 }
