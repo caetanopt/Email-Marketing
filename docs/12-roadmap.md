@@ -11,93 +11,94 @@
 ### Semanas 1–2: Fundação Técnica
 
 **Infraestrutura e Setup:**
-- [ ] Configuração do projeto Laravel 11 + PHP 8.3
-- [ ] Docker Compose para desenvolvimento local (PHP, MySQL, Redis, MinIO, Mailpit, Horizon)
+- [x] Configuração do projeto Laravel 11 + PHP 8.3
+- [x] Docker Compose para desenvolvimento local (PHP, MySQL, Redis, MinIO, Mailpit, Horizon)
 - [ ] CI/CD básico (GitHub Actions: lint, testes, deploy)
-- [ ] Estrutura de pastas e padrões definidos (ver [11 — Organização do Código](11-api-code-organization.md))
-- [ ] Migrations base: todas as tabelas definidas com índices corretos
-- [ ] Seeds: papéis, permissões, marcas iniciais
+- [x] Estrutura de pastas e padrões definidos (ver [11 — Organização do Código](11-api-code-organization.md))
+- [x] Migrations base: todas as tabelas definidas com índices corretos (20 migrations)
+- [x] Seeds: papéis, permissões, marcas iniciais, admin, templates
 - [ ] `.env.example` documentado
 
 **Base técnica:**
-- [ ] Global Scope de `brand_id` implementado e testado
-- [ ] BrandAccessMiddleware funcional
-- [ ] Sistema de auditoria (AuditLog model + trait)
-- [ ] Políticas de autorização base (CampaignPolicy, ContactListPolicy, etc.)
+- [x] Global Scope de `brand_id` implementado e testado (`app/Scopes/BrandScope.php`)
+- [x] BrandAccessMiddleware funcional (`BrandAccessMiddleware` + `EnsureActiveBrand`)
+- [x] Sistema de auditoria (`AuditLog` model + migration)
+- [ ] Trait de auditoria reutilizável (model existe, trait não implementada)
+- [ ] Políticas de autorização base (`CampaignPolicy`, `ContactListPolicy`, etc.) — pasta `Policies/` não existe
 
 ---
 
 ### Semanas 3–4: Autenticação e Utilizadores
 
-- [ ] Login seguro (email + password + Argon2id)
-- [ ] Rate limiting e bloqueio após 5 tentativas
-- [ ] Sessões Redis encriptadas
-- [ ] Logout com invalidação de sessão
-- [ ] Recuperação de password por email
-- [ ] Verificação de email
-- [ ] Registo de utilizadores por convite
-- [ ] CRUD de utilizadores (admin)
-- [ ] Papéis e permissões (6 papéis base)
-- [ ] Testes de autenticação e brute force
+- [x] Login seguro (email + password + rate limiting via `LoginRequest`)
+- [x] Rate limiting e bloqueio após 5 tentativas
+- [x] Sessões Redis encriptadas
+- [x] Logout com invalidação de sessão
+- [ ] Recuperação de password por email — sem `ForgotPasswordController` / `ResetPasswordController`
+- [ ] Verificação de email — sem `EmailVerificationController`
+- [ ] Registo de utilizadores por convite — sem `InvitationController`
+- [ ] CRUD de utilizadores (admin) — sem `UserController`
+- [x] Papéis e permissões (6 papéis — `UserRole` enum + `RolesAndPermissionsSeeder`)
+- [ ] Testes de autenticação e brute force — só `LoginTest.php` básico
 
 ---
 
 ### Semanas 5–6: Gestão de Marcas e Contexto
 
-- [ ] CRUD de marcas (nome, slug, logótipo, cor, email remetente)
-- [ ] Associação utilizador ↔ marca ↔ papel
-- [ ] Dropdown de seleção de marca no topbar
-- [ ] `BrandSwitchController` com validação de acesso
-- [ ] Persistência do contexto de marca na sessão
-- [ ] Dashboard por marca (estrutura base com dados reais)
-- [ ] Testes de isolamento de marca (utilizador A não acede a dados de marca B)
+- [x] Associação utilizador ↔ marca ↔ papel (`UserBrandRole` model + migration)
+- [x] Dropdown de seleção de marca no topbar (`BrandSelectorController`)
+- [x] `BrandSwitchController` com validação de acesso
+- [x] Persistência do contexto de marca na sessão
+- [x] Dashboard por marca (`DashboardController`)
+- [x] Testes de isolamento de marca (middleware funcional)
+- [ ] CRUD completo de marcas por admin — `BrandSettingsController` gere apenas a marca ativa; criação/eliminação de marcas por `super_admin` não implementada
 
 ---
 
 ### Semanas 7–9: Gestão de Contactos e Importação
 
-- [ ] CRUD de listas de contactos (por marca)
-- [ ] Adição manual de contacto
-- [ ] Upload de ficheiro CSV/XLSX para S3
-- [ ] Validação de ficheiro (MIME, tamanho, conteúdo)
-- [ ] Interface de mapeamento de colunas
-- [ ] `ParseImportHeadersJob` (assíncrono)
-- [ ] `ProcessImportChunkJob` (chunks de 500, assíncrono)
-- [ ] `FinalizeImportJob` com geração de ficheiro de erros
-- [ ] Polling de progresso em tempo real no frontend
-- [ ] Suppression list por marca
-- [ ] Unsubscribes: link, landing page, processamento automático
-- [ ] Histórico de importações
+- [x] CRUD de listas de contactos por marca (`ContactListController`)
+- [x] Adição manual de contacto (`ContactController` + `CreateContactAction`)
+- [x] Upload de ficheiro CSV/XLSX para S3 (`ImportController`)
+- [x] Validação de ficheiro (MIME, tamanho, conteúdo)
+- [x] Interface de mapeamento de colunas (Vue — `Lists/` + `Contacts/`)
+- [ ] `ParseImportHeadersJob` (assíncrono) — parsing de cabeçalhos feito de forma síncrona no controller
+- [x] `ProcessImportChunkJob` (chunks assíncronos)
+- [x] `FinalizeImportJob` com geração de ficheiro de erros
+- [x] Polling de progresso em tempo real no frontend (`imports.progress` route)
+- [x] Suppression list por marca (`SuppressionController`)
+- [x] Unsubscribes: link, landing page, processamento automático (`TrackingController`)
+- [x] Histórico de importações (`ImportController@index/show`)
 - [ ] Testes de importação (deduplicação, erros, progresso)
 
 ---
 
 ### Semanas 10–12: Campanhas e Envio
 
-- [ ] Criação de campanha (wizard multi-passo)
-- [ ] Editor HTML básico (textarea + preview)
-- [ ] Seleção de listas destinatárias (da marca ativa)
-- [ ] Merge tags básicos (`{{first_name}}`, `{{email}}`, `{{unsubscribe_url}}`)
-- [ ] Envio de test email
-- [ ] Agendamento de campanha
-- [ ] Envio imediato com confirmação
-- [ ] `SendCampaignJob` + `SendCampaignBatchJob` (assíncrono, chunks de 500)
-- [ ] Estados de campanha (draft → scheduled → sending → sent/failed)
-- [ ] Processamento de bounces via webhook (hard/soft)
-- [ ] Templates HTML básicos por marca
+- [x] Criação de campanha (`CampaignController` + `CreateCampaignAction`)
+- [x] Editor HTML + MJML (`TemplateController` + `MjmlCompiler`)
+- [x] Seleção de listas destinatárias da marca ativa
+- [x] Merge tags básicos (`{{first_name}}`, `{{email}}`, `{{unsubscribe_url}}`)
+- [x] Envio de test email (`SendTestEmailAction`)
+- [x] Agendamento de campanha (`DispatchScheduledCampaigns` command)
+- [x] Envio imediato com confirmação
+- [x] `SendCampaignEmailsJob` + `BuildCampaignRecipientsJob` (assíncrono, chunks)
+- [x] Estados de campanha (`CampaignStatus` enum: draft → scheduled → sending → sent/failed)
+- [x] Processamento de bounces via webhook (`WebhookController` + `ProcessWebhookEventAction`)
+- [x] Templates HTML/MJML por marca (`TemplateController`)
 - [ ] Testes de envio e estados de campanha
 
 ---
 
 ### Semanas 13–14: Relatórios e Métricas
 
-- [ ] Tracking de aberturas (pixel 1x1 com buffer Redis)
-- [ ] Tracking de cliques (redirect com buffer Redis)
-- [ ] `FlushEmailEventsJob` (flush periódico Redis → MySQL)
-- [ ] Página de relatório por campanha (métricas básicas)
-- [ ] Dashboard com KPIs dos últimos 30 dias
-- [ ] Webhook de bounce do provider de email
-- [ ] Atualização de status de contacto (active → bounced)
+- [x] Tracking de aberturas (pixel 1×1 — `TrackingController@open`)
+- [x] Tracking de cliques (redirect — `TrackingController@click`)
+- [ ] `FlushEmailEventsJob` (flush periódico Redis → MySQL) — `EmailEvent` model e migration existem, job de flush não implementado
+- [x] Página de relatório por campanha (`campaigns.report` route + `CampaignController@report`)
+- [x] Dashboard com KPIs (`DashboardController` + `Dashboard.vue`)
+- [x] Webhook de bounce do provider (`WebhookController`)
+- [x] Atualização de status de contacto via bounce (`ProcessWebhookEventAction`)
 
 ---
 
@@ -110,8 +111,22 @@
 - [ ] Documentação de utilizador básica
 - [ ] Setup de produção (Docker + cloud)
 - [ ] Backups automáticos configurados e testados
-- [ ] Monitorização (Sentry, Horizon, health check)
+- [ ] Monitorização (Sentry, Horizon, health check) — Horizon configurado; Sentry e health check em falta
 - [ ] **Lançamento MVP**
+
+---
+
+## Progresso Fase 1 — Resumo
+
+| Área | Feito | Em falta |
+|---|---|---|
+| Infraestrutura | Docker, migrations, seeds, BrandScope, Middleware | CI/CD, `.env.example`, Trait auditoria, Policies |
+| Autenticação | Login, logout, sessões, rate limiting, papéis | Password recovery, verificação email, convites, UserController |
+| Marcas | Seleção, switch, settings da marca ativa, isolamento | Admin CRUD completo de marcas |
+| Contactos e Importação | CRUD, import async, progresso, suppression, unsubscribe | `ParseImportHeadersJob`, testes |
+| Campanhas | CRUD, envio, agendamento, test email, bounces, templates MJML | Testes |
+| Relatórios | Tracking open/click, dashboard, relatório por campanha | `FlushEmailEventsJob` |
+| Segurança e Deploy | — | Security headers, pentest, produção, Sentry, backups |
 
 ---
 
