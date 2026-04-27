@@ -1,7 +1,13 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+
+// CodeMirror 6
+import { EditorView, basicSetup } from 'codemirror';
+import { EditorState }            from '@codemirror/state';
+import { xml }                    from '@codemirror/lang-xml';
+import { oneDark }                from '@codemirror/theme-one-dark';
 
 const props = defineProps({
     template:   { type: Object, default: null },
@@ -16,13 +22,54 @@ const form = useForm({
     is_shared:    props.template?.is_shared    ?? false,
 });
 
-// Preview state
+// ── CodeMirror ────────────────────────────────────────────────────────────────
+const editorEl  = ref(null);
+let   cmView    = null;
+let   skipWatch = false;
+
+onMounted(() => {
+    const updateListener = EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+            skipWatch = true;
+            form.mjml_source = update.state.doc.toString();
+            skipWatch = false;
+        }
+    });
+
+    cmView = new EditorView({
+        state: EditorState.create({
+            doc: form.mjml_source,
+            extensions: [
+                basicSetup,
+                xml(),
+                oneDark,
+                updateListener,
+                EditorView.lineWrapping,
+            ],
+        }),
+        parent: editorEl.value,
+    });
+});
+
+onBeforeUnmount(() => cmView?.destroy());
+
+// Keep editor in sync when form value changes externally
+watch(() => form.mjml_source, (val) => {
+    if (skipWatch || !cmView) return;
+    const current = cmView.state.doc.toString();
+    if (current !== val) {
+        cmView.dispatch({
+            changes: { from: 0, to: current.length, insert: val },
+        });
+    }
+});
+
+// ── Live preview ──────────────────────────────────────────────────────────────
 const previewHtml  = ref('');
 const previewError = ref(props.template?.compile_error ?? '');
 const isCompiling  = ref(false);
 let debounceTimer  = null;
 
-// Auto-preview com debounce 600ms
 watch(() => form.mjml_source, (mjml) => {
     previewError.value = '';
     clearTimeout(debounceTimer);
@@ -33,8 +80,11 @@ watch(() => form.mjml_source, (mjml) => {
         try {
             const res  = await fetch(route('templates.preview'), {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
-                body:    JSON.stringify({ mjml }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+                body: JSON.stringify({ mjml }),
             });
             const json = await res.json();
             if (json.html) {
@@ -51,6 +101,7 @@ watch(() => form.mjml_source, (mjml) => {
     }, 600);
 });
 
+// ── Submit ────────────────────────────────────────────────────────────────────
 const submit = () => {
     props.isCreating
         ? form.post(route('templates.store'))
@@ -105,14 +156,17 @@ function defaultMjml() {
     <AppLayout :title="isCreating ? 'Novo Template' : `Editar — ${template?.name}`">
         <form @submit.prevent="submit">
             <div class="grid grid-cols-2 gap-6 h-[calc(100vh-120px)]">
-                <!-- ── Editor (esquerda) ──────────────────────────────── -->
+
+                <!-- ── Editor (esquerda) ─────────────────────────────── -->
                 <div class="flex flex-col gap-4 overflow-y-auto pr-1">
+
                     <!-- Metadados -->
                     <div class="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
                             <input v-model="form.name" type="text" required
-                                   :class="['w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900', form.errors.name ? 'border-red-400' : 'border-slate-200']" />
+                                   :class="['w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900',
+                                            form.errors.name ? 'border-red-400' : 'border-slate-200']" />
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
@@ -127,32 +181,47 @@ function defaultMjml() {
                     </div>
 
                     <!-- Editor MJML -->
-                    <div class="bg-white border border-slate-200 rounded-xl flex-1 flex flex-col min-h-0">
-                        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-                            <h3 class="text-sm font-medium text-slate-700">MJML Source</h3>
-                            <span v-if="isCompiling" class="text-xs text-slate-400 flex items-center gap-1">
-                                <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                                A compilar…
-                            </span>
-                            <span v-else-if="previewError" class="text-xs text-red-500">Erro de compilação</span>
-                            <span v-else-if="previewHtml" class="text-xs text-green-600">✓ Compilado</span>
+                    <div class="bg-[#282c34] border border-slate-700 rounded-xl flex-1 flex flex-col min-h-0 overflow-hidden">
+                        <!-- Barra de título -->
+                        <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-[#21252b]">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-mono font-semibold text-slate-300">MJML</span>
+                                <span class="text-xs text-slate-500">· XML</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span v-if="isCompiling" class="text-xs text-slate-400 flex items-center gap-1">
+                                    <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                                    </svg>
+                                    A compilar…
+                                </span>
+                                <span v-else-if="previewError" class="text-xs text-red-400 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Erro de compilação
+                                </span>
+                                <span v-else-if="previewHtml" class="text-xs text-green-400 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    Compilado
+                                </span>
+                            </div>
                         </div>
-                        <textarea
-                            v-model="form.mjml_source"
-                            spellcheck="false"
-                            :class="[
-                                'flex-1 p-4 font-mono text-xs resize-none focus:outline-none rounded-b-xl',
-                                previewError ? 'bg-red-50' : 'bg-slate-50'
-                            ]"
-                        />
+
+                        <!-- CodeMirror mount point -->
+                        <div ref="editorEl" class="flex-1 overflow-auto text-sm" />
                     </div>
 
                     <!-- Erro de compilação -->
-                    <div v-if="previewError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 font-mono whitespace-pre-wrap">
+                    <div v-if="previewError"
+                         class="bg-red-950 border border-red-800 rounded-lg p-3 text-xs text-red-300 font-mono whitespace-pre-wrap">
                         {{ previewError }}
                     </div>
 
-                    <!-- Texto alternativo -->
+                    <!-- Texto plain-text -->
                     <div class="bg-white border border-slate-200 rounded-xl p-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Texto Plain-text (opcional)</label>
                         <textarea v-model="form.content_text" rows="4"
@@ -170,7 +239,7 @@ function defaultMjml() {
                     </div>
                 </div>
 
-                <!-- ── Preview (direita) ──────────────────────────────── -->
+                <!-- ── Preview (direita) ─────────────────────────────── -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
                     <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
                         <div class="w-3 h-3 rounded-full bg-red-400"></div>
@@ -196,7 +265,23 @@ function defaultMjml() {
                         </div>
                     </div>
                 </div>
+
             </div>
         </form>
     </AppLayout>
 </template>
+
+<style>
+/* Make the CodeMirror editor fill its container */
+.cm-editor {
+    height: 100%;
+    font-size: 13px;
+}
+.cm-editor.cm-focused {
+    outline: none;
+}
+.cm-scroller {
+    font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Menlo', monospace;
+    line-height: 1.6;
+}
+</style>
