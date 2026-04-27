@@ -65,8 +65,11 @@
         { id:'dacia',       name:'Dacia',          color:'#FFBE00' },
         { id:'caetanoparts',name:'Caetano Parts',  color:'#E63946' },
     ];
-    let _dupSrcId = null, _dupBrandSel = null;
+    let _dupSrcId = null, _dupBrandSel = null, _dupMode = 'template';
     function mockDuplicateTemplate(btn) {
+        _dupMode = 'template';
+        const t = document.getElementById('dupModalTitle'); if (t) t.textContent='Duplicar Template';
+        const d = document.getElementById('dupModalDesc'); if (d) d.textContent='Selecciona a marca de destino onde o template será duplicado.';
         const card = btn.closest('.tmpl-card');
         _dupSrcId = card?.getAttribute('data-tpl-id') || teTemplateId;
         _dupBrandSel = null;
@@ -99,6 +102,11 @@
     function dupBrandConfirm() {
         if (!_dupBrandSel) { showToast('Selecciona uma marca de destino.', 'error'); return; }
         const brand = _dupBrands.find(b => b.id === _dupBrandSel);
+        if (_dupMode === 'campaign') {
+            dupBrandCancel();
+            showToast(`Campanha duplicada para ${brand.name}. Disponível em Rascunhos.`);
+            return;
+        }
         const newId = 'tpl' + Date.now();
         const srcSaved = teTemplateStates[_dupSrcId];
         const srcPreset = teTemplatePresets[_dupSrcId];
@@ -903,23 +911,154 @@ ${body}
     }
 
     // ── Campaigns ─────────────────────────────────────────
-    let _wizStep = 2;
+    let _wizStep = 1;
+    let _currentCampStatus = 'sent';
+    const _checkSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`;
+
+    function wizShowStep(step) {
+        _wizStep = step;
+        const labels = ['Detalhes', 'Template', 'Revisão'];
+        [1,2,3].forEach(s => {
+            const stepDiv = document.getElementById('wizStep'+s);
+            if (stepDiv) stepDiv.classList.toggle('hidden', s !== step);
+            const dot = document.getElementById('wizDot'+s);
+            if (dot) {
+                if (s < step) { dot.className='w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-green-500 text-white'; dot.innerHTML=_checkSvg; }
+                else if (s===step) { dot.className='w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-900 text-white'; dot.textContent=s; }
+                else { dot.className='w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500'; dot.textContent=s; }
+            }
+            if (s < 3) { const ln = document.getElementById('wizLine'+s); if (ln) { ln.className='flex-1 h-px '+(s<step?'bg-green-500':'bg-slate-200'); } }
+        });
+        const lbl = document.getElementById('wizStepLabel'); if (lbl) lbl.textContent = labels[step-1];
+        const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===3 ? 'Criar Campanha' : 'Seguinte →';
+        const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.visibility = step===1 ? 'hidden' : 'visible';
+        if (step === 3) {
+            const name = document.getElementById('wizName')?.value || 'Nova Campanha';
+            const subj = document.getElementById('wizSubject')?.value || '—';
+            const fn   = document.getElementById('wizFromName')?.value || 'BMW Caetano';
+            const fe   = document.getElementById('wizFromEmail')?.value || 'bmw@caetano.pt';
+            const rev  = document.getElementById('wizReviewContent');
+            if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Nome</dt><dd class="font-medium text-slate-900">${name}</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Template</dt><dd class="text-slate-900">Newsletter Base BMW</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Assunto</dt><dd class="text-slate-900">${subj}</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">BMW Clientes Premium</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Remetente</dt><dd class="text-slate-900">${fn} &lt;${fe}&gt;</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">~ 3 421 contactos</dd></div></dl>`;
+        }
+    }
+
+    function wizSelectTemplate(el) {
+        document.querySelectorAll('#wizStep2 > div').forEach(d => {
+            d.classList.remove('border-slate-900'); d.classList.add('border-slate-200');
+            const dot = d.querySelector('div.rounded-full'); if (dot) dot.innerHTML='';
+        });
+        el.classList.remove('border-slate-200'); el.classList.add('border-slate-900');
+        const dot = el.querySelector('div.rounded-full');
+        if (dot) dot.innerHTML = '<div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div>';
+    }
+
     function mockCampaignNext() {
-        if (_wizStep >= 3) { showScreen('campaigns'); showToast('Campanha criada!'); _wizStep = 2; return; }
-        _wizStep++;
-        showToast(_wizStep === 3 ? 'Passo 3 — Revisão e envio.' : 'Passo seguinte.');
+        if (_wizStep === 1) {
+            const name = document.getElementById('wizName')?.value.trim();
+            const subj = document.getElementById('wizSubject')?.value.trim();
+            if (!name) { showToast('O nome da campanha é obrigatório.', 'error'); return; }
+            if (!subj) { showToast('O assunto é obrigatório.', 'error'); return; }
+            wizShowStep(2); return;
+        }
+        if (_wizStep === 2) { wizShowStep(3); return; }
+        if (_wizStep === 3) {
+            const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
+            if (sendType === 'schedule') {
+                const d = document.getElementById('wizScheduleDate')?.value;
+                const t = document.getElementById('wizScheduleTime')?.value;
+                if (!d || !t) { showToast('Escolhe a data e hora de agendamento.', 'error'); return; }
+                showScreen('campaigns'); showToast(`Campanha agendada para ${d} às ${t}!`);
+            } else if (sendType === 'draft') {
+                showScreen('campaigns'); showToast('Campanha guardada como rascunho.');
+            } else {
+                showScreen('campaigns'); showToast('Campanha criada e enviada com sucesso!');
+            }
+            wizShowStep(1);
+        }
     }
-    function mockCampaignPrev() {
-        if (_wizStep <= 1) return;
-        _wizStep--;
-        showToast('Passo anterior.');
+    function mockCampaignPrev() { if (_wizStep > 1) wizShowStep(_wizStep - 1); }
+
+    function showCampaign(status) {
+        _currentCampStatus = status || 'sent';
+        const act = document.getElementById('campShowActions');
+        if (act) {
+            if (_currentCampStatus === 'draft') {
+                act.innerHTML = `<button onclick="showScreen('campaignCreate')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                    <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
+                    <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
+            } else if (_currentCampStatus === 'scheduled') {
+                act.innerHTML = `<button onclick="showScreen('campaignCreate')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                    <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>
+                    <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
+            } else {
+                act.innerHTML = `<button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
+                    <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
+            }
+        }
+        const badge = document.getElementById('campStatusBadge');
+        if (badge) {
+            const cfg = {draft:['bg-slate-100 text-slate-600','Rascunho'],scheduled:['bg-blue-100 text-blue-700','Agendada'],sending:['bg-yellow-100 text-yellow-700','A enviar'],sent:['bg-green-100 text-green-700','Enviada'],failed:['bg-red-100 text-red-700','Falhou']};
+            const [cls,lbl] = cfg[_currentCampStatus]||cfg.sent;
+            badge.className=`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`; badge.textContent=lbl;
+        }
+        const sp = document.getElementById('campSendPanel');
+        if (sp) sp.classList.toggle('hidden', _currentCampStatus === 'sent');
+        showScreen('campaignShow');
     }
-    function mockDuplicateCampaign() { showToast('Campanha duplicada. Pode editá-la em Rascunhos.'); }
+
+    function mockDuplicateCampaign() {
+        _dupMode = 'campaign'; _dupSrcId = null; _dupBrandSel = null;
+        const list = document.getElementById('dupBrandList');
+        if (list) list.innerHTML = _dupBrands.map(b => `
+            <button type="button" onclick="dupBrandSelect('${b.id}')" data-brand="${b.id}"
+                    class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 border-slate-200 hover:border-slate-400 text-left transition-all text-sm font-medium text-slate-900">
+                <div class="w-5 h-5 rounded flex-shrink-0" style="background:${b.color}"></div>${b.name}</button>`).join('');
+        const t = document.getElementById('dupModalTitle'); if (t) t.textContent='Duplicar Campanha';
+        const d = document.getElementById('dupModalDesc'); if (d) d.textContent='Selecciona a marca de destino onde a campanha será duplicada.';
+        const modal = document.getElementById('dupBrandModal');
+        if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    }
+
     function mockSendTestEmail() {
-        const inp = document.querySelector('#campaignShow input[type=email]');
+        const inp = document.getElementById('campTestEmail');
         const email = inp ? inp.value.trim() : '';
         if (!email) { showToast('Insira um email de destino.', 'error'); return; }
         showToast(`Email de teste enviado para ${email}.`);
+    }
+
+    function filterCampaigns() {
+        const q = (document.getElementById('campSearch')?.value||'').toLowerCase();
+        const s = document.getElementById('campStatusFilter')?.value||'';
+        document.querySelectorAll('#campaignsTbody tr').forEach(tr => {
+            const m = (!q||( tr.dataset.name||'').toLowerCase().includes(q)) && (!s||tr.dataset.status===s);
+            tr.style.display = m ? '' : 'none';
+        });
+    }
+
+    function filterCampReport() {
+        const q = (document.getElementById('repSearch')?.value||'').toLowerCase();
+        const s = document.getElementById('repStatusFilter')?.value||'';
+        document.querySelectorAll('#repTbody tr').forEach(tr => {
+            const m = (!q||(tr.dataset.name||'').toLowerCase().includes(q)||(tr.dataset.email||'').toLowerCase().includes(q)) && (!s||tr.dataset.status===s);
+            tr.style.display = m ? '' : 'none';
+        });
+    }
+
+    function openSendNowModal()  { const m=document.getElementById('sendNowModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
+    function closeSendNowModal() { const m=document.getElementById('sendNowModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
+    function confirmSendNow()    { closeSendNowModal(); showScreen('campaigns'); showToast('Campanha enviada com sucesso!'); }
+    function openScheduleModal()  { const m=document.getElementById('scheduleModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
+    function closeScheduleModal() { const m=document.getElementById('scheduleModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
+    function confirmSchedule() {
+        const d=document.getElementById('schedDate')?.value, t=document.getElementById('schedTime')?.value;
+        if (!d||!t) { showToast('Escolhe a data e hora.','error'); return; }
+        closeScheduleModal(); showScreen('campaigns'); showToast(`Campanha agendada para ${d} às ${t}.`);
     }
 
     // ── Contacts ──────────────────────────────────────────
@@ -1489,6 +1628,16 @@ ${body}
                 </button>
             </header>
             <main class="flex-1 px-8 py-6">
+                <div class="mb-4 flex items-center gap-3">
+                    <input id="campSearch" type="text" placeholder="Pesquisar campanha…" oninput="filterCampaigns()" class="flex-1 max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <select id="campStatusFilter" onchange="filterCampaigns()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <option value="">Todos os estados</option>
+                        <option value="sent">Enviada</option>
+                        <option value="scheduled">Agendada</option>
+                        <option value="draft">Rascunho</option>
+                        <option value="failed">Falhou</option>
+                    </select>
+                </div>
                 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
@@ -1500,8 +1649,8 @@ ${body}
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                        <tbody id="campaignsTbody">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" data-name="newsletter bmw abril 2026" data-status="sent" onclick="showCampaign('sent')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Newsletter BMW — Abril 2026</p>
                                     <p class="text-xs text-slate-500">Descobre as novidades do mês na BMW Caetano</p>
@@ -1509,9 +1658,9 @@ ${body}
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">8 421</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">18/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('sent')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" data-name="test drive série 5" data-status="sent" onclick="showCampaign('sent')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Test Drive Série 5</p>
                                     <p class="text-xs text-slate-500">Agenda o teu test drive exclusivo</p>
@@ -1519,9 +1668,9 @@ ${body}
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">4 218</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">15/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('sent')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" data-name="promoção série 3 maio" data-status="scheduled" onclick="showCampaign('scheduled')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Promoção Série 3 — Maio</p>
                                     <p class="text-xs text-slate-500">Condições especiais no fim de mês</p>
@@ -1529,9 +1678,9 @@ ${body}
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span></td>
                                 <td class="px-4 py-3 text-slate-700">~ 12 000</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">📅 01/05/2026</td>
-                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('scheduled')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" data-name="convite evento m performance" data-status="draft" onclick="showCampaign('draft')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Convite Evento M Performance</p>
                                     <p class="text-xs text-slate-500">Evento exclusivo no Estoril</p>
@@ -1539,9 +1688,9 @@ ${body}
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span></td>
                                 <td class="px-4 py-3 text-slate-700">—</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">20/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('draft')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                            <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" data-name="promoção verão ix1" data-status="sent" onclick="showCampaign('sent')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Promoção Verão iX1</p>
                                     <p class="text-xs text-slate-500">Condições especiais até 30 de Abril</p>
@@ -1549,9 +1698,9 @@ ${body}
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">9 127</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">10/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('sent')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-name="convite evento lançamento i5" data-status="sent" onclick="showCampaign('sent')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Convite Evento — Lançamento i5</p>
                                     <p class="text-xs text-slate-500">Estás convidado para um evento exclusivo</p>
@@ -1559,7 +1708,7 @@ ${body}
                                 <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span></td>
                                 <td class="px-4 py-3 text-slate-700">3 892</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">03/04/2026</td>
-                                <td class="px-4 py-3 text-right"><a onclick="showScreen('campaignShow')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
+                                <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('sent')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Ver</a></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1580,53 +1729,120 @@ ${body}
                 <h1 class="text-xl font-semibold text-slate-900">Nova Campanha</h1>
             </header>
             <main class="flex-1 px-8 py-6">
-                <!-- Steps -->
-                <div class="flex items-center gap-3 mb-8 max-w-2xl">
-                    <div class="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center text-sm font-semibold">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
-                    </div>
-                    <div class="flex-1 h-px bg-green-500"></div>
-                    <div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-semibold">2</div>
-                    <div class="flex-1 h-px bg-slate-200"></div>
-                    <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-semibold">3</div>
-                    <div class="ml-2 text-sm text-slate-500">Template</div>
-                </div>
-
-                <div class="max-w-2xl space-y-3">
-                    <div class="bg-white border-2 border-slate-900 rounded-xl p-4 flex items-center gap-4 cursor-pointer">
-                        <div class="w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center">
-                            <div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div>
-                        </div>
-                        <div>
-                            <p class="font-medium text-slate-900">Newsletter Base BMW</p>
-                            <p class="text-xs text-slate-400 mt-0.5">Template partilhado</p>
-                        </div>
-                    </div>
-                    <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer">
-                        <div class="w-5 h-5 rounded-full border-2 border-slate-300"></div>
-                        <div>
-                            <p class="font-medium text-slate-900">Promoção Verão</p>
-                            <p class="text-xs text-slate-400 mt-0.5">Template partilhado</p>
-                        </div>
-                    </div>
-                    <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer">
-                        <div class="w-5 h-5 rounded-full border-2 border-slate-300"></div>
-                        <div>
-                            <p class="font-medium text-slate-900">Convite Evento</p>
-                        </div>
-                    </div>
-                    <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer">
-                        <div class="w-5 h-5 rounded-full border-2 border-slate-300"></div>
-                        <div>
-                            <p class="font-medium text-slate-900">Test Drive Call-to-Action</p>
-                        </div>
+                <div class="max-w-2xl">
+                    <!-- Step indicator -->
+                    <div class="flex items-center gap-3 mb-8">
+                        <div id="wizDot1" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-900 text-white">1</div>
+                        <div id="wizLine1" class="flex-1 h-px bg-slate-200"></div>
+                        <div id="wizDot2" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500">2</div>
+                        <div id="wizLine2" class="flex-1 h-px bg-slate-200"></div>
+                        <div id="wizDot3" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500">3</div>
+                        <span id="wizStepLabel" class="ml-2 text-sm text-slate-500">Detalhes</span>
                     </div>
 
-                    <div class="flex items-center justify-between pt-4">
-                        <button onclick="mockCampaignPrev()" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
+                    <!-- Passo 1: Detalhes -->
+                    <div id="wizStep1" class="space-y-4">
+                        <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                            <div>
+                                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da Campanha *</label>
+                                <input id="wizName" type="text" placeholder="Ex: Newsletter BMW — Maio 2026" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto do Email *</label>
+                                <input id="wizSubject" type="text" placeholder="Ex: Descobre as novidades BMW de Maio" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Texto de Pré-visualização</label>
+                                <input id="wizPreviewText" type="text" placeholder="Ex: Modelos novos, eventos e condições exclusivas…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome do Remetente</label>
+                                    <input id="wizFromName" type="text" value="BMW Caetano" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email do Remetente</label>
+                                    <input id="wizFromEmail" type="email" value="bmw@caetano.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-6">
+                            <h3 class="text-sm font-semibold text-slate-900 mb-3">Listas Destinatárias</h3>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                                    <input type="checkbox" class="rounded" checked />
+                                    <div><p class="text-sm font-medium text-slate-900">BMW Clientes Premium</p><p class="text-xs text-slate-400">3 421 contactos</p></div>
+                                </label>
+                                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                                    <input type="checkbox" class="rounded" />
+                                    <div><p class="text-sm font-medium text-slate-900">BMW Newsletter Geral</p><p class="text-xs text-slate-400">5 000 contactos</p></div>
+                                </label>
+                                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                                    <input type="checkbox" class="rounded" />
+                                    <div><p class="text-sm font-medium text-slate-900">Leads — Test Drive</p><p class="text-xs text-slate-400">1 284 contactos</p></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Passo 2: Template -->
+                    <div id="wizStep2" class="hidden space-y-3">
+                        <div class="bg-white border-2 border-slate-900 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
+                            <div class="w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center flex-shrink-0"><div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div></div>
+                            <div><p class="font-medium text-slate-900">Newsletter Base BMW</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
+                        </div>
+                        <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
+                            <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                            <div><p class="font-medium text-slate-900">Promoção Verão</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
+                        </div>
+                        <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
+                            <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                            <div><p class="font-medium text-slate-900">Convite Evento</p></div>
+                        </div>
+                        <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
+                            <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                            <div><p class="font-medium text-slate-900">Test Drive Call-to-Action</p></div>
+                        </div>
+                    </div>
+
+                    <!-- Passo 3: Revisão e Envio -->
+                    <div id="wizStep3" class="hidden space-y-4">
+                        <div class="bg-white border border-slate-200 rounded-xl p-6">
+                            <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
+                            <div id="wizReviewContent"></div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-6">
+                            <h3 class="font-semibold text-slate-900 text-sm mb-4">Quando enviar?</h3>
+                            <div class="space-y-3">
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
+                                    <input type="radio" name="wizSendType" value="now" checked class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
+                                    <div><p class="text-sm font-medium text-slate-900">Enviar agora</p><p class="text-xs text-slate-400">A campanha será enviada imediatamente após criação</p></div>
+                                </label>
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
+                                    <input type="radio" name="wizSendType" value="schedule" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.remove('hidden')" />
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-slate-900">Agendar para data/hora</p>
+                                        <p class="text-xs text-slate-400">Define quando a campanha será enviada automaticamente</p>
+                                        <div id="wizSchedulePicker" class="hidden mt-3 grid grid-cols-2 gap-3">
+                                            <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                                            <div><label class="text-xs text-slate-500 block mb-1">Hora</label><input type="time" id="wizScheduleTime" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                                        </div>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
+                                    <input type="radio" name="wizSendType" value="draft" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
+                                    <div><p class="text-sm font-medium text-slate-900">Guardar como Rascunho</p><p class="text-xs text-slate-400">Podes enviar mais tarde a partir do painel da campanha</p></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Navegação -->
+                    <div class="flex items-center justify-between pt-5">
+                        <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="visibility:hidden" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
                         <div class="flex items-center gap-3">
                             <button onclick="showScreen('campaigns')" class="px-5 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
-                            <button onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
+                            <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
                         </div>
                     </div>
                 </div>
@@ -1643,8 +1859,11 @@ ${body}
         <div data-sidebar-slot></div>
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
-                <h1 class="text-xl font-semibold text-slate-900">Newsletter BMW — Abril 2026</h1>
                 <div class="flex items-center gap-3">
+                    <button onclick="showScreen('campaigns')" class="text-slate-400 hover:text-slate-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+                    <h1 class="text-xl font-semibold text-slate-900">Newsletter BMW — Abril 2026</h1>
+                </div>
+                <div id="campShowActions" class="flex items-center gap-3">
                     <button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
                     <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>
                 </div>
@@ -1654,7 +1873,7 @@ ${body}
                     <div class="col-span-2 space-y-5">
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <div class="flex items-center gap-3 mb-4">
-                                <span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>
+                                <span id="campStatusBadge" class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>
                             </div>
                             <dl class="grid grid-cols-2 gap-4 text-sm">
                                 <div>
@@ -1676,10 +1895,10 @@ ${body}
                             </dl>
                         </div>
 
-                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div id="campSendPanel" class="bg-white border border-slate-200 rounded-xl p-5 hidden">
                             <h3 class="font-semibold text-slate-900 text-sm mb-3">Enviar email de teste</h3>
                             <div class="flex gap-3">
-                                <input type="email" placeholder="o-teu-email@exemplo.pt" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                <input id="campTestEmail" type="email" placeholder="o-teu-email@exemplo.pt" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 <button onclick="mockSendTestEmail()" class="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-900">Enviar Teste</button>
                             </div>
                         </div>
@@ -1810,9 +2029,13 @@ ${body}
                 </div>
 
                 <div class="flex items-center gap-3 mb-4">
-                    <input type="search" placeholder="Pesquisar por email…" class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                    <select class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
-                        <option>Todos os estados</option>
+                    <input id="repSearch" type="search" placeholder="Pesquisar por nome ou email…" oninput="filterCampReport()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <select id="repStatusFilter" onchange="filterCampReport()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <option value="">Todos os estados</option>
+                        <option value="sent">Enviado</option>
+                        <option value="bounce">Bounce</option>
+                        <option value="suppressed">Suprimido</option>
+                        <option value="failed">Falhado</option>
                     </select>
                 </div>
 
@@ -1827,51 +2050,37 @@ ${body}
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Data</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr class="border-b border-slate-100">
-                                <td class="px-4 py-3">
-                                    <p class="text-slate-900 font-medium">João Silva</p>
-                                    <p class="text-xs text-slate-400">joao.silva@email.pt</p>
-                                </td>
+                        <tbody id="repTbody">
+                            <tr class="border-b border-slate-100" data-name="joão silva" data-email="joao.silva@email.pt" data-status="sent">
+                                <td class="px-4 py-3"><p class="text-slate-900 font-medium">João Silva</p><p class="text-xs text-slate-400">joao.silva@email.pt</p></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviado</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-green-700 font-semibold">3</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-blue-700 font-semibold">2</span></td>
                                 <td class="px-4 py-3 text-xs text-slate-500">18/04/2026, 09:30</td>
                             </tr>
-                            <tr class="border-b border-slate-100">
-                                <td class="px-4 py-3">
-                                    <p class="text-slate-900 font-medium">Maria Costa</p>
-                                    <p class="text-xs text-slate-400">maria.costa@email.pt</p>
-                                </td>
+                            <tr class="border-b border-slate-100" data-name="maria costa" data-email="maria.costa@email.pt" data-status="sent">
+                                <td class="px-4 py-3"><p class="text-slate-900 font-medium">Maria Costa</p><p class="text-xs text-slate-400">maria.costa@email.pt</p></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviado</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-green-700 font-semibold">1</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-slate-300">—</span></td>
                                 <td class="px-4 py-3 text-xs text-slate-500">18/04/2026, 09:30</td>
                             </tr>
-                            <tr class="border-b border-slate-100">
-                                <td class="px-4 py-3">
-                                    <p class="text-slate-900 font-medium">Pedro Almeida</p>
-                                    <p class="text-xs text-slate-400">pedro.a@email.pt</p>
-                                </td>
+                            <tr class="border-b border-slate-100" data-name="pedro almeida" data-email="pedro.a@email.pt" data-status="sent">
+                                <td class="px-4 py-3"><p class="text-slate-900 font-medium">Pedro Almeida</p><p class="text-xs text-slate-400">pedro.a@email.pt</p></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviado</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-green-700 font-semibold">5</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-blue-700 font-semibold">3</span></td>
                                 <td class="px-4 py-3 text-xs text-slate-500">18/04/2026, 09:31</td>
                             </tr>
-                            <tr class="border-b border-slate-100">
-                                <td class="px-4 py-3">
-                                    <p class="text-slate-900 font-medium">ana@email.pt</p>
-                                </td>
+                            <tr class="border-b border-slate-100" data-name="ana" data-email="ana@email.pt" data-status="bounce">
+                                <td class="px-4 py-3"><p class="text-slate-900 font-medium">ana@email.pt</p></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Bounce</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-slate-300">—</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-slate-300">—</span></td>
                                 <td class="px-4 py-3 text-xs text-slate-500">18/04/2026, 09:32</td>
                             </tr>
-                            <tr>
-                                <td class="px-4 py-3">
-                                    <p class="text-slate-900 font-medium">Sofia Martins</p>
-                                    <p class="text-xs text-slate-400">sofia@email.pt</p>
-                                </td>
+                            <tr data-name="sofia martins" data-email="sofia@email.pt" data-status="suppressed">
+                                <td class="px-4 py-3"><p class="text-slate-900 font-medium">Sofia Martins</p><p class="text-xs text-slate-400">sofia@email.pt</p></td>
                                 <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Suprimido</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-slate-300">—</span></td>
                                 <td class="px-4 py-3 text-center"><span class="text-slate-300">—</span></td>
@@ -3046,13 +3255,65 @@ ${body}
 <div id="dupBrandModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="dupBrandCancel()">
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
-            <h2 class="text-lg font-semibold text-slate-900">Duplicar template</h2>
-            <p class="text-sm text-slate-500 mt-1">Selecciona a marca de destino onde o template será duplicado.</p>
+            <h2 id="dupModalTitle" class="text-lg font-semibold text-slate-900">Duplicar Template</h2>
+            <p id="dupModalDesc" class="text-sm text-slate-500 mt-1">Selecciona a marca de destino onde o template será duplicado.</p>
         </div>
         <div id="dupBrandList" class="grid grid-cols-2 gap-2 p-6"></div>
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
             <button type="button" onclick="dupBrandCancel()" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button type="button" onclick="dupBrandConfirm()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Duplicar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — CONFIRMAR ENVIO
+═══════════════════════════════════════════════════════════════════ -->
+<div id="sendNowModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closeSendNowModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <h2 class="text-lg font-semibold text-slate-900">Confirmar Envio</h2>
+            <p class="text-sm text-slate-500 mt-1">Vais enviar esta campanha imediatamente para todos os destinatários.</p>
+        </div>
+        <div class="px-6 py-5">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                ⚠️ Esta acção não pode ser desfeita. A campanha será enviada para todas as listas seleccionadas.
+            </div>
+            <div class="mt-4 space-y-1.5 text-sm">
+                <div class="flex justify-between"><span class="text-slate-500">Destinatários estimados:</span><span class="font-semibold text-slate-900">3 421</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Lista:</span><span class="font-semibold text-slate-900">BMW Clientes Premium</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Remetente:</span><span class="font-semibold text-slate-900">BMW Caetano &lt;bmw@caetano.pt&gt;</span></div>
+            </div>
+        </div>
+        <div class="px-6 pb-6 flex items-center justify-end gap-3">
+            <button onclick="closeSendNowModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button onclick="confirmSendNow()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Confirmar Envio</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — AGENDAR ENVIO
+═══════════════════════════════════════════════════════════════════ -->
+<div id="scheduleModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closeScheduleModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <h2 class="text-lg font-semibold text-slate-900">Agendar Envio</h2>
+            <p class="text-sm text-slate-500 mt-1">Define a data e hora em que a campanha será enviada.</p>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Data</label>
+                <input type="date" id="schedDate" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Hora (fuso horário de Lisboa)</label>
+                <input type="time" id="schedTime" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+        </div>
+        <div class="px-6 pb-6 flex items-center justify-end gap-3">
+            <button onclick="closeScheduleModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button onclick="confirmSchedule()" class="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">Agendar</button>
         </div>
     </div>
 </div>
