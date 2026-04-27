@@ -72,91 +72,473 @@
     function mockSaveTemplate() { showToast('Template guardado com sucesso.'); }
     function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
 
-    // Template editor — mode tabs + preview modal + block selection
-    // (style.display avoids the .hidden vs .grid display conflict)
+    // ════════════════════════════════════════════════════════════════════
+    // Template editor — state-driven builder
+    // ════════════════════════════════════════════════════════════════════
+    function teEscape(s) {
+        return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    const teLabels = {
+        header:'Cabeçalho', heading:'Título', text:'Texto', button:'Botão',
+        image:'Imagem', divider:'Separador', spacer:'Espaço', footer:'Rodapé',
+        columns2:'2 Colunas', columns3:'3 Colunas'
+    };
+    const teDefaults = {
+        header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', padding:24 },
+        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', padding:16 },
+        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:14, fontWeight:'400', align:'left', lineHeight:1.6, padding:16 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', padding:14 },
+        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'Imagem', width:600, align:'center' },
+        divider: { color:'#e2e8f0', padding:8 },
+        spacer:  { height:24 },
+        footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, padding:16 }
+    };
+    const teFieldSchemas = {
+        header:  ['text','bgColor','textColor','fontSize','fontWeight','align','padding'],
+        heading: ['text','level','color','bgColor','fontSize','fontWeight','align','padding'],
+        text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
+        button:  ['text','href','bgColor','textColor','fontSize','fontWeight','padding'],
+        image:   ['src','alt','width','align'],
+        divider: ['color','padding'],
+        spacer:  ['height'],
+        footer:  ['text','color','bgColor','fontSize','padding']
+    };
+    const teFields = {
+        text:       { label:'Texto',         type:'textarea' },
+        href:       { label:'Link',          type:'url' },
+        src:        { label:'URL Imagem',    type:'url' },
+        alt:        { label:'Texto alt',     type:'text' },
+        width:      { label:'Largura (px)',  type:'number' },
+        bgColor:    { label:'Cor de fundo',  type:'color' },
+        textColor:  { label:'Cor do texto',  type:'color' },
+        color:      { label:'Cor',           type:'color' },
+        fontSize:   { label:'Tamanho (px)',  type:'number' },
+        fontWeight: { label:'Espessura',     type:'select', options:[['400','Regular'],['500','Medium'],['600','Semibold'],['700','Bold'],['800','Extra-bold']] },
+        align:      { label:'Alinhamento',   type:'select', options:[['left','Esquerda'],['center','Centro'],['right','Direita']] },
+        level:      { label:'Nível',         type:'select', options:[['h1','H1'],['h2','H2'],['h3','H3']] },
+        lineHeight: { label:'Altura linha',  type:'number',  step:'0.1' },
+        padding:    { label:'Padding (px)',  type:'number' },
+        height:     { label:'Altura (px)',   type:'number' }
+    };
+
+    let teNextId = 100;
+    const teId   = () => 'b' + (++teNextId);
+
+    const teState = {
+        selected: null,
+        viewport: 'desktop',
+        blocks: [
+            { id:'b1', type:'header',  ...teDefaults.header,  text:'Caetano Retail' },
+            { id:'b2', type:'heading', ...teDefaults.heading, text:'Primavera 2026' },
+            { id:'b3', type:'text',    ...teDefaults.text,    text:'Olá {{first_name}}, descubra as ofertas seleccionadas para si.' },
+            { id:'b4', type:'button',  ...teDefaults.button,  text:'Ver ofertas' },
+            { id:'b5', type:'footer',  ...teDefaults.footer  }
+        ]
+    };
+
+    // ── Tree helpers ─────────────────────────────────────────────────
+    function teFind(id, blocks = teState.blocks) {
+        for (let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            if (b.id === id) return { block: b, parent: blocks, idx: i };
+            if (b.type === 'columns') {
+                for (let c = 0; c < b.children.length; c++) {
+                    const f = teFind(id, b.children[c]);
+                    if (f) return f;
+                }
+            }
+        }
+        return null;
+    }
+    function teMakeBlock(type) {
+        if (type === 'columns2') return { id: teId(), type:'columns', cols:2, children:[[],[]] };
+        if (type === 'columns3') return { id: teId(), type:'columns', cols:3, children:[[],[],[]] };
+        return { id: teId(), type, ...JSON.parse(JSON.stringify(teDefaults[type] || {})) };
+    }
+
+    // ── Mutations ────────────────────────────────────────────────────
+    function teInsertBlock(type, target) {
+        const b = teMakeBlock(type);
+        const arr = teResolveTargetArray(target);
+        if (!arr) return;
+        if (b.type === 'columns' && target?.kind === 'col') {
+            return showToast('Não é permitido aninhar colunas.', 'error');
+        }
+        arr.splice(target?.idx ?? arr.length, 0, b);
+        teState.selected = b.id;
+        teRender();
+        showToast(`Bloco "${teLabels[type]}" adicionado.`);
+    }
+    function teResolveTargetArray(target) {
+        if (!target || target.kind === 'top') return teState.blocks;
+        const parent = teFind(target.parentId)?.block;
+        return parent?.children?.[target.colIdx];
+    }
+    function teMoveTo(id, target) {
+        const found = teFind(id);
+        if (!found) return;
+        if (found.block.type === 'columns' && target.kind === 'col') {
+            return showToast('Colunas não podem ser aninhadas.', 'error');
+        }
+        // Prevent dropping a block onto itself's container
+        if (target.kind === 'col' && target.parentId === id) return;
+        const removed = found.parent.splice(found.idx, 1)[0];
+        const arr = teResolveTargetArray(target);
+        if (!arr) { found.parent.splice(found.idx, 0, removed); return; }
+        let idx = target.idx ?? arr.length;
+        if (arr === found.parent && found.idx < idx) idx--;
+        arr.splice(idx, 0, removed);
+        teRender();
+    }
+    function teMoveBlock(id, dir) {
+        const f = teFind(id);
+        if (!f) return;
+        const j = f.idx + dir;
+        if (j < 0 || j >= f.parent.length) return;
+        [f.parent[f.idx], f.parent[j]] = [f.parent[j], f.parent[f.idx]];
+        teRender();
+    }
+    function teDeleteBlock(id) {
+        const f = teFind(id);
+        if (!f) return;
+        f.parent.splice(f.idx, 1);
+        if (teState.selected === id) teState.selected = null;
+        teRender();
+    }
+    function teUpdateField(id, key, value) {
+        const f = teFind(id);
+        if (!f) return;
+        // Coerce numbers
+        if (['fontSize','padding','width','height','lineHeight'].includes(key)) value = Number(value);
+        f.block[key] = value;
+        teRenderCanvas();
+        teRenderMjml();
+    }
+    function teSetViewport(v) {
+        teState.viewport = v;
+        teRenderCanvas();
+    }
+
+    // ── Drag state ──────────────────────────────────────────────────
+    let teDrag = null;
+    function tePaletteDragStart(ev, type) {
+        teDrag = { kind:'palette', type };
+        ev.dataTransfer.effectAllowed = 'copy';
+        ev.dataTransfer.setData('text/plain', 'palette:'+type);
+    }
+    function teBlockDragStart(ev, id) {
+        teDrag = { kind:'block', id };
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('text/plain', 'block:'+id);
+        ev.stopPropagation();
+    }
+    function teDragEnd() {
+        teDrag = null;
+        document.querySelectorAll('.te-drop-active').forEach(el => el.classList.remove('te-drop-active'));
+    }
+
+    // ── Mode tabs / preview modal ───────────────────────────────────
     function teSetMode(mode) {
         const visual = document.getElementById('te_visualMode');
         const code   = document.getElementById('te_codeMode');
-        visual.style.display = mode === 'visual' ? '' : 'none';
-        code.style.display   = mode === 'code'   ? '' : 'none';
-
+        if (visual) visual.style.display = mode === 'visual' ? '' : 'none';
+        if (code)   code.style.display   = mode === 'code'   ? '' : 'none';
         const tv = document.getElementById('te_tabVisual');
         const tc = document.getElementById('te_tabCode');
         ['bg-white','shadow-sm','text-slate-900'].forEach(c => {
-            tv.classList.toggle(c, mode === 'visual');
-            tc.classList.toggle(c, mode === 'code');
+            tv?.classList.toggle(c, mode === 'visual');
+            tc?.classList.toggle(c, mode === 'code');
         });
-        tv.classList.toggle('text-slate-500', mode !== 'visual');
-        tc.classList.toggle('text-slate-500', mode !== 'code');
+        tv?.classList.toggle('text-slate-500', mode !== 'visual');
+        tc?.classList.toggle('text-slate-500', mode !== 'code');
+        if (mode === 'code') teRenderMjml();
     }
     function teOpenPreviewModal()  {
         const m = document.getElementById('te_previewModal');
         m.classList.remove('hidden');
         m.classList.add('flex');
+        teRenderPreviewModal();
     }
     function teClosePreviewModal() {
         const m = document.getElementById('te_previewModal');
         m.classList.add('hidden');
         m.classList.remove('flex');
     }
-    function teSelectBlock(id) {
-        document.querySelectorAll('#te_canvas [data-block]').forEach((el) => {
-            el.classList.toggle('ring-2',         el.dataset.block === id);
-            el.classList.toggle('ring-blue-500',  el.dataset.block === id);
-        });
-        document.querySelectorAll('#te_props [data-props]').forEach((el) => {
-            el.classList.toggle('hidden', el.dataset.props !== id);
-        });
-    }
 
-    // ── Drag-and-drop: palette → canvas ───────────────────────────────
-    let teDraggedType = null;
-    const teLabels = {
-        header:'Cabeçalho', heading:'Título', text:'Texto', button:'Botão',
-        image:'Imagem', divider:'Separador', spacer:'Espaço', footer:'Rodapé'
-    };
-    function teDragStart(ev, type) {
-        teDraggedType = type;
-        ev.dataTransfer.effectAllowed = 'copy';
-        ev.dataTransfer.setData('text/plain', type);
-        ev.currentTarget.classList.add('opacity-50');
+    // ── Rendering ───────────────────────────────────────────────────
+    function teRender() {
+        teRenderCanvas();
+        teRenderProperties();
+        teRenderMjml();
     }
-    function teDragEnd(ev) {
-        ev.currentTarget.classList.remove('opacity-50');
-        document.getElementById('te_canvasList')?.classList.remove('ring-2','ring-blue-400','ring-offset-2');
+    function teMakeDropZone(target) {
+        const d = document.createElement('div');
+        d.className = 'te-dropzone';
+        d.dataset.target = JSON.stringify(target);
+        d.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.stopPropagation(); ev.dataTransfer.dropEffect = teDrag?.kind === 'block' ? 'move' : 'copy'; d.classList.add('te-drop-active'); });
+        d.addEventListener('dragleave', () => d.classList.remove('te-drop-active'));
+        d.addEventListener('drop', (ev) => {
+            ev.preventDefault(); ev.stopPropagation();
+            d.classList.remove('te-drop-active');
+            if (!teDrag) return;
+            if (teDrag.kind === 'palette') teInsertBlock(teDrag.type, target);
+            else                            teMoveTo(teDrag.id, target);
+            teDrag = null;
+        });
+        return d;
     }
-    function teCanvasDragOver(ev) {
-        ev.preventDefault();
-        ev.dataTransfer.dropEffect = 'copy';
-        document.getElementById('te_canvasList')?.classList.add('ring-2','ring-blue-400','ring-offset-2');
-    }
-    function teCanvasDragLeave(ev) {
-        if (ev.currentTarget === ev.target) {
-            document.getElementById('te_canvasList')?.classList.remove('ring-2','ring-blue-400','ring-offset-2');
-        }
-    }
-    function teCanvasDrop(ev) {
-        ev.preventDefault();
-        const type = teDraggedType || ev.dataTransfer.getData('text/plain');
-        document.getElementById('te_canvasList')?.classList.remove('ring-2','ring-blue-400','ring-offset-2');
-        if (!type) return;
-        teAddBlock(type);
-    }
-    function teAddBlock(type) {
+    function teRenderCanvas() {
         const list = document.getElementById('te_canvasList');
         if (!list) return;
-        const id    = 'b' + Date.now().toString(36);
-        const label = teLabels[type] || type;
-        const el    = document.createElement('div');
-        el.dataset.block = id;
-        el.setAttribute('onclick', `teSelectBlock('${id}')`);
-        el.className = 'bg-white py-5 px-6 cursor-pointer rounded hover:ring-1 hover:ring-blue-300 relative border border-dashed border-slate-200';
-        el.innerHTML = `
-            <span class="absolute top-1 left-2 text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">${label}</span>
-            <p class="text-sm text-slate-500 italic text-center mt-2">Novo bloco ${label.toLowerCase()} — clica para editar propriedades</p>
+        const wrap = document.getElementById('te_canvasWrap');
+        if (wrap) wrap.style.maxWidth = teState.viewport === 'mobile' ? '380px' : '640px';
+        const dBtn = document.getElementById('te_btnDesktop');
+        const mBtn = document.getElementById('te_btnMobile');
+        if (dBtn && mBtn) {
+            dBtn.classList.toggle('bg-slate-900', teState.viewport === 'desktop');
+            dBtn.classList.toggle('text-white',   teState.viewport === 'desktop');
+            dBtn.classList.toggle('text-slate-500', teState.viewport !== 'desktop');
+            mBtn.classList.toggle('bg-slate-900', teState.viewport === 'mobile');
+            mBtn.classList.toggle('text-white',   teState.viewport === 'mobile');
+            mBtn.classList.toggle('text-slate-500', teState.viewport !== 'mobile');
+        }
+        list.innerHTML = '';
+        if (teState.blocks.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'text-center text-slate-400 text-sm italic py-12';
+            empty.textContent = 'Arrasta blocos da paleta para começar.';
+            list.appendChild(empty);
+        }
+        list.appendChild(teMakeDropZone({ kind:'top', idx:0 }));
+        teState.blocks.forEach((b, i) => {
+            list.appendChild(teRenderBlock(b));
+            list.appendChild(teMakeDropZone({ kind:'top', idx: i+1 }));
+        });
+    }
+    function teRenderBlock(b) {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative group';
+        wrap.draggable = true;
+        wrap.dataset.blockId = b.id;
+        wrap.style.cursor = 'move';
+        wrap.addEventListener('dragstart', (ev) => teBlockDragStart(ev, b.id));
+        wrap.addEventListener('dragend', teDragEnd);
+        wrap.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            teState.selected = b.id;
+            teRender();
+        });
+        if (teState.selected === b.id) wrap.classList.add('ring-2','ring-blue-500','rounded');
+
+        wrap.appendChild(teRenderBlockContent(b));
+        wrap.appendChild(teRenderToolbar(b));
+        return wrap;
+    }
+    function teRenderToolbar(b) {
+        const t = document.createElement('div');
+        const visible = teState.selected === b.id;
+        t.className = `absolute -top-3 right-2 bg-white border border-slate-200 rounded-md shadow-sm flex items-center text-slate-500 text-xs ${visible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`;
+        t.innerHTML = `
+            <button type="button" title="Mover para cima"  onclick="event.stopPropagation();teMoveBlock('${b.id}',-1)" class="px-2 py-1 hover:bg-slate-100">▲</button>
+            <button type="button" title="Mover para baixo" onclick="event.stopPropagation();teMoveBlock('${b.id}',1)"  class="px-2 py-1 hover:bg-slate-100 border-l border-slate-200">▼</button>
+            <button type="button" title="Apagar"           onclick="event.stopPropagation();teDeleteBlock('${b.id}')"  class="px-2 py-1 hover:bg-red-50 hover:text-red-600 border-l border-slate-200">✕</button>
         `;
-        list.appendChild(el);
-        showToast(`Bloco "${label}" adicionado.`);
+        return t;
+    }
+    function teRenderBlockContent(b) {
+        const d = document.createElement('div');
+        switch(b.type) {
+            case 'header':
+                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${b.padding}px;`;
+                d.textContent = b.text;
+                break;
+            case 'heading': {
+                d.style.cssText = `background:${b.bgColor};padding:${b.padding}px;`;
+                const h = document.createElement(b.level || 'h2');
+                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;`;
+                h.textContent = b.text;
+                d.appendChild(h);
+                break;
+            }
+            case 'text':
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${b.padding}px;white-space:pre-wrap;`;
+                d.textContent = b.text;
+                break;
+            case 'button':
+                d.style.cssText = `background:#ffffff;padding:${b.padding}px;text-align:center;`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:6px;text-decoration:none;">${teEscape(b.text)}</a>`;
+                break;
+            case 'image':
+                d.style.cssText = `background:#ffffff;padding:8px;text-align:${b.align};`;
+                d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;" />`;
+                break;
+            case 'divider':
+                d.style.cssText = `background:#ffffff;padding:${b.padding}px 16px;`;
+                d.innerHTML = `<hr style="border:none;border-top:1px solid ${b.color};margin:0;" />`;
+                break;
+            case 'spacer':
+                d.style.cssText = `background:#ffffff;height:${b.height}px;`;
+                break;
+            case 'footer':
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${b.padding}px;white-space:pre-wrap;`;
+                d.textContent = b.text;
+                break;
+            case 'columns':
+                d.style.cssText = `display:flex;gap:8px;background:#ffffff;padding:8px;`;
+                for (let c = 0; c < b.cols; c++) {
+                    const col = document.createElement('div');
+                    col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
+                    const childArr = b.children[c] || [];
+                    col.appendChild(teMakeDropZone({ kind:'col', parentId:b.id, colIdx:c, idx:0 }));
+                    childArr.forEach((child, ci) => {
+                        col.appendChild(teRenderBlock(child));
+                        col.appendChild(teMakeDropZone({ kind:'col', parentId:b.id, colIdx:c, idx:ci+1 }));
+                    });
+                    if (childArr.length === 0) {
+                        const ph = document.createElement('div');
+                        ph.className = 'border border-dashed border-slate-300 text-slate-400 text-xs text-center py-6 rounded';
+                        ph.textContent = 'Solta blocos aqui';
+                        col.appendChild(ph);
+                    }
+                    d.appendChild(col);
+                }
+                break;
+            default:
+                d.textContent = '[bloco desconhecido]';
+        }
+        return d;
+    }
+
+    // ── Properties panel ────────────────────────────────────────────
+    function teRenderProperties() {
+        const root = document.getElementById('te_props');
+        if (!root) return;
+        if (!teState.selected) {
+            root.innerHTML = '<p class="text-xs text-slate-400 italic text-center mt-8 px-2">Clica num bloco para editar as propriedades.</p>';
+            return;
+        }
+        const found = teFind(teState.selected);
+        if (!found) { root.innerHTML = ''; return; }
+        const b = found.block;
+        if (b.type === 'columns') {
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Colunas (${b.cols})</p>
+                <p class="text-[10px] text-slate-400 mb-3">Layout</p>
+                <p class="text-xs text-slate-500 mb-3">Arrasta blocos da paleta para qualquer coluna.</p>
+                <button onclick="teDeleteBlock('${b.id}')" class="w-full px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar layout</button>
+            `;
+            return;
+        }
+        const fields = teFieldSchemas[b.type] || [];
+        const html = fields.map((key) => teRenderField(b, key)).join('');
+        root.innerHTML = `
+            <p class="text-xs font-semibold text-slate-700 mb-1">${teLabels[b.type] || b.type}</p>
+            <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+            <div class="space-y-3">${html}</div>
+            <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+        `;
+    }
+    function teRenderField(b, key) {
+        const f = teFields[key];
+        if (!f) return '';
+        const v = b[key] ?? '';
+        const handler = `oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)"`;
+        let input;
+        if (f.type === 'textarea') {
+            input = `<textarea rows="3" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${teEscape(v)}</textarea>`;
+        } else if (f.type === 'select') {
+            const opts = f.options.map(([val,label]) => `<option value="${val}" ${String(val)===String(v)?'selected':''}>${label}</option>`).join('');
+            input = `<select ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${opts}</select>`;
+        } else if (f.type === 'color') {
+            input = `<input type="color" value="${v||'#000000'}" ${handler} class="w-full h-8 border border-slate-200 rounded cursor-pointer" />`;
+        } else if (f.type === 'number') {
+            input = `<input type="number" value="${v}" step="${f.step||'1'}" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />`;
+        } else {
+            input = `<input type="${f.type}" value="${teEscape(v)}" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />`;
+        }
+        return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label>${input}</div>`;
+    }
+
+    // ── Preview modal ───────────────────────────────────────────────
+    function teRenderPreviewModal() {
+        const root = document.getElementById('te_previewBody');
+        if (!root) return;
+        root.innerHTML = '';
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#ffffff;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.1);';
+        teState.blocks.forEach((b) => card.appendChild(teRenderBlockContent(b)));
+        root.appendChild(card);
+    }
+
+    // ── MJML output ────────────────────────────────────────────────
+    function teRenderMjml() {
+        const code  = document.getElementById('te_mjmlCode');
+        const lines = document.getElementById('te_mjmlLines');
+        if (!code) return;
+        const mjml = teBuildMjml();
+        code.textContent = mjml;
+        if (lines) lines.textContent = mjml.split('\n').map((_,i) => i+1).join('\n');
+    }
+    function teBuildMjml() {
+        const body = teState.blocks.map(b => teBlockToMjml(b, '    ')).join('\n');
+        return `<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f5f7fa">
+${body}
+  </mj-body>
+</mjml>`;
+    }
+    function teBlockToMjml(b, i) {
+        const wrap = (inner, attrs='') => `${i}<mj-section${attrs}>\n${i}  <mj-column>\n${inner}\n${i}  </mj-column>\n${i}</mj-section>`;
+        const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${b.text}</mj-text>`;
+        switch(b.type) {
+            case 'header':
+                return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+            case 'heading':
+                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+            case 'text':
+                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight), ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+            case 'button':
+                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`, ` padding="${b.padding}px"`);
+            case 'image':
+                return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align}" />`);
+            case 'divider':
+                return wrap(`${i}    <mj-divider border-color="${b.color}" />`, ` padding="${b.padding}px"`);
+            case 'spacer':
+                return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
+            case 'footer':
+                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${b.text}</mj-text>`, ` background-color="${b.bgColor}" padding="${b.padding}px"`);
+            case 'columns': {
+                const cols = b.children.map((children) => {
+                    const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
+                    return `${i}  <mj-column>\n${inner}\n${i}  </mj-column>`;
+                }).join('\n');
+                return `${i}<mj-section>\n${cols}\n${i}</mj-section>`;
+            }
+        }
+        return '';
+    }
+    function teInnerToMjml(b, i) {
+        switch(b.type) {
+            case 'text': case 'header': case 'heading': case 'footer': {
+                const c = b.color || b.textColor || '#000';
+                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}">${b.text}</mj-text>`;
+            }
+            case 'button':
+                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`;
+            case 'image':
+                return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" />`;
+            case 'divider':
+                return `${i}<mj-divider border-color="${b.color}" />`;
+            case 'spacer':
+                return `${i}<mj-spacer height="${b.height}px" />`;
+        }
+        return '';
     }
 
     // ── Lists ─────────────────────────────────────────────
@@ -233,6 +615,10 @@
         .fade-in { animation: fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         [data-nav]:hover { cursor: pointer; }
+
+        /* Template editor drop zones */
+        .te-dropzone { height: 8px; transition: all 0.15s ease; border-radius: 4px; }
+        .te-dropzone.te-drop-active { height: 32px; background: rgba(59,130,246,0.18); border: 2px dashed rgb(59,130,246); }
     </style>
 </head>
 <body class="bg-slate-50">
@@ -472,6 +858,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         injectSidebar();
         showScreen('login');
+        if (typeof teRender === 'function') teRender();
     });
 
     function _showFileFilled(name) {
@@ -1489,181 +1876,91 @@
                                 <div class="bg-white border border-slate-200 rounded-xl p-2 overflow-y-auto">
                                     <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5">Blocos</p>
                                     <div class="grid grid-cols-2 gap-1.5">
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'header')" ondragend="teDragEnd(event)" onclick="teAddBlock('header')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'header')" ondragend="teDragEnd()" onclick="teInsertBlock('header')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v6H4z M4 14h16v2H4z M4 18h10v2H4z"/></svg>
                                             <span class="text-[10px] pointer-events-none">Cabeçalho</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'heading')" ondragend="teDragEnd(event)" onclick="teAddBlock('heading')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'heading')" ondragend="teDragEnd()" onclick="teInsertBlock('heading')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 4v16 M19 4v16 M5 12h14"/></svg>
                                             <span class="text-[10px] pointer-events-none">Título</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'text')" ondragend="teDragEnd(event)" onclick="teAddBlock('text')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'text')" ondragend="teDragEnd()" onclick="teInsertBlock('text')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16 M4 12h16 M4 18h10"/></svg>
                                             <span class="text-[10px] pointer-events-none">Texto</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'button')" ondragend="teDragEnd(event)" onclick="teAddBlock('button')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'button')" ondragend="teDragEnd()" onclick="teInsertBlock('button')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18 M3 14h18 M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
                                             <span class="text-[10px] pointer-events-none">Botão</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'image')" ondragend="teDragEnd(event)" onclick="teAddBlock('image')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'image')" ondragend="teDragEnd()" onclick="teInsertBlock('image')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v16H4z M4 14l4-4 4 4 6-6 2 2 M9 9a1 1 0 100-2 1 1 0 000 2z"/></svg>
                                             <span class="text-[10px] pointer-events-none">Imagem</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'divider')" ondragend="teDragEnd(event)" onclick="teAddBlock('divider')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'divider')" ondragend="teDragEnd()" onclick="teInsertBlock('divider')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12h18"/></svg>
                                             <span class="text-[10px] pointer-events-none">Separador</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'spacer')" ondragend="teDragEnd(event)" onclick="teAddBlock('spacer')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'spacer')" ondragend="teDragEnd()" onclick="teInsertBlock('spacer')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16 M8 4h8 M8 20h8"/></svg>
                                             <span class="text-[10px] pointer-events-none">Espaço</span>
                                         </button>
-                                        <button type="button" draggable="true" ondragstart="teDragStart(event,'footer')" ondragend="teDragEnd(event)" onclick="teAddBlock('footer')"
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'footer')" ondragend="teDragEnd()" onclick="teInsertBlock('footer')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v12H4z M4 18h16v2H4z"/></svg>
                                             <span class="text-[10px] pointer-events-none">Rodapé</span>
                                         </button>
                                     </div>
+                                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5 mt-3 border-t border-slate-100 pt-3">Layout</p>
+                                    <div class="grid grid-cols-2 gap-1.5">
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'columns2')" ondragend="teDragEnd()" onclick="teInsertBlock('columns2')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h7v16H4z M13 4h7v16h-7z"/></svg>
+                                            <span class="text-[10px] pointer-events-none">2 Colunas</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'columns3')" ondragend="teDragEnd()" onclick="teInsertBlock('columns3')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4z M10 4h4v16h-4z M16 4h4v16h-4z"/></svg>
+                                            <span class="text-[10px] pointer-events-none">3 Colunas</span>
+                                        </button>
+                                    </div>
                                     <p class="text-[10px] text-slate-400 px-2 py-2 mt-2 border-t border-slate-100">Arrasta um bloco para o canvas (ou clica) para o adicionar.</p>
                                 </div>
 
-                                <!-- Canvas (drop target) -->
-                                <div class="bg-slate-100 border border-slate-200 rounded-xl overflow-y-auto min-w-0 transition-all"
-                                     id="te_canvas"
-                                     ondragover="teCanvasDragOver(event)"
-                                     ondragleave="teCanvasDragLeave(event)"
-                                     ondrop="teCanvasDrop(event)">
-                                    <div class="max-w-[640px] mx-auto py-6 px-4 space-y-2 min-h-full" id="te_canvasList">
-                                        <div data-block="b1" onclick="teSelectBlock('b1')"
-                                             class="bg-slate-900 text-white text-center py-6 px-4 cursor-pointer ring-2 ring-blue-500 rounded relative">
-                                            <p class="font-bold text-lg">Caetano Retail</p>
-                                            <span class="absolute top-1 left-2 text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">Cabeçalho</span>
-                                        </div>
-                                        <div data-block="b2" onclick="teSelectBlock('b2')"
-                                             class="bg-white py-4 px-6 cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
-                                            <h2 class="text-2xl font-bold text-slate-900">Primavera 2026</h2>
-                                        </div>
-                                        <div data-block="b3" onclick="teSelectBlock('b3')"
-                                             class="bg-white py-2 px-6 cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
-                                            <p class="text-slate-700">Olá <strong>João</strong>,</p>
-                                            <p class="text-slate-600 text-sm mt-2">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
-                                        </div>
-                                        <div data-block="b4" onclick="teSelectBlock('b4')"
-                                             class="bg-white py-3 px-6 text-center cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
-                                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
-                                        </div>
-                                        <div data-block="b5" onclick="teSelectBlock('b5')"
-                                             class="bg-slate-50 py-4 px-6 text-center cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
-                                            <p class="text-xs text-slate-500">© 2026 Caetano Retail</p>
-                                            <p class="text-xs text-slate-500"><a href="#" onclick="event.preventDefault()" class="underline">Cancelar subscrição</a></p>
+                                <!-- Canvas with viewport toggle -->
+                                <div class="bg-slate-100 border border-slate-200 rounded-xl flex flex-col min-w-0 overflow-hidden" id="te_canvas"
+                                     ondragover="event.preventDefault();event.dataTransfer.dropEffect=teDrag&&teDrag.kind==='block'?'move':'copy'"
+                                     ondrop="event.preventDefault();if(!teDrag)return;if(teDrag.kind==='palette')teInsertBlock(teDrag.type,{kind:'top'});else teMoveTo(teDrag.id,{kind:'top'});teDrag=null;">
+                                    <!-- Viewport toggle bar -->
+                                    <div class="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-center gap-1">
+                                        <button type="button" id="te_btnDesktop" onclick="teSetViewport('desktop')" title="Vista desktop"
+                                                class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 bg-slate-900 text-white hover:opacity-90 transition-colors">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                            Desktop
+                                        </button>
+                                        <button type="button" id="te_btnMobile" onclick="teSetViewport('mobile')" title="Vista mobile"
+                                                class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 text-slate-500 hover:bg-slate-50 transition-colors">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                                            Mobile
+                                        </button>
+                                    </div>
+                                    <!-- Scroll area with centred email canvas -->
+                                    <div class="flex-1 overflow-auto py-6 px-4">
+                                        <div id="te_canvasWrap" class="mx-auto transition-all" style="max-width:640px;">
+                                            <div id="te_canvasList" class="bg-white rounded shadow-sm min-h-[200px]"></div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <!-- Properties panel -->
                                 <div class="bg-white border border-slate-200 rounded-xl p-3 overflow-y-auto" id="te_props">
-                                    <div data-props="b1">
-                                        <p class="text-xs font-semibold text-slate-700 mb-1">Cabeçalho</p>
-                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
-                                        <div class="space-y-3">
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
-                                                <input type="text" value="Caetano Retail" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
-                                                <input type="color" value="#0f172a" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor do texto</label>
-                                                <input type="color" value="#ffffff" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Tamanho (px)</label>
-                                                <input type="number" value="20" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Espessura</label>
-                                                <select class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">
-                                                    <option>400</option><option>500</option><option>600</option><option selected>700</option><option>800</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Alinhamento</label>
-                                                <select class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">
-                                                    <option>left</option><option selected>center</option><option>right</option>
-                                                </select>
-                                            </div>
-                                            <button class="w-full px-2 py-1.5 mt-2 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
-                                        </div>
-                                    </div>
-                                    <div data-props="b2" class="hidden">
-                                        <p class="text-xs font-semibold text-slate-700 mb-1">Título</p>
-                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
-                                        <div class="space-y-3">
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
-                                                <input type="text" value="Primavera 2026" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Nível</label>
-                                                <select class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs"><option>h1</option><option selected>h2</option><option>h3</option></select>
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor</label>
-                                                <input type="color" value="#0f172a" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div data-props="b3" class="hidden">
-                                        <p class="text-xs font-semibold text-slate-700 mb-1">Texto</p>
-                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
-                                        <div class="space-y-3">
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
-                                                <textarea rows="4" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">Olá {{first_name}}, descubra as melhores ofertas desta primavera...</textarea>
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor</label>
-                                                <input type="color" value="#475569" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div data-props="b4" class="hidden">
-                                        <p class="text-xs font-semibold text-slate-700 mb-1">Botão</p>
-                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
-                                        <div class="space-y-3">
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
-                                                <input type="text" value="Ver ofertas" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Link</label>
-                                                <input type="url" value="https://loja.caetanoretail.pt" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
-                                                <input type="color" value="#0f172a" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div data-props="b5" class="hidden">
-                                        <p class="text-xs font-semibold text-slate-700 mb-1">Rodapé</p>
-                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
-                                        <div class="space-y-3">
-                                            <div>
-                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
-                                                <textarea rows="3" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">© 2026 Caetano Retail
-[Cancelar subscrição]({{unsubscribe_url}})</textarea>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <p class="text-xs text-slate-400 italic text-center mt-8 px-2">Clica num bloco para editar as propriedades.</p>
                                 </div>
                             </div>
                         </div>
@@ -1680,48 +1977,8 @@
                                 </span>
                             </div>
                             <div class="flex-1 overflow-auto flex font-mono text-xs leading-[1.6]">
-                                <pre class="bg-[#21252b] text-slate-500 text-right px-3 py-3 select-none border-r border-slate-700">1
-2
-3
-4
-5
-6
-7
-8
-9
-10
-11
-12
-13
-14
-15
-16
-17
-18
-19
-20</pre>
-                                <pre class="px-3 py-3 text-slate-300 flex-1 whitespace-pre"><span class="text-slate-500">&lt;mjml&gt;</span>
-  <span class="text-blue-400">&lt;mj-head&gt;</span>
-    <span class="text-green-400">&lt;mj-attributes&gt;</span>
-      <span class="text-yellow-300">&lt;mj-all</span> <span class="text-orange-300">font-family</span>=<span class="text-green-300">"Helvetica, Arial"</span> <span class="text-yellow-300">/&gt;</span>
-    <span class="text-green-400">&lt;/mj-attributes&gt;</span>
-  <span class="text-blue-400">&lt;/mj-head&gt;</span>
-  <span class="text-blue-400">&lt;mj-body</span> <span class="text-orange-300">background-color</span>=<span class="text-green-300">"#f5f7fa"</span><span class="text-blue-400">&gt;</span>
-    <span class="text-green-400">&lt;mj-section</span> <span class="text-orange-300">background-color</span>=<span class="text-green-300">"#0f172a"</span><span class="text-green-400">&gt;</span>
-      <span class="text-yellow-300">&lt;mj-column&gt;</span>
-        <span class="text-slate-400">&lt;mj-text</span> <span class="text-orange-300">color</span>=<span class="text-green-300">"#fff"</span> <span class="text-orange-300">font-size</span>=<span class="text-green-300">"20px"</span> <span class="text-orange-300">align</span>=<span class="text-green-300">"center"</span><span class="text-slate-400">&gt;</span>
-          Caetano Retail
-        <span class="text-slate-400">&lt;/mj-text&gt;</span>
-      <span class="text-yellow-300">&lt;/mj-column&gt;</span>
-    <span class="text-green-400">&lt;/mj-section&gt;</span>
-    <span class="text-green-400">&lt;mj-section&gt;</span>
-      <span class="text-yellow-300">&lt;mj-column&gt;</span>
-        <span class="text-slate-400">&lt;mj-text&gt;</span>Olá <span class="text-orange-300">{{first_name}}</span>,<span class="text-slate-400">&lt;/mj-text&gt;</span>
-        <span class="text-slate-400">&lt;mj-button</span> <span class="text-orange-300">href</span>=<span class="text-green-300">"https://loja.pt"</span><span class="text-slate-400">&gt;</span>Ver ofertas<span class="text-slate-400">&lt;/mj-button&gt;</span>
-      <span class="text-yellow-300">&lt;/mj-column&gt;</span>
-    <span class="text-green-400">&lt;/mj-section&gt;</span>
-  <span class="text-blue-400">&lt;/mj-body&gt;</span>
-<span class="text-slate-500">&lt;/mjml&gt;</span></pre>
+                                <pre id="te_mjmlLines" class="bg-[#21252b] text-slate-500 text-right px-3 py-3 select-none border-r border-slate-700"></pre>
+                                <pre id="te_mjmlCode" class="px-3 py-3 text-slate-300 flex-1 whitespace-pre"></pre>
                             </div>
                         </div>
                     </div>
@@ -1746,25 +2003,7 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
-            <div class="flex-1 overflow-auto bg-slate-100 p-6">
-                <div class="bg-white max-w-[600px] mx-auto shadow-sm">
-                    <div class="bg-slate-900 text-white text-center py-6 px-4">
-                        <p class="font-bold text-lg">Caetano Retail</p>
-                    </div>
-                    <div class="py-6 px-6">
-                        <h2 class="text-2xl font-bold text-slate-900 mb-3">Primavera 2026</h2>
-                        <p class="text-slate-700 mb-2">Olá <strong>João</strong>,</p>
-                        <p class="text-slate-600 text-sm mb-6">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
-                        <div class="text-center">
-                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
-                        </div>
-                    </div>
-                    <div class="bg-slate-50 py-4 px-6 text-center">
-                        <p class="text-xs text-slate-500">© 2026 Caetano Retail</p>
-                        <p class="text-xs text-slate-500"><a href="#" onclick="event.preventDefault()" class="underline">Cancelar subscrição</a></p>
-                    </div>
-                </div>
-            </div>
+            <div id="te_previewBody" class="flex-1 overflow-auto bg-slate-100 p-6"></div>
         </div>
     </div>
 </div>
