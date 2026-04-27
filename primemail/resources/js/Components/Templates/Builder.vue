@@ -137,7 +137,7 @@ function blockClasses(b) {
 </script>
 
 <template>
-    <div class="grid grid-cols-[180px_1fr_260px] gap-3 h-full">
+    <div class="grid grid-cols-[150px_minmax(0,1fr)_220px] gap-3 h-full">
 
         <!-- ── Palette ─────────────────────────────────────────────── -->
         <aside class="bg-white border border-slate-200 rounded-xl p-3 overflow-y-auto">
@@ -165,7 +165,7 @@ function blockClasses(b) {
         </aside>
 
         <!-- ── Canvas ─────────────────────────────────────────────── -->
-        <div class="bg-slate-100 border border-slate-200 rounded-xl overflow-y-auto">
+        <div class="bg-slate-100 border border-slate-200 rounded-xl overflow-y-auto min-w-0">
             <div class="max-w-[640px] mx-auto py-6 px-4">
 
                 <!-- Drop zone at the top -->
