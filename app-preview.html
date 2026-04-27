@@ -71,34 +71,32 @@
     function mockSaveTemplate() { showToast('Template guardado com sucesso.'); }
     function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
 
-    // Template editor — mode + preview toggles + block selection
+    // Template editor — mode tabs + preview modal + block selection
+    // (style.display avoids the .hidden vs .grid display conflict)
     function teSetMode(mode) {
-        document.getElementById('te_visualMode').classList.toggle('hidden', mode !== 'visual');
-        document.getElementById('te_codeMode').classList.toggle('hidden',   mode !== 'code');
-        document.getElementById('te_tabVisual').classList.toggle('bg-white', mode === 'visual');
-        document.getElementById('te_tabVisual').classList.toggle('shadow-sm', mode === 'visual');
-        document.getElementById('te_tabVisual').classList.toggle('text-slate-900', mode === 'visual');
-        document.getElementById('te_tabVisual').classList.toggle('text-slate-500', mode !== 'visual');
-        document.getElementById('te_tabCode').classList.toggle('bg-white', mode === 'code');
-        document.getElementById('te_tabCode').classList.toggle('shadow-sm', mode === 'code');
-        document.getElementById('te_tabCode').classList.toggle('text-slate-900', mode === 'code');
-        document.getElementById('te_tabCode').classList.toggle('text-slate-500', mode !== 'code');
-        document.getElementById('te_previewToggle').classList.toggle('hidden', mode !== 'visual');
+        const visual = document.getElementById('te_visualMode');
+        const code   = document.getElementById('te_codeMode');
+        visual.style.display = mode === 'visual' ? '' : 'none';
+        code.style.display   = mode === 'code'   ? '' : 'none';
+
+        const tv = document.getElementById('te_tabVisual');
+        const tc = document.getElementById('te_tabCode');
+        ['bg-white','shadow-sm','text-slate-900'].forEach(c => {
+            tv.classList.toggle(c, mode === 'visual');
+            tc.classList.toggle(c, mode === 'code');
+        });
+        tv.classList.toggle('text-slate-500', mode !== 'visual');
+        tc.classList.toggle('text-slate-500', mode !== 'code');
     }
-    function teTogglePreview() {
-        const root = document.getElementById('te_visualMode');
-        const btn  = document.getElementById('te_previewToggle');
-        const on   = root.dataset.preview !== 'off';
-        root.dataset.preview = on ? 'off' : 'on';
-        root.classList.toggle('grid-cols-[minmax(0,1fr)_minmax(360px,420px)]', !on);
-        root.classList.toggle('grid-cols-1', on);
-        document.getElementById('te_previewPane').classList.toggle('hidden', on);
-        btn.classList.toggle('bg-slate-900', !on);
-        btn.classList.toggle('text-white', !on);
-        btn.classList.toggle('border-slate-900', !on);
-        btn.classList.toggle('bg-white', on);
-        btn.classList.toggle('text-slate-600', on);
-        btn.classList.toggle('border-slate-200', on);
+    function teOpenPreviewModal()  {
+        const m = document.getElementById('te_previewModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    }
+    function teClosePreviewModal() {
+        const m = document.getElementById('te_previewModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
     }
     function teSelectBlock(id) {
         document.querySelectorAll('#te_canvas [data-block]').forEach((el) => {
@@ -1412,9 +1410,9 @@
                         </button>
                     </div>
 
-                    <!-- Preview toggle -->
-                    <button id="te_previewToggle" type="button" onclick="teTogglePreview()"
-                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border transition-colors bg-slate-900 text-white border-slate-900 hover:bg-slate-800">
+                    <!-- Open preview modal -->
+                    <button type="button" onclick="teOpenPreviewModal()"
+                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -1430,11 +1428,11 @@
                 <div class="min-h-[640px] h-[calc(100vh-260px)]">
 
                     <!-- ────────── VISUAL MODE ────────── -->
-                    <div id="te_visualMode" class="h-full grid gap-4 grid-cols-[minmax(0,1fr)_minmax(360px,420px)]" data-preview="on">
+                    <div id="te_visualMode" class="h-full">
 
-                        <!-- Builder: palette + canvas + properties -->
-                        <div class="min-w-0 h-full">
-                            <div class="grid grid-cols-[150px_minmax(0,1fr)_220px] gap-3 h-full">
+                        <!-- Builder: palette + canvas + properties (full width) -->
+                        <div class="h-full">
+                            <div class="grid grid-cols-[170px_minmax(0,1fr)_260px] gap-4 h-full">
 
                                 <!-- Palette -->
                                 <div class="bg-white border border-slate-200 rounded-xl p-2 overflow-y-auto">
@@ -1606,44 +1604,11 @@
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Live preview pane -->
-                        <div id="te_previewPane" class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col min-w-0">
-                            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-                                <div class="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-                                <div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
-                                <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
-                                <span class="ml-2 text-xs text-slate-500 font-mono">preview</span>
-                                <span class="ml-auto text-xs text-green-600 flex items-center gap-1">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                    Compilado
-                                </span>
-                            </div>
-                            <div class="flex-1 overflow-auto bg-slate-100 p-4">
-                                <div class="bg-white max-w-[600px] mx-auto shadow-sm">
-                                    <div class="bg-slate-900 text-white text-center py-6 px-4">
-                                        <p class="font-bold text-lg">Caetano Retail</p>
-                                    </div>
-                                    <div class="py-6 px-6">
-                                        <h2 class="text-2xl font-bold text-slate-900 mb-3">Primavera 2026</h2>
-                                        <p class="text-slate-700 mb-2">Olá <strong>João</strong>,</p>
-                                        <p class="text-slate-600 text-sm mb-6">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
-                                        <div class="text-center">
-                                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
-                                        </div>
-                                    </div>
-                                    <div class="bg-slate-50 py-4 px-6 text-center">
-                                        <p class="text-xs text-slate-500">© 2026 Caetano Retail</p>
-                                        <p class="text-xs text-slate-500"><a href="#" onclick="event.preventDefault()" class="underline">Cancelar subscrição</a></p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- ────────── CODE MODE (CodeMirror-style) ────────── -->
-                    <div id="te_codeMode" class="hidden h-full grid grid-cols-2 gap-4">
-                        <div class="bg-[#282c34] border border-slate-700 rounded-xl overflow-hidden flex flex-col">
+                    <div id="te_codeMode" class="h-full" style="display:none">
+                        <div class="bg-[#282c34] border border-slate-700 rounded-xl overflow-hidden flex flex-col h-full">
                             <div class="px-4 py-2.5 border-b border-slate-700 bg-[#21252b] flex items-center justify-between">
                                 <span class="text-xs font-mono font-semibold text-slate-300">MJML · XML</span>
                                 <span class="text-xs text-green-400 flex items-center gap-1">
@@ -1696,33 +1661,47 @@
 <span class="text-slate-500">&lt;/mjml&gt;</span></pre>
                             </div>
                         </div>
-
-                        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
-                            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-                                <div class="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-                                <div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
-                                <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
-                                <span class="ml-2 text-xs text-slate-500 font-mono">preview</span>
-                            </div>
-                            <div class="flex-1 overflow-auto bg-slate-100 p-4">
-                                <div class="bg-white max-w-[600px] mx-auto shadow-sm">
-                                    <div class="bg-slate-900 text-white text-center py-6 px-4">
-                                        <p class="font-bold text-lg">Caetano Retail</p>
-                                    </div>
-                                    <div class="py-6 px-6">
-                                        <h2 class="text-2xl font-bold text-slate-900 mb-3">Primavera 2026</h2>
-                                        <p class="text-slate-700 mb-2">Olá <strong>João</strong>,</p>
-                                        <p class="text-slate-600 text-sm mb-6">Descubra as melhores ofertas desta primavera...</p>
-                                        <div class="text-center">
-                                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- ── Preview modal (centred overlay) ─────────────────────────────── -->
+    <div id="te_previewModal" class="hidden fixed inset-0 z-50 bg-slate-900/70 items-center justify-center p-6" onclick="teClosePreviewModal()">
+        <div onclick="event.stopPropagation()" class="bg-white rounded-xl shadow-2xl w-full max-w-[680px] max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                <span class="ml-2 text-xs text-slate-500 font-mono">preview do email</span>
+                <span class="ml-auto text-xs text-green-600 flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Compilado
+                </span>
+                <button onclick="teClosePreviewModal()" class="ml-2 text-slate-400 hover:text-slate-700 transition-colors" title="Fechar">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex-1 overflow-auto bg-slate-100 p-6">
+                <div class="bg-white max-w-[600px] mx-auto shadow-sm">
+                    <div class="bg-slate-900 text-white text-center py-6 px-4">
+                        <p class="font-bold text-lg">Caetano Retail</p>
+                    </div>
+                    <div class="py-6 px-6">
+                        <h2 class="text-2xl font-bold text-slate-900 mb-3">Primavera 2026</h2>
+                        <p class="text-slate-700 mb-2">Olá <strong>João</strong>,</p>
+                        <p class="text-slate-600 text-sm mb-6">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
+                        <div class="text-center">
+                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 py-4 px-6 text-center">
+                        <p class="text-xs text-slate-500">© 2026 Caetano Retail</p>
+                        <p class="text-xs text-slate-500"><a href="#" onclick="event.preventDefault()" class="underline">Cancelar subscrição</a></p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
