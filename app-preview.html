@@ -71,6 +71,45 @@
     function mockSaveTemplate() { showToast('Template guardado com sucesso.'); }
     function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
 
+    // Template editor — mode + preview toggles + block selection
+    function teSetMode(mode) {
+        document.getElementById('te_visualMode').classList.toggle('hidden', mode !== 'visual');
+        document.getElementById('te_codeMode').classList.toggle('hidden',   mode !== 'code');
+        document.getElementById('te_tabVisual').classList.toggle('bg-white', mode === 'visual');
+        document.getElementById('te_tabVisual').classList.toggle('shadow-sm', mode === 'visual');
+        document.getElementById('te_tabVisual').classList.toggle('text-slate-900', mode === 'visual');
+        document.getElementById('te_tabVisual').classList.toggle('text-slate-500', mode !== 'visual');
+        document.getElementById('te_tabCode').classList.toggle('bg-white', mode === 'code');
+        document.getElementById('te_tabCode').classList.toggle('shadow-sm', mode === 'code');
+        document.getElementById('te_tabCode').classList.toggle('text-slate-900', mode === 'code');
+        document.getElementById('te_tabCode').classList.toggle('text-slate-500', mode !== 'code');
+        document.getElementById('te_previewToggle').classList.toggle('hidden', mode !== 'visual');
+    }
+    function teTogglePreview() {
+        const root = document.getElementById('te_visualMode');
+        const btn  = document.getElementById('te_previewToggle');
+        const on   = root.dataset.preview !== 'off';
+        root.dataset.preview = on ? 'off' : 'on';
+        root.classList.toggle('grid-cols-[minmax(0,1fr)_minmax(360px,420px)]', !on);
+        root.classList.toggle('grid-cols-1', on);
+        document.getElementById('te_previewPane').classList.toggle('hidden', on);
+        btn.classList.toggle('bg-slate-900', !on);
+        btn.classList.toggle('text-white', !on);
+        btn.classList.toggle('border-slate-900', !on);
+        btn.classList.toggle('bg-white', on);
+        btn.classList.toggle('text-slate-600', on);
+        btn.classList.toggle('border-slate-200', on);
+    }
+    function teSelectBlock(id) {
+        document.querySelectorAll('#te_canvas [data-block]').forEach((el) => {
+            el.classList.toggle('ring-2',         el.dataset.block === id);
+            el.classList.toggle('ring-blue-500',  el.dataset.block === id);
+        });
+        document.querySelectorAll('#te_props [data-props]').forEach((el) => {
+            el.classList.toggle('hidden', el.dataset.props !== id);
+        });
+    }
+
     // ── Lists ─────────────────────────────────────────────
     function mockShowNewListModal() {
         const name = prompt('Nome da nova lista:');
@@ -1326,7 +1365,7 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
-     ECRÃ — EDITOR MJML
+     ECRÃ — EDITOR DE TEMPLATE (visual builder + MJML)
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="templateEdit" class="screen fade-in">
     <div class="min-h-screen bg-slate-50 flex">
@@ -1337,69 +1376,347 @@
                     <button onclick="showScreen('templates')" class="text-slate-400 hover:text-slate-700">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     </button>
-                    <h1 class="text-xl font-semibold text-slate-900">Newsletter Primavera 2026</h1>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="mockPreviewTemplate()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Preview</button>
-                    <button onclick="mockSaveTemplate()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
+                    <h1 class="text-xl font-semibold text-slate-900">Editar — Newsletter Primavera 2026</h1>
                 </div>
             </header>
-            <main class="flex-1 px-8 py-6">
-                <div class="mb-4">
-                    <input type="text" value="Newsletter Primavera 2026" class="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            <main class="flex-1 px-8 py-6 flex flex-col gap-4">
+
+                <!-- ── Top bar: metadata + mode tabs + actions ──────── -->
+                <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-end gap-4">
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Nome *</label>
+                        <input type="text" value="Newsletter Primavera 2026"
+                               class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    </div>
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
+                        <input type="text" value="Newsletter trimestral com ofertas de Primavera"
+                               class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer pb-2">
+                        <input type="checkbox" class="rounded border-slate-300" />
+                        <span class="text-sm text-slate-700">Partilhado</span>
+                    </label>
+
+                    <!-- Mode tabs -->
+                    <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                        <button id="te_tabVisual" type="button" onclick="teSetMode('visual')"
+                                class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white shadow-sm text-slate-900">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+                            Visual
+                        </button>
+                        <button id="te_tabCode" type="button" onclick="teSetMode('code')"
+                                class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-slate-500 hover:text-slate-700">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                            MJML
+                        </button>
+                    </div>
+
+                    <!-- Preview toggle -->
+                    <button id="te_previewToggle" type="button" onclick="teTogglePreview()"
+                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border transition-colors bg-slate-900 text-white border-slate-900 hover:bg-slate-800">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        Preview
+                    </button>
+
+                    <button onclick="mockSaveTemplate()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar</button>
+                    <button onclick="showScreen('templates')" class="px-3 py-2 text-sm text-slate-600 hover:text-slate-900">Cancelar</button>
                 </div>
-                <div class="grid grid-cols-2 gap-5 h-[600px]">
-                    <!-- MJML Editor -->
-                    <div class="bg-slate-900 rounded-xl overflow-hidden flex flex-col">
-                        <div class="px-4 py-2 border-b border-slate-700 flex items-center gap-2">
-                            <span class="text-xs text-slate-400 font-mono">template.mjml</span>
-                            <span class="ml-auto text-xs text-green-400">● Compilado</span>
+
+                <!-- ── Editor area (mode-dependent) ────────────────────── -->
+                <div class="min-h-[640px] h-[calc(100vh-260px)]">
+
+                    <!-- ────────── VISUAL MODE ────────── -->
+                    <div id="te_visualMode" class="h-full grid gap-4 grid-cols-[minmax(0,1fr)_minmax(360px,420px)]" data-preview="on">
+
+                        <!-- Builder: palette + canvas + properties -->
+                        <div class="min-w-0 h-full">
+                            <div class="grid grid-cols-[150px_minmax(0,1fr)_220px] gap-3 h-full">
+
+                                <!-- Palette -->
+                                <div class="bg-white border border-slate-200 rounded-xl p-2 overflow-y-auto">
+                                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5">Blocos</p>
+                                    <div class="grid grid-cols-2 gap-1.5">
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v6H4z M4 14h16v2H4z M4 18h10v2H4z"/></svg>
+                                            <span class="text-[10px]">Cabeçalho</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 4v16 M19 4v16 M5 12h14"/></svg>
+                                            <span class="text-[10px]">Título</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16 M4 12h16 M4 18h10"/></svg>
+                                            <span class="text-[10px]">Texto</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18 M3 14h18 M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                                            <span class="text-[10px]">Botão</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v16H4z M4 14l4-4 4 4 6-6 2 2 M9 9a1 1 0 100-2 1 1 0 000 2z"/></svg>
+                                            <span class="text-[10px]">Imagem</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12h18"/></svg>
+                                            <span class="text-[10px]">Separador</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16 M8 4h8 M8 20h8"/></svg>
+                                            <span class="text-[10px]">Espaço</span>
+                                        </button>
+                                        <button class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-colors text-slate-600">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v12H4z M4 18h16v2H4z"/></svg>
+                                            <span class="text-[10px]">Rodapé</span>
+                                        </button>
+                                    </div>
+                                    <p class="text-[10px] text-slate-400 px-2 py-2 mt-2 border-t border-slate-100">Arrasta um bloco para o canvas para o adicionar.</p>
+                                </div>
+
+                                <!-- Canvas -->
+                                <div class="bg-slate-100 border border-slate-200 rounded-xl overflow-y-auto min-w-0" id="te_canvas">
+                                    <div class="max-w-[640px] mx-auto py-6 px-4 space-y-2">
+                                        <div data-block="b1" onclick="teSelectBlock('b1')"
+                                             class="bg-slate-900 text-white text-center py-6 px-4 cursor-pointer ring-2 ring-blue-500 rounded relative">
+                                            <p class="font-bold text-lg">Caetano Retail</p>
+                                            <span class="absolute top-1 left-2 text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">Cabeçalho</span>
+                                        </div>
+                                        <div data-block="b2" onclick="teSelectBlock('b2')"
+                                             class="bg-white py-4 px-6 cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
+                                            <h2 class="text-2xl font-bold text-slate-900">Primavera 2026</h2>
+                                        </div>
+                                        <div data-block="b3" onclick="teSelectBlock('b3')"
+                                             class="bg-white py-2 px-6 cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
+                                            <p class="text-slate-700">Olá <strong>João</strong>,</p>
+                                            <p class="text-slate-600 text-sm mt-2">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
+                                        </div>
+                                        <div data-block="b4" onclick="teSelectBlock('b4')"
+                                             class="bg-white py-3 px-6 text-center cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
+                                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
+                                        </div>
+                                        <div data-block="b5" onclick="teSelectBlock('b5')"
+                                             class="bg-slate-50 py-4 px-6 text-center cursor-pointer rounded hover:ring-1 hover:ring-blue-300">
+                                            <p class="text-xs text-slate-500">© 2026 Caetano Retail</p>
+                                            <p class="text-xs text-slate-500"><a href="#" onclick="event.preventDefault()" class="underline">Cancelar subscrição</a></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Properties panel -->
+                                <div class="bg-white border border-slate-200 rounded-xl p-3 overflow-y-auto" id="te_props">
+                                    <div data-props="b1">
+                                        <p class="text-xs font-semibold text-slate-700 mb-1">Cabeçalho</p>
+                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
+                                                <input type="text" value="Caetano Retail" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
+                                                <input type="color" value="#0f172a" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor do texto</label>
+                                                <input type="color" value="#ffffff" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Tamanho (px)</label>
+                                                <input type="number" value="20" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Espessura</label>
+                                                <select class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">
+                                                    <option>400</option><option>500</option><option>600</option><option selected>700</option><option>800</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Alinhamento</label>
+                                                <select class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">
+                                                    <option>left</option><option selected>center</option><option>right</option>
+                                                </select>
+                                            </div>
+                                            <button class="w-full px-2 py-1.5 mt-2 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+                                        </div>
+                                    </div>
+                                    <div data-props="b2" class="hidden">
+                                        <p class="text-xs font-semibold text-slate-700 mb-1">Título</p>
+                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
+                                                <input type="text" value="Primavera 2026" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Nível</label>
+                                                <select class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs"><option>h1</option><option selected>h2</option><option>h3</option></select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor</label>
+                                                <input type="color" value="#0f172a" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div data-props="b3" class="hidden">
+                                        <p class="text-xs font-semibold text-slate-700 mb-1">Texto</p>
+                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
+                                                <textarea rows="4" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">Olá {{first_name}}, descubra as melhores ofertas desta primavera...</textarea>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor</label>
+                                                <input type="color" value="#475569" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div data-props="b4" class="hidden">
+                                        <p class="text-xs font-semibold text-slate-700 mb-1">Botão</p>
+                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
+                                                <input type="text" value="Ver ofertas" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Link</label>
+                                                <input type="url" value="https://loja.caetanoretail.pt" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
+                                                <input type="color" value="#0f172a" class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div data-props="b5" class="hidden">
+                                        <p class="text-xs font-semibold text-slate-700 mb-1">Rodapé</p>
+                                        <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Texto</label>
+                                                <textarea rows="3" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">© 2026 Caetano Retail
+[Cancelar subscrição]({{unsubscribe_url}})</textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex-1 p-4 font-mono text-xs text-slate-300 overflow-auto leading-relaxed">
-<span class="text-slate-500">&lt;mjml&gt;</span><br>
-&nbsp;&nbsp;<span class="text-blue-400">&lt;mj-head&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">&lt;mj-attributes&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-yellow-300">&lt;mj-all</span> <span class="text-orange-300">font-family</span>=<span class="text-green-300">"Arial"</span> <span class="text-yellow-300">/&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">&lt;/mj-attributes&gt;</span><br>
-&nbsp;&nbsp;<span class="text-blue-400">&lt;/mj-head&gt;</span><br>
-&nbsp;&nbsp;<span class="text-blue-400">&lt;mj-body&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">&lt;mj-section</span> <span class="text-orange-300">background-color</span>=<span class="text-green-300">"#1e293b"</span><span class="text-green-400">&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-yellow-300">&lt;mj-column&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-slate-400">&lt;mj-text</span> <span class="text-orange-300">color</span>=<span class="text-green-300">"#fff"</span> <span class="text-orange-300">font-size</span>=<span class="text-green-300">"24px"</span><span class="text-slate-400">&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Primavera 2026<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-slate-400">&lt;/mj-text&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-yellow-300">&lt;/mj-column&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">&lt;/mj-section&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">&lt;mj-section&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-yellow-300">&lt;mj-column&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-slate-400">&lt;mj-text&gt;</span>Olá <span class="text-orange-300">{{first_name}}</span>,<span class="text-slate-400">&lt;/mj-text&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-slate-400">&lt;mj-button</span> <span class="text-orange-300">href</span>=<span class="text-green-300">"https://loja.pt"</span><span class="text-slate-400">&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ver oferta<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-slate-400">&lt;/mj-button&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-yellow-300">&lt;/mj-column&gt;</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">&lt;/mj-section&gt;</span><br>
-&nbsp;&nbsp;<span class="text-blue-400">&lt;/mj-body&gt;</span><br>
-<span class="text-slate-500">&lt;/mjml&gt;</span>
+
+                        <!-- Live preview pane -->
+                        <div id="te_previewPane" class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col min-w-0">
+                            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                                <div class="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                                <span class="ml-2 text-xs text-slate-500 font-mono">preview</span>
+                                <span class="ml-auto text-xs text-green-600 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    Compilado
+                                </span>
+                            </div>
+                            <div class="flex-1 overflow-auto bg-slate-100 p-4">
+                                <div class="bg-white max-w-[600px] mx-auto shadow-sm">
+                                    <div class="bg-slate-900 text-white text-center py-6 px-4">
+                                        <p class="font-bold text-lg">Caetano Retail</p>
+                                    </div>
+                                    <div class="py-6 px-6">
+                                        <h2 class="text-2xl font-bold text-slate-900 mb-3">Primavera 2026</h2>
+                                        <p class="text-slate-700 mb-2">Olá <strong>João</strong>,</p>
+                                        <p class="text-slate-600 text-sm mb-6">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
+                                        <div class="text-center">
+                                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
+                                        </div>
+                                    </div>
+                                    <div class="bg-slate-50 py-4 px-6 text-center">
+                                        <p class="text-xs text-slate-500">© 2026 Caetano Retail</p>
+                                        <p class="text-xs text-slate-500"><a href="#" onclick="event.preventDefault()" class="underline">Cancelar subscrição</a></p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <!-- Preview -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
-                        <div class="px-4 py-2 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-                            <div class="w-3 h-3 rounded-full bg-red-400"></div>
-                            <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
-                            <div class="w-3 h-3 rounded-full bg-green-400"></div>
-                            <span class="text-xs text-slate-500 ml-2">Preview renderizado</span>
-                        </div>
-                        <div class="flex-1 overflow-auto p-0">
-                            <div class="bg-slate-800 text-white text-center py-8 px-6">
-                                <p class="text-2xl font-bold">Primavera 2026</p>
-                                <p class="text-slate-300 text-sm mt-1">Caetano Retail</p>
+
+                    <!-- ────────── CODE MODE (CodeMirror-style) ────────── -->
+                    <div id="te_codeMode" class="hidden h-full grid grid-cols-2 gap-4">
+                        <div class="bg-[#282c34] border border-slate-700 rounded-xl overflow-hidden flex flex-col">
+                            <div class="px-4 py-2.5 border-b border-slate-700 bg-[#21252b] flex items-center justify-between">
+                                <span class="text-xs font-mono font-semibold text-slate-300">MJML · XML</span>
+                                <span class="text-xs text-green-400 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    Compilado
+                                </span>
                             </div>
-                            <div class="p-6">
-                                <p class="text-slate-700 mb-4">Olá <strong>João</strong>,</p>
-                                <p class="text-slate-600 text-sm mb-4">Descubra as melhores ofertas desta primavera, seleccionadas especialmente para si.</p>
-                                <div class="text-center mt-6">
-                                    <a href="#" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver oferta</a>
+                            <div class="flex-1 overflow-auto flex font-mono text-xs leading-[1.6]">
+                                <pre class="bg-[#21252b] text-slate-500 text-right px-3 py-3 select-none border-r border-slate-700">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20</pre>
+                                <pre class="px-3 py-3 text-slate-300 flex-1 whitespace-pre"><span class="text-slate-500">&lt;mjml&gt;</span>
+  <span class="text-blue-400">&lt;mj-head&gt;</span>
+    <span class="text-green-400">&lt;mj-attributes&gt;</span>
+      <span class="text-yellow-300">&lt;mj-all</span> <span class="text-orange-300">font-family</span>=<span class="text-green-300">"Helvetica, Arial"</span> <span class="text-yellow-300">/&gt;</span>
+    <span class="text-green-400">&lt;/mj-attributes&gt;</span>
+  <span class="text-blue-400">&lt;/mj-head&gt;</span>
+  <span class="text-blue-400">&lt;mj-body</span> <span class="text-orange-300">background-color</span>=<span class="text-green-300">"#f5f7fa"</span><span class="text-blue-400">&gt;</span>
+    <span class="text-green-400">&lt;mj-section</span> <span class="text-orange-300">background-color</span>=<span class="text-green-300">"#0f172a"</span><span class="text-green-400">&gt;</span>
+      <span class="text-yellow-300">&lt;mj-column&gt;</span>
+        <span class="text-slate-400">&lt;mj-text</span> <span class="text-orange-300">color</span>=<span class="text-green-300">"#fff"</span> <span class="text-orange-300">font-size</span>=<span class="text-green-300">"20px"</span> <span class="text-orange-300">align</span>=<span class="text-green-300">"center"</span><span class="text-slate-400">&gt;</span>
+          Caetano Retail
+        <span class="text-slate-400">&lt;/mj-text&gt;</span>
+      <span class="text-yellow-300">&lt;/mj-column&gt;</span>
+    <span class="text-green-400">&lt;/mj-section&gt;</span>
+    <span class="text-green-400">&lt;mj-section&gt;</span>
+      <span class="text-yellow-300">&lt;mj-column&gt;</span>
+        <span class="text-slate-400">&lt;mj-text&gt;</span>Olá <span class="text-orange-300">{{first_name}}</span>,<span class="text-slate-400">&lt;/mj-text&gt;</span>
+        <span class="text-slate-400">&lt;mj-button</span> <span class="text-orange-300">href</span>=<span class="text-green-300">"https://loja.pt"</span><span class="text-slate-400">&gt;</span>Ver ofertas<span class="text-slate-400">&lt;/mj-button&gt;</span>
+      <span class="text-yellow-300">&lt;/mj-column&gt;</span>
+    <span class="text-green-400">&lt;/mj-section&gt;</span>
+  <span class="text-blue-400">&lt;/mj-body&gt;</span>
+<span class="text-slate-500">&lt;/mjml&gt;</span></pre>
+                            </div>
+                        </div>
+
+                        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
+                            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                                <div class="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                                <span class="ml-2 text-xs text-slate-500 font-mono">preview</span>
+                            </div>
+                            <div class="flex-1 overflow-auto bg-slate-100 p-4">
+                                <div class="bg-white max-w-[600px] mx-auto shadow-sm">
+                                    <div class="bg-slate-900 text-white text-center py-6 px-4">
+                                        <p class="font-bold text-lg">Caetano Retail</p>
+                                    </div>
+                                    <div class="py-6 px-6">
+                                        <h2 class="text-2xl font-bold text-slate-900 mb-3">Primavera 2026</h2>
+                                        <p class="text-slate-700 mb-2">Olá <strong>João</strong>,</p>
+                                        <p class="text-slate-600 text-sm mb-6">Descubra as melhores ofertas desta primavera...</p>
+                                        <div class="text-center">
+                                            <a href="#" onclick="event.preventDefault()" class="inline-block bg-slate-900 text-white px-8 py-3 rounded-lg text-sm font-medium">Ver ofertas</a>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
