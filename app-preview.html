@@ -26,12 +26,92 @@
     }
 
     // ── Team ─────────────────────────────────────────────
+    const _allBrands = [
+        { id:'caetano',     name:'Caetano',       color:'#1A1A2E' },
+        { id:'bmw',         name:'BMW',            color:'#1C69D4' },
+        { id:'hyundai',     name:'Hyundai',        color:'#002C5F' },
+        { id:'byd',         name:'BYD',            color:'#1DB954' },
+        { id:'audi',        name:'Audi',           color:'#BB0A21' },
+        { id:'alpine',      name:'Alpine',         color:'#0055A4' },
+        { id:'dacia',       name:'Dacia',          color:'#FFBE00' },
+        { id:'caetanoparts',name:'Caetano Parts',  color:'#E63946' },
+    ];
+    const _allAreas = [
+        { id:'dashboard',     name:'Dashboard' },
+        { id:'contacts',      name:'Contactos' },
+        { id:'lists',         name:'Listas' },
+        { id:'imports',       name:'Importações' },
+        { id:'templates',     name:'Templates' },
+        { id:'campaigns',     name:'Campanhas' },
+        { id:'suppression',   name:'Supressão' },
+        { id:'team',          name:'Equipa' },
+        { id:'brandSettings', name:'Definições da marca' },
+    ];
+    const _memberPermissions = {
+        m1: { brands: _allBrands.map(b=>b.id), areas: _allAreas.map(a=>a.id) },
+        m2: { brands: ['bmw','hyundai'], areas: ['dashboard','contacts','lists','templates','campaigns'] },
+        m3: { brands: ['bmw'], areas: ['dashboard','campaigns'] },
+    };
+    let _editingMemberId = null;
+
+    function _accessSummaryText(perms) {
+        const b = perms.brands.length, a = perms.areas.length;
+        if (b === _allBrands.length && a === _allAreas.length) return `Todas (${b} marcas · ${a} áreas)`;
+        if (b === 0 && a === 0) return 'Sem acesso';
+        return `${b} ${b===1?'marca':'marcas'} · ${a} ${a===1?'área':'áreas'}`;
+    }
+
+    function openPermissionsModal(btn) {
+        const tr = btn.closest('tr');
+        const id = tr?.dataset.memberId; if (!id) return;
+        const name = tr.dataset.memberName || 'Utilizador';
+        _editingMemberId = id;
+        const perms = _memberPermissions[id] || { brands: [], areas: [] };
+        document.getElementById('permModalTitle').textContent = `Permissões — ${name}`;
+        document.getElementById('permBrandsList').innerHTML = _allBrands.map(b => `
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" data-brand-id="${b.id}" class="rounded" ${perms.brands.includes(b.id)?'checked':''} />
+                <div class="w-4 h-4 rounded flex-shrink-0" style="background:${b.color}"></div>
+                <span class="text-sm text-slate-900">${b.name}</span>
+            </label>`).join('');
+        document.getElementById('permAreasList').innerHTML = _allAreas.map(a => `
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" data-area-id="${a.id}" class="rounded" ${perms.areas.includes(a.id)?'checked':''} />
+                <span class="text-sm text-slate-900">${a.name}</span>
+            </label>`).join('');
+        const m = document.getElementById('permissionsModal');
+        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+    }
+
+    function closePermissionsModal() {
+        const m = document.getElementById('permissionsModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+        _editingMemberId = null;
+    }
+
+    function savePermissions() {
+        if (!_editingMemberId) return;
+        const brands = Array.from(document.querySelectorAll('#permBrandsList input:checked')).map(i => i.dataset.brandId);
+        const areas  = Array.from(document.querySelectorAll('#permAreasList input:checked')).map(i => i.dataset.areaId);
+        _memberPermissions[_editingMemberId] = { brands, areas };
+        // Actualizar resumo na linha
+        const tr = document.querySelector(`#teamMembersBody tr[data-member-id="${_editingMemberId}"]`);
+        const span = tr?.querySelector('.member-access-summary');
+        if (span) span.textContent = _accessSummaryText({ brands, areas });
+        closePermissionsModal();
+        showToast(`Permissões guardadas (${brands.length} ${brands.length===1?'marca':'marcas'}, ${areas.length} ${areas.length===1?'área':'áreas'}).`);
+    }
+
+    function permSelectAll(scope, val) {
+        const sel = scope === 'brands' ? '#permBrandsList input' : '#permAreasList input';
+        document.querySelectorAll(sel).forEach(i => i.checked = val);
+    }
+
     function mockInviteTeam() {
         const inp = document.getElementById('inviteEmailInput');
         const roleEl = document.getElementById('inviteRoleSelect');
         const email = inp ? inp.value.trim() : '';
         if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
-        // Verificar duplicado
         const exists = Array.from(document.querySelectorAll('#teamMembersBody tr'))
             .some(tr => tr.textContent.toLowerCase().includes(email.toLowerCase()));
         if (exists) { showToast(`${email} já é membro da equipa.`, 'error'); return; }
@@ -41,9 +121,26 @@
             const initials = email[0].toUpperCase();
             const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600'];
             const c = colors[tbody.rows.length % colors.length];
+            const memberId = 'm' + Date.now();
+            // Por defeito: marca activa + áreas relevantes pela função
+            const defaultBrands = [_currentBrand?.id || 'bmw'];
+            const defaultAreas = role === 'admin'
+                ? _allAreas.map(a=>a.id)
+                : role === 'editor'
+                    ? ['dashboard','contacts','lists','templates','campaigns']
+                    : ['dashboard','campaigns'];
+            _memberPermissions[memberId] = { brands: defaultBrands, areas: defaultAreas };
+            const summary = _accessSummaryText(_memberPermissions[memberId]);
             const tr = document.createElement('tr');
             tr.className = 'hover:bg-slate-50';
-            tr.innerHTML = `<td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${c} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${email}</p><p class="text-xs text-slate-400">${email}</p></div></div></td><td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">pendente</span></td><td class="px-4 py-3 text-slate-500">hoje</td><td class="px-4 py-3 text-right"><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>`;
+            tr.dataset.memberId = memberId;
+            tr.dataset.memberName = email;
+            tr.innerHTML = `
+                <td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${c} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${email}</p><p class="text-xs text-slate-400">${email}</p></div></div></td>
+                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">pendente</span></td>
+                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">${summary}</span></td>
+                <td class="px-4 py-3 text-slate-500">hoje</td>
+                <td class="px-4 py-3 text-right"><div class="flex items-center justify-end gap-2"><button onclick="openPermissionsModal(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Permissões</button><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></div></td>`;
             tbody.appendChild(tr);
         }
         inp.value = '';
@@ -3495,12 +3592,13 @@ ${body}
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Utilizador</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Função</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Acesso</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Membro desde</th>
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
                         <tbody id="teamMembersBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50">
+                            <tr class="hover:bg-slate-50" data-member-id="m1" data-member-name="Miguel Caetano">
                                 <td class="px-4 py-3">
                                     <div class="flex items-center gap-3">
                                         <div class="w-8 h-8 rounded-full bg-slate-800 text-white text-xs font-semibold flex items-center justify-center">M</div>
@@ -3510,10 +3608,11 @@ ${body}
                                 <td class="px-4 py-3">
                                     <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">owner</span>
                                 </td>
+                                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">Todas (8 marcas · 9 áreas)</span></td>
                                 <td class="px-4 py-3 text-slate-500">01/01/2026</td>
                                 <td class="px-4 py-3 text-right"><span class="text-xs text-slate-300">—</span></td>
                             </tr>
-                            <tr class="hover:bg-slate-50">
+                            <tr class="hover:bg-slate-50" data-member-id="m2" data-member-name="Ana Rodrigues">
                                 <td class="px-4 py-3">
                                     <div class="flex items-center gap-3">
                                         <div class="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">A</div>
@@ -3527,10 +3626,16 @@ ${body}
                                         <option>viewer</option>
                                     </select>
                                 </td>
+                                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">2 marcas · 5 áreas</span></td>
                                 <td class="px-4 py-3 text-slate-500">15/01/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button onclick="openPermissionsModal(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Permissões</button>
+                                        <button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                                    </div>
+                                </td>
                             </tr>
-                            <tr class="hover:bg-slate-50">
+                            <tr class="hover:bg-slate-50" data-member-id="m3" data-member-name="Carlos Lima">
                                 <td class="px-4 py-3">
                                     <div class="flex items-center gap-3">
                                         <div class="w-8 h-8 rounded-full bg-green-600 text-white text-xs font-semibold flex items-center justify-center">C</div>
@@ -3544,8 +3649,14 @@ ${body}
                                         <option selected>viewer</option>
                                     </select>
                                 </td>
+                                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">1 marca · 2 áreas</span></td>
                                 <td class="px-4 py-3 text-slate-500">03/02/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                                <td class="px-4 py-3 text-right">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button onclick="openPermissionsModal(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Permissões</button>
+                                        <button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                                    </div>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -3913,6 +4024,50 @@ ${body}
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
             <button onclick="closeImportDetailsModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Fechar</button>
             <button onclick="closeImportDetailsModal();showToast('A descarregar relatório…')" class="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-800">Descarregar relatório</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — PERMISSÕES DE UTILIZADOR
+═══════════════════════════════════════════════════════════════════ -->
+<div id="permissionsModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closePermissionsModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <h2 id="permModalTitle" class="text-lg font-semibold text-slate-900">Permissões</h2>
+            <p class="text-sm text-slate-500 mt-1">Define a que marcas e áreas este utilizador tem acesso.</p>
+        </div>
+        <div class="px-6 py-5 space-y-6 overflow-y-auto">
+            <!-- Marcas -->
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-semibold text-slate-900">Marcas</h3>
+                    <div class="flex gap-2 text-xs">
+                        <button type="button" onclick="permSelectAll('brands', true)" class="text-slate-500 hover:text-slate-900">Seleccionar todas</button>
+                        <span class="text-slate-300">·</span>
+                        <button type="button" onclick="permSelectAll('brands', false)" class="text-slate-500 hover:text-slate-900">Nenhuma</button>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 mb-2">O utilizador só pode alternar entre as marcas seleccionadas e ver dados das mesmas.</p>
+                <div id="permBrandsList" class="grid grid-cols-2 gap-1 border border-slate-200 rounded-lg p-2"></div>
+            </div>
+            <!-- Áreas -->
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-semibold text-slate-900">Áreas / Módulos</h3>
+                    <div class="flex gap-2 text-xs">
+                        <button type="button" onclick="permSelectAll('areas', true)" class="text-slate-500 hover:text-slate-900">Todas</button>
+                        <span class="text-slate-300">·</span>
+                        <button type="button" onclick="permSelectAll('areas', false)" class="text-slate-500 hover:text-slate-900">Nenhuma</button>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 mb-2">Marca os módulos a que o utilizador pode aceder na barra lateral.</p>
+                <div id="permAreasList" class="grid grid-cols-2 gap-1 border border-slate-200 rounded-lg p-2"></div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+            <button onclick="closePermissionsModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button onclick="savePermissions()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar permissões</button>
         </div>
     </div>
 </div>
