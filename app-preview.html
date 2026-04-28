@@ -187,6 +187,7 @@
         const card = document.createElement('div');
         card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card';
         card.setAttribute('data-tpl-id', id);
+        card.setAttribute('data-tpl-name', name.toLowerCase());
         card.onclick = () => teEditTemplate(id);
         card.innerHTML = `
             <div class="h-40 bg-gradient-to-br ${g} flex items-center justify-center">
@@ -213,6 +214,7 @@
             const tr = document.createElement('tr');
             tr.className = 'hover:bg-slate-50 cursor-pointer';
             tr.setAttribute('data-tpl-id', id);
+            tr.setAttribute('data-tpl-name', name.toLowerCase());
             tr.onclick = () => teEditTemplate(id);
             tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-900">${name}</td><td class="px-4 py-3 text-slate-500 text-xs">—</td><td class="px-4 py-3 text-xs text-slate-400">Criado agora</td><td class="px-4 py-3 text-right flex items-center justify-end gap-2"><button onclick="event.stopPropagation();teEditTemplate('${id}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button><button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button><button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button></td>`;
             listBody.appendChild(tr);
@@ -232,6 +234,13 @@
         if (btnL) { btnL.classList.toggle('bg-slate-900',v==='list'); btnL.classList.toggle('text-white',v==='list'); btnL.classList.toggle('text-slate-500',v!=='list'); }
     }
     function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
+    function filterTemplates() {
+        const q = (document.getElementById('tplSearch')?.value || '').toLowerCase();
+        document.querySelectorAll('#tplGrid [data-tpl-id], #tplListBody [data-tpl-id]').forEach(el => {
+            const n = (el.dataset.tplName || el.textContent || '').toLowerCase();
+            el.style.display = !q || n.includes(q) ? '' : 'none';
+        });
+    }
 
     // ════════════════════════════════════════════════════════════════════
     // Template editor — state-driven builder
@@ -1044,6 +1053,22 @@ ${body}
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
     }
 
+    // ── Unsubscribe (público) ────────────────────────────
+    function confirmUnsubscribe() {
+        const email = document.getElementById('unsubEmail')?.value.trim();
+        if (!email || !email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        document.getElementById('unsubConfirmPanel').classList.add('hidden');
+        document.getElementById('unsubSuccessPanel').classList.remove('hidden');
+        const sp = document.getElementById('unsubSuccessEmail');
+        if (sp) sp.textContent = email;
+    }
+
+    function resetUnsubscribe() {
+        document.getElementById('unsubConfirmPanel').classList.remove('hidden');
+        document.getElementById('unsubSuccessPanel').classList.add('hidden');
+        showToast('Podes confirmar novamente se quiseres cancelar.','info');
+    }
+
     // ── Campaigns ─────────────────────────────────────────
     let _wizStep = 1;
     let _currentCampStatus = 'sent';
@@ -1367,6 +1392,7 @@ ${body}
         <option value="suppression">Supressão</option>
         <option value="team">Equipa</option>
         <option value="brandSettings">Definições da Marca</option>
+        <option value="unsubscribe">Unsubscribe (público)</option>
     </select>
 </div>
 <div class="pt-10"></div>
@@ -1426,43 +1452,43 @@ ${body}
                 <p class="text-slate-500">Escolhe a marca com que queres trabalhar hoje</p>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+            <div id="brandSelectGrid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button onclick="selectBrand('caetano','Caetano','#1A1A2E')" data-brand-id="caetano" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1A1A2E"></div>
                     <h3 class="font-semibold text-slate-900 group-hover:text-slate-900">Caetano</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('bmw','BMW','#1C69D4')" data-brand-id="bmw" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1C69D4"></div>
                     <h3 class="font-semibold text-slate-900">BMW</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('hyundai','Hyundai','#002C5F')" data-brand-id="hyundai" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #002C5F"></div>
                     <h3 class="font-semibold text-slate-900">Hyundai</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('byd','BYD','#1DB954')" data-brand-id="byd" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1DB954"></div>
                     <h3 class="font-semibold text-slate-900">BYD</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('audi','Audi','#BB0A21')" data-brand-id="audi" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #BB0A21"></div>
                     <h3 class="font-semibold text-slate-900">Audi</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('alpine','Alpine','#0055A4')" data-brand-id="alpine" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #0055A4"></div>
                     <h3 class="font-semibold text-slate-900">Alpine</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('dacia','Dacia','#FFBE00')" data-brand-id="dacia" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #FFBE00"></div>
                     <h3 class="font-semibold text-slate-900">Dacia</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </button>
-                <button onclick="showScreen('dashboard')" class="bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('caetanoparts','Caetano Parts','#E63946')" data-brand-id="caetanoparts" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #E63946"></div>
                     <h3 class="font-semibold text-slate-900">Caetano Parts</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
@@ -1479,9 +1505,9 @@ ${body}
     <aside class="w-64 bg-slate-900 flex flex-col fixed inset-y-0 top-10 left-0 z-20">
         <div class="px-5 py-5 border-b border-slate-700">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg ring-1 ring-slate-600" style="background-color: #1C69D4"></div>
+                <div class="sidebar-brand-color w-9 h-9 rounded-lg ring-1 ring-slate-600" style="background-color: #1C69D4"></div>
                 <div class="min-w-0">
-                    <p class="text-white font-semibold text-sm">BMW</p>
+                    <p class="sidebar-brand-name text-white font-semibold text-sm">BMW</p>
                     <button onclick="showScreen('brandSelect')" class="text-xs text-slate-400 hover:text-slate-200">Trocar de marca</button>
                 </div>
             </div>
@@ -1571,6 +1597,30 @@ ${body}
         document.querySelectorAll('[data-sidebar-slot]').forEach(slot => {
             slot.innerHTML = tpl.innerHTML;
         });
+        // Re-aplica a marca actualmente seleccionada
+        if (_currentBrand) applyBrandToSidebar();
+    }
+
+    let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4' };
+
+    function applyBrandToSidebar() {
+        document.querySelectorAll('.sidebar-brand-color').forEach(el => { el.style.backgroundColor = _currentBrand.color; });
+        document.querySelectorAll('.sidebar-brand-name').forEach(el => { el.textContent = _currentBrand.name; });
+    }
+
+    function selectBrand(id, name, color) {
+        _currentBrand = { id, name, color };
+        applyBrandToSidebar();
+        // Marca o card seleccionado
+        document.querySelectorAll('.brand-card').forEach(b => {
+            const sel = b.dataset.brandId === id;
+            b.classList.toggle('border-slate-900', sel);
+            b.classList.toggle('ring-2', sel);
+            b.classList.toggle('ring-slate-900', sel);
+            b.classList.toggle('ring-offset-2', sel);
+        });
+        showScreen('dashboard');
+        showToast(`A trabalhar com a marca ${name}.`);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1746,7 +1796,7 @@ ${body}
                         </div>
                         <table class="w-full text-sm">
                             <tbody>
-                                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showCampaign('sent')">
                                     <td class="px-5 py-3">
                                         <p class="font-medium text-slate-900">Newsletter BMW — Abril 2026</p>
                                         <p class="text-xs text-slate-400">Descobre as novidades do mês na BMW Caetano</p>
@@ -1759,7 +1809,7 @@ ${body}
                                         </div>
                                     </td>
                                 </tr>
-                                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showCampaign('sent')">
                                     <td class="px-5 py-3">
                                         <p class="font-medium text-slate-900">Test Drive Série 5</p>
                                         <p class="text-xs text-slate-400">Agenda o teu test drive exclusivo</p>
@@ -1772,7 +1822,7 @@ ${body}
                                         </div>
                                     </td>
                                 </tr>
-                                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showCampaign('sent')">
                                     <td class="px-5 py-3">
                                         <p class="font-medium text-slate-900">Promoção Verão iX1</p>
                                         <p class="text-xs text-slate-400">Condições especiais até 30 de Abril</p>
@@ -1785,7 +1835,7 @@ ${body}
                                         </div>
                                     </td>
                                 </tr>
-                                <tr class="hover:bg-slate-50 cursor-pointer" onclick="showScreen('campaignShow')">
+                                <tr class="hover:bg-slate-50 cursor-pointer" onclick="showCampaign('sent')">
                                     <td class="px-5 py-3">
                                         <p class="font-medium text-slate-900">Convite Evento — Lançamento i5</p>
                                         <p class="text-xs text-slate-400">Estás convidado para um evento exclusivo</p>
@@ -2181,7 +2231,7 @@ ${body}
                                         <a class="inline-block px-6 py-3 bg-slate-900 text-white rounded font-medium">Agendar Test Drive</a>
                                     </div>
                                     <div style="background: #1A1A2E" class="p-4 text-center">
-                                        <p class="text-slate-400 text-xs">© 2026 BMW Caetano · <a class="text-slate-300">Cancelar subscrição</a></p>
+                                        <p class="text-slate-400 text-xs">© 2026 BMW Caetano · <a onclick="showScreen('unsubscribe')" class="text-slate-300 cursor-pointer hover:text-white">Cancelar subscrição</a></p>
                                     </div>
                                 </div>
                             </div>
@@ -2622,10 +2672,13 @@ ${body}
                 </div>
             </header>
             <main class="flex-1 px-8 py-6">
+                <div class="mb-4">
+                    <input id="tplSearch" type="text" placeholder="Pesquisar template…" oninput="filterTemplates()" class="w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                </div>
                 <!-- ── Grid view ── -->
                 <div id="tplGrid" class="grid grid-cols-3 gap-5">
                     <!-- Template card 1 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl1" onclick="teEditTemplate('tpl1')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" onclick="teEditTemplate('tpl1')">
                         <div class="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-blue-300 rounded mx-auto mb-2"></div>
@@ -2644,7 +2697,7 @@ ${body}
                         </div>
                     </div>
                     <!-- Template card 2 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl2" onclick="teEditTemplate('tpl2')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" onclick="teEditTemplate('tpl2')">
                         <div class="h-40 bg-gradient-to-br from-orange-50 to-red-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-orange-300 rounded mx-auto mb-2"></div>
@@ -2663,7 +2716,7 @@ ${body}
                         </div>
                     </div>
                     <!-- Template card 3 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl3" onclick="teEditTemplate('tpl3')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" onclick="teEditTemplate('tpl3')">
                         <div class="h-40 bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-green-300 rounded mx-auto mb-2"></div>
@@ -2704,7 +2757,7 @@ ${body}
                             </tr>
                         </thead>
                         <tbody id="tplListBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl1" onclick="teEditTemplate('tpl1')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" onclick="teEditTemplate('tpl1')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Newsletter Primavera 2026</td>
                                 <td class="px-4 py-3 text-slate-500 text-xs">Newsletter trimestral com ofertas de Primavera</td>
                                 <td class="px-4 py-3 text-xs text-slate-400">17/04/2026</td>
@@ -2714,7 +2767,7 @@ ${body}
                                     <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl2" onclick="teEditTemplate('tpl2')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" onclick="teEditTemplate('tpl2')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Promoção Flash — Verão</td>
                                 <td class="px-4 py-3 text-slate-500 text-xs">Campanha de promoção sazonal de Verão</td>
                                 <td class="px-4 py-3 text-xs text-slate-400">02/03/2026</td>
@@ -2724,7 +2777,7 @@ ${body}
                                     <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl3" onclick="teEditTemplate('tpl3')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" onclick="teEditTemplate('tpl3')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Boas-vindas — Welcome</td>
                                 <td class="px-4 py-3 text-slate-500 text-xs">Email automático enviado após registo</td>
                                 <td class="px-4 py-3 text-xs text-slate-400">15/01/2026</td>
@@ -3584,6 +3637,57 @@ ${body}
                     </div>
                 </div>
             </main>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ECRÃ — UNSUBSCRIBE (público, sem sidebar)
+═══════════════════════════════════════════════════════════════════ -->
+<div id="unsubscribe" class="screen fade-in">
+    <div class="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-100 to-slate-200">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+            <!-- Cabeçalho com cor da marca -->
+            <div class="px-8 py-6 text-center" style="background: #1C69D4">
+                <h1 class="text-white text-xl font-bold">BMW Caetano</h1>
+            </div>
+            <!-- Estado: confirmar -->
+            <div id="unsubConfirmPanel" class="px-8 py-7">
+                <h2 class="text-xl font-semibold text-slate-900 mb-2">Cancelar subscrição</h2>
+                <p class="text-sm text-slate-600 mb-6">Lamentamos que queiras deixar de receber os nossos emails. Confirma o teu endereço para concluir o processo.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email</label>
+                        <input id="unsubEmail" type="email" value="joao.silva@empresa.pt" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Motivo (opcional)</label>
+                        <select id="unsubReason" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                            <option value="">Prefiro não dizer</option>
+                            <option value="too_many">Recebo emails com demasiada frequência</option>
+                            <option value="not_relevant">O conteúdo não é relevante para mim</option>
+                            <option value="never_subscribed">Não me lembro de ter subscrito</option>
+                            <option value="other">Outro motivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between gap-3 mt-7 pt-5 border-t border-slate-100">
+                    <button onclick="showToast('Subscrição mantida.','info')" class="text-sm text-slate-500 hover:text-slate-900">Manter subscrição</button>
+                    <button onclick="confirmUnsubscribe()" class="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Confirmar cancelamento</button>
+                </div>
+            </div>
+            <!-- Estado: sucesso -->
+            <div id="unsubSuccessPanel" class="hidden px-8 py-10 text-center">
+                <div class="w-14 h-14 rounded-full bg-green-100 mx-auto mb-4 flex items-center justify-center">
+                    <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <h2 class="text-xl font-semibold text-slate-900 mb-2">Subscrição cancelada</h2>
+                <p class="text-sm text-slate-600 mb-1">O endereço <span id="unsubSuccessEmail" class="font-medium text-slate-900">joao.silva@empresa.pt</span> deixou de receber os nossos emails.</p>
+                <p class="text-xs text-slate-400 mt-4">Mudaste de ideias? <a onclick="resetUnsubscribe()" class="text-slate-700 underline cursor-pointer">Reverter</a></p>
+            </div>
+            <div class="px-8 py-3 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-400">
+                © 2026 BMW Caetano · <span class="cursor-pointer hover:text-slate-600">Política de Privacidade</span>
+            </div>
         </div>
     </div>
 </div>
