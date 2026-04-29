@@ -280,6 +280,8 @@
         const titleMap = { tpl1:'Newsletter Primavera 2026', tpl2:'Promoção Flash — Verão', tpl3:'Boas-vindas — Welcome' };
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         if (nameEl) nameEl.value = titleMap[id] || '';
+        const descEl = document.getElementById('te-desc-input');
+        if (descEl) descEl.value = '';
         const h1El = document.querySelector('#templateEdit h1');
         if (h1El) h1El.textContent = `Editar — ${titleMap[id] || 'Template'}`;
         teSetMode('visual');
@@ -295,6 +297,8 @@
         showScreen('templateEdit');
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         if (nameEl) nameEl.value = '';
+        const descEl = document.getElementById('te-desc-input');
+        if (descEl) descEl.value = '';
         const h1El = document.querySelector('#templateEdit h1');
         if (h1El) h1El.textContent = 'Novo Template';
         teSetMode('visual');
@@ -2048,7 +2052,7 @@ ${body}
                 {name:'Promoção Verão iX1',desc:'Condições especiais até 30 de Abril',recipients:'9 127',date:'10/04/2026',status:'sent'},
                 {name:'Convite Evento — Lançamento i5',desc:'Estás convidado para um evento exclusivo',recipients:'3 892',date:'03/04/2026',status:'sent'},
             ],
-            contacts:[
+            contactsList:[
                 {name:'João Silva',email:'joao.silva@empresa.pt',list:'Clientes Premium',status:'active',date:'12/01/2026'},
                 {name:'Ana Costa',email:'ana.costa@mail.pt',list:'Newsletter Geral',status:'active',date:'03/02/2026'},
                 {name:'Pedro Nunes',email:'pedro.nunes@hotmail.com',list:'Clientes Premium',status:'suppressed',date:'18/11/2025'},
@@ -2089,7 +2093,7 @@ ${body}
                 {name:'Evento Lançamento IONIQ 5 N',desc:'Convite exclusivo para clientes',recipients:'—',date:'25/04/2026',status:'draft'},
                 {name:'Newsletter Hyundai — Maio 2026',desc:'Newsletter mensal Hyundai',recipients:'~ 9 000',date:'📅 05/05/2026',status:'scheduled'},
             ],
-            contacts:[
+            contactsList:[
                 {name:'Sofia Mendes',email:'sofia.mendes@gmail.com',list:'Newsletter Hyundai',status:'active',date:'08/01/2026'},
                 {name:'Carlos Rodrigues',email:'carlos.r@empresa.pt',list:'Clientes IONIQ',status:'active',date:'15/02/2026'},
                 {name:'Inês Pinto',email:'ines.pinto@mail.pt',list:'Leads Tucson',status:'active',date:'20/03/2026'},
@@ -2122,7 +2126,7 @@ ${body}
                 {name:'Newsletter Toyota — Março',desc:'As últimas novidades da Toyota',recipients:'5 892',date:'28/03/2026',status:'sent'},
                 {name:'Yaris Cross — Chegou',desc:'Descobre o novo Yaris Cross',recipients:'~ 6 000',date:'📅 30/04/2026',status:'scheduled'},
             ],
-            contacts:[
+            contactsList:[
                 {name:'Miguel Torres',email:'miguel.torres@empresa.pt',list:'Clientes Toyota',status:'active',date:'05/02/2026'},
                 {name:'Beatriz Alves',email:'beatriz.a@gmail.com',list:'Leads Híbridos',status:'active',date:'18/03/2026'},
                 {name:'Nuno Carvalho',email:'nuno.c@mail.pt',list:'Clientes Toyota',status:'active',date:'22/01/2026'},
@@ -2154,7 +2158,7 @@ ${body}
                 {name:'ID.4 — Evento de Test Drive',desc:'Reserve já o seu test drive',recipients:'~ 7 000',date:'📅 02/05/2026',status:'scheduled'},
                 {name:'Polo 2026 — Novo Modelo',desc:'Descobre o novo Polo',recipients:'—',date:'21/04/2026',status:'draft'},
             ],
-            contacts:[
+            contactsList:[
                 {name:'André Santos',email:'andre.santos@empresa.pt',list:'Newsletter VW',status:'active',date:'03/01/2026'},
                 {name:'Catarina Lima',email:'catarina.lima@gmail.com',list:'Clientes Golf',status:'active',date:'14/02/2026'},
                 {name:'Paulo Figueiredo',email:'paulo.f@hotmail.com',list:'Leads ID.4',status:'active',date:'10/03/2026'},
@@ -2187,7 +2191,7 @@ ${body}
                 {name:'Q5 e-tron — Promoção Abril',desc:'Condições únicas até fim do mês',recipients:'4 891',date:'09/04/2026',status:'sent'},
                 {name:'Audi Sport Experience 2026',desc:'Evento exclusivo para clientes',recipients:'~ 1 500',date:'📅 15/05/2026',status:'scheduled'},
             ],
-            contacts:[
+            contactsList:[
                 {name:'Ricardo Monteiro',email:'r.monteiro@empresa.pt',list:'Clientes Audi',status:'active',date:'10/01/2026'},
                 {name:'Filipa Sousa',email:'filipa.s@gmail.com',list:'Leads Q5',status:'active',date:'25/02/2026'},
                 {name:'Gonçalo Pereira',email:'goncalo.p@mail.pt',list:'Clientes Audi',status:'active',date:'15/03/2026'},
@@ -2281,10 +2285,10 @@ ${body}
         const ctcEl = document.getElementById('contactsTbody');
         if (ctcEl) {
             const sBadge = {active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>',suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>',unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>'};
-            if (empty || !d.contacts.length) {
+            if (empty || !d.contactsList?.length) {
                 ctcEl.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
             } else {
-                ctcEl.innerHTML = d.contacts.map(c => `
+                ctcEl.innerHTML = d.contactsList.map(c => `
                     <tr class="hover:bg-slate-50 cursor-pointer" data-name="${c.name.toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view')">
                         <td class="px-4 py-3 font-medium text-slate-900">${c.name}</td>
                         <td class="px-4 py-3 text-slate-600">${c.email}</td>
@@ -2360,6 +2364,26 @@ ${body}
         }
         const scEl = document.getElementById('suppCount');
         if (scEl) scEl.textContent = `${empty ? 0 : d.suppressionCount} endereços suprimidos`;
+
+        // Wizard: sender fields
+        const fromName = document.getElementById('wizFromName');
+        const fromEmail = document.getElementById('wizFromEmail');
+        if (fromName) fromName.value = empty ? '' : `${_currentBrand.name} Caetano`;
+        if (fromEmail) fromEmail.value = empty ? '' : `${brandId}@caetano.pt`;
+
+        // Wizard: lists for step 1
+        const wizLists = document.getElementById('wizListsContainer');
+        if (wizLists) {
+            if (empty || !d.lists.length) {
+                wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis para esta marca.</p>`;
+            } else {
+                wizLists.innerHTML = d.lists.map((l, i) => `
+                    <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                        <input type="checkbox" class="rounded" ${i===0?'checked':''} />
+                        <div><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.active} contactos</p></div>
+                    </label>`).join('');
+            }
+        }
 
         // Templates
         _syncBrandTemplates(brandId);
@@ -2783,11 +2807,11 @@ ${body}
                         <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da Campanha *</label>
-                                <input id="wizName" type="text" placeholder="Ex: Newsletter BMW — Maio 2026" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                <input id="wizName" type="text" placeholder="Ex: Newsletter — Maio 2026" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                             </div>
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto do Email *</label>
-                                <input id="wizSubject" type="text" placeholder="Ex: Descobre as novidades BMW de Maio" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                <input id="wizSubject" type="text" placeholder="Ex: Descobre as nossas novidades de Maio" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                             </div>
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Texto de Pré-visualização</label>
@@ -2796,29 +2820,18 @@ ${body}
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome do Remetente</label>
-                                    <input id="wizFromName" type="text" value="BMW Caetano" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                    <input id="wizFromName" type="text" value="" placeholder="Ex: Exemplo Caetano" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                                 <div>
                                     <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email do Remetente</label>
-                                    <input id="wizFromEmail" type="email" value="bmw@caetano.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                    <input id="wizFromEmail" type="email" value="" placeholder="Ex: exemplo@caetano.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                             </div>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="text-sm font-semibold text-slate-900 mb-3">Listas Destinatárias</h3>
-                            <div class="space-y-2">
-                                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                                    <input type="checkbox" class="rounded" checked />
-                                    <div><p class="text-sm font-medium text-slate-900">BMW Clientes Premium</p><p class="text-xs text-slate-400">3 421 contactos</p></div>
-                                </label>
-                                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                                    <input type="checkbox" class="rounded" />
-                                    <div><p class="text-sm font-medium text-slate-900">BMW Newsletter Geral</p><p class="text-xs text-slate-400">5 000 contactos</p></div>
-                                </label>
-                                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                                    <input type="checkbox" class="rounded" />
-                                    <div><p class="text-sm font-medium text-slate-900">Leads — Test Drive</p><p class="text-xs text-slate-400">1 284 contactos</p></div>
-                                </label>
+                            <div id="wizListsContainer" class="space-y-2">
+                                <!-- populated by renderBrandData() -->
                             </div>
                         </div>
                     </div>
@@ -3596,7 +3609,7 @@ ${body}
                     </div>
                     <div class="flex-1 min-w-[200px]">
                         <label class="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
-                        <input type="text" value="Newsletter trimestral com ofertas de Primavera"
+                        <input id="te-desc-input" type="text" value="" placeholder="Descrição breve do template (opcional)"
                                class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     </div>
                     <label class="flex items-center gap-2 cursor-pointer pb-2">
