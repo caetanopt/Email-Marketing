@@ -1765,7 +1765,9 @@ ${body}
         <!-- Marca activa -->
         <div class="px-5 py-4 border-b border-white/10">
             <div class="flex items-center gap-3">
-                <div class="sidebar-brand-color w-9 h-9 rounded-lg ring-1 ring-white/20" style="background-color: #1C69D4"></div>
+                <div class="sidebar-brand-icon w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden" style="background-color: #FFFFFF">
+                    <img src="https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png" alt="BMW" class="sidebar-brand-logo-img w-9 h-9 object-contain" loading="lazy">
+                </div>
                 <div class="min-w-0">
                     <p class="sidebar-brand-name text-white font-semibold text-sm">BMW</p>
                     <button onclick="showScreen('brandSelect')" class="text-xs text-white/50 hover:text-white/80 transition-colors">Trocar de marca</button>
@@ -1863,15 +1865,24 @@ ${body}
         if (_currentBrand) applyBrandToSidebar();
     }
 
-    let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4' };
+    let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4', bg:'#FFFFFF', logo:`https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png`, invert:false };
 
     function applyBrandToSidebar() {
-        document.querySelectorAll('.sidebar-brand-color').forEach(el => { el.style.backgroundColor = _currentBrand.color; });
         document.querySelectorAll('.sidebar-brand-name').forEach(el => { el.textContent = _currentBrand.name; });
+        document.querySelectorAll('.sidebar-brand-icon').forEach(el => {
+            el.style.backgroundColor = _currentBrand.bg === '#FFFFFF' ? '#FFFFFF' : _currentBrand.bg;
+            const img = el.querySelector('.sidebar-brand-logo-img');
+            if (img) {
+                img.src = _currentBrand.logo || '';
+                img.alt = _currentBrand.name;
+                img.className = `sidebar-brand-logo-img w-9 h-9 object-contain${_currentBrand.invert ? ' brightness-0 invert' : ''}`;
+            }
+        });
     }
 
     function selectBrand(id, name, color) {
-        _currentBrand = { id, name, color };
+        const b = _allBrands.find(x => x.id === id) || {};
+        _currentBrand = { id, name, color, bg: b.bg || '#FFFFFF', logo: b.logo || '', invert: b.invert || false };
         applyBrandToSidebar();
         document.querySelectorAll('.brand-card').forEach(b => {
             b.classList.remove('brand-selected');
