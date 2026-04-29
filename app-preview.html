@@ -1958,6 +1958,11 @@ ${body}
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') wizShowStep(1);
+            // Roles info panel: only visible to owner / admin
+            if (id === 'team') {
+                const panel = document.getElementById('rolesInfoPanel');
+                if (panel) panel.style.display = (_currentUserRole === 'owner' || _currentUserRole === 'admin') ? '' : 'none';
+            }
         }
     }
 
@@ -1971,6 +1976,7 @@ ${body}
     }
 
     let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4', bg:'#FFFFFF', logo:`https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png`, invert:false };
+    let _currentUserRole = 'owner'; // 'owner' | 'admin' | 'editor' | 'viewer'
 
     function applyBrandToSidebar() {
         document.querySelectorAll('.sidebar-brand-name').forEach(el => { el.textContent = _currentBrand.name; });
@@ -4380,6 +4386,39 @@ ${body}
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Roles info panel — visible to owner/admin only -->
+                <div id="rolesInfoPanel" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-5">
+                    <div class="flex items-start gap-3">
+                        <div class="flex-shrink-0 mt-0.5">
+                            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold text-blue-800 mb-3">Descrição das funções</p>
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
+                                    <div class="flex items-center gap-2 mb-1.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">Admin</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 leading-relaxed">Acesso total: criar, editar e eliminar campanhas, templates, contactos e listas. Pode ainda gerir membros da equipa, configurar integrações e editar as definições da conta.</p>
+                                </div>
+                                <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
+                                    <div class="flex items-center gap-2 mb-1.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Editor</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 leading-relaxed">Pode criar e editar campanhas, templates, contactos, listas e importações. Não tem acesso à gestão de equipa, billing nem definições da conta.</p>
+                                </div>
+                                <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
+                                    <div class="flex items-center gap-2 mb-1.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Viewer</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 leading-relaxed">Acesso apenas de leitura. Pode visualizar dashboards, relatórios e campanhas, mas não pode criar, editar nem eliminar nenhum conteúdo.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </main>
         </div>
     </div>
