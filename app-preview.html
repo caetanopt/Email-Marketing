@@ -39,7 +39,7 @@
         { id:'bmwmotorrad', name:'BMW Motorrad',   color:'#1C1C1C', bg:'#1C1C1C', logo:`${_C}/sites/29/2024/09/logo-bmw-motorrad.svg`, invert:false },
         { id:'byd',         name:'BYD',            color:'#002060', bg:'#002060', logo:`${_C}/sites/25/2024/05/logo-byd.svg`, invert:false },
         { id:'carplus',     name:'Carplus',        color:'#1B1B1B', bg:'#1B1B1B', logo:'https://api.carplus.pt/files/logo-1.webp', invert:false },
-        { id:'cupra',       name:'Cupra',          color:'#C8A96B', bg:'#1A1A1A', logo:'https://caetano.pt/site/uploads/2026/04/cupra.svg', invert:false },
+        { id:'cupra',       name:'Cupra',          color:'#C8A96B', bg:'#1A1A1A', logo:'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><text x="100" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="34" font-weight="900" letter-spacing="2" fill="#C8A96B">CUPRA</text></svg>'), invert:false },
         { id:'dacia',       name:'Dacia',          color:'#1B1B1B', bg:'#1B1B1B', logo:`${_C}/sites/18/2024/03/logo-dacia-300x33.png`, invert:false },
         { id:'denza',       name:'Denza',          color:'#1B1B1B', bg:'#1B1B1B', logo:'https://www.denza.com/material/denza-overseas/new-header/logo-manheader.svg', invert:false },
         { id:'dongfeng',    name:'Dongfeng',       color:'#003580', bg:'#003580', logo:`${_C}/sites/31/2024/09/dongfeng.png`, invert:false },
@@ -1765,8 +1765,10 @@ ${body}
         <!-- Marca activa -->
         <div class="px-5 py-4 border-b border-white/10">
             <div class="flex items-center gap-3">
-                <div class="sidebar-brand-icon w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden" style="background-color: #FFFFFF">
-                    <img src="https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png" alt="BMW" class="sidebar-brand-logo-img w-9 h-9 object-contain" loading="lazy">
+                <div class="sidebar-brand-icon w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ring-1 ring-white/15" style="background-color: #FFFFFF">
+                    <img src="https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png" alt="BMW" class="sidebar-brand-logo-img w-9 h-9 object-contain" loading="lazy"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <span class="sidebar-brand-logo-fb hidden w-full h-full items-center justify-center text-[10px] font-bold tracking-wide" style="color:#1C69D4">BMW</span>
                 </div>
                 <div class="min-w-0">
                     <p class="sidebar-brand-name text-white font-semibold text-sm">BMW</p>
@@ -1870,12 +1872,19 @@ ${body}
     function applyBrandToSidebar() {
         document.querySelectorAll('.sidebar-brand-name').forEach(el => { el.textContent = _currentBrand.name; });
         document.querySelectorAll('.sidebar-brand-icon').forEach(el => {
-            el.style.backgroundColor = _currentBrand.bg === '#FFFFFF' ? '#FFFFFF' : _currentBrand.bg;
+            el.style.backgroundColor = _currentBrand.bg || '#FFFFFF';
             const img = el.querySelector('.sidebar-brand-logo-img');
+            const fb  = el.querySelector('.sidebar-brand-logo-fb');
             if (img) {
-                img.src = _currentBrand.logo || '';
+                img.style.display = '';
                 img.alt = _currentBrand.name;
                 img.className = `sidebar-brand-logo-img w-9 h-9 object-contain${_currentBrand.invert ? ' brightness-0 invert' : ''}`;
+                img.src = _currentBrand.logo || '';
+            }
+            if (fb) {
+                fb.style.display = 'none';
+                fb.textContent = (_currentBrand.name || '').replace('Mercedes-Benz','MB').substring(0,3).toUpperCase();
+                fb.style.color = (_currentBrand.bg && _currentBrand.bg !== '#FFFFFF') ? '#FFFFFF' : (_currentBrand.color || '#1C69D4');
             }
         });
     }
