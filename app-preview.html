@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Caetano PrimeMail — Preview da Plataforma</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
     // ── Toast notification ─────────────────────────────
@@ -27,7 +30,7 @@
 
     // ── Team ─────────────────────────────────────────────
     const _allBrands = [
-        { id:'caetano',     name:'Caetano',       color:'#1A1A2E' },
+        { id:'caetano',     name:'Caetano',       color:'#002E5D' },
         { id:'bmw',         name:'BMW',            color:'#1C69D4' },
         { id:'hyundai',     name:'Hyundai',        color:'#002C5F' },
         { id:'byd',         name:'BYD',            color:'#1DB954' },
@@ -157,7 +160,7 @@
 
     // ── Templates ────────────────────────────────────────
     const _dupBrands = [
-        { id:'caetano',     name:'Caetano',       color:'#1A1A2E' },
+        { id:'caetano',     name:'Caetano',       color:'#002E5D' },
         { id:'bmw',         name:'BMW',            color:'#1C69D4' },
         { id:'hyundai',     name:'Hyundai',        color:'#002C5F' },
         { id:'byd',         name:'BYD',            color:'#1DB954' },
@@ -1523,7 +1526,8 @@ ${body}
     }
 </script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        /* ─── Base ─────────────────────────────────────────────────────────── */
+        body { font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         .screen { display: none; }
         .screen.active { display: block; }
         .fade-in { animation: fadeIn 0.2s ease-out; }
@@ -1533,6 +1537,44 @@ ${body}
         /* Template editor drop zones */
         .te-dropzone { height: 8px; transition: all 0.15s ease; border-radius: 4px; }
         .te-dropzone.te-drop-active { height: 32px; background: rgba(59,130,246,0.18); border: 2px dashed rgb(59,130,246); }
+
+        /* ─── CAETANO BRAND THEME ──────────────────────────────────────────
+           Azul profundo  #002E5D  →  substitui slate-900
+           Azul médio     #003872  →  substitui slate-800 (hover / gradients)
+           Cinza antracite #2E3A46 →  substitui slate-700 (nav ativo / divisores)
+           Azul cyan      #00AEEF  →  accent secundário
+        ─────────────────────────────────────────────────────────────────── */
+
+        /* slate-900 → Azul profundo */
+        .bg-slate-900                { background-color: #002E5D !important; }
+        .hover\:bg-slate-900:hover   { background-color: #002E5D !important; }
+        .text-slate-900              { color: #002E5D !important; }
+        .border-slate-900            { border-color: #002E5D !important; }
+        .ring-slate-900              { --tw-ring-color: #002E5D !important; }
+        .focus\:ring-slate-900:focus { --tw-ring-color: #002E5D !important; }
+
+        /* slate-800 → Azul médio (hover nos botões primários, gradientes login) */
+        .bg-slate-800                { background-color: #003872 !important; }
+        .hover\:bg-slate-800:hover   { background-color: #003872 !important; }
+
+        /* slate-700 → Cinza antracite (nav item ativo, divisores sidebar) */
+        .bg-slate-700                { background-color: #2E3A46 !important; }
+        .hover\:bg-slate-700:hover   { background-color: #2E3A46 !important; }
+        .border-slate-700            { border-color: #2E3A46 !important; }
+        .text-slate-700              { color: #2E3A46 !important; }
+
+        /* sidebar avatar */
+        .bg-slate-600                { background-color: #3D5068 !important; }
+
+        /* Gradientes login / forgot-password */
+        .from-slate-900 { --tw-gradient-from: #002E5D var(--tw-gradient-from-position) !important; }
+        .to-slate-900   { --tw-gradient-to:   #002E5D var(--tw-gradient-to-position)   !important; }
+        .via-slate-800  { --tw-gradient-stops: var(--tw-gradient-from), #003872 var(--tw-gradient-via-position, 50%), var(--tw-gradient-to) !important; }
+
+        /* Paginação e botões toggle ativos */
+        .contacts-page-btn.bg-slate-900,
+        .supp-page-btn.bg-slate-900,
+        .list-edit-page-btn.bg-slate-900 { background-color: #002E5D !important; }
     </style>
 </head>
 <body class="bg-slate-50">
@@ -1576,13 +1618,14 @@ ${body}
     <div class="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
             <div class="text-center mb-8">
-                <div class="w-14 h-14 bg-slate-900 rounded-xl mx-auto mb-4 flex items-center justify-center">
-                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                <div class="flex items-center justify-center gap-3 mb-5">
+                    <svg width="120" height="28" viewBox="0 0 120 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="0" y="22" font-family="Montserrat, sans-serif" font-weight="700" font-size="22" fill="#002E5D" letter-spacing="-0.5">caetano</text>
                     </svg>
+                    <div class="w-px h-7 bg-slate-200"></div>
+                    <span class="text-xs font-semibold tracking-widest text-slate-400 uppercase">PrimeMail</span>
                 </div>
-                <h1 class="text-2xl font-semibold text-slate-900">Caetano PrimeMail</h1>
-                <p class="text-sm text-slate-500 mt-1">Plataforma de email marketing</p>
+                <p class="text-sm text-slate-500">Plataforma de email marketing</p>
             </div>
 
             <form onsubmit="event.preventDefault(); showScreen('brandSelect')" class="space-y-4">
@@ -1672,14 +1715,21 @@ ${body}
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="brandSelect" class="screen fade-in">
     <div class="min-h-screen bg-slate-50 p-6">
-        <div class="max-w-4xl mx-auto pt-12">
+        <div class="max-w-4xl mx-auto pt-10">
             <div class="text-center mb-10">
-                <h1 class="text-3xl font-semibold text-slate-900 mb-2">Olá, Administrador 👋</h1>
-                <p class="text-slate-500">Escolhe a marca com que queres trabalhar hoje</p>
+                <div class="flex items-center justify-center gap-3 mb-6">
+                    <svg width="130" height="30" viewBox="0 0 130 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="0" y="24" font-family="Montserrat, sans-serif" font-weight="700" font-size="24" fill="#002E5D" letter-spacing="-0.5">caetano</text>
+                    </svg>
+                    <div class="w-px h-8 bg-slate-300"></div>
+                    <span class="text-sm font-semibold tracking-widest text-slate-400 uppercase">PrimeMail</span>
+                </div>
+                <h1 class="text-2xl font-semibold text-slate-900 mb-1">Olá, Administrador</h1>
+                <p class="text-slate-500 text-sm">Escolhe a marca com que queres trabalhar hoje</p>
             </div>
 
             <div id="brandSelectGrid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button onclick="selectBrand('caetano','Caetano','#1A1A2E')" data-brand-id="caetano" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
+                <button onclick="selectBrand('caetano','Caetano','#002E5D')" data-brand-id="caetano" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
                     <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1A1A2E"></div>
                     <h3 class="font-semibold text-slate-900 group-hover:text-slate-900">Caetano</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
@@ -1729,61 +1779,72 @@ ${body}
 ═══════════════════════════════════════════════════════════════════ -->
 <template id="sidebar">
     <aside class="w-64 bg-slate-900 flex flex-col fixed inset-y-0 top-10 left-0 z-20">
-        <div class="px-5 py-5 border-b border-slate-700">
+        <!-- Logo Caetano -->
+        <div class="px-5 pt-4 pb-3 border-b border-white/10">
+            <div class="flex items-center gap-2">
+                <svg width="82" height="18" viewBox="0 0 82 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <text x="0" y="15" font-family="Montserrat, sans-serif" font-weight="700" font-size="15" fill="white" letter-spacing="-0.3">caetano</text>
+                </svg>
+                <div class="w-px h-4 bg-white/25"></div>
+                <span class="text-[9px] font-semibold tracking-widest text-white/50 uppercase">PrimeMail</span>
+            </div>
+        </div>
+        <!-- Marca activa -->
+        <div class="px-5 py-4 border-b border-white/10">
             <div class="flex items-center gap-3">
-                <div class="sidebar-brand-color w-9 h-9 rounded-lg ring-1 ring-slate-600" style="background-color: #1C69D4"></div>
+                <div class="sidebar-brand-color w-9 h-9 rounded-lg ring-1 ring-white/20" style="background-color: #1C69D4"></div>
                 <div class="min-w-0">
                     <p class="sidebar-brand-name text-white font-semibold text-sm">BMW</p>
-                    <button onclick="showScreen('brandSelect')" class="text-xs text-slate-400 hover:text-slate-200">Trocar de marca</button>
+                    <button onclick="showScreen('brandSelect')" class="text-xs text-white/50 hover:text-white/80 transition-colors">Trocar de marca</button>
                 </div>
             </div>
         </div>
         <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            <a onclick="showScreen('dashboard')" data-nav class="nav-item nav-dashboard flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('dashboard')" data-nav class="nav-item nav-dashboard flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
                 Dashboard
             </a>
-            <a onclick="showScreen('contacts')" data-nav class="nav-item nav-contacts flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('contacts')" data-nav class="nav-item nav-contacts flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Contactos
             </a>
-            <a onclick="showScreen('lists')" data-nav class="nav-item nav-lists flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('lists')" data-nav class="nav-item nav-lists flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
                 Listas
             </a>
-            <a onclick="showScreen('imports')" data-nav class="nav-item nav-imports flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('imports')" data-nav class="nav-item nav-imports flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                 Importações
             </a>
-            <a onclick="showScreen('templates')" data-nav class="nav-item nav-templates flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('templates')" data-nav class="nav-item nav-templates flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
                 Templates
             </a>
-            <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Campanhas
             </a>
-            <a onclick="showScreen('suppression')" data-nav class="nav-item nav-suppression flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('suppression')" data-nav class="nav-item nav-suppression flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                 Supressão
             </a>
-            <a onclick="showScreen('team')" data-nav class="nav-item nav-team flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('team')" data-nav class="nav-item nav-team flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Equipa
             </a>
-            <a onclick="showScreen('brandSettings')" data-nav class="nav-item nav-brandSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:bg-slate-800 hover:text-white">
+            <a onclick="showScreen('brandSettings')" data-nav class="nav-item nav-brandSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Definições
             </a>
         </nav>
-        <div class="px-4 py-4 border-t border-slate-700">
+        <div class="px-4 py-4 border-t border-white/10">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-slate-600 text-white text-xs font-semibold flex items-center justify-center">A</div>
+                <div class="w-8 h-8 rounded-full bg-white/15 text-white text-xs font-semibold flex items-center justify-center">A</div>
                 <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-white truncate">Administrador</p>
-                    <p class="text-xs text-slate-400 truncate">admin@caetano.pt</p>
+                    <p class="text-xs text-white/45 truncate">admin@caetano.pt</p>
                 </div>
-                <button onclick="showScreen('login')" title="Terminar sessão" class="text-slate-400 hover:text-red-400">
+                <button onclick="showScreen('login')" title="Terminar sessão" class="text-white/40 hover:text-red-300 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 </button>
             </div>
@@ -1808,12 +1869,12 @@ ${body}
             });
             // Highlight active nav item
             document.querySelectorAll('.nav-item').forEach(n => {
-                n.classList.remove('bg-slate-700', 'text-white');
-                n.classList.add('text-slate-400');
+                n.classList.remove('bg-white/15', 'text-white', 'font-semibold');
+                n.classList.add('text-white/50');
             });
             document.querySelectorAll('.nav-' + id).forEach(n => {
-                n.classList.add('bg-slate-700', 'text-white');
-                n.classList.remove('text-slate-400');
+                n.classList.add('bg-white/15', 'text-white', 'font-semibold');
+                n.classList.remove('text-white/50');
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') wizShowStep(1);
