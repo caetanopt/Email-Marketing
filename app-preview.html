@@ -1481,7 +1481,12 @@ ${body}
     // ── Contacts ──────────────────────────────────────────
     let _contactMode = 'view'; // 'view' | 'edit' | 'new'
     let _contactsPage = 1;
-    const _contactsTotal = 12483, _contactsPerPage = 5;
+    const _contactsPerPage = 5;
+    function _contactsTotal() {
+        const d = _brandMockData[_currentBrand && _currentBrand.id];
+        if (!d || !d.contacts) return 0;
+        return parseInt(String(d.contacts).replace(/\s/g,''), 10) || 0;
+    }
 
     function showContact(mode) {
         _contactMode = mode || 'view';
@@ -1586,19 +1591,32 @@ ${body}
     }
 
     function contactsGoPage(p) {
-        const total = _contactsTotal, per = _contactsPerPage;
-        const pages = Math.ceil(total / per);
+        const total = _contactsTotal(), per = _contactsPerPage;
+        const pages = Math.max(1, Math.ceil(total / per));
         if (p < 1 || p > pages) return;
         _contactsPage = p;
         const start = (p-1)*per+1, end = Math.min(p*per, total);
         const info = document.getElementById('contactsPageInfo');
-        if (info) info.textContent = `Mostrando ${start}–${end} de ${total.toLocaleString('pt-PT')} contactos`;
-        document.querySelectorAll('.contacts-page-btn').forEach(btn => {
-            const pg = parseInt(btn.dataset.page);
-            btn.classList.toggle('bg-slate-900', pg === p);
-            btn.classList.toggle('text-white', pg === p);
-            btn.classList.toggle('hover:bg-slate-50', pg !== p);
-        });
+        if (info) info.textContent = total > 0
+            ? `Mostrando ${start}–${end} de ${total.toLocaleString('pt-PT')} contactos`
+            : 'Sem contactos';
+        // Render page buttons
+        const nav = document.getElementById('contactsPagination');
+        if (!nav) return;
+        // Build page numbers to show: always show 1, last, and window ±2 around current
+        const show = new Set([1, pages]);
+        for (let i = Math.max(1,p-2); i <= Math.min(pages,p+2); i++) show.add(i);
+        const sorted = Array.from(show).sort((a,b)=>a-b);
+        let html = `<button onclick="contactsGoPage(${p-1})" ${p===1?'disabled':''} class="px-3 py-1 border border-slate-200 rounded ${p===1?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">Anterior</button>`;
+        let prev = 0;
+        for (const pg of sorted) {
+            if (pg - prev > 1) html += `<span class="px-1 py-1 text-slate-400">…</span>`;
+            const active = pg === p;
+            html += `<button onclick="contactsGoPage(${pg})" class="contacts-page-btn px-3 py-1 border rounded ${active?'border-slate-900 bg-slate-900 text-white font-semibold':'border-slate-200 hover:bg-slate-50'}">${pg}</button>`;
+            prev = pg;
+        }
+        html += `<button onclick="contactsGoPage(${p+1})" ${p===pages?'disabled':''} class="px-3 py-1 border border-slate-200 rounded ${p===pages?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">Próxima</button>`;
+        nav.innerHTML = html;
     }
 
     // ── Settings ──────────────────────────────────────────
@@ -2400,8 +2418,8 @@ ${body}
                     </tr>`).join('');
             }
         }
-        const cpiEl = document.getElementById('contactsPageInfo');
-        if (cpiEl) cpiEl.textContent = empty ? 'Sem contactos' : (d.contactsPageInfo || '');
+        _contactsPage = 1;
+        contactsGoPage(1);
 
         // Lists table
         const lstEl = document.getElementById('listsTableBody');
@@ -3378,12 +3396,8 @@ ${body}
                     </table>
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
                         <span id="contactsPageInfo">Mostrando 1–5 de 12 483 contactos</span>
-                        <div class="flex gap-2">
-                            <button onclick="contactsGoPage(_contactsPage-1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
-                            <button data-page="1" onclick="contactsGoPage(1)" class="contacts-page-btn px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
-                            <button data-page="2" onclick="contactsGoPage(2)" class="contacts-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
-                            <button data-page="3" onclick="contactsGoPage(3)" class="contacts-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">3</button>
-                            <button onclick="contactsGoPage(_contactsPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
+                        <div id="contactsPagination" class="flex gap-1.5 items-center">
+                            <!-- rendered by contactsGoPage() -->
                         </div>
                     </div>
                 </div>
