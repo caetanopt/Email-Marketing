@@ -312,6 +312,7 @@
         card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card';
         card.setAttribute('data-tpl-id', id);
         card.setAttribute('data-tpl-name', name.toLowerCase());
+        card.setAttribute('data-brand', (_currentBrand && _currentBrand.id) || 'unknown');
         card.onclick = () => teEditTemplate(id);
         card.innerHTML = `
             <div class="h-40 bg-gradient-to-br ${g} flex items-center justify-center">
@@ -339,6 +340,7 @@
             tr.className = 'hover:bg-slate-50 cursor-pointer';
             tr.setAttribute('data-tpl-id', id);
             tr.setAttribute('data-tpl-name', name.toLowerCase());
+            tr.setAttribute('data-brand', (_currentBrand && _currentBrand.id) || 'unknown');
             tr.onclick = () => teEditTemplate(id);
             tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-900">${name}</td><td class="px-4 py-3 text-slate-500 text-xs">—</td><td class="px-4 py-3 text-xs text-slate-400">Criado agora</td><td class="px-4 py-3 text-right flex items-center justify-end gap-2"><button onclick="event.stopPropagation();teEditTemplate('${id}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button><button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button><button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button></td>`;
             listBody.appendChild(tr);
@@ -1626,7 +1628,7 @@ ${body}
 <div class="fixed top-0 left-0 right-0 z-50 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between">
     <div class="flex items-center gap-3">
         <span class="text-xs font-medium text-amber-800">🖼️ MOCKUP INTERACTIVO</span>
-        <span class="text-xs text-amber-600">Clica nos botões para navegar entre ecrãs</span><span class="text-xs text-amber-500 ml-4 font-mono">v29Apr-1436</span>
+        <span class="text-xs text-amber-600">Clica nos botões para navegar entre ecrãs</span><span class="text-xs text-amber-500 ml-4 font-mono">v29Apr-BrandIsolation</span>
     </div>
     <select id="screenSelector" class="px-3 py-1 border border-amber-300 rounded-md text-xs bg-white" onchange="showScreen(this.value)">
         <option value="login">Login</option>
@@ -1939,6 +1941,7 @@ ${body}
             sel.style.borderColor = color;
             sel.style.boxShadow = `0 0 0 3px ${color}33`;
         }
+        renderBrandData(id);
         showScreen('dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
     }
@@ -1977,6 +1980,345 @@ ${body}
                 </div>
             </button>
         `).join('');
+    }
+
+    // ── Per-brand template state store ──────────────────────────────
+    const _brandTemplateStates = {};
+
+    // ── Brand mock data ──────────────────────────────────────────────
+    const _brandMockData = {
+        bmw: {
+            contacts:'12 483', campaigns30d:'7', emails30d:'84 217',
+            openRate:'27.4', clickRate:'7.6', bounceRate:'1.2', suppressionCount:312,
+            recentCampaigns:[
+                {name:'Newsletter BMW — Abril 2026',desc:'Descobre as novidades do mês na BMW Caetano',date:'18/04/2026',open:'28.3%',click:'6.1%',status:'sent'},
+                {name:'Test Drive Série 5',desc:'Agenda o teu test drive exclusivo',date:'15/04/2026',open:'31.2%',click:'9.4%',status:'sent'},
+                {name:'Promoção Verão iX1',desc:'Condições especiais até 30 de Abril',date:'10/04/2026',open:'24.8%',click:'4.2%',status:'sent'},
+                {name:'Convite Evento — Lançamento i5',desc:'Estás convidado para um evento exclusivo',date:'03/04/2026',open:'42.1%',click:'18.7%',status:'sent'},
+            ],
+            campaigns:[
+                {name:'Newsletter BMW — Abril 2026',desc:'Descobre as novidades do mês',recipients:'8 421',date:'18/04/2026',status:'sent'},
+                {name:'Test Drive Série 5',desc:'Agenda o teu test drive exclusivo',recipients:'4 218',date:'15/04/2026',status:'sent'},
+                {name:'Promoção Série 3 — Maio',desc:'Condições especiais no fim de mês',recipients:'~ 12 000',date:'📅 01/05/2026',status:'scheduled'},
+                {name:'Convite Evento M Performance',desc:'Evento exclusivo no Estoril',recipients:'—',date:'20/04/2026',status:'draft'},
+                {name:'Promoção Verão iX1',desc:'Condições especiais até 30 de Abril',recipients:'9 127',date:'10/04/2026',status:'sent'},
+                {name:'Convite Evento — Lançamento i5',desc:'Estás convidado para um evento exclusivo',recipients:'3 892',date:'03/04/2026',status:'sent'},
+            ],
+            contacts:[
+                {name:'João Silva',email:'joao.silva@empresa.pt',list:'Clientes Premium',status:'active',date:'12/01/2026'},
+                {name:'Ana Costa',email:'ana.costa@mail.pt',list:'Newsletter Geral',status:'active',date:'03/02/2026'},
+                {name:'Pedro Nunes',email:'pedro.nunes@hotmail.com',list:'Clientes Premium',status:'suppressed',date:'18/11/2025'},
+                {name:'Marta Ferreira',email:'marta.f@gmail.com',list:'Newsletter Geral',status:'active',date:'07/03/2026'},
+                {name:'Rui Oliveira',email:'rui.oliveira@empresa.pt',list:'Clientes Premium',status:'unsubscribed',date:'22/12/2025'},
+            ],
+            contactsPageInfo:'Mostrando 1–5 de 12 483 contactos',
+            lists:[
+                {name:'Clientes Premium',total:'4 231',active:'4 089',date:'10/01/2026'},
+                {name:'Newsletter Geral',total:'8 252',active:'7 941',date:'05/01/2026'},
+                {name:'Re-engajamento Q1',total:'1 847',active:'1 453',date:'20/02/2026'},
+                {name:'VIP — Fidelização',total:'653',active:'653',date:'01/03/2026'},
+            ],
+            imports:[
+                {file:'clientes_abril_2026.csv',lines:'1 323',list:'Clientes Premium',status:'done',imported:'1 234',skipped:'89',failed:'0',date:'17/04/2026'},
+                {file:'newsletter_q1.csv',lines:'2 000',list:'Newsletter Geral',status:'processing',imported:'1 240',skipped:'0',failed:'0',date:'18/04/2026'},
+                {file:'emails_vip.txt',lines:'653',list:'VIP — Fidelização',status:'done',imported:'653',skipped:'0',failed:'0',date:'01/03/2026'},
+            ],
+            suppression:[
+                {email:'pedro.nunes@hotmail.com',reason:'bounce',date:'15/04/2026'},
+                {email:'rui.oliveira@empresa.pt',reason:'unsubscribe',date:'10/04/2026'},
+                {email:'spam.report@dominio.net',reason:'spam',date:'08/04/2026'},
+                {email:'invalido@naoexiste.pt',reason:'bounce',date:'05/04/2026'},
+            ],
+        },
+        hyundai: {
+            contacts:'9 215', campaigns30d:'5', emails30d:'52 840',
+            openRate:'24.1', clickRate:'5.8', bounceRate:'0.9', suppressionCount:187,
+            recentCampaigns:[
+                {name:'Newsletter Hyundai — Abril 2026',desc:'Novidades do mundo Hyundai',date:'16/04/2026',open:'24.1%',click:'5.8%',status:'sent'},
+                {name:'Promoção Tucson Híbrido',desc:'Condições especiais até fim do mês',date:'10/04/2026',open:'22.7%',click:'4.3%',status:'sent'},
+                {name:'IONIQ 6 — Test Drive',desc:'Experimenta o futuro da mobilidade',date:'02/04/2026',open:'31.5%',click:'9.2%',status:'sent'},
+            ],
+            campaigns:[
+                {name:'Newsletter Hyundai — Abril 2026',desc:'Novidades do mundo Hyundai',recipients:'7 432',date:'16/04/2026',status:'sent'},
+                {name:'Promoção Tucson Híbrido',desc:'Condições especiais até fim do mês',recipients:'5 218',date:'10/04/2026',status:'sent'},
+                {name:'IONIQ 6 — Test Drive',desc:'Experimenta o futuro da mobilidade',recipients:'3 890',date:'02/04/2026',status:'sent'},
+                {name:'Evento Lançamento IONIQ 5 N',desc:'Convite exclusivo para clientes',recipients:'—',date:'25/04/2026',status:'draft'},
+                {name:'Newsletter Hyundai — Maio 2026',desc:'Newsletter mensal Hyundai',recipients:'~ 9 000',date:'📅 05/05/2026',status:'scheduled'},
+            ],
+            contacts:[
+                {name:'Sofia Mendes',email:'sofia.mendes@gmail.com',list:'Newsletter Hyundai',status:'active',date:'08/01/2026'},
+                {name:'Carlos Rodrigues',email:'carlos.r@empresa.pt',list:'Clientes IONIQ',status:'active',date:'15/02/2026'},
+                {name:'Inês Pinto',email:'ines.pinto@mail.pt',list:'Leads Tucson',status:'active',date:'20/03/2026'},
+                {name:'Tiago Lopes',email:'tiago.lopes@hotmail.com',list:'Newsletter Hyundai',status:'unsubscribed',date:'10/12/2025'},
+            ],
+            contactsPageInfo:'Mostrando 1–4 de 9 215 contactos',
+            lists:[
+                {name:'Newsletter Hyundai',total:'5 841',active:'5 621',date:'08/01/2026'},
+                {name:'Clientes IONIQ',total:'2 134',active:'2 089',date:'15/01/2026'},
+                {name:'Leads Tucson',total:'1 240',active:'1 198',date:'10/02/2026'},
+            ],
+            imports:[
+                {file:'hyundai_clientes_q1.csv',lines:'2 500',list:'Newsletter Hyundai',status:'done',imported:'2 341',skipped:'159',failed:'0',date:'10/04/2026'},
+                {file:'ioniq_leads.csv',lines:'500',list:'Clientes IONIQ',status:'done',imported:'487',skipped:'13',failed:'0',date:'20/03/2026'},
+            ],
+            suppression:[
+                {email:'tiago.lopes@hotmail.com',reason:'unsubscribe',date:'10/12/2025'},
+                {email:'bounce.test@dominio.pt',reason:'bounce',date:'05/04/2026'},
+            ],
+        },
+        toyota: {
+            contacts:'6 842', campaigns30d:'3', emails30d:'31 560',
+            openRate:'29.8', clickRate:'8.4', bounceRate:'1.5', suppressionCount:98,
+            recentCampaigns:[
+                {name:'Promoção Toyota RAV4 Hybrid',desc:'A escolha inteligente para a sua família',date:'14/04/2026',open:'29.8%',click:'8.4%',status:'sent'},
+                {name:'Newsletter Toyota — Março',desc:'As últimas novidades da Toyota',date:'28/03/2026',open:'26.3%',click:'6.1%',status:'sent'},
+            ],
+            campaigns:[
+                {name:'Promoção Toyota RAV4 Hybrid',desc:'A escolha inteligente para a sua família',recipients:'6 214',date:'14/04/2026',status:'sent'},
+                {name:'Newsletter Toyota — Março',desc:'As últimas novidades da Toyota',recipients:'5 892',date:'28/03/2026',status:'sent'},
+                {name:'Yaris Cross — Chegou',desc:'Descobre o novo Yaris Cross',recipients:'~ 6 000',date:'📅 30/04/2026',status:'scheduled'},
+            ],
+            contacts:[
+                {name:'Miguel Torres',email:'miguel.torres@empresa.pt',list:'Clientes Toyota',status:'active',date:'05/02/2026'},
+                {name:'Beatriz Alves',email:'beatriz.a@gmail.com',list:'Leads Híbridos',status:'active',date:'18/03/2026'},
+                {name:'Nuno Carvalho',email:'nuno.c@mail.pt',list:'Clientes Toyota',status:'active',date:'22/01/2026'},
+            ],
+            contactsPageInfo:'Mostrando 1–3 de 6 842 contactos',
+            lists:[
+                {name:'Clientes Toyota',total:'4 521',active:'4 389',date:'05/01/2026'},
+                {name:'Leads Híbridos',total:'2 321',active:'2 198',date:'20/02/2026'},
+            ],
+            imports:[
+                {file:'toyota_base_2026.csv',lines:'3 000',list:'Clientes Toyota',status:'done',imported:'2 987',skipped:'13',failed:'0',date:'05/01/2026'},
+            ],
+            suppression:[
+                {email:'opt.out@dominio.pt',reason:'unsubscribe',date:'20/03/2026'},
+                {email:'hard.bounce@naoexiste.pt',reason:'bounce',date:'12/04/2026'},
+            ],
+        },
+        volkswagen: {
+            contacts:'7 391', campaigns30d:'4', emails30d:'43 210',
+            openRate:'25.6', clickRate:'6.9', bounceRate:'1.1', suppressionCount:143,
+            recentCampaigns:[
+                {name:'Newsletter VW — Abril 2026',desc:'Novidades Volkswagen do mês',date:'15/04/2026',open:'25.6%',click:'6.9%',status:'sent'},
+                {name:'Golf eHybrid — Condições Especiais',desc:'Descubra o futuro da mobilidade',date:'08/04/2026',open:'28.1%',click:'7.3%',status:'sent'},
+                {name:'ID.4 — Evento de Test Drive',desc:'Reserve já o seu test drive',date:'28/03/2026',open:'33.4%',click:'11.2%',status:'sent'},
+            ],
+            campaigns:[
+                {name:'Newsletter VW — Abril 2026',desc:'Novidades Volkswagen do mês',recipients:'6 841',date:'15/04/2026',status:'sent'},
+                {name:'Golf eHybrid — Condições Especiais',desc:'Descubra o futuro da mobilidade',recipients:'5 123',date:'08/04/2026',status:'sent'},
+                {name:'ID.4 — Evento de Test Drive',desc:'Reserve já o seu test drive',recipients:'~ 7 000',date:'📅 02/05/2026',status:'scheduled'},
+                {name:'Polo 2026 — Novo Modelo',desc:'Descobre o novo Polo',recipients:'—',date:'21/04/2026',status:'draft'},
+            ],
+            contacts:[
+                {name:'André Santos',email:'andre.santos@empresa.pt',list:'Newsletter VW',status:'active',date:'03/01/2026'},
+                {name:'Catarina Lima',email:'catarina.lima@gmail.com',list:'Clientes Golf',status:'active',date:'14/02/2026'},
+                {name:'Paulo Figueiredo',email:'paulo.f@hotmail.com',list:'Leads ID.4',status:'active',date:'10/03/2026'},
+                {name:'Helena Moreira',email:'helena.m@mail.pt',list:'Newsletter VW',status:'suppressed',date:'05/01/2026'},
+            ],
+            contactsPageInfo:'Mostrando 1–4 de 7 391 contactos',
+            lists:[
+                {name:'Newsletter VW',total:'4 892',active:'4 712',date:'03/01/2026'},
+                {name:'Clientes Golf',total:'1 841',active:'1 798',date:'14/01/2026'},
+                {name:'Leads ID.4',total:'658',active:'641',date:'10/02/2026'},
+            ],
+            imports:[
+                {file:'vw_newsletter_2026.csv',lines:'4 000',list:'Newsletter VW',status:'done',imported:'3 921',skipped:'79',failed:'0',date:'03/01/2026'},
+                {file:'golf_clientes.csv',lines:'500',list:'Clientes Golf',status:'done',imported:'487',skipped:'13',failed:'0',date:'14/01/2026'},
+            ],
+            suppression:[
+                {email:'helena.m@mail.pt',reason:'bounce',date:'20/03/2026'},
+                {email:'unsub.vw@dominio.pt',reason:'unsubscribe',date:'08/04/2026'},
+            ],
+        },
+        audi: {
+            contacts:'5 218', campaigns30d:'3', emails30d:'28 740',
+            openRate:'31.2', clickRate:'9.1', bounceRate:'0.8', suppressionCount:76,
+            recentCampaigns:[
+                {name:'Newsletter Audi — Abril',desc:'As melhores novidades Audi',date:'17/04/2026',open:'31.2%',click:'9.1%',status:'sent'},
+                {name:'Q5 e-tron — Promoção Abril',desc:'Condições únicas até fim do mês',date:'09/04/2026',open:'33.8%',click:'11.2%',status:'sent'},
+            ],
+            campaigns:[
+                {name:'Newsletter Audi — Abril',desc:'As melhores novidades Audi',recipients:'5 218',date:'17/04/2026',status:'sent'},
+                {name:'Q5 e-tron — Promoção Abril',desc:'Condições únicas até fim do mês',recipients:'4 891',date:'09/04/2026',status:'sent'},
+                {name:'Audi Sport Experience 2026',desc:'Evento exclusivo para clientes',recipients:'~ 1 500',date:'📅 15/05/2026',status:'scheduled'},
+            ],
+            contacts:[
+                {name:'Ricardo Monteiro',email:'r.monteiro@empresa.pt',list:'Clientes Audi',status:'active',date:'10/01/2026'},
+                {name:'Filipa Sousa',email:'filipa.s@gmail.com',list:'Leads Q5',status:'active',date:'25/02/2026'},
+                {name:'Gonçalo Pereira',email:'goncalo.p@mail.pt',list:'Clientes Audi',status:'active',date:'15/03/2026'},
+            ],
+            contactsPageInfo:'Mostrando 1–3 de 5 218 contactos',
+            lists:[
+                {name:'Clientes Audi',total:'3 421',active:'3 312',date:'10/01/2026'},
+                {name:'Leads Q5',total:'1 797',active:'1 701',date:'25/01/2026'},
+            ],
+            imports:[
+                {file:'audi_clientes_premium.csv',lines:'2 000',list:'Clientes Audi',status:'done',imported:'1 987',skipped:'13',failed:'0',date:'10/01/2026'},
+            ],
+            suppression:[
+                {email:'opt.out.audi@dominio.pt',reason:'unsubscribe',date:'15/03/2026'},
+            ],
+        },
+    };
+
+    function _setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+    function _setBarWidth(id, pct) { const el = document.getElementById(id); if (el) el.style.width = pct + '%'; }
+
+    function _syncBrandTemplates(brandId) {
+        // Save current brand's teTemplateStates before switching
+        const prevId = window._prevBrandId;
+        if (prevId) _brandTemplateStates[prevId] = Object.assign({}, teTemplateStates);
+        // Clear global teTemplateStates and load new brand's saved states
+        Object.keys(teTemplateStates).forEach(k => delete teTemplateStates[k]);
+        const saved = _brandTemplateStates[brandId];
+        if (saved) Object.assign(teTemplateStates, saved);
+        // Show/hide template grid cards by brand
+        document.querySelectorAll('#tplGrid .tmpl-card').forEach(card => {
+            card.style.display = card.getAttribute('data-brand') === brandId ? '' : 'none';
+        });
+        // Show/hide list view rows by brand
+        document.querySelectorAll('#tplListBody [data-tpl-id]').forEach(row => {
+            row.style.display = row.getAttribute('data-brand') === brandId ? '' : 'none';
+        });
+        window._prevBrandId = brandId;
+    }
+
+    function renderBrandData(brandId) {
+        const d = _brandMockData[brandId] || null;
+        const empty = !d;
+
+        // Dashboard KPIs
+        _setText('dash-contacts', empty ? '0' : d.contacts);
+        _setText('dash-campaigns', empty ? '0' : d.campaigns30d);
+        _setText('dash-emails', empty ? '0' : d.emails30d);
+        _setText('dash-openrate', empty ? '—' : d.openRate + '%');
+        _setText('dash-open-val', empty ? '—' : d.openRate + '%');
+        _setText('dash-click-val', empty ? '—' : d.clickRate + '%');
+        _setText('dash-bounce-val', empty ? '—' : d.bounceRate + '%');
+        _setBarWidth('dash-open-bar', empty ? 0 : parseFloat(d.openRate));
+        _setBarWidth('dash-click-bar', empty ? 0 : parseFloat(d.clickRate));
+        _setBarWidth('dash-bounce-bar', empty ? 0 : parseFloat(d.bounceRate));
+
+        // Recent campaigns
+        const rcEl = document.getElementById('dashRecentCampaigns');
+        if (rcEl) {
+            if (empty || !d.recentCampaigns.length) {
+                rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas recentes.</td></tr>`;
+            } else {
+                rcEl.innerHTML = d.recentCampaigns.map((c,i) => `
+                    <tr class="${i<d.recentCampaigns.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign('${c.status}')">
+                        <td class="px-5 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-400">${c.desc}</p></td>
+                        <td class="px-4 py-3 text-xs text-slate-500">${c.date}</td>
+                        <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${c.open} abertos</span><span class="text-blue-600">${c.click} cliques</span></div></td>
+                    </tr>`).join('');
+            }
+        }
+
+        // Campaigns table
+        const campEl = document.getElementById('campaignsTbody');
+        if (campEl) {
+            const statusBadge = {sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>',scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>',draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>'};
+            if (empty || !d.campaigns.length) {
+                campEl.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`;
+            } else {
+                campEl.innerHTML = d.campaigns.map((c,i) => `
+                    <tr class="${i<d.campaigns.length-1?'border-b border-slate-100':''} hover:bg-slate-50 cursor-pointer" data-name="${c.name.toLowerCase()}" data-status="${c.status}" onclick="showCampaign('${c.status}')">
+                        <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.desc}</p></td>
+                        <td class="px-4 py-3">${statusBadge[c.status]||''}</td>
+                        <td class="px-4 py-3 text-slate-700">${c.recipients}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500">${c.date}</td>
+                        <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('${c.status}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a></td>
+                    </tr>`).join('');
+            }
+        }
+
+        // Contacts table
+        const ctcEl = document.getElementById('contactsTbody');
+        if (ctcEl) {
+            const sBadge = {active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>',suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>',unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>'};
+            if (empty || !d.contacts.length) {
+                ctcEl.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
+            } else {
+                ctcEl.innerHTML = d.contacts.map(c => `
+                    <tr class="hover:bg-slate-50 cursor-pointer" data-name="${c.name.toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view')">
+                        <td class="px-4 py-3 font-medium text-slate-900">${c.name}</td>
+                        <td class="px-4 py-3 text-slate-600">${c.email}</td>
+                        <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.list}</span></td>
+                        <td class="px-4 py-3">${sBadge[c.status]||''}</td>
+                        <td class="px-4 py-3 text-slate-500">${c.date}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button></td>
+                    </tr>`).join('');
+            }
+        }
+        const cpiEl = document.getElementById('contactsPageInfo');
+        if (cpiEl) cpiEl.textContent = empty ? 'Sem contactos' : (d.contactsPageInfo || '');
+
+        // Lists table
+        const lstEl = document.getElementById('listsTableBody');
+        if (lstEl) {
+            if (empty || !d.lists.length) {
+                lstEl.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas para esta marca.</td></tr>`;
+            } else {
+                lstEl.innerHTML = d.lists.map(l => `
+                    <tr class="hover:bg-slate-50" data-name="${l.name.toLowerCase()}">
+                        <td class="px-4 py-3 font-medium text-slate-900">${l.name}</td>
+                        <td class="px-4 py-3 text-slate-600">${l.total}</td>
+                        <td class="px-4 py-3 text-slate-600">${l.active}</td>
+                        <td class="px-4 py-3 text-slate-500">${l.date}</td>
+                        <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                            <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                            <button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                        </td>
+                    </tr>`).join('');
+            }
+        }
+
+        // Imports table
+        const impEl = document.getElementById('importsTbody');
+        if (impEl) {
+            if (empty || !d.imports.length) {
+                impEl.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
+            } else {
+                impEl.innerHTML = d.imports.map(im => {
+                    const badge = im.status==='done'
+                        ? '<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Concluído</span>'
+                        : '<div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Em processamento</span><div class="w-16 bg-slate-100 rounded-full h-1.5"><div class="h-1.5 bg-blue-500 rounded-full" style="width:62%"></div></div></div>';
+                    return `<tr class="hover:bg-slate-50">
+                        <td class="px-4 py-3"><p class="font-medium text-slate-900">${im.file}</p><p class="text-xs text-slate-400">${im.lines} linhas</p></td>
+                        <td class="px-4 py-3 text-slate-600">${im.list}</td>
+                        <td class="px-4 py-3">${badge}</td>
+                        <td class="px-4 py-3 text-green-700 font-medium">${im.imported}</td>
+                        <td class="px-4 py-3 text-yellow-700">${im.skipped}</td>
+                        <td class="px-4 py-3 text-red-600">${im.failed}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500">${im.date}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="mockShowImportDetails(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Detalhes</button></td>
+                    </tr>`;
+                }).join('');
+            }
+        }
+
+        // Suppression table
+        const supEl = document.getElementById('suppTableBody');
+        if (supEl) {
+            const rBadge = {bounce:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span>',unsubscribe:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span>',spam:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span>',manual:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">manual</span>'};
+            if (empty || !d.suppression.length) {
+                supEl.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">Sem endereços suprimidos.</td></tr>`;
+            } else {
+                supEl.innerHTML = d.suppression.map(s => `
+                    <tr class="hover:bg-slate-50" data-email="${s.email}" data-reason="${s.reason}">
+                        <td class="px-4 py-3 text-slate-900">${s.email}</td>
+                        <td class="px-4 py-3">${rBadge[s.reason]||s.reason}</td>
+                        <td class="px-4 py-3 text-slate-500">${s.date}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
+                    </tr>`).join('');
+            }
+        }
+        const scEl = document.getElementById('suppCount');
+        if (scEl) scEl.textContent = `${empty ? 0 : d.suppressionCount} endereços suprimidos`;
+
+        // Templates
+        _syncBrandTemplates(brandId);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -2128,19 +2470,19 @@ ${body}
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Contactos activos</p>
-                        <p class="text-3xl font-semibold text-slate-900">12 483</p>
+                        <p id="dash-contacts" class="text-3xl font-semibold text-slate-900">12 483</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Campanhas enviadas (30 d)</p>
-                        <p class="text-3xl font-semibold text-slate-900">7</p>
+                        <p id="dash-campaigns" class="text-3xl font-semibold text-slate-900">7</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Emails enviados (30 d)</p>
-                        <p class="text-3xl font-semibold text-slate-900">84 217</p>
+                        <p id="dash-emails" class="text-3xl font-semibold text-slate-900">84 217</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Taxa de abertura média</p>
-                        <p class="text-3xl font-semibold text-green-700">27.4%</p>
+                        <p id="dash-openrate" class="text-3xl font-semibold text-green-700">27.4%</p>
                         <p class="text-xs text-slate-400 mt-0.5">Últimas 10 campanhas</p>
                     </div>
                 </div>
@@ -2152,7 +2494,7 @@ ${body}
                             <a onclick="showScreen('campaigns')" data-nav class="text-xs text-slate-500 hover:text-slate-900">Ver todas →</a>
                         </div>
                         <table class="w-full text-sm">
-                            <tbody>
+                            <tbody id="dashRecentCampaigns">
                                 <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="showCampaign('sent')">
                                     <td class="px-5 py-3">
                                         <p class="font-medium text-slate-900">Newsletter BMW — Abril 2026</p>
@@ -2216,28 +2558,28 @@ ${body}
                                 <div>
                                     <div class="flex justify-between text-xs mb-1">
                                         <span class="text-slate-500">Abertura</span>
-                                        <span class="font-medium">27.4%</span>
+                                        <span id="dash-open-val" class="font-medium">27.4%</span>
                                     </div>
                                     <div class="w-full bg-slate-100 rounded-full h-1.5">
-                                        <div class="h-1.5 bg-green-500 rounded-full" style="width: 27.4%"></div>
+                                        <div id="dash-open-bar" class="h-1.5 bg-green-500 rounded-full" style="width: 27.4%"></div>
                                     </div>
                                 </div>
                                 <div>
                                     <div class="flex justify-between text-xs mb-1">
                                         <span class="text-slate-500">Clique</span>
-                                        <span class="font-medium">7.6%</span>
+                                        <span id="dash-click-val" class="font-medium">7.6%</span>
                                     </div>
                                     <div class="w-full bg-slate-100 rounded-full h-1.5">
-                                        <div class="h-1.5 bg-blue-500 rounded-full" style="width: 7.6%"></div>
+                                        <div id="dash-click-bar" class="h-1.5 bg-blue-500 rounded-full" style="width: 7.6%"></div>
                                     </div>
                                 </div>
                                 <div>
                                     <div class="flex justify-between text-xs mb-1">
                                         <span class="text-slate-500">Bounce</span>
-                                        <span class="font-medium text-red-600">1.2%</span>
+                                        <span id="dash-bounce-val" class="font-medium text-red-600">1.2%</span>
                                     </div>
                                     <div class="w-full bg-slate-100 rounded-full h-1.5">
-                                        <div class="h-1.5 bg-red-400 rounded-full" style="width: 1.2%"></div>
+                                        <div id="dash-bounce-bar" class="h-1.5 bg-red-400 rounded-full" style="width: 1.2%"></div>
                                     </div>
                                 </div>
                             </div>
@@ -3035,7 +3377,7 @@ ${body}
                 <!-- ── Grid view ── -->
                 <div id="tplGrid" class="grid grid-cols-3 gap-5">
                     <!-- Template card 1 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" onclick="teEditTemplate('tpl1')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" data-brand="bmw" onclick="teEditTemplate('tpl1')">
                         <div class="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-blue-300 rounded mx-auto mb-2"></div>
@@ -3054,7 +3396,7 @@ ${body}
                         </div>
                     </div>
                     <!-- Template card 2 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" onclick="teEditTemplate('tpl2')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" data-brand="bmw" onclick="teEditTemplate('tpl2')">
                         <div class="h-40 bg-gradient-to-br from-orange-50 to-red-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-orange-300 rounded mx-auto mb-2"></div>
@@ -3073,7 +3415,7 @@ ${body}
                         </div>
                     </div>
                     <!-- Template card 3 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" onclick="teEditTemplate('tpl3')">
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" data-brand="bmw" onclick="teEditTemplate('tpl3')">
                         <div class="h-40 bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center">
                             <div class="text-center px-6">
                                 <div class="w-12 h-1 bg-green-300 rounded mx-auto mb-2"></div>
@@ -3114,7 +3456,7 @@ ${body}
                             </tr>
                         </thead>
                         <tbody id="tplListBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" onclick="teEditTemplate('tpl1')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" data-brand="bmw" onclick="teEditTemplate('tpl1')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Newsletter Primavera 2026</td>
                                 <td class="px-4 py-3 text-slate-500 text-xs">Newsletter trimestral com ofertas de Primavera</td>
                                 <td class="px-4 py-3 text-xs text-slate-400">17/04/2026</td>
@@ -3124,7 +3466,7 @@ ${body}
                                     <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" onclick="teEditTemplate('tpl2')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" data-brand="bmw" onclick="teEditTemplate('tpl2')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Promoção Flash — Verão</td>
                                 <td class="px-4 py-3 text-slate-500 text-xs">Campanha de promoção sazonal de Verão</td>
                                 <td class="px-4 py-3 text-xs text-slate-400">02/03/2026</td>
@@ -3134,7 +3476,7 @@ ${body}
                                     <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                                 </td>
                             </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" onclick="teEditTemplate('tpl3')">
+                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" data-brand="bmw" onclick="teEditTemplate('tpl3')">
                                 <td class="px-4 py-3 font-medium text-slate-900">Boas-vindas — Welcome</td>
                                 <td class="px-4 py-3 text-slate-500 text-xs">Email automático enviado após registo</td>
                                 <td class="px-4 py-3 text-xs text-slate-400">15/01/2026</td>
@@ -3573,7 +3915,7 @@ ${body}
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
+                        <tbody id="importsTbody" class="divide-y divide-slate-100">
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3"><p class="font-medium text-slate-900">clientes_abril_2026.csv</p><p class="text-xs text-slate-400">1 323 linhas</p></td>
                                 <td class="px-4 py-3 text-slate-600">Clientes Premium</td>
@@ -3633,7 +3975,7 @@ ${body}
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
-                        <h3 class="font-semibold text-slate-900 text-sm">312 endereços suprimidos</h3>
+                        <h3 id="suppCount" class="font-semibold text-slate-900 text-sm">312 endereços suprimidos</h3>
                         <div class="flex items-center gap-2">
                             <input id="suppSearch" type="text" placeholder="Filtrar por email…" oninput="filterSuppression()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 w-56" />
                             <select id="suppReasonFilter" onchange="filterSuppression()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
