@@ -1045,6 +1045,8 @@ ${body}
         if (nameInp) nameInp.value = name;
         const countSpan = document.getElementById('listEditCount');
         if (countSpan) countSpan.textContent = count;
+        _listEditPage = 1;
+        listEditGoPage(1);
         showScreen('listEdit');
     }
 
@@ -1164,6 +1166,25 @@ ${body}
         if (sp) sp.textContent = email;
         const t = document.getElementById('fpTitle'); if (t) t.textContent = 'Verifica o teu email';
         const s = document.getElementById('fpSubtitle'); if (s) s.classList.add('hidden');
+    }
+
+    // ── List-Edit Pagination ─────────────────────────────
+    let _listEditPage = 1;
+    const _listEditTotal = 4231, _listEditPerPage = 5;
+
+    function listEditGoPage(p) {
+        const pages = Math.ceil(_listEditTotal / _listEditPerPage);
+        if (p < 1 || p > pages) return;
+        _listEditPage = p;
+        const start = (p-1)*_listEditPerPage+1, end = Math.min(p*_listEditPerPage, _listEditTotal);
+        const info = document.getElementById('listEditPageInfo');
+        if (info) info.textContent = `Mostrando ${start}–${end} de ${_listEditTotal.toLocaleString('pt-PT')} contactos`;
+        document.querySelectorAll('.list-edit-page-btn').forEach(b => {
+            const pg = parseInt(b.dataset.page);
+            b.classList.toggle('bg-slate-900', pg === p);
+            b.classList.toggle('text-white', pg === p);
+            b.classList.toggle('hover:bg-slate-50', pg !== p);
+        });
     }
 
     // ── Suppression Pagination ───────────────────────────
@@ -1794,6 +1815,8 @@ ${body}
                 n.classList.add('bg-slate-700', 'text-white');
                 n.classList.remove('text-slate-400');
             });
+            // Reset campaign wizard to step 1 whenever the create screen opens
+            if (id === 'campaignCreate') wizShowStep(1);
         }
     }
 
@@ -3849,12 +3872,12 @@ ${body}
                         </tbody>
                     </table>
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-                        <span>Mostrando 1–5 de 4 231 contactos</span>
+                        <span id="listEditPageInfo">Mostrando 1–5 de 4 231 contactos</span>
                         <div class="flex gap-2">
-                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
-                            <button class="px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
-                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
-                            <button class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
+                            <button onclick="listEditGoPage(_listEditPage-1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
+                            <button data-page="1" onclick="listEditGoPage(1)" class="list-edit-page-btn px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
+                            <button data-page="2" onclick="listEditGoPage(2)" class="list-edit-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
+                            <button onclick="listEditGoPage(_listEditPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
                         </div>
                     </div>
                 </div>
