@@ -1958,11 +1958,8 @@ ${body}
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') wizShowStep(1);
-            // Roles info panel: only visible to owner / admin
-            if (id === 'team') {
-                const panel = document.getElementById('rolesInfoPanel');
-                if (panel) panel.style.display = (_currentUserRole === 'owner' || _currentUserRole === 'admin') ? '' : 'none';
-            }
+            // Roles info panel: only visible to owner / admin / administrador
+            if (id === 'team') _syncRolesPanel();
         }
     }
 
@@ -1976,7 +1973,14 @@ ${body}
     }
 
     let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4', bg:'#FFFFFF', logo:`https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png`, invert:false };
-    let _currentUserRole = 'owner'; // 'owner' | 'admin' | 'editor' | 'viewer'
+    let _currentUserRole = 'admin'; // 'owner' | 'admin' | 'editor' | 'viewer'
+    function _canSeeRolesPanel() {
+        return ['owner','admin','administrador'].includes(_currentUserRole.toLowerCase());
+    }
+    function _syncRolesPanel() {
+        const panel = document.getElementById('rolesInfoPanel');
+        if (panel) panel.style.display = _canSeeRolesPanel() ? '' : 'none';
+    }
 
     function applyBrandToSidebar() {
         document.querySelectorAll('.sidebar-brand-name').forEach(el => { el.textContent = _currentBrand.name; });
@@ -2532,6 +2536,7 @@ ${body}
     document.addEventListener('DOMContentLoaded', () => {
         renderBrandSelect();
         injectSidebar();
+        _syncRolesPanel();
         showScreen('login');
         // Load tpl1 preset as initial editor state
         if (typeof teTemplatePresets !== 'undefined') {
