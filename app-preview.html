@@ -30,14 +30,34 @@
 
     // ── Team ─────────────────────────────────────────────
     const _allBrands = [
-        { id:'caetano',     name:'Caetano',       color:'#002E5D' },
-        { id:'bmw',         name:'BMW',            color:'#1C69D4' },
-        { id:'hyundai',     name:'Hyundai',        color:'#002C5F' },
-        { id:'byd',         name:'BYD',            color:'#1DB954' },
-        { id:'audi',        name:'Audi',           color:'#BB0A21' },
-        { id:'alpine',      name:'Alpine',         color:'#0055A4' },
-        { id:'dacia',       name:'Dacia',          color:'#FFBE00' },
-        { id:'caetanoparts',name:'Caetano Parts',  color:'#E63946' },
+        { id:'caetano',     name:'Caetano',       color:'#002E5D', bg:'#002E5D', logo:null,  invert:false },
+        { id:'alpine',      name:'Alpine',         color:'#0055A4', bg:'#0055A4', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Alpine-Logo.svg/120px-Alpine-Logo.svg.png', invert:true },
+        { id:'audi',        name:'Audi',           color:'#BB0A21', bg:'#FFFFFF', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Audi-Logo_2016.svg/160px-Audi-Logo_2016.svg.png', invert:false },
+        { id:'bmw',         name:'BMW',            color:'#1C69D4', bg:'#FFFFFF', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/80px-BMW.svg.png', invert:false },
+        { id:'bmwmotorrad', name:'BMW Motorrad',   color:'#1C1C1C', bg:'#1C1C1C', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/80px-BMW.svg.png', invert:true },
+        { id:'byd',         name:'BYD',            color:'#002060', bg:'#002060', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/BYD_Auto_logo_2022.svg/120px-BYD_Auto_logo_2022.svg.png', invert:true },
+        { id:'carplus',     name:'Carplus',        color:'#1B1B1B', bg:'#1B1B1B', logo:null,  invert:false },
+        { id:'cupra',       name:'Cupra',          color:'#C8A96B', bg:'#1A1A1A', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/CUPRA_logo.svg/120px-CUPRA_logo.svg.png', invert:false },
+        { id:'dacia',       name:'Dacia',          color:'#1B1B1B', bg:'#1B1B1B', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Dacia_2021_logo.svg/120px-Dacia_2021_logo.svg.png', invert:true },
+        { id:'denza',       name:'Denza',          color:'#1B1B1B', bg:'#1B1B1B', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Denza_logo.svg/120px-Denza_logo.svg.png', invert:true },
+        { id:'dongfeng',    name:'Dongfeng',       color:'#003580', bg:'#003580', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Dongfeng_logo.svg/120px-Dongfeng_logo.svg.png', invert:true },
+        { id:'farizon',     name:'Farizon',        color:'#002AA3', bg:'#002AA3', logo:null,  invert:false },
+        { id:'geely',       name:'Geely',          color:'#003F7F', bg:'#003F7F', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Geely_Auto_logo.svg/120px-Geely_Auto_logo.svg.png', invert:true },
+        { id:'honda',       name:'Honda',          color:'#CC0000', bg:'#CC0000', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Honda.svg/120px-Honda.svg.png', invert:true },
+        { id:'hyundai',     name:'Hyundai',        color:'#002C5F', bg:'#002C5F', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Hyundai_Motor_Company_logo.svg/120px-Hyundai_Motor_Company_logo.svg.png', invert:true },
+        { id:'mercedes',    name:'Mercedes-Benz',  color:'#1C1C1C', bg:'#1C1C1C', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Mercedes-Logo.svg/100px-Mercedes-Logo.svg.png', invert:true },
+        { id:'mini',        name:'MINI',           color:'#1F3146', bg:'#1F3146', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/MINI_logo.svg/120px-MINI_logo.svg.png', invert:true },
+        { id:'nissan',      name:'Nissan',         color:'#C3002F', bg:'#C3002F', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Nissan_2020_logo.svg/120px-Nissan_2020_logo.svg.png', invert:true },
+        { id:'opel',        name:'Opel',           color:'#1C1C1C', bg:'#1C1C1C', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Opel_logo_2017.svg/120px-Opel_logo_2017.svg.png', invert:true },
+        { id:'peugeot',     name:'Peugeot',        color:'#1C1C1C', bg:'#1C1C1C', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Peugeot_Logo_2021.svg/120px-Peugeot_Logo_2021.svg.png', invert:true },
+        { id:'renault',     name:'Renault',        color:'#1C1C1C', bg:'#1C1C1C', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Renault_2021_logo.svg/120px-Renault_2021_logo.svg.png', invert:true },
+        { id:'skoda',       name:'Škoda',          color:'#4BA82E', bg:'#4BA82E', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Skoda_auto_logo.svg/120px-Skoda_auto_logo.svg.png', invert:true },
+        { id:'toyota',      name:'Toyota',         color:'#EB0A1E', bg:'#EB0A1E', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Toyota_carlogo.svg/120px-Toyota_carlogo.svg.png', invert:true },
+        { id:'volkswagen',  name:'Volkswagen',     color:'#001E50', bg:'#001E50', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Volkswagen_logo_2019.svg/120px-Volkswagen_logo_2019.svg.png', invert:true },
+        { id:'voyah',       name:'VOYAH',          color:'#1A1A1A', bg:'#1A1A1A', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/VOYAH_logo.svg/120px-VOYAH_logo.svg.png', invert:true },
+        { id:'xpeng',       name:'XPENG',          color:'#1B2F6E', bg:'#1B2F6E', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Xpeng_Motors_logo.svg/120px-Xpeng_Motors_logo.svg.png', invert:true },
+        { id:'zeekr',       name:'Zeekr',          color:'#1A1A1A', bg:'#1A1A1A', logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Zeekr_logo.svg/120px-Zeekr_logo.svg.png', invert:true },
+        { id:'caetanoparts',name:'Caetano Parts',  color:'#E63946', bg:'#E63946', logo:null,  invert:false },
     ];
     const _allAreas = [
         { id:'dashboard',     name:'Dashboard' },
@@ -159,16 +179,7 @@
     }
 
     // ── Templates ────────────────────────────────────────
-    const _dupBrands = [
-        { id:'caetano',     name:'Caetano',       color:'#002E5D' },
-        { id:'bmw',         name:'BMW',            color:'#1C69D4' },
-        { id:'hyundai',     name:'Hyundai',        color:'#002C5F' },
-        { id:'byd',         name:'BYD',            color:'#1DB954' },
-        { id:'audi',        name:'Audi',           color:'#BB0A21' },
-        { id:'alpine',      name:'Alpine',         color:'#0055A4' },
-        { id:'dacia',       name:'Dacia',          color:'#FFBE00' },
-        { id:'caetanoparts',name:'Caetano Parts',  color:'#E63946' },
-    ];
+    const _dupBrands = _allBrands;
     let _dupSrcId = null, _dupBrandSel = null, _dupMode = 'template';
     function mockDuplicateTemplate(btn) {
         _dupMode = 'template';
@@ -1722,7 +1733,7 @@ ${body}
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="brandSelect" class="screen fade-in">
     <div class="min-h-screen bg-slate-50 p-6">
-        <div class="max-w-4xl mx-auto pt-10">
+        <div class="max-w-6xl mx-auto pt-10">
             <div class="text-center mb-10">
                 <div class="flex items-center justify-center gap-3 mb-6">
                     <svg width="130" height="30" viewBox="0 0 130 30" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1735,87 +1746,7 @@ ${body}
                 <p class="text-slate-500 text-sm">Escolhe a marca com que queres trabalhar hoje</p>
             </div>
 
-            <div id="brandSelectGrid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-
-                <!-- Caetano -->
-                <button onclick="selectBrand('caetano','Caetano','#002E5D')" data-brand-id="caetano"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#002E5D] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 flex items-center justify-center" style="background:#002E5D">
-                        <svg width="110" height="26" viewBox="0 0 110 26" xmlns="http://www.w3.org/2000/svg">
-                            <text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="-0.5">caetano</text>
-                        </svg>
-                    </div>
-                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Caetano</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- BMW -->
-                <button onclick="selectBrand('bmw','BMW','#1C69D4')" data-brand-id="bmw"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#1C69D4] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 bg-white flex items-center justify-center p-3">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/80px-BMW.svg.png" alt="BMW" class="h-16 object-contain" onerror="this.outerHTML='<div class=\'w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-sm\' style=\'background:#1C69D4\'>BMW</div>'">
-                    </div>
-                    <div class="px-3 py-3 border-t border-slate-100"><h3 class="font-semibold text-slate-900 text-sm">BMW</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- Hyundai -->
-                <button onclick="selectBrand('hyundai','Hyundai','#002C5F')" data-brand-id="hyundai"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#002C5F] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 flex items-center justify-center p-3" style="background:#002C5F">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Hyundai_Motor_Company_logo.svg/120px-Hyundai_Motor_Company_logo.svg.png" alt="Hyundai" class="h-10 object-contain brightness-0 invert" onerror="this.outerHTML='<span class=\'text-white font-bold text-xl\'>H</span>'">
-                    </div>
-                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Hyundai</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- BYD -->
-                <button onclick="selectBrand('byd','BYD','#1B2A5E')" data-brand-id="byd"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#1B2A5E] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 flex items-center justify-center p-3" style="background:#1B2A5E">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/BYD_Auto_logo_2022.svg/120px-BYD_Auto_logo_2022.svg.png" alt="BYD" class="h-10 object-contain brightness-0 invert" onerror="this.outerHTML='<span class=\'text-white font-bold text-2xl\'>BYD</span>'">
-                    </div>
-                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">BYD</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- Audi -->
-                <button onclick="selectBrand('audi','Audi','#BB0A21')" data-brand-id="audi"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#BB0A21] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 bg-white flex items-center justify-center p-3">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Audi-Logo_2016.svg/160px-Audi-Logo_2016.svg.png" alt="Audi" class="h-8 object-contain" onerror="this.outerHTML='<span class=\'font-bold text-xl\' style=\'color:#BB0A21\'>Audi</span>'">
-                    </div>
-                    <div class="px-3 py-3 border-t border-slate-100"><h3 class="font-semibold text-slate-900 text-sm">Audi</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- Alpine -->
-                <button onclick="selectBrand('alpine','Alpine','#0055A4')" data-brand-id="alpine"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#0055A4] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 flex items-center justify-center p-3" style="background:#0055A4">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Alpine-Logo.svg/120px-Alpine-Logo.svg.png" alt="Alpine" class="h-10 object-contain brightness-0 invert" onerror="this.outerHTML='<span class=\'text-white font-bold text-xl\'>Alpine</span>'">
-                    </div>
-                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Alpine</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- Dacia -->
-                <button onclick="selectBrand('dacia','Dacia','#FFBE00')" data-brand-id="dacia"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#FFBE00] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 bg-white flex items-center justify-center p-3">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Dacia_2021_logo.svg/120px-Dacia_2021_logo.svg.png" alt="Dacia" class="h-10 object-contain" onerror="this.outerHTML='<span class=\'font-bold text-xl\' style=\'color:#FFBE00\'>Dacia</span>'">
-                    </div>
-                    <div class="px-3 py-3 border-t border-slate-100"><h3 class="font-semibold text-slate-900 text-sm">Dacia</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
-                <!-- Caetano Parts -->
-                <button onclick="selectBrand('caetanoparts','Caetano Parts','#E63946')" data-brand-id="caetanoparts"
-                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#E63946] rounded-xl overflow-hidden transition-all text-center group">
-                    <div class="h-24 flex flex-col items-center justify-center gap-0.5" style="background:#E63946">
-                        <svg width="106" height="18" viewBox="0 0 106 18" xmlns="http://www.w3.org/2000/svg">
-                            <text x="2" y="14" font-family="Montserrat,sans-serif" font-weight="700" font-size="13" fill="white" letter-spacing="0.5">CAETANO</text>
-                        </svg>
-                        <svg width="60" height="16" viewBox="0 0 60 16" xmlns="http://www.w3.org/2000/svg">
-                            <text x="2" y="12" font-family="Montserrat,sans-serif" font-weight="300" font-size="11" fill="rgba(255,255,255,0.8)" letter-spacing="2">PARTS</text>
-                        </svg>
-                    </div>
-                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Caetano Parts</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
-                </button>
-
+            <div id="brandSelectGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3">
             </div>
         </div>
     </div>
@@ -1947,19 +1878,59 @@ ${body}
     function selectBrand(id, name, color) {
         _currentBrand = { id, name, color };
         applyBrandToSidebar();
-        // Marca o card seleccionado
         document.querySelectorAll('.brand-card').forEach(b => {
-            const sel = b.dataset.brandId === id;
-            b.classList.toggle('border-slate-900', sel);
-            b.classList.toggle('ring-2', sel);
-            b.classList.toggle('ring-slate-900', sel);
-            b.classList.toggle('ring-offset-2', sel);
+            b.classList.remove('brand-selected');
+            b.style.borderColor = '';
+            b.style.boxShadow = '';
         });
+        const sel = document.querySelector(`.brand-card[data-brand-id="${id}"]`);
+        if (sel) {
+            sel.classList.add('brand-selected');
+            sel.style.borderColor = color;
+            sel.style.boxShadow = `0 0 0 3px ${color}33`;
+        }
         showScreen('dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
     }
 
+    function _brandLogoHtml(b) {
+        if (b.logo) {
+            const cls = b.invert ? 'h-10 object-contain brightness-0 invert' : 'h-10 object-contain';
+            const fallbackColor = b.invert ? 'white' : b.color;
+            return `<img src="${b.logo}" alt="${b.name}" class="${cls}" loading="lazy"
+                        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <span class="hidden w-12 h-12 rounded-full items-center justify-center text-xs font-bold" style="background:${b.bg==='#FFFFFF'?'#eee':b.bg};color:${fallbackColor};border:${b.bg==='#FFFFFF'?'1px solid #ddd':'none'}">${b.name.replace('Mercedes-Benz','MB').substring(0,3).toUpperCase()}</span>`;
+        }
+        const svgs = {
+            caetano:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="-0.5">caetano</text></svg>`,
+            caetanoparts: `<div class="flex flex-col items-center gap-0.5"><svg width="106" height="18" viewBox="0 0 106 18"><text x="2" y="14" font-family="Montserrat,sans-serif" font-weight="700" font-size="13" fill="white" letter-spacing="0.5">CAETANO</text></svg><svg width="60" height="16" viewBox="0 0 60 16"><text x="2" y="12" font-family="Montserrat,sans-serif" font-weight="300" font-size="11" fill="rgba(255,255,255,0.8)" letter-spacing="2">PARTS</text></svg></div>`,
+            carplus:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="0.5">CARPLUS</text></svg>`,
+            farizon:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="1">FARIZON</text></svg>`,
+        };
+        return svgs[b.id] || `<span class="text-white font-bold text-lg">${b.name}</span>`;
+    }
+
+    function renderBrandSelect() {
+        const grid = document.getElementById('brandSelectGrid');
+        if (!grid) return;
+        grid.innerHTML = _allBrands.map(b => `
+            <button onclick="selectBrand('${b.id}','${b.name.replace(/'/g,"\\'")}','${b.color}')" data-brand-id="${b.id}"
+                    class="brand-card bg-white border-2 border-slate-200 rounded-xl overflow-hidden transition-all text-center"
+                    onmouseover="this.style.borderColor='${b.color}'"
+                    onmouseout="if(!this.classList.contains('brand-selected'))this.style.borderColor=''">
+                <div class="h-20 flex items-center justify-center p-3" style="background:${b.bg}">
+                    ${_brandLogoHtml(b)}
+                </div>
+                <div class="px-3 py-2.5${b.bg==='#FFFFFF'?' border-t border-slate-100':''}">
+                    <h3 class="font-semibold text-slate-900 text-sm truncate">${b.name}</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+                </div>
+            </button>
+        `).join('');
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        renderBrandSelect();
         injectSidebar();
         showScreen('login');
         // Load tpl1 preset as initial editor state
