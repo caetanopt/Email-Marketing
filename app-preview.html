@@ -1618,12 +1618,19 @@ ${body}
     <div class="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
             <div class="text-center mb-8">
-                <div class="flex items-center justify-center gap-3 mb-5">
-                    <svg width="120" height="28" viewBox="0 0 120 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <text x="0" y="22" font-family="Montserrat, sans-serif" font-weight="700" font-size="22" fill="#002E5D" letter-spacing="-0.5">caetano</text>
-                    </svg>
-                    <div class="w-px h-7 bg-slate-200"></div>
-                    <span class="text-xs font-semibold tracking-widest text-slate-400 uppercase">PrimeMail</span>
+                <!-- Logo Caetano PrimeMail -->
+                <div class="flex flex-col items-center gap-2 mb-5">
+                    <div class="flex items-center gap-2.5">
+                        <!-- Wordmark caetano -->
+                        <svg width="140" height="32" viewBox="0 0 140 32" xmlns="http://www.w3.org/2000/svg">
+                            <text x="0" y="26" font-family="Montserrat, sans-serif" font-weight="700" font-size="26" fill="#002E5D" letter-spacing="-1">caetano</text>
+                        </svg>
+                        <div class="w-px h-8 bg-slate-200 mx-1"></div>
+                        <div class="flex flex-col items-start">
+                            <span class="text-[10px] font-semibold tracking-[0.2em] text-slate-400 uppercase leading-none">Prime</span>
+                            <span class="text-[10px] font-semibold tracking-[0.2em] text-[#00AEEF] uppercase leading-none mt-0.5">Mail</span>
+                        </div>
+                    </div>
                 </div>
                 <p class="text-sm text-slate-500">Plataforma de email marketing</p>
             </div>
@@ -1729,46 +1736,86 @@ ${body}
             </div>
 
             <div id="brandSelectGrid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button onclick="selectBrand('caetano','Caetano','#002E5D')" data-brand-id="caetano" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1A1A2E"></div>
-                    <h3 class="font-semibold text-slate-900 group-hover:text-slate-900">Caetano</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- Caetano -->
+                <button onclick="selectBrand('caetano','Caetano','#002E5D')" data-brand-id="caetano"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#002E5D] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 flex items-center justify-center" style="background:#002E5D">
+                        <svg width="110" height="26" viewBox="0 0 110 26" xmlns="http://www.w3.org/2000/svg">
+                            <text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="-0.5">caetano</text>
+                        </svg>
+                    </div>
+                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Caetano</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('bmw','BMW','#1C69D4')" data-brand-id="bmw" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1C69D4"></div>
-                    <h3 class="font-semibold text-slate-900">BMW</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- BMW -->
+                <button onclick="selectBrand('bmw','BMW','#1C69D4')" data-brand-id="bmw"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#1C69D4] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 bg-white flex items-center justify-center p-3">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/80px-BMW.svg.png" alt="BMW" class="h-16 object-contain" onerror="this.outerHTML='<div class=\'w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-sm\' style=\'background:#1C69D4\'>BMW</div>'">
+                    </div>
+                    <div class="px-3 py-3 border-t border-slate-100"><h3 class="font-semibold text-slate-900 text-sm">BMW</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('hyundai','Hyundai','#002C5F')" data-brand-id="hyundai" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #002C5F"></div>
-                    <h3 class="font-semibold text-slate-900">Hyundai</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- Hyundai -->
+                <button onclick="selectBrand('hyundai','Hyundai','#002C5F')" data-brand-id="hyundai"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#002C5F] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 flex items-center justify-center p-3" style="background:#002C5F">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Hyundai_Motor_Company_logo.svg/120px-Hyundai_Motor_Company_logo.svg.png" alt="Hyundai" class="h-10 object-contain brightness-0 invert" onerror="this.outerHTML='<span class=\'text-white font-bold text-xl\'>H</span>'">
+                    </div>
+                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Hyundai</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('byd','BYD','#1DB954')" data-brand-id="byd" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #1DB954"></div>
-                    <h3 class="font-semibold text-slate-900">BYD</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- BYD -->
+                <button onclick="selectBrand('byd','BYD','#1B2A5E')" data-brand-id="byd"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#1B2A5E] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 flex items-center justify-center p-3" style="background:#1B2A5E">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/BYD_Auto_logo_2022.svg/120px-BYD_Auto_logo_2022.svg.png" alt="BYD" class="h-10 object-contain brightness-0 invert" onerror="this.outerHTML='<span class=\'text-white font-bold text-2xl\'>BYD</span>'">
+                    </div>
+                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">BYD</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('audi','Audi','#BB0A21')" data-brand-id="audi" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #BB0A21"></div>
-                    <h3 class="font-semibold text-slate-900">Audi</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- Audi -->
+                <button onclick="selectBrand('audi','Audi','#BB0A21')" data-brand-id="audi"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#BB0A21] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 bg-white flex items-center justify-center p-3">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Audi-Logo_2016.svg/160px-Audi-Logo_2016.svg.png" alt="Audi" class="h-8 object-contain" onerror="this.outerHTML='<span class=\'font-bold text-xl\' style=\'color:#BB0A21\'>Audi</span>'">
+                    </div>
+                    <div class="px-3 py-3 border-t border-slate-100"><h3 class="font-semibold text-slate-900 text-sm">Audi</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('alpine','Alpine','#0055A4')" data-brand-id="alpine" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #0055A4"></div>
-                    <h3 class="font-semibold text-slate-900">Alpine</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- Alpine -->
+                <button onclick="selectBrand('alpine','Alpine','#0055A4')" data-brand-id="alpine"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#0055A4] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 flex items-center justify-center p-3" style="background:#0055A4">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Alpine-Logo.svg/120px-Alpine-Logo.svg.png" alt="Alpine" class="h-10 object-contain brightness-0 invert" onerror="this.outerHTML='<span class=\'text-white font-bold text-xl\'>Alpine</span>'">
+                    </div>
+                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Alpine</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('dacia','Dacia','#FFBE00')" data-brand-id="dacia" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #FFBE00"></div>
-                    <h3 class="font-semibold text-slate-900">Dacia</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- Dacia -->
+                <button onclick="selectBrand('dacia','Dacia','#FFBE00')" data-brand-id="dacia"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#FFBE00] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 bg-white flex items-center justify-center p-3">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Dacia_2021_logo.svg/120px-Dacia_2021_logo.svg.png" alt="Dacia" class="h-10 object-contain" onerror="this.outerHTML='<span class=\'font-bold text-xl\' style=\'color:#FFBE00\'>Dacia</span>'">
+                    </div>
+                    <div class="px-3 py-3 border-t border-slate-100"><h3 class="font-semibold text-slate-900 text-sm">Dacia</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
-                <button onclick="selectBrand('caetanoparts','Caetano Parts','#E63946')" data-brand-id="caetanoparts" class="brand-card bg-white border-2 border-slate-200 hover:border-slate-900 rounded-xl p-5 text-left transition-all group">
-                    <div class="w-12 h-12 rounded-lg mb-3" style="background-color: #E63946"></div>
-                    <h3 class="font-semibold text-slate-900">Caetano Parts</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
+
+                <!-- Caetano Parts -->
+                <button onclick="selectBrand('caetanoparts','Caetano Parts','#E63946')" data-brand-id="caetanoparts"
+                        class="brand-card bg-white border-2 border-slate-200 hover:border-[#E63946] rounded-xl overflow-hidden transition-all text-center group">
+                    <div class="h-24 flex flex-col items-center justify-center gap-0.5" style="background:#E63946">
+                        <svg width="106" height="18" viewBox="0 0 106 18" xmlns="http://www.w3.org/2000/svg">
+                            <text x="2" y="14" font-family="Montserrat,sans-serif" font-weight="700" font-size="13" fill="white" letter-spacing="0.5">CAETANO</text>
+                        </svg>
+                        <svg width="60" height="16" viewBox="0 0 60 16" xmlns="http://www.w3.org/2000/svg">
+                            <text x="2" y="12" font-family="Montserrat,sans-serif" font-weight="300" font-size="11" fill="rgba(255,255,255,0.8)" letter-spacing="2">PARTS</text>
+                        </svg>
+                    </div>
+                    <div class="px-3 py-3"><h3 class="font-semibold text-slate-900 text-sm">Caetano Parts</h3><p class="text-xs text-slate-400 mt-0.5">Super Admin</p></div>
                 </button>
+
             </div>
         </div>
     </div>
