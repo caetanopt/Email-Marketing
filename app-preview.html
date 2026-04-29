@@ -2232,6 +2232,107 @@ ${body}
         window._prevBrandId = brandId;
     }
 
+    // Per-range dashboard data: [campaigns, emails, openRate, clickRate, bounceRate, recentCampaigns]
+    const _dashRanges = {
+        bmw: {
+            '7d':  { campaigns:'2', emails:'21 430', openRate:'29.1', clickRate:'8.3', bounceRate:'0.9',
+                     recent:[{name:'Test Drive Série 5',desc:'Agenda o teu test drive exclusivo',date:'15/04/2026',open:'31.2%',click:'9.4%',status:'sent'},{name:'Promoção Verão iX1',desc:'Condições especiais até 30 de Abril',date:'10/04/2026',open:'24.8%',click:'4.2%',status:'sent'}]},
+            '30d': { campaigns:'7', emails:'84 217', openRate:'27.4', clickRate:'7.6', bounceRate:'1.2',
+                     recent:[{name:'Newsletter BMW — Abril 2026',desc:'Descobre as novidades do mês na BMW Caetano',date:'18/04/2026',open:'28.3%',click:'6.1%',status:'sent'},{name:'Test Drive Série 5',desc:'Agenda o teu test drive exclusivo',date:'15/04/2026',open:'31.2%',click:'9.4%',status:'sent'},{name:'Promoção Verão iX1',desc:'Condições especiais até 30 de Abril',date:'10/04/2026',open:'24.8%',click:'4.2%',status:'sent'},{name:'Convite Evento — Lançamento i5',desc:'Estás convidado para um evento exclusivo',date:'03/04/2026',open:'42.1%',click:'18.7%',status:'sent'}]},
+            '90d': { campaigns:'19', emails:'231 840', openRate:'26.8', clickRate:'7.1', bounceRate:'1.4',
+                     recent:[{name:'Newsletter BMW — Abril 2026',desc:'Descobre as novidades do mês',date:'18/04/2026',open:'28.3%',click:'6.1%',status:'sent'},{name:'Promoção Série 3 — Março',desc:'Condições especiais no fim de mês',date:'15/03/2026',open:'25.1%',click:'5.8%',status:'sent'},{name:'Newsletter BMW — Fevereiro',desc:'As novidades de Fevereiro',date:'12/02/2026',open:'27.4%',click:'7.2%',status:'sent'}]},
+            '12m': { campaigns:'74', emails:'892 340', openRate:'25.3', clickRate:'6.8', bounceRate:'1.6',
+                     recent:[{name:'Newsletter BMW — Abril 2026',desc:'Descobre as novidades do mês',date:'18/04/2026',open:'28.3%',click:'6.1%',status:'sent'},{name:'Campanha Fim de Ano',desc:'Ofertas especiais de Natal e Ano Novo',date:'20/12/2025',open:'38.2%',click:'14.1%',status:'sent'},{name:'Lançamento Série 5 Touring',desc:'Novo modelo disponível já',date:'05/09/2025',open:'31.7%',click:'11.3%',status:'sent'}]},
+        },
+        hyundai: {
+            '7d':  { campaigns:'1', emails:'11 210', openRate:'26.3', clickRate:'6.1', bounceRate:'0.7',
+                     recent:[{name:'IONIQ 6 — Test Drive',desc:'Experimenta o futuro da mobilidade',date:'02/04/2026',open:'31.5%',click:'9.2%',status:'sent'}]},
+            '30d': { campaigns:'5', emails:'52 840', openRate:'24.1', clickRate:'5.8', bounceRate:'0.9',
+                     recent:[{name:'Newsletter Hyundai — Abril 2026',desc:'Novidades do mundo Hyundai',date:'16/04/2026',open:'24.1%',click:'5.8%',status:'sent'},{name:'Promoção Tucson Híbrido',desc:'Condições especiais até fim do mês',date:'10/04/2026',open:'22.7%',click:'4.3%',status:'sent'},{name:'IONIQ 6 — Test Drive',desc:'Experimenta o futuro da mobilidade',date:'02/04/2026',open:'31.5%',click:'9.2%',status:'sent'}]},
+            '90d': { campaigns:'14', emails:'148 200', openRate:'23.6', clickRate:'5.4', bounceRate:'1.0',
+                     recent:[{name:'Newsletter Hyundai — Abril 2026',desc:'Novidades do mundo Hyundai',date:'16/04/2026',open:'24.1%',click:'5.8%',status:'sent'},{name:'Newsletter Hyundai — Março',desc:'As novidades de Março',date:'10/03/2026',open:'22.8%',click:'5.1%',status:'sent'},{name:'Promoção IONIQ 5',desc:'Ofertas especiais IONIQ',date:'15/02/2026',open:'26.1%',click:'6.4%',status:'sent'}]},
+            '12m': { campaigns:'58', emails:'612 900', openRate:'22.9', clickRate:'5.1', bounceRate:'1.1',
+                     recent:[{name:'Newsletter Hyundai — Abril 2026',desc:'Novidades do mundo Hyundai',date:'16/04/2026',open:'24.1%',click:'5.8%',status:'sent'},{name:'Lançamento IONIQ 6',desc:'O futuro chegou',date:'10/06/2025',open:'35.4%',click:'13.2%',status:'sent'}]},
+        },
+        toyota: {
+            '7d':  { campaigns:'1', emails:'6 214', openRate:'29.8', clickRate:'8.4', bounceRate:'1.5',
+                     recent:[{name:'Promoção Toyota RAV4 Hybrid',desc:'A escolha inteligente para a sua família',date:'14/04/2026',open:'29.8%',click:'8.4%',status:'sent'}]},
+            '30d': { campaigns:'3', emails:'31 560', openRate:'29.8', clickRate:'8.4', bounceRate:'1.5',
+                     recent:[{name:'Promoção Toyota RAV4 Hybrid',desc:'A escolha inteligente para a sua família',date:'14/04/2026',open:'29.8%',click:'8.4%',status:'sent'},{name:'Newsletter Toyota — Março',desc:'As últimas novidades da Toyota',date:'28/03/2026',open:'26.3%',click:'6.1%',status:'sent'}]},
+            '90d': { campaigns:'9', emails:'91 200', openRate:'28.4', clickRate:'7.9', bounceRate:'1.7',
+                     recent:[{name:'Promoção Toyota RAV4 Hybrid',desc:'A escolha inteligente para a sua família',date:'14/04/2026',open:'29.8%',click:'8.4%',status:'sent'},{name:'Newsletter Toyota — Fevereiro',desc:'As últimas novidades da Toyota',date:'12/02/2026',open:'27.1%',click:'7.3%',status:'sent'}]},
+            '12m': { campaigns:'36', emails:'381 400', openRate:'27.2', clickRate:'7.5', bounceRate:'1.8',
+                     recent:[{name:'Promoção Toyota RAV4 Hybrid',desc:'A escolha inteligente para a sua família',date:'14/04/2026',open:'29.8%',click:'8.4%',status:'sent'},{name:'Lançamento Yaris Cross',desc:'Descobre o novo Yaris Cross',date:'01/09/2025',open:'34.1%',click:'12.6%',status:'sent'}]},
+        },
+        volkswagen: {
+            '7d':  { campaigns:'1', emails:'6 841', openRate:'25.6', clickRate:'6.9', bounceRate:'1.1',
+                     recent:[{name:'Newsletter VW — Abril 2026',desc:'Novidades Volkswagen do mês',date:'15/04/2026',open:'25.6%',click:'6.9%',status:'sent'}]},
+            '30d': { campaigns:'4', emails:'43 210', openRate:'25.6', clickRate:'6.9', bounceRate:'1.1',
+                     recent:[{name:'Newsletter VW — Abril 2026',desc:'Novidades Volkswagen do mês',date:'15/04/2026',open:'25.6%',click:'6.9%',status:'sent'},{name:'Golf eHybrid — Condições Especiais',desc:'Descubra o futuro da mobilidade',date:'08/04/2026',open:'28.1%',click:'7.3%',status:'sent'},{name:'ID.4 — Evento de Test Drive',desc:'Reserve já o seu test drive',date:'28/03/2026',open:'33.4%',click:'11.2%',status:'sent'}]},
+            '90d': { campaigns:'11', emails:'124 800', openRate:'24.9', clickRate:'6.5', bounceRate:'1.2',
+                     recent:[{name:'Newsletter VW — Abril 2026',desc:'Novidades Volkswagen do mês',date:'15/04/2026',open:'25.6%',click:'6.9%',status:'sent'},{name:'Newsletter VW — Janeiro',desc:'Arranque de ano com novidades',date:'08/01/2026',open:'24.2%',click:'6.1%',status:'sent'}]},
+            '12m': { campaigns:'43', emails:'521 300', openRate:'24.1', clickRate:'6.2', bounceRate:'1.3',
+                     recent:[{name:'Newsletter VW — Abril 2026',desc:'Novidades Volkswagen do mês',date:'15/04/2026',open:'25.6%',click:'6.9%',status:'sent'},{name:'Lançamento Golf eHybrid',desc:'A nova era do Golf',date:'15/09/2025',open:'37.8%',click:'15.4%',status:'sent'}]},
+        },
+        audi: {
+            '7d':  { campaigns:'1', emails:'5 218', openRate:'31.2', clickRate:'9.1', bounceRate:'0.8',
+                     recent:[{name:'Newsletter Audi — Abril',desc:'As melhores novidades Audi',date:'17/04/2026',open:'31.2%',click:'9.1%',status:'sent'}]},
+            '30d': { campaigns:'3', emails:'28 740', openRate:'31.2', clickRate:'9.1', bounceRate:'0.8',
+                     recent:[{name:'Newsletter Audi — Abril',desc:'As melhores novidades Audi',date:'17/04/2026',open:'31.2%',click:'9.1%',status:'sent'},{name:'Q5 e-tron — Promoção Abril',desc:'Condições únicas até fim do mês',date:'09/04/2026',open:'33.8%',click:'11.2%',status:'sent'}]},
+            '90d': { campaigns:'8', emails:'82 100', openRate:'30.4', clickRate:'8.7', bounceRate:'0.9',
+                     recent:[{name:'Newsletter Audi — Abril',desc:'As melhores novidades Audi',date:'17/04/2026',open:'31.2%',click:'9.1%',status:'sent'},{name:'Newsletter Audi — Fevereiro',desc:'As novidades de Fevereiro',date:'10/02/2026',open:'29.6%',click:'8.4%',status:'sent'}]},
+            '12m': { campaigns:'31', emails:'338 200', openRate:'29.8', clickRate:'8.3', bounceRate:'1.0',
+                     recent:[{name:'Newsletter Audi — Abril',desc:'As melhores novidades Audi',date:'17/04/2026',open:'31.2%',click:'9.1%',status:'sent'},{name:'Lançamento Q5 e-tron',desc:'O SUV eléctrico premium chegou',date:'20/10/2025',open:'41.2%',click:'18.9%',status:'sent'}]},
+        },
+    };
+    let _dashRange = '30d';
+    const _rangeLabels = { '7d':'7 dias', '30d':'30 dias', '90d':'90 dias', '12m':'12 meses' };
+
+    function setDashRange(range) {
+        _dashRange = range;
+        // Update button styles
+        document.querySelectorAll('.dash-range-btn').forEach(btn => {
+            const active = btn.getAttribute('data-range') === range;
+            btn.className = `dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
+        });
+        renderDashboardRange(_currentBrand.id, range);
+    }
+
+    function renderDashboardRange(brandId, range) {
+        const brandRanges = _dashRanges[brandId];
+        const r = brandRanges ? brandRanges[range] : null;
+        const lbl = _rangeLabels[range] || range;
+        // Update KPI labels
+        _setText('dash-campaigns-label', `Campanhas enviadas (${lbl})`);
+        _setText('dash-emails-label', `Emails enviados (${lbl})`);
+        _setText('dash-metrics-title', `Métricas globais (${lbl})`);
+        if (!r) return;
+        // KPI values
+        _setText('dash-campaigns', r.campaigns);
+        _setText('dash-emails', r.emails);
+        _setText('dash-openrate', r.openRate + '%');
+        _setText('dash-open-val', r.openRate + '%');
+        _setText('dash-click-val', r.clickRate + '%');
+        _setText('dash-bounce-val', r.bounceRate + '%');
+        _setBarWidth('dash-open-bar', parseFloat(r.openRate));
+        _setBarWidth('dash-click-bar', parseFloat(r.clickRate));
+        _setBarWidth('dash-bounce-bar', parseFloat(r.bounceRate));
+        // Recent campaigns
+        const rcEl = document.getElementById('dashRecentCampaigns');
+        if (rcEl) {
+            if (!r.recent.length) {
+                rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
+            } else {
+                rcEl.innerHTML = r.recent.map((c,i) => `
+                    <tr class="${i<r.recent.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign('${c.status}')">
+                        <td class="px-5 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-400">${c.desc}</p></td>
+                        <td class="px-4 py-3 text-xs text-slate-500">${c.date}</td>
+                        <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${c.open} abertos</span><span class="text-blue-600">${c.click} cliques</span></div></td>
+                    </tr>`).join('');
+            }
+        }
+    }
+
     function renderBrandData(brandId) {
         const d = _brandMockData[brandId] || null;
         const empty = !d;
@@ -2387,6 +2488,14 @@ ${body}
 
         // Templates
         _syncBrandTemplates(brandId);
+
+        // Reset dashboard range to 30d and render
+        _dashRange = '30d';
+        document.querySelectorAll('.dash-range-btn').forEach(btn => {
+            const active = btn.getAttribute('data-range') === '30d';
+            btn.className = `dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
+        });
+        renderDashboardRange(brandId, '30d');
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -2530,8 +2639,14 @@ ${body}
     <div class="min-h-screen bg-slate-50 flex">
         <div data-sidebar-slot></div>
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
-            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10">
+            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Dashboard</h1>
+                <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                    <button onclick="setDashRange('7d')"  data-range="7d"  class="dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">7 dias</button>
+                    <button onclick="setDashRange('30d')" data-range="30d" class="dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium bg-white text-slate-900 shadow-sm transition-colors">30 dias</button>
+                    <button onclick="setDashRange('90d')" data-range="90d" class="dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">90 dias</button>
+                    <button onclick="setDashRange('12m')" data-range="12m" class="dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">12 meses</button>
+                </div>
             </header>
             <main class="flex-1 px-8 py-6">
                 <!-- KPI cards -->
@@ -2541,17 +2656,17 @@ ${body}
                         <p id="dash-contacts" class="text-3xl font-semibold text-slate-900">12 483</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Campanhas enviadas (30 d)</p>
+                        <p id="dash-campaigns-label" class="text-xs text-slate-500 uppercase tracking-wide mb-1">Campanhas enviadas (30 d)</p>
                         <p id="dash-campaigns" class="text-3xl font-semibold text-slate-900">7</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Emails enviados (30 d)</p>
+                        <p id="dash-emails-label" class="text-xs text-slate-500 uppercase tracking-wide mb-1">Emails enviados (30 d)</p>
                         <p id="dash-emails" class="text-3xl font-semibold text-slate-900">84 217</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Taxa de abertura média</p>
                         <p id="dash-openrate" class="text-3xl font-semibold text-green-700">27.4%</p>
-                        <p class="text-xs text-slate-400 mt-0.5">Últimas 10 campanhas</p>
+                        <p id="dash-openrate-sub" class="text-xs text-slate-400 mt-0.5">Últimas 10 campanhas</p>
                     </div>
                 </div>
 
@@ -2621,7 +2736,7 @@ ${body}
 
                     <div class="space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
-                            <h3 class="font-semibold text-slate-900 text-sm mb-4">Métricas globais (30 d)</h3>
+                            <h3 id="dash-metrics-title" class="font-semibold text-slate-900 text-sm mb-4">Métricas globais (30 d)</h3>
                             <div class="space-y-3">
                                 <div>
                                     <div class="flex justify-between text-xs mb-1">
