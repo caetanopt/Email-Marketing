@@ -1306,6 +1306,7 @@ ${body}
             if (s < 3) { const ln = document.getElementById('wizLine'+s); if (ln) { ln.className='flex-1 h-px '+(s<step?'bg-green-500':'bg-slate-200'); } }
         });
         const lbl = document.getElementById('wizStepLabel'); if (lbl) lbl.textContent = labels[step-1];
+        if (step === 2) _wizInitPreview();
         const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===3 ? 'Criar Campanha' : 'Seguinte →';
         const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.visibility = step===1 ? 'hidden' : 'visible';
         if (step === 3) {
@@ -1324,14 +1325,50 @@ ${body}
         }
     }
 
+    const _wizTplPreviews = [
+        { headerBg:'#1C69D4', headerText:'BMW Caetano', imgAlt:'BMW Newsletter', heading:'Primavera 2026', body:'Olá {{first_name}}, descubra as novidades e ofertas seleccionadas para si este mês.', btnBg:'#1C69D4', btnText:'Ver ofertas', footerBg:'#1A1A2E', footerColor:'#94a3b8' },
+        { headerBg:'#e63946', headerText:'BMW Caetano', imgAlt:'Promoção Verão', heading:'Promoção Flash de Verão', body:'Condições exclusivas disponíveis apenas até ao final do mês. Não perca esta oportunidade.', btnBg:'#e63946', btnText:'Aproveitar oferta', footerBg:'#1A1A2E', footerColor:'#94a3b8' },
+        { headerBg:'#1A1A2E', headerText:'Evento Especial', imgAlt:'Convite', heading:'Está Convidado(a)', body:'Junte-se a nós num evento exclusivo preparado especialmente para si e para os nossos clientes mais especiais.', btnBg:'#C8A96B', btnText:'Confirmar presença', footerBg:'#111827', footerColor:'#6b7280' },
+        { headerBg:'#10b981', headerText:'Test Drive', imgAlt:'Test Drive', heading:'Experimente Já', body:'Reserve o seu test drive e descubra a experiência de condução. Disponibilidade limitada — reserve já o seu lugar.', btnBg:'#10b981', btnText:'Agendar Test Drive', footerBg:'#f0fdf4', footerColor:'#6b7280' },
+    ];
+    function _wizTplPreviewHtml(p) {
+        return `<div style="width:280px;font-family:sans-serif;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12);border:1px solid #e2e8f0">
+            <div style="background:${p.headerBg};padding:14px 18px">
+                <p style="color:#fff;font-weight:700;font-size:13px;letter-spacing:.5px;margin:0">${p.headerText}</p>
+            </div>
+            <div style="background:#f1f5f9;height:90px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #e2e8f0">
+                <span style="color:#94a3b8;font-size:11px">🖼 ${p.imgAlt}</span>
+            </div>
+            <div style="padding:16px 18px 14px;background:#fff">
+                <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 7px">${p.heading}</p>
+                <p style="font-size:11px;color:#64748b;line-height:1.55;margin:0 0 14px">${p.body}</p>
+                <div style="text-align:center;margin-bottom:4px">
+                    <span style="display:inline-block;background:${p.btnBg};color:#fff;font-size:11px;font-weight:600;padding:7px 18px;border-radius:5px">${p.btnText}</span>
+                </div>
+            </div>
+            <div style="background:${p.footerBg};padding:9px 18px;text-align:center">
+                <p style="font-size:9px;color:${p.footerColor};margin:0">© 2026 · Cancelar subscrição · Ver online</p>
+            </div>
+        </div>`;
+    }
     function wizSelectTemplate(el) {
-        document.querySelectorAll('#wizStep2 > div').forEach(d => {
-            d.classList.remove('border-slate-900'); d.classList.add('border-slate-200');
-            const dot = d.querySelector('div.rounded-full'); if (dot) dot.innerHTML='';
+        document.querySelectorAll('#wizTplList .wiz-tpl-item').forEach(d => {
+            d.classList.remove('border-slate-900');
+            d.classList.add('border-slate-200');
+            const dot = d.querySelector('.wiz-tpl-dot');
+            if (dot) dot.innerHTML = '';
         });
-        el.classList.remove('border-slate-200'); el.classList.add('border-slate-900');
-        const dot = el.querySelector('div.rounded-full');
+        el.classList.remove('border-slate-200');
+        el.classList.add('border-slate-900');
+        const dot = el.querySelector('.wiz-tpl-dot');
         if (dot) dot.innerHTML = '<div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div>';
+        const key = parseInt(el.getAttribute('data-tpl-key') || '0', 10);
+        const prev = document.getElementById('wizTplPreview');
+        if (prev && _wizTplPreviews[key]) prev.innerHTML = _wizTplPreviewHtml(_wizTplPreviews[key]);
+    }
+    function _wizInitPreview() {
+        const prev = document.getElementById('wizTplPreview');
+        if (prev && _wizTplPreviews[0]) prev.innerHTML = _wizTplPreviewHtml(_wizTplPreviews[0]);
     }
 
     function mockCampaignNext() {
@@ -2723,9 +2760,9 @@ ${body}
                 <h1 class="text-xl font-semibold text-slate-900">Nova Campanha</h1>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="max-w-2xl">
+                <div class="max-w-4xl">
                     <!-- Step indicator -->
-                    <div class="flex items-center gap-3 mb-8">
+                    <div class="flex items-center gap-3 mb-8 max-w-2xl">
                         <div id="wizDot1" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-900 text-white">1</div>
                         <div id="wizLine1" class="flex-1 h-px bg-slate-200"></div>
                         <div id="wizDot2" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500">2</div>
@@ -2735,7 +2772,7 @@ ${body}
                     </div>
 
                     <!-- Passo 1: Detalhes -->
-                    <div id="wizStep1" class="space-y-4">
+                    <div id="wizStep1" class="space-y-4 max-w-2xl">
                         <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da Campanha *</label>
@@ -2780,27 +2817,59 @@ ${body}
                     </div>
 
                     <!-- Passo 2: Template -->
-                    <div id="wizStep2" class="hidden space-y-3">
-                        <div class="bg-white border-2 border-slate-900 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
-                            <div class="w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center flex-shrink-0"><div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div></div>
-                            <div><p class="font-medium text-slate-900">Newsletter Base BMW</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
-                        </div>
-                        <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
-                            <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                            <div><p class="font-medium text-slate-900">Promoção Verão</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
-                        </div>
-                        <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
-                            <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                            <div><p class="font-medium text-slate-900">Convite Evento</p></div>
-                        </div>
-                        <div class="bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-4 cursor-pointer" onclick="wizSelectTemplate(this)">
-                            <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                            <div><p class="font-medium text-slate-900">Test Drive Call-to-Action</p></div>
+                    <div id="wizStep2" class="hidden">
+                        <div class="grid gap-6" style="grid-template-columns:1fr 1.4fr">
+                            <!-- Lista de templates -->
+                            <div id="wizTplList" class="space-y-2.5">
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Escolhe um template</p>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-900 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="0" onclick="wizSelectTemplate(this)">
+                                    <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center flex-shrink-0"><div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div></div>
+                                    <div>
+                                        <p class="font-medium text-slate-900 text-sm">Newsletter Base BMW</p>
+                                        <p class="text-xs text-slate-400 mt-0.5">Template partilhado</p>
+                                    </div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="1" onclick="wizSelectTemplate(this)">
+                                    <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                                    <div>
+                                        <p class="font-medium text-slate-900 text-sm">Promoção Verão</p>
+                                        <p class="text-xs text-slate-400 mt-0.5">Template partilhado</p>
+                                    </div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="2" onclick="wizSelectTemplate(this)">
+                                    <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                                    <div>
+                                        <p class="font-medium text-slate-900 text-sm">Convite Evento</p>
+                                        <p class="text-xs text-slate-400 mt-0.5">Layout de convite exclusivo</p>
+                                    </div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="3" onclick="wizSelectTemplate(this)">
+                                    <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                                    <div>
+                                        <p class="font-medium text-slate-900 text-sm">Test Drive Call-to-Action</p>
+                                        <p class="text-xs text-slate-400 mt-0.5">Foco em agendamento de test drive</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Preview -->
+                            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
+                                <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Pré-visualização</p>
+                                    <div class="flex items-center gap-1.5 text-xs text-slate-400">
+                                        <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
+                                        <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+                                        <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+                                    </div>
+                                </div>
+                                <div id="wizTplPreview" class="flex-1 bg-slate-100 flex items-start justify-center p-5 overflow-auto" style="min-height:340px">
+                                    <!-- injected by JS -->
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Passo 3: Revisão e Envio -->
-                    <div id="wizStep3" class="hidden space-y-4">
+                    <div id="wizStep3" class="hidden space-y-4 max-w-2xl">
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
@@ -2832,7 +2901,7 @@ ${body}
                     </div>
 
                     <!-- Navegação -->
-                    <div class="flex items-center justify-between pt-5">
+                    <div class="flex items-center justify-between pt-5 max-w-2xl">
                         <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="visibility:hidden" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
                         <div class="flex items-center gap-3">
                             <button onclick="showScreen('campaigns')" class="px-5 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
