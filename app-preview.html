@@ -266,6 +266,7 @@
             teTemplateStates[newId] = JSON.parse(JSON.stringify(teState.blocks));
             teAddTemplateCard(newId, name);
         }
+        _teMarkClean();
         showToast('Template guardado com sucesso.');
     }
     function teEditTemplate(id) {
@@ -274,6 +275,7 @@
         const preset = teTemplatePresets[id];
         teState.blocks = saved ? JSON.parse(JSON.stringify(saved)) : (preset ? preset() : []);
         teState.selected = null;
+        _teLoading = true;
         showScreen('templateEdit');
         const titleMap = { tpl1:'Newsletter Primavera 2026', tpl2:'Promoção Flash — Verão', tpl3:'Boas-vindas — Welcome' };
         const nameEl = document.querySelector('#templateEdit input[type=text]');
@@ -282,11 +284,14 @@
         if (h1El) h1El.textContent = `Editar — ${titleMap[id] || 'Template'}`;
         teSetMode('visual');
         teRender();
+        _teLoading = false;
+        _teMarkClean();
     }
     function teNewTemplate() {
         teTemplateId = null;
         teState.blocks = [];
         teState.selected = null;
+        _teLoading = true;
         showScreen('templateEdit');
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         if (nameEl) nameEl.value = '';
@@ -294,6 +299,8 @@
         if (h1El) h1El.textContent = 'Novo Template';
         teSetMode('visual');
         teRender();
+        _teLoading = false;
+        _teMarkClean();
     }
     function teAddTemplateCard(id, name) {
         const grid = document.getElementById('tplGrid');
@@ -586,11 +593,32 @@
         return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
     }
 
+    // ── Unsaved changes guard ────────────────────────────────────────
+    let _teDirty = false;
+    let _teLoading = false;
+    let _tePendingScreen = null;
+
+    function _teMarkDirty() { if (!_teLoading) _teDirty = true; }
+    function _teMarkClean() { _teDirty = false; }
+
+    function teUnsavedLeave() {
+        const m = document.getElementById('teUnsavedModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+        _teMarkClean();
+        if (_tePendingScreen) { const s = _tePendingScreen; _tePendingScreen = null; showScreen(s); }
+    }
+    function teUnsavedStay() {
+        const m = document.getElementById('teUnsavedModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+        _tePendingScreen = null;
+    }
+
     // ── Rendering ───────────────────────────────────────────────────
     function teRender() {
         teRenderCanvas();
         teRenderProperties();
         teRenderMjml();
+        _teMarkDirty();
     }
     function teMakeDropZone(target) {
         const d = document.createElement('div');
@@ -1831,6 +1859,13 @@ ${body}
 
 <script>
     function showScreen(id) {
+        const _currentScreen = document.querySelector('.screen.active')?.id;
+        if (_currentScreen === 'templateEdit' && id !== 'templateEdit' && _teDirty) {
+            _tePendingScreen = id;
+            const m = document.getElementById('teUnsavedModal');
+            if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+            return;
+        }
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         const screen = document.getElementById(id);
         if (screen) {
@@ -4237,6 +4272,25 @@ ${body}
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
             <button onclick="closeScheduleModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button onclick="confirmSchedule()" class="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">Agendar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: alterações não guardadas no editor de templates -->
+<div id="teUnsavedModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <div class="flex items-center gap-3 mb-1">
+                <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                </div>
+                <h2 class="text-base font-semibold text-slate-900">Alterações não guardadas</h2>
+            </div>
+            <p class="text-sm text-slate-500 mt-2 ml-12">Tens alterações no template que ainda não foram guardadas. Se saíres agora perdes essas alterações.</p>
+        </div>
+        <div class="px-6 py-5 flex items-center justify-end gap-3">
+            <button onclick="teUnsavedStay()" class="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Continuar a editar</button>
+            <button onclick="teUnsavedLeave()" class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">Sair sem guardar</button>
         </div>
     </div>
 </div>
