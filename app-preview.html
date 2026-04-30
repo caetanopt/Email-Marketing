@@ -859,7 +859,7 @@
             input = `<textarea rows="3" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${teEscape(v)}</textarea>`;
         } else if (f.type === 'select') {
             const opts = f.options.map(([val,label]) => `<option value="${val}" ${String(val)===String(v)?'selected':''}>${label}</option>`).join('');
-            input = `<select ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${opts}</select>`;
+            input = `<select ${handler} class="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs">${opts}</select>`;
         } else if (f.type === 'color') {
             input = `<input type="color" value="${v||'#000000'}" ${handler} class="w-full h-8 border border-slate-200 rounded cursor-pointer" />`;
         } else if (f.type === 'number') {
@@ -1717,7 +1717,7 @@ ${body}
         <span class="text-xs font-medium text-amber-800">🖼️ MOCKUP INTERACTIVO</span>
         <span class="text-xs text-amber-600">Clica nos botões para navegar entre ecrãs</span><span class="text-xs text-amber-500 ml-4 font-mono">v29Apr-BrandIsolation</span>
     </div>
-    <select id="screenSelector" class="px-3 py-1 border border-amber-300 rounded-md text-xs bg-white" onchange="showScreen(this.value)">
+    <select id="screenSelector" class="pl-3 pr-8 py-1 border border-amber-300 rounded-md text-xs bg-white" onchange="showScreen(this.value)">
         <option value="login">Login</option>
         <option value="forgotPassword">Recuperar Password</option>
         <option value="brandSelect">Seletor de Marca</option>
@@ -2872,7 +2872,7 @@ ${body}
             <main class="flex-1 px-8 py-6">
                 <div class="mb-4 flex items-center gap-3">
                     <input id="campSearch" type="text" placeholder="Pesquisar campanha…" oninput="filterCampaigns()" class="flex-1 max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                    <select id="campStatusFilter" onchange="filterCampaigns()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    <select id="campStatusFilter" onchange="filterCampaigns()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todos os estados</option>
                         <option value="sent">Enviada</option>
                         <option value="scheduled">Agendada</option>
@@ -3331,7 +3331,7 @@ ${body}
 
                 <div class="flex items-center gap-3 mb-4">
                     <input id="repSearch" type="search" placeholder="Pesquisar por nome ou email…" oninput="filterCampReport()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-72 focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                    <select id="repStatusFilter" onchange="filterCampReport()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    <select id="repStatusFilter" onchange="filterCampReport()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todos os estados</option>
                         <option value="sent">Enviado</option>
                         <option value="bounce">Bounce</option>
@@ -3410,13 +3410,13 @@ ${body}
                 <!-- Filtros -->
                 <div class="mb-4 flex gap-3 flex-wrap">
                     <input id="contactSearch" type="text" placeholder="Pesquisar por nome ou email…" oninput="filterContacts()" class="flex-1 min-w-48 px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                    <select id="contactListFilter" onchange="filterContacts()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    <select id="contactListFilter" onchange="filterContacts()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todas as listas</option>
                         <option value="premium">Clientes Premium</option>
                         <option value="newsletter">Newsletter Geral</option>
                         <option value="leads">Leads — Test Drive</option>
                     </select>
-                    <select id="contactStatusFilter" onchange="filterContacts()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    <select id="contactStatusFilter" onchange="filterContacts()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todos os estados</option>
                         <option value="active">Activo</option>
                         <option value="suppressed">Suprimido</option>
@@ -3566,7 +3566,7 @@ ${body}
                                     <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                                 </div>
                                 <div class="add-list-row pt-2 border-t border-slate-100 flex gap-2">
-                                    <select id="addListSelect" class="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                    <select id="addListSelect" class="flex-1 pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                                         <option value="">Adicionar a lista…</option>
                                         <option value="leads">Leads — Test Drive</option>
                                         <option value="events">Evento M Performance</option>
@@ -3608,7 +3608,7 @@ ${body}
                             </div>
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Estado</label>
-                                <select id="ctStatus" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                <select id="ctStatus" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                                     <option value="active">Activo</option>
                                     <option value="suppressed">Suprimido</option>
                                     <option value="unsubscribed">Dessubscrito</option>
@@ -4178,7 +4178,7 @@ ${body}
                         </div>
                         <!-- Select / input (largura total) -->
                         <div id="existing-input">
-                            <select class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                            <select class="w-full pl-3 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                                 <option>Nenhuma — só base de dados</option>
                                 <option>Clientes Premium</option>
                                 <option>Newsletter Geral</option>
@@ -4281,7 +4281,7 @@ ${body}
                         <h3 id="suppCount" class="font-semibold text-slate-900 text-sm">312 endereços suprimidos</h3>
                         <div class="flex items-center gap-2">
                             <input id="suppSearch" type="text" placeholder="Filtrar por email…" oninput="filterSuppression()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 w-56" />
-                            <select id="suppReasonFilter" onchange="filterSuppression()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                            <select id="suppReasonFilter" onchange="filterSuppression()" class="pl-3 pr-8 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                                 <option value="">Todos os motivos</option>
                                 <option value="bounce">Bounce</option>
                                 <option value="unsubscribe">Unsubscribe</option>
@@ -4369,7 +4369,7 @@ ${body}
                         </div>
                         <div class="w-36">
                             <label class="text-xs text-slate-500 block mb-1">Função</label>
-                            <select id="inviteRoleSelect" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
+                            <select id="inviteRoleSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
                                 <option value="admin">Admin</option>
                                 <option value="editor" selected>Editor</option>
                                 <option value="viewer">Viewer</option>
@@ -4417,7 +4417,7 @@ ${body}
                                     </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <select onchange="mockUpdateRole(this)" class="px-2 py-1 border border-slate-200 rounded text-xs bg-white">
+                                    <select onchange="mockUpdateRole(this)" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">
                                         <option>admin</option>
                                         <option selected>editor</option>
                                         <option>viewer</option>
@@ -4440,7 +4440,7 @@ ${body}
                                     </div>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <select onchange="mockUpdateRole(this)" class="px-2 py-1 border border-slate-200 rounded text-xs bg-white">
+                                    <select onchange="mockUpdateRole(this)" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">
                                         <option>admin</option>
                                         <option>editor</option>
                                         <option selected>viewer</option>
@@ -4539,7 +4539,7 @@ ${body}
                         <div class="space-y-4">
                             <div>
                                 <label class="block text-xs text-slate-500 mb-1">Mailer</label>
-                                <select id="mailerSelect" onchange="toggleMailerFields()" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                <select id="mailerSelect" onchange="toggleMailerFields()" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                                     <option value="mailgun">mailgun</option>
                                     <option value="smtp">smtp</option>
                                     <option value="ses">ses</option>
@@ -4714,7 +4714,7 @@ ${body}
                     </div>
                     <div>
                         <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Motivo (opcional)</label>
-                        <select id="unsubReason" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <select id="unsubReason" class="w-full pl-3 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                             <option value="">Prefiro não dizer</option>
                             <option value="too_many">Recebo emails com demasiada frequência</option>
                             <option value="not_relevant">O conteúdo não é relevante para mim</option>
@@ -4803,7 +4803,7 @@ ${body}
             </div>
             <div>
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Motivo</label>
-                <select id="suppReasonSelect" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                <select id="suppReasonSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                     <option value="manual">Manual</option>
                     <option value="bounce">Bounce</option>
                     <option value="unsubscribe">Unsubscribe</option>
