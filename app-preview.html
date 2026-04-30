@@ -1297,33 +1297,36 @@ ${body}
 
     function wizShowStep(step) {
         _wizStep = step;
-        const labels = ['Detalhes', 'Template', 'Revisão'];
-        [1,2,3].forEach(s => {
+        const labels = ['Detalhes', 'Template', 'Destinatários', 'Revisão'];
+        [1,2,3,4].forEach(s => {
             const stepDiv = document.getElementById('wizStep'+s);
             if (stepDiv) stepDiv.classList.toggle('hidden', s !== step);
             const dot = document.getElementById('wizDot'+s);
+            const lbl = document.getElementById('wizLabel'+s);
             if (dot) {
-                if (s < step) { dot.className='w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-green-500 text-white'; dot.innerHTML=_checkSvg; }
-                else if (s===step) { dot.className='w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-900 text-white'; dot.textContent=s; }
-                else { dot.className='w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500'; dot.textContent=s; }
+                if (s < step) { dot.className='w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-green-500 text-white shadow'; dot.innerHTML=_checkSvg; }
+                else if (s===step) { dot.className='w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-900 text-white shadow'; dot.textContent=s; }
+                else { dot.className='w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-100 text-slate-400'; dot.textContent=s; }
             }
-            if (s < 3) { const ln = document.getElementById('wizLine'+s); if (ln) { ln.className='flex-1 h-px '+(s<step?'bg-green-500':'bg-slate-200'); } }
+            if (lbl) lbl.className='text-xs font-semibold mt-1 whitespace-nowrap '+(s<=step?'text-slate-800':'text-slate-400');
+            if (s < 4) { const ln = document.getElementById('wizLine'+s); if (ln) ln.className='w-full h-0.5 '+(s<step?'bg-green-400':'bg-slate-200'); }
         });
-        const lbl = document.getElementById('wizStepLabel'); if (lbl) lbl.textContent = labels[step-1];
         if (step === 2) _wizInitPreview();
-        const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===3 ? 'Criar Campanha' : 'Seguinte →';
+        const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Criar Campanha' : 'Seguinte →';
         const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.visibility = step===1 ? 'hidden' : 'visible';
-        if (step === 3) {
+        const navBar = document.getElementById('wizNavBar');
+        if (navBar) navBar.className='flex items-center justify-between pt-5 '+(step===2?'':'max-w-2xl');
+        if (step === 4) {
             const name = document.getElementById('wizName')?.value || 'Nova Campanha';
             const subj = document.getElementById('wizSubject')?.value || '—';
-            const fn   = document.getElementById('wizFromName')?.value || 'BMW Caetano';
-            const fe   = document.getElementById('wizFromEmail')?.value || 'bmw@caetano.pt';
+            const fn   = document.getElementById('wizFromName')?.value || `${_currentBrand.name} Caetano`;
+            const fe   = document.getElementById('wizFromEmail')?.value || `${_currentBrand.id}@caetano.pt`;
             const rev  = document.getElementById('wizReviewContent');
             if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Nome</dt><dd class="font-medium text-slate-900">${name}</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Template</dt><dd class="text-slate-900">Newsletter Base BMW</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Template</dt><dd class="text-slate-900">Newsletter Base ${_currentBrand.name}</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Assunto</dt><dd class="text-slate-900">${subj}</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">BMW Clientes Premium</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">${_currentBrand.name} Clientes Premium</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Remetente</dt><dd class="text-slate-900">${fn} &lt;${fe}&gt;</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">~ 3 421 contactos</dd></div></dl>`;
         }
@@ -1384,7 +1387,8 @@ ${body}
             wizShowStep(2); return;
         }
         if (_wizStep === 2) { wizShowStep(3); return; }
-        if (_wizStep === 3) {
+        if (_wizStep === 3) { wizShowStep(4); return; }
+        if (_wizStep === 4) {
             const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
             if (sendType === 'schedule') {
                 const d = document.getElementById('wizScheduleDate')?.value;
@@ -2942,15 +2946,28 @@ ${body}
                 <h1 class="text-xl font-semibold text-slate-900">Nova Campanha</h1>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="max-w-4xl">
+                <div>
                     <!-- Step indicator -->
-                    <div class="flex items-center gap-3 mb-8 max-w-2xl">
-                        <div id="wizDot1" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-900 text-white">1</div>
-                        <div id="wizLine1" class="flex-1 h-px bg-slate-200"></div>
-                        <div id="wizDot2" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500">2</div>
-                        <div id="wizLine2" class="flex-1 h-px bg-slate-200"></div>
-                        <div id="wizDot3" class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-slate-100 text-slate-500">3</div>
-                        <span id="wizStepLabel" class="ml-2 text-sm text-slate-500">Detalhes</span>
+                    <div class="flex items-start mb-8 max-w-2xl">
+                        <div class="flex flex-col items-center gap-1">
+                            <div id="wizDot1" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-900 text-white shadow">1</div>
+                            <span id="wizLabel1" class="text-xs font-semibold mt-1 whitespace-nowrap text-slate-800">Detalhes</span>
+                        </div>
+                        <div class="flex-1 flex items-start pt-4 px-2"><div id="wizLine1" class="w-full h-0.5 bg-slate-200"></div></div>
+                        <div class="flex flex-col items-center gap-1">
+                            <div id="wizDot2" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-100 text-slate-400">2</div>
+                            <span id="wizLabel2" class="text-xs font-semibold mt-1 whitespace-nowrap text-slate-400">Template</span>
+                        </div>
+                        <div class="flex-1 flex items-start pt-4 px-2"><div id="wizLine2" class="w-full h-0.5 bg-slate-200"></div></div>
+                        <div class="flex flex-col items-center gap-1">
+                            <div id="wizDot3" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-100 text-slate-400">3</div>
+                            <span id="wizLabel3" class="text-xs font-semibold mt-1 whitespace-nowrap text-slate-400">Destinatários</span>
+                        </div>
+                        <div class="flex-1 flex items-start pt-4 px-2"><div id="wizLine3" class="w-full h-0.5 bg-slate-200"></div></div>
+                        <div class="flex flex-col items-center gap-1">
+                            <div id="wizDot4" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-100 text-slate-400">4</div>
+                            <span id="wizLabel4" class="text-xs font-semibold mt-1 whitespace-nowrap text-slate-400">Revisão</span>
+                        </div>
                     </div>
 
                     <!-- Passo 1: Detalhes -->
@@ -2979,17 +2996,11 @@ ${body}
                                 </div>
                             </div>
                         </div>
-                        <div class="bg-white border border-slate-200 rounded-xl p-6">
-                            <h3 class="text-sm font-semibold text-slate-900 mb-3">Listas Destinatárias</h3>
-                            <div id="wizListsContainer" class="space-y-2">
-                                <!-- populated by renderBrandData() -->
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Passo 2: Template -->
                     <div id="wizStep2" class="hidden">
-                        <div class="grid gap-6" style="grid-template-columns:1fr 1.4fr">
+                        <div class="grid gap-6" style="grid-template-columns:280px 1fr">
                             <!-- Lista de templates -->
                             <div id="wizTplList" class="space-y-2.5">
                                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Escolhe um template</p>
@@ -3039,8 +3050,18 @@ ${body}
                         </div>
                     </div>
 
-                    <!-- Passo 3: Revisão e Envio -->
+                    <!-- Passo 3: Destinatários -->
                     <div id="wizStep3" class="hidden space-y-4 max-w-2xl">
+                        <div class="bg-white border border-slate-200 rounded-xl p-6">
+                            <h3 class="text-sm font-semibold text-slate-900 mb-3">Listas Destinatárias</h3>
+                            <div id="wizListsContainer" class="space-y-2">
+                                <!-- populated by renderBrandData() -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Passo 4: Revisão e Envio -->
+                    <div id="wizStep4" class="hidden space-y-4 max-w-2xl">
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
@@ -3072,7 +3093,7 @@ ${body}
                     </div>
 
                     <!-- Navegação -->
-                    <div class="flex items-center justify-between pt-5 max-w-2xl">
+                    <div id="wizNavBar" class="flex items-center justify-between pt-5 max-w-2xl">
                         <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="visibility:hidden" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
                         <div class="flex items-center gap-3">
                             <button onclick="showScreen('campaigns')" class="px-5 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
