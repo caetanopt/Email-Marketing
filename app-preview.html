@@ -1392,7 +1392,15 @@ ${body}
             wizShowStep(2); return;
         }
         if (_wizStep === 2) { wizShowStep(3); return; }
-        if (_wizStep === 3) { wizShowStep(4); return; }
+        if (_wizStep === 3) {
+            const checked = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
+            if (!checked.length) {
+                const err = document.getElementById('wizListsError');
+                if (err) err.classList.remove('hidden');
+                return;
+            }
+            wizShowStep(4); return;
+        }
         if (_wizStep === 4) {
             const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
             if (sendType === 'schedule') {
@@ -1410,6 +1418,16 @@ ${body}
     }
     function mockCampaignPrev() { if (_wizStep > 1) wizShowStep(_wizStep - 1); }
     function wizSaveDraft() { showScreen('campaigns'); showToast('Campanha guardada como rascunho.'); }
+    function wizUpdateListsTotal() {
+        const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
+        const total = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
+        const totalBar = document.getElementById('wizListsTotal');
+        const totalCount = document.getElementById('wizListsTotalCount');
+        const err = document.getElementById('wizListsError');
+        if (totalBar) totalBar.classList.toggle('hidden', checks.length === 0);
+        if (totalCount) totalCount.textContent = total.toLocaleString('pt-PT') + ' contactos';
+        if (err) err.classList.add('hidden');
+    }
 
     function showCampaign(status) {
         _currentCampStatus = status || 'sent';
@@ -2525,9 +2543,10 @@ ${body}
             } else {
                 wizLists.innerHTML = d.lists.map((l, i) => `
                     <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                        <input type="checkbox" class="rounded" ${i===0?'checked':''} />
-                        <div><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.active} contactos</p></div>
+                        <input type="checkbox" class="rounded" data-contacts="${l.active.replace(/\s/g,'')}" onchange="wizUpdateListsTotal()" ${i===0?'checked':''} />
+                        <div class="flex-1 flex items-center justify-between"><div><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.active} contactos</p></div></div>
                     </label>`).join('');
+                setTimeout(wizUpdateListsTotal, 0);
             }
         }
 
@@ -3069,6 +3088,16 @@ ${body}
                             <div id="wizListsContainer" class="space-y-2">
                                 <!-- populated by renderBrandData() -->
                             </div>
+                            <!-- Total contacts summary -->
+                            <div id="wizListsTotal" class="hidden mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                                <span class="text-xs text-slate-500">Total de contactos selecionados</span>
+                                <span id="wizListsTotalCount" class="text-sm font-semibold text-slate-900">0</span>
+                            </div>
+                            <!-- Validation message -->
+                            <p id="wizListsError" class="hidden mt-3 text-xs text-red-500 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                Seleciona pelo menos uma lista para avançar.
+                            </p>
                         </div>
                     </div>
 
