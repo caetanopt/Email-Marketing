@@ -1315,7 +1315,7 @@ ${body}
         const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Criar Campanha' : 'Seguinte →';
         const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.visibility = step===1 ? 'hidden' : 'visible';
         const navBar = document.getElementById('wizNavBar');
-        if (navBar) navBar.className='flex items-center justify-between pt-5 '+(step===2?'':'max-w-2xl');
+        if (navBar) navBar.className='flex items-center justify-start gap-3 pt-5 '+(step===2?'':'max-w-2xl');
         if (step === 4) {
             const name = document.getElementById('wizName')?.value || 'Nova Campanha';
             const subj = document.getElementById('wizSubject')?.value || '—';
@@ -3093,12 +3093,10 @@ ${body}
                     </div>
 
                     <!-- Navegação -->
-                    <div id="wizNavBar" class="flex items-center justify-between pt-5 max-w-2xl">
+                    <div id="wizNavBar" class="flex items-center justify-start gap-3 pt-5 max-w-2xl">
                         <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="visibility:hidden" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
-                        <div class="flex items-center gap-3">
-                            <button onclick="showScreen('campaigns')" class="px-5 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
-                            <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
-                        </div>
+                        <button onclick="showScreen('campaigns')" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
+                        <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
                     </div>
                 </div>
             </main>
