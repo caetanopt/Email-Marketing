@@ -3091,8 +3091,8 @@ ${body}
                                         <p class="text-sm font-medium text-slate-900">Agendar para data/hora</p>
                                         <p class="text-xs text-slate-400">Define quando a campanha será enviada automaticamente</p>
                                         <div id="wizSchedulePicker" class="hidden mt-3 grid grid-cols-2 gap-3">
-                                            <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
-                                            <div><label class="text-xs text-slate-500 block mb-1">Hora</label><input type="time" id="wizScheduleTime" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                                            <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" onclick="try{this.showPicker()}catch(e){}" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
+                                            <div><label class="text-xs text-slate-500 block mb-1">Hora</label><input type="time" id="wizScheduleTime" onclick="try{this.showPicker()}catch(e){}" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
                                         </div>
                                     </div>
                                 </label>
@@ -4911,11 +4911,11 @@ ${body}
         <div class="px-6 py-5 space-y-4">
             <div>
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Data</label>
-                <input type="date" id="schedDate" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                <input type="date" id="schedDate" onclick="try{this.showPicker()}catch(e){}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" />
             </div>
             <div>
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Hora (fuso horário de Lisboa)</label>
-                <input type="time" id="schedTime" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                <input type="time" id="schedTime" onclick="try{this.showPicker()}catch(e){}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" />
             </div>
         </div>
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
