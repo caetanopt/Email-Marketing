@@ -1368,12 +1368,12 @@ ${body}
             d.classList.remove('border-slate-900');
             d.classList.add('border-slate-200');
             const dot = d.querySelector('.wiz-tpl-dot');
-            if (dot) dot.innerHTML = '';
+            if (dot) { dot.classList.remove('border-slate-900'); dot.classList.add('border-slate-300'); dot.innerHTML = ''; }
         });
         el.classList.remove('border-slate-200');
         el.classList.add('border-slate-900');
         const dot = el.querySelector('.wiz-tpl-dot');
-        if (dot) dot.innerHTML = '<div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div>';
+        if (dot) { dot.classList.remove('border-slate-300'); dot.classList.add('border-slate-900'); dot.innerHTML = '<div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div>'; }
         const key = parseInt(el.getAttribute('data-tpl-key') || '0', 10);
         const prev = document.getElementById('wizTplPreview');
         if (prev && _wizTplPreviews[key]) prev.innerHTML = _wizTplPreviewHtml(_wizTplPreviews[key]);
