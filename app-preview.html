@@ -1313,11 +1313,10 @@ ${body}
         });
         if (step === 2) _wizInitPreview();
         const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Criar Campanha' : 'Seguinte →';
-        const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.visibility = step===1 ? 'hidden' : 'visible';
+        const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.display = step===1 ? 'none' : '';
         const navBar = document.getElementById('wizNavBar');
         if (navBar) navBar.className='flex items-center justify-between pt-5 '+(step===2?'':'max-w-2xl');
-        const prevSec = document.getElementById('wizPreviewSection');
-        if (prevSec) prevSec.classList.toggle('hidden', step !== 2);
+
         if (step === 4) {
             const name = document.getElementById('wizName')?.value || 'Nova Campanha';
             const subj = document.getElementById('wizSubject')?.value || '—';
@@ -2955,7 +2954,7 @@ ${body}
             <main class="flex-1 px-8 py-6">
                 <div>
                     <!-- Step indicator -->
-                    <div class="flex items-start mb-8">
+                    <div class="flex items-start mb-8 px-6">
                         <div class="flex flex-col items-center gap-1">
                             <div id="wizDot1" class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-slate-900 text-white shadow">1</div>
                             <span id="wizLabel1" class="text-xs font-semibold mt-1 whitespace-nowrap text-slate-800">Detalhes</span>
@@ -3007,39 +3006,58 @@ ${body}
 
                     <!-- Passo 2: Template -->
                     <div id="wizStep2" class="hidden">
-                        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Escolhe um template</p>
-                        <div id="wizTplList" class="grid grid-cols-3 gap-2.5 overflow-y-auto pr-1" style="max-height:272px">
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-900 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="0" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center flex-shrink-0"><div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Newsletter Base</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
+                        <div class="grid gap-6" style="grid-template-columns:1fr 1.3fr">
+                            <!-- Lista de templates: 2 cols, scroll após 6 -->
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Escolhe um template</p>
+                                <div id="wizTplList" class="grid grid-cols-2 gap-2.5 overflow-y-auto pr-1" style="max-height:370px">
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-900 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="0" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-900"><div class="w-2.5 h-2.5 rounded-full bg-slate-900"></div></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Newsletter Base</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="1" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Promoção Verão</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="2" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Convite Evento</p><p class="text-xs text-slate-400 mt-0.5">Layout de convite exclusivo</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="3" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Test Drive</p><p class="text-xs text-slate-400 mt-0.5">Agendamento de test drive</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="4" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Newsletter Mensal</p><p class="text-xs text-slate-400 mt-0.5">Template genérico</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="5" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Campanha Flash</p><p class="text-xs text-slate-400 mt-0.5">Oferta por tempo limitado</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="6" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Lançamento de Produto</p><p class="text-xs text-slate-400 mt-0.5">Novo modelo</p></div>
+                                </div>
+                                <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-3 flex items-center gap-3 cursor-pointer" data-tpl-key="7" onclick="wizSelectTemplate(this)">
+                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 wiz-tpl-dot border-slate-300"></div>
+                                    <div><p class="font-medium text-slate-900 text-sm">Reengagement</p><p class="text-xs text-slate-400 mt-0.5">Reconquistar clientes</p></div>
+                                </div>
+                                </div>
                             </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="1" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Promoção Verão</p><p class="text-xs text-slate-400 mt-0.5">Template partilhado</p></div>
-                            </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="2" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Convite Evento</p><p class="text-xs text-slate-400 mt-0.5">Layout de convite exclusivo</p></div>
-                            </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="3" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Test Drive Call-to-Action</p><p class="text-xs text-slate-400 mt-0.5">Agendamento de test drive</p></div>
-                            </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="4" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Newsletter Mensal</p><p class="text-xs text-slate-400 mt-0.5">Template genérico</p></div>
-                            </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="5" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Campanha Flash</p><p class="text-xs text-slate-400 mt-0.5">Oferta por tempo limitado</p></div>
-                            </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="6" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Lançamento de Produto</p><p class="text-xs text-slate-400 mt-0.5">Novo modelo</p></div>
-                            </div>
-                            <div class="wiz-tpl-item bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl p-4 flex items-center gap-3 cursor-pointer" data-tpl-key="7" onclick="wizSelectTemplate(this)">
-                                <div class="wiz-tpl-dot w-5 h-5 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                                <div><p class="font-medium text-slate-900 text-sm">Reengagement</p><p class="text-xs text-slate-400 mt-0.5">Reconquistar clientes</p></div>
+                            <!-- Preview à direita -->
+                            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
+                                <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Pré-visualização</p>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span>
+                                        <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block"></span>
+                                        <span class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>
+                                    </div>
+                                </div>
+                                <div id="wizTplPreview" class="flex-1 bg-slate-100 flex items-start justify-center p-6 overflow-y-auto" style="max-height:370px">
+                                    <!-- injected by JS -->
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3089,7 +3107,7 @@ ${body}
                     <!-- Navegação -->
                     <div id="wizNavBar" class="flex items-center justify-between pt-5 max-w-2xl">
                         <div class="flex items-center gap-3">
-                            <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="visibility:hidden" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
+                            <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="display:none" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
                             <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
                             <button onclick="showScreen('campaigns')" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
                         </div>
@@ -3099,22 +3117,6 @@ ${body}
                         </button>
                     </div>
 
-                    <!-- Preview de template (passo 2) — aparece abaixo dos botões -->
-                    <div id="wizPreviewSection" class="hidden mt-4">
-                        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Pré-visualização</p>
-                                <div class="flex items-center gap-1.5">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span>
-                                    <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block"></span>
-                                    <span class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>
-                                </div>
-                            </div>
-                            <div id="wizTplPreview" class="bg-slate-100 flex items-start justify-center p-8 overflow-y-auto" style="max-height:520px">
-                                <!-- injected by JS -->
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </main>
         </div>
