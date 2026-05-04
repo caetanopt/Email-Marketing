@@ -1,0 +1,12 @@
+{
+  "name": "primemail",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": "20.x" },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "resend": "^4.0.0"
+  }
+}
