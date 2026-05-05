@@ -210,8 +210,8 @@
             el.innerHTML = data.map(l => `
                 <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
                     <td class="px-4 py-3 font-medium text-slate-900">${l.name}</td>
-                    <td class="px-4 py-3 text-slate-600">${l.total||0}</td>
-                    <td class="px-4 py-3 text-slate-600">${l.total||0}</td>
+                    <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
+                    <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
                     <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
                         <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
@@ -220,9 +220,9 @@
                 </tr>`).join('');
             if (wizLists) wizLists.innerHTML = data.map((l, i) => `
                 <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" class="rounded" data-contacts="${l.total||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
-                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.total||0} contactos</p></div>
-                    <span class="text-xs font-semibold text-slate-500">${l.total||0}</span>
+                    <input type="checkbox" class="rounded" data-contacts="${l.total_contacts||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
+                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
+                    <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
                 </label>`).join('');
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
     }
@@ -2823,7 +2823,7 @@ ${body}
         if (!sel || !_currentBrand?.id) return;
         try {
             const { data } = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}&limit=100`);
-            sel.innerHTML = `<option value="">Nenhuma — só base de dados</option>` + data.map(l => `<option value="${l.id}">${l.name} (${l.total||0})</option>`).join('');
+            sel.innerHTML = `<option value="">Nenhuma — só base de dados</option>` + data.map(l => `<option value="${l.id}">${l.name} (${l.total_contacts||0})</option>`).join('');
         } catch {}
     }
 
