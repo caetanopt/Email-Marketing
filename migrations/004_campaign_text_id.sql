@@ -29,7 +29,7 @@ ALTER TABLE campaign_recipients RENAME COLUMN campaign_id_new TO campaign_id;
 ALTER TABLE email_events        RENAME COLUMN campaign_id_new TO campaign_id;
 
 -- 6. Change campaigns.id from SERIAL to TEXT
-ALTER TABLE campaigns DROP DEFAULT ON id;
+ALTER TABLE campaigns ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE campaigns ALTER COLUMN id TYPE TEXT USING id::TEXT;
 
 -- 7. Recreate FK constraints
