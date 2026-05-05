@@ -21,6 +21,224 @@
         setTimeout(() => t.remove(), 2800);
     }
 
+    // ── API ──────────────────────────────────────────────
+    const API_BASE = 'https://email-marketing-eta.vercel.app';
+    const getToken  = () => localStorage.getItem('pm_token');
+    const setToken  = t  => localStorage.setItem('pm_token', t);
+    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); };
+
+    async function apiFetch(path, options = {}) {
+        const token = getToken();
+        const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) };
+        const res = await fetch(API_BASE + path, { ...options, headers });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+        return data;
+    }
+
+    let _userBrandIds = new Set();
+
+    async function doLogin() {
+        const email = document.getElementById('loginEmail')?.value?.trim();
+        const pass  = document.getElementById('loginPass')?.value;
+        const btn   = document.getElementById('loginBtn');
+        const err   = document.getElementById('loginErr');
+        if (err) err.classList.add('hidden');
+        if (!email || !pass) { if (err) { err.textContent = 'Preenche email e password.'; err.classList.remove('hidden'); } return; }
+        if (btn) { btn.disabled = true; btn.textContent = 'A entrar…'; }
+        try {
+            const data = await apiFetch('/api/auth', { method: 'POST', body: JSON.stringify({ email, password: pass }) });
+            setToken(data.token);
+            localStorage.setItem('pm_user', JSON.stringify(data.user));
+            localStorage.setItem('pm_brands', JSON.stringify(data.brands));
+            _userBrandIds = new Set(data.brands.map(b => b.brand_id));
+            renderBrandSelect();
+            showScreen('brandSelect');
+        } catch (e) {
+            if (err) { err.textContent = e.message; err.classList.remove('hidden'); }
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+        }
+    }
+
+    function doLogout() {
+        clearAuth();
+        _userBrandIds = new Set();
+        showScreen('login');
+    }
+
+    function _fmtDate(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    }
+
+    async function _loadContacts(brandId) {
+        const el = document.getElementById('contactsTbody');
+        if (!el) return;
+        el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        try {
+            const { data } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=50`);
+            const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>' };
+            if (!data.length) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`; return; }
+            el.innerHTML = data.map(c => `
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view')">
+                    <td class="px-4 py-3 font-medium text-slate-900">${c.name||'—'}</td>
+                    <td class="px-4 py-3 text-slate-600">${c.email}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.company||'—'}</span></td>
+                    <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
+                    <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
+                    <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button></td>
+                </tr>`).join('');
+            _setText('dash-contacts', data.length >= 50 ? '50+' : data.length.toString());
+        } catch (e) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+    }
+
+    async function _loadCampaigns(brandId) {
+        const el = document.getElementById('campaignsTbody');
+        if (!el) return;
+        el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        try {
+            const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=50`);
+            const statusBadge = { sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>', scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>', draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>', sending:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">A enviar</span>' };
+            if (!data.length) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
+            el.innerHTML = data.map(c => `
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign('${c.status}')">
+                    <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.subject||'—'}</p></td>
+                    <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
+                    <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
+                    <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
+                    <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('${c.status}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a></td>
+                </tr>`).join('');
+            _setText('dash-campaigns', data.length.toString());
+        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+    }
+
+    async function _loadLists(brandId) {
+        const el = document.getElementById('listsTableBody');
+        if (!el) return;
+        el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        try {
+            const { data } = await apiFetch(`/api/lists?brand_id=${brandId}&limit=50`);
+            const wizLists = document.getElementById('wizListsContainer');
+            if (!data.length) {
+                el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas para esta marca.</td></tr>`;
+                if (wizLists) wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis.</p>`;
+                return;
+            }
+            el.innerHTML = data.map(l => `
+                <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
+                    <td class="px-4 py-3 font-medium text-slate-900">${l.name}</td>
+                    <td class="px-4 py-3 text-slate-600">${l.total||0}</td>
+                    <td class="px-4 py-3 text-slate-600">${l.total||0}</td>
+                    <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
+                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                        <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                        <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                    </td>
+                </tr>`).join('');
+            if (wizLists) wizLists.innerHTML = data.map((l, i) => `
+                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                    <input type="checkbox" class="rounded" data-contacts="${l.total||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" ${i===0?'checked':''} />
+                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.total||0} contactos</p></div>
+                </label>`).join('');
+        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+    }
+
+    async function _loadSuppression(brandId) {
+        const el = document.getElementById('suppTableBody');
+        if (!el) return;
+        el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        try {
+            const { data } = await apiFetch(`/api/suppression?brand_id=${brandId}&limit=50`);
+            const rBadge = { bounce:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span>', unsubscribe:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span>', spam:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span>', manual:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">manual</span>' };
+            const scEl = document.getElementById('suppCount');
+            if (scEl) scEl.textContent = `${data.length} endereços suprimidos`;
+            if (!data.length) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">Sem endereços suprimidos.</td></tr>`; return; }
+            el.innerHTML = data.map(s => `
+                <tr class="hover:bg-slate-50" data-email="${s.email}" data-reason="${s.reason}">
+                    <td class="px-4 py-3 text-slate-900">${s.email}</td>
+                    <td class="px-4 py-3">${rBadge[s.reason]||s.reason}</td>
+                    <td class="px-4 py-3 text-slate-500">${_fmtDate(s.created_at)}</td>
+                    <td class="px-4 py-3 text-right"><button onclick="apiRemoveSuppression(this,'${s.email}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
+                </tr>`).join('');
+        } catch (e) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+    }
+
+    async function _loadTemplates(brandId) {
+        const grid = document.getElementById('tplGrid');
+        const listBody = document.getElementById('tplListBody');
+        if (!grid) return;
+        const dummy = grid.querySelector('.border-dashed');
+        grid.querySelectorAll('.tmpl-card').forEach(c => c.remove());
+        if (listBody) listBody.querySelectorAll('[data-tpl-id]').forEach(r => r.remove());
+        try {
+            const { data } = await apiFetch(`/api/templates?brand_id=${brandId}&limit=100`);
+            const grads = ['from-violet-50 to-purple-100','from-sky-50 to-blue-100','from-pink-50 to-rose-100','from-amber-50 to-orange-100','from-teal-50 to-green-100'];
+            data.forEach((t, idx) => {
+                const g = grads[idx % grads.length];
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card';
+                card.setAttribute('data-tpl-id', t.id);
+                card.setAttribute('data-tpl-name', (t.name||'').toLowerCase());
+                card.setAttribute('data-brand', brandId);
+                card.onclick = () => teEditTemplate(t.id);
+                card.innerHTML = `
+                    <div class="h-40 bg-gradient-to-br ${g} flex items-center justify-center">
+                        <div class="text-center px-6"><div class="w-12 h-1 bg-slate-300 rounded mx-auto mb-2"></div><div class="w-20 h-2 bg-slate-200 rounded mx-auto mb-1"></div><div class="w-16 h-1.5 bg-slate-100 rounded mx-auto"></div></div>
+                    </div>
+                    <div class="p-4">
+                        <p class="font-semibold text-slate-900 text-sm">${t.name}</p>
+                        <p class="text-xs text-slate-400 mt-1">${_fmtDate(t.created_at)}</p>
+                        <div class="flex items-center gap-2 mt-3">
+                            <button onclick="event.stopPropagation();teEditTemplate('${t.id}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                            <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
+                            <button onclick="event.stopPropagation();apiDeleteTemplate(this,'${t.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                        </div>
+                    </div>`;
+                if (dummy) grid.insertBefore(card, dummy); else grid.appendChild(card);
+                if (listBody) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-50 cursor-pointer';
+                    tr.setAttribute('data-tpl-id', t.id);
+                    tr.setAttribute('data-tpl-name', (t.name||'').toLowerCase());
+                    tr.setAttribute('data-brand', brandId);
+                    tr.onclick = () => teEditTemplate(t.id);
+                    tr.innerHTML = `<td class="px-4 py-3 font-medium text-slate-900">${t.name}</td><td class="px-4 py-3 text-slate-500 text-xs">${t.subject||'—'}</td><td class="px-4 py-3 text-xs text-slate-400">${_fmtDate(t.created_at)}</td><td class="px-4 py-3 text-right flex items-center justify-end gap-2"><button onclick="event.stopPropagation();teEditTemplate('${t.id}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button><button onclick="event.stopPropagation();apiDeleteTemplate(this,'${t.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button></td>`;
+                    listBody.appendChild(tr);
+                }
+            });
+        } catch (e) { showToast('Erro ao carregar templates: ' + e.message, 'error'); }
+    }
+
+    async function apiRemoveSuppression(btn, email) {
+        if (!confirm('Remover este endereço da lista de supressão?')) return;
+        try {
+            await apiFetch(`/api/suppression?brand_id=${_currentBrand.id}`, { method: 'DELETE', body: JSON.stringify({ email }) });
+            btn.closest('tr').remove();
+            showToast('Endereço removido da supressão.');
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function apiDeleteList(btn, listId) {
+        if (!confirm('Apagar esta lista?')) return;
+        try {
+            await apiFetch(`/api/lists/${listId}`, { method: 'DELETE' });
+            btn.closest('tr').remove();
+            showToast('Lista apagada.');
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function apiDeleteTemplate(btn, tplId) {
+        if (!confirm('Apagar este template?')) return;
+        try {
+            await apiFetch(`/api/templates/${tplId}`, { method: 'DELETE' });
+            btn.closest('.tmpl-card')?.remove();
+            btn.closest('tr')?.remove();
+            showToast('Template apagado.');
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
     // ── Suppression ─────────────────────────────────────
     function mockRemoveSuppression(btn) {
         if (!confirm('Remover este endereço da lista de supressão?')) return;
@@ -1153,23 +1371,16 @@ ${body}
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
     }
 
-    function confirmAddSuppression() {
+    async function confirmAddSuppression() {
         const email = document.getElementById('suppEmailInput')?.value.trim();
         const reason = document.getElementById('suppReasonSelect')?.value || 'manual';
         if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
-        const tbody = document.getElementById('suppTableBody');
-        if (tbody) {
-            const today = new Date().toLocaleDateString('pt-PT');
-            const reasonStyle = { manual:'bg-slate-100 text-slate-700', bounce:'bg-red-100 text-red-700', unsubscribe:'bg-orange-100 text-orange-700', spam:'bg-purple-100 text-purple-700' }[reason];
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-slate-50';
-            tr.dataset.email = email;
-            tr.dataset.reason = reason;
-            tr.innerHTML = `<td class="px-4 py-3 text-slate-900">${email}</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium ${reasonStyle}">${reason}</span></td><td class="px-4 py-3 text-slate-500">${today}</td><td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>`;
-            tbody.insertBefore(tr, tbody.firstChild);
-        }
-        closeAddSuppressionModal();
-        showToast(`${email} adicionado à supressão.`);
+        try {
+            await apiFetch(`/api/suppression?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ email, reason }) });
+            closeAddSuppressionModal();
+            showToast(`${email} adicionado à supressão.`);
+            _loadSuppression(_currentBrand.id);
+        } catch (e) { showToast(e.message, 'error'); }
     }
 
     // ── Brand Settings ───────────────────────────────────
@@ -1791,10 +2002,10 @@ ${body}
                 <p class="text-sm text-slate-500">Plataforma de email marketing</p>
             </div>
 
-            <form onsubmit="event.preventDefault(); showScreen('brandSelect')" class="space-y-4">
+            <form onsubmit="event.preventDefault(); doLogin()" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                    <input type="email" value="admin@caetano.pt"
+                    <input id="loginEmail" type="email" placeholder="utilizador@empresa.pt"
                            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                 </div>
                 <div>
@@ -1802,14 +2013,11 @@ ${body}
                         <label class="block text-sm font-medium text-slate-700">Password</label>
                         <a onclick="showScreen('forgotPassword')" class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Esqueci-me da password</a>
                     </div>
-                    <input type="password" value="PrimeMail@2026!"
+                    <input id="loginPass" type="password" placeholder="••••••••"
                            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                 </div>
-                <label class="flex items-center gap-2 text-sm text-slate-600">
-                    <input type="checkbox" class="rounded border-slate-300" />
-                    Manter sessão iniciada
-                </label>
-                <button type="submit"
+                <p id="loginErr" class="hidden text-sm text-red-600 text-center"></p>
+                <button id="loginBtn" type="submit"
                         class="w-full py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors">
                     Entrar
                 </button>
@@ -1967,7 +2175,7 @@ ${body}
                     <p class="text-sm font-medium text-white truncate">Administrador</p>
                     <p class="text-xs text-white/45 truncate">admin@caetano.pt</p>
                 </div>
-                <button onclick="showScreen('login')" title="Terminar sessão" class="text-white/40 hover:text-red-300 transition-colors">
+                <button onclick="doLogout()" title="Terminar sessão" class="text-white/40 hover:text-red-300 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 </button>
             </div>
@@ -2099,7 +2307,10 @@ ${body}
     function renderBrandSelect() {
         const grid = document.getElementById('brandSelectGrid');
         if (!grid) return;
-        grid.innerHTML = _allBrands.map(b => `
+        const visible = _userBrandIds.size > 0
+            ? _allBrands.filter(b => _userBrandIds.has(b.id))
+            : _allBrands;
+        grid.innerHTML = visible.map(b => `
             <button onclick="selectBrand('${b.id}','${b.name.replace(/'/g,"\\'")}','${b.color}')" data-brand-id="${b.id}"
                     class="brand-card bg-white border-2 border-slate-200 rounded-xl overflow-hidden transition-all text-center"
                     onmouseover="this.style.borderColor='${b.color}'"
@@ -2299,21 +2510,7 @@ ${body}
     function _setBarWidth(id, pct) { const el = document.getElementById(id); if (el) el.style.width = pct + '%'; }
 
     function _syncBrandTemplates(brandId) {
-        // Save current brand's teTemplateStates before switching
-        const prevId = window._prevBrandId;
-        if (prevId) _brandTemplateStates[prevId] = Object.assign({}, teTemplateStates);
-        // Clear global teTemplateStates and load new brand's saved states
-        Object.keys(teTemplateStates).forEach(k => delete teTemplateStates[k]);
-        const saved = _brandTemplateStates[brandId];
-        if (saved) Object.assign(teTemplateStates, saved);
-        // Show/hide template grid cards by brand
-        document.querySelectorAll('#tplGrid .tmpl-card').forEach(card => {
-            card.style.display = card.getAttribute('data-brand') === brandId ? '' : 'none';
-        });
-        // Show/hide list view rows by brand
-        document.querySelectorAll('#tplListBody [data-tpl-id]').forEach(row => {
-            row.style.display = row.getAttribute('data-brand') === brandId ? '' : 'none';
-        });
+        // Templates are now loaded from the API by _loadTemplates() — this is a no-op
         window._prevBrandId = brandId;
     }
 
@@ -2425,177 +2622,66 @@ ${body}
         }
     }
 
-    function renderBrandData(brandId) {
-        const d = _brandMockData[brandId] || null;
-        const empty = !d;
-
-        // Dashboard KPIs
-        _setText('dash-contacts', empty ? '0' : d.contacts);
-        _setText('dash-campaigns', empty ? '0' : d.campaigns30d);
-        _setText('dash-emails', empty ? '0' : d.emails30d);
-        _setText('dash-openrate', empty ? '—' : d.openRate + '%');
-        _setText('dash-open-val', empty ? '—' : d.openRate + '%');
-        _setText('dash-click-val', empty ? '—' : d.clickRate + '%');
-        _setText('dash-bounce-val', empty ? '—' : d.bounceRate + '%');
-        _setBarWidth('dash-open-bar', empty ? 0 : parseFloat(d.openRate));
-        _setBarWidth('dash-click-bar', empty ? 0 : parseFloat(d.clickRate));
-        _setBarWidth('dash-bounce-bar', empty ? 0 : parseFloat(d.bounceRate));
-
-        // Recent campaigns
-        const rcEl = document.getElementById('dashRecentCampaigns');
-        if (rcEl) {
-            if (empty || !d.recentCampaigns.length) {
-                rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas recentes.</td></tr>`;
-            } else {
-                rcEl.innerHTML = d.recentCampaigns.map((c,i) => `
-                    <tr class="${i<d.recentCampaigns.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign('${c.status}')">
-                        <td class="px-5 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-400">${c.desc}</p></td>
-                        <td class="px-4 py-3 text-xs text-slate-500">${c.date}</td>
-                        <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${c.open} abertos</span><span class="text-blue-600">${c.click} cliques</span></div></td>
-                    </tr>`).join('');
-            }
-        }
-
-        // Campaigns table
-        const campEl = document.getElementById('campaignsTbody');
-        if (campEl) {
-            const statusBadge = {sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>',scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>',draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>'};
-            if (empty || !d.campaigns.length) {
-                campEl.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`;
-            } else {
-                campEl.innerHTML = d.campaigns.map((c,i) => `
-                    <tr class="${i<d.campaigns.length-1?'border-b border-slate-100':''} hover:bg-slate-50 cursor-pointer" data-name="${c.name.toLowerCase()}" data-status="${c.status}" onclick="showCampaign('${c.status}')">
-                        <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.desc}</p></td>
-                        <td class="px-4 py-3">${statusBadge[c.status]||''}</td>
-                        <td class="px-4 py-3 text-slate-700">${c.recipients}</td>
-                        <td class="px-4 py-3 text-xs text-slate-500">${c.date}</td>
-                        <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('${c.status}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a></td>
-                    </tr>`).join('');
-            }
-        }
-
-        // Contacts table
-        const ctcEl = document.getElementById('contactsTbody');
-        if (ctcEl) {
-            const sBadge = {active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>',suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>',unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>'};
-            if (empty || !d.contactsList?.length) {
-                ctcEl.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
-            } else {
-                ctcEl.innerHTML = d.contactsList.map(c => `
-                    <tr class="hover:bg-slate-50 cursor-pointer" data-name="${c.name.toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view')">
-                        <td class="px-4 py-3 font-medium text-slate-900">${c.name}</td>
-                        <td class="px-4 py-3 text-slate-600">${c.email}</td>
-                        <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.list}</span></td>
-                        <td class="px-4 py-3">${sBadge[c.status]||''}</td>
-                        <td class="px-4 py-3 text-slate-500">${c.date}</td>
-                        <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button></td>
-                    </tr>`).join('');
-            }
-        }
-        _contactsPage = 1;
-        contactsGoPage(1);
-
-        // Lists table
-        const lstEl = document.getElementById('listsTableBody');
-        if (lstEl) {
-            if (empty || !d.lists.length) {
-                lstEl.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas para esta marca.</td></tr>`;
-            } else {
-                lstEl.innerHTML = d.lists.map(l => `
-                    <tr class="hover:bg-slate-50" data-name="${l.name.toLowerCase()}">
-                        <td class="px-4 py-3 font-medium text-slate-900">${l.name}</td>
-                        <td class="px-4 py-3 text-slate-600">${l.total}</td>
-                        <td class="px-4 py-3 text-slate-600">${l.active}</td>
-                        <td class="px-4 py-3 text-slate-500">${l.date}</td>
-                        <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                            <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                            <button onclick="mockDeleteList(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                        </td>
-                    </tr>`).join('');
-            }
-        }
-
-        // Imports table
-        const impEl = document.getElementById('importsTbody');
-        if (impEl) {
-            if (empty || !d.imports.length) {
-                impEl.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
-            } else {
-                impEl.innerHTML = d.imports.map(im => {
-                    const badge = im.status==='done'
-                        ? '<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Concluído</span>'
-                        : '<div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Em processamento</span><div class="w-16 bg-slate-100 rounded-full h-1.5"><div class="h-1.5 bg-blue-500 rounded-full" style="width:62%"></div></div></div>';
-                    return `<tr class="hover:bg-slate-50">
-                        <td class="px-4 py-3"><p class="font-medium text-slate-900">${im.file}</p><p class="text-xs text-slate-400">${im.lines} linhas</p></td>
-                        <td class="px-4 py-3 text-slate-600">${im.list}</td>
-                        <td class="px-4 py-3">${badge}</td>
-                        <td class="px-4 py-3 text-green-700 font-medium">${im.imported}</td>
-                        <td class="px-4 py-3 text-yellow-700">${im.skipped}</td>
-                        <td class="px-4 py-3 text-red-600">${im.failed}</td>
-                        <td class="px-4 py-3 text-xs text-slate-500">${im.date}</td>
-                        <td class="px-4 py-3 text-right"><button onclick="mockShowImportDetails(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Detalhes</button></td>
-                    </tr>`;
-                }).join('');
-            }
-        }
-
-        // Suppression table
-        const supEl = document.getElementById('suppTableBody');
-        if (supEl) {
-            const rBadge = {bounce:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span>',unsubscribe:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span>',spam:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span>',manual:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">manual</span>'};
-            if (empty || !d.suppression.length) {
-                supEl.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">Sem endereços suprimidos.</td></tr>`;
-            } else {
-                supEl.innerHTML = d.suppression.map(s => `
-                    <tr class="hover:bg-slate-50" data-email="${s.email}" data-reason="${s.reason}">
-                        <td class="px-4 py-3 text-slate-900">${s.email}</td>
-                        <td class="px-4 py-3">${rBadge[s.reason]||s.reason}</td>
-                        <td class="px-4 py-3 text-slate-500">${s.date}</td>
-                        <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
-                    </tr>`).join('');
-            }
-        }
-        const scEl = document.getElementById('suppCount');
-        if (scEl) scEl.textContent = `${empty ? 0 : d.suppressionCount} endereços suprimidos`;
-
+    async function renderBrandData(brandId) {
         // Wizard: sender fields
         const fromName = document.getElementById('wizFromName');
         const fromEmail = document.getElementById('wizFromEmail');
-        if (fromName) fromName.value = empty ? '' : `${_currentBrand.name} Caetano`;
-        if (fromEmail) fromEmail.value = empty ? '' : `${brandId}@caetano.pt`;
+        if (fromName) fromName.value = `${_currentBrand.name} Caetano`;
+        if (fromEmail) fromEmail.value = `${brandId}@caetano.pt`;
 
-        // Wizard: lists for step 1
-        const wizLists = document.getElementById('wizListsContainer');
-        if (wizLists) {
-            if (empty || !d.lists.length) {
-                wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis para esta marca.</p>`;
-            } else {
-                wizLists.innerHTML = d.lists.map((l, i) => `
-                    <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                        <input type="checkbox" class="rounded" data-contacts="${l.active.replace(/\s/g,'')}" onchange="wizUpdateListsTotal()" ${i===0?'checked':''} />
-                        <div class="flex-1 flex items-center justify-between"><div><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.active} contactos</p></div></div>
-                    </label>`).join('');
-                setTimeout(wizUpdateListsTotal, 0);
-            }
-        }
+        // Dashboard KPIs — reset while loading
+        _setText('dash-contacts', '…');
+        _setText('dash-campaigns', '…');
+        _setText('dash-emails', '—');
+        _setText('dash-openrate', '—');
+        _setText('dash-open-val', '—');
+        _setText('dash-click-val', '—');
+        _setText('dash-bounce-val', '—');
 
-        // Templates
-        _syncBrandTemplates(brandId);
+        // Recent campaigns placeholder
+        const rcEl = document.getElementById('dashRecentCampaigns');
+        if (rcEl) rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
 
-        // Reset dashboard range to 30d and render
+        // Imports table (kept as empty — not yet backed by API)
+        const impEl = document.getElementById('importsTbody');
+        if (impEl) impEl.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
+
+        // Load all sections in parallel
+        await Promise.all([
+            _loadContacts(brandId),
+            _loadCampaigns(brandId).then(async () => {
+                // Re-fetch campaigns to populate recent dashboard list
+                try {
+                    const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=5`);
+                    const statusBadge = { sent:'Enviada', scheduled:'Agendada', draft:'Rascunho', sending:'A enviar' };
+                    if (rcEl && data.length) {
+                        rcEl.innerHTML = data.map((c,i) => `
+                            <tr class="${i<data.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign('${c.status}')">
+                                <td class="px-5 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-400">${c.subject||'—'}</p></td>
+                                <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
+                                <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${statusBadge[c.status]||c.status}</span><span class="text-blue-600">${c.sent_count||0} enviados</span></div></td>
+                            </tr>`).join('');
+                    } else if (rcEl) {
+                        rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas recentes.</td></tr>`;
+                    }
+                } catch {}
+            }),
+            _loadLists(brandId),
+            _loadSuppression(brandId),
+            _loadTemplates(brandId),
+        ]);
+
+        // Reset dashboard range to 30d
         _dashRange = '30d';
         document.querySelectorAll('.dash-range-btn').forEach(btn => {
             const active = btn.getAttribute('data-range') === '30d';
             btn.className = `dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
         });
-        renderDashboardRange(brandId, '30d');
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        renderBrandSelect();
         injectSidebar();
         _syncRolesPanel();
-        showScreen('login');
         // Load tpl1 preset as initial editor state
         if (typeof teTemplatePresets !== 'undefined') {
             teState.blocks = teTemplatePresets.tpl1();
@@ -2608,6 +2694,16 @@ ${body}
                 if (lines) lines.scrollTop = ev.target.scrollTop;
             }
         }, true);
+        // Check for existing session
+        const token = getToken();
+        const brands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
+        if (token && brands.length) {
+            _userBrandIds = new Set(brands.map(b => b.brand_id));
+            renderBrandSelect();
+            showScreen('brandSelect');
+        } else {
+            showScreen('login');
+        }
     });
 
     function _showFileFilled(name) {
