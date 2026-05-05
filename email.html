@@ -2073,14 +2073,25 @@ ${body}
         showScreen('campaignShow');
     }
 
-    function openEditCampaignModal() {
+    async function openEditCampaignModal() {
         if (!_currentCampaign) return;
         const c = _currentCampaign;
         document.getElementById('editCampName').value = c.name || '';
         document.getElementById('editCampSubject').value = c.subject || '';
         document.getElementById('editCampPreview').value = c.preview_text || '';
-        document.getElementById('editCampFromName').value = c.from_name || 'Caetano';
-        document.getElementById('editCampFromEmail').value = c.from_email || 'info@caetano.pt';
+        document.getElementById('editCampFromName').value = c.from_name || _currentBrand?.name || 'Caetano';
+        const defaultEmail = _currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`;
+        document.getElementById('editCampFromEmail').value = c.from_email || defaultEmail;
+        // Load templates into selector
+        const sel = document.getElementById('editCampTemplate');
+        if (sel) {
+            sel.innerHTML = '<option value="">A carregar…</option>';
+            try {
+                const { data } = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}&limit=100`);
+                sel.innerHTML = '<option value="">— Sem template —</option>' +
+                    data.map(t => `<option value="${t.id}" ${t.id == c.template_id ? 'selected' : ''}>${t.name}</option>`).join('');
+            } catch { sel.innerHTML = '<option value="">Erro ao carregar templates</option>'; }
+        }
         const m = document.getElementById('editCampaignModal');
         if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
     }
@@ -2089,14 +2100,18 @@ ${body}
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
     }
     async function confirmEditCampaign() {
+        const templateId = document.getElementById('editCampTemplate')?.value || null;
         const payload = {
             name: document.getElementById('editCampName')?.value.trim(),
             subject: document.getElementById('editCampSubject')?.value.trim(),
             preview_text: document.getElementById('editCampPreview')?.value.trim(),
             from_name: document.getElementById('editCampFromName')?.value.trim(),
             from_email: document.getElementById('editCampFromEmail')?.value.trim(),
+            template_id: templateId || undefined,
         };
-        if (!payload.name) { showToast('O nome é obrigatório.', 'error'); return; }
+        if (!payload.name)    { showToast('O nome é obrigatório.', 'error'); return; }
+        if (!payload.subject) { showToast('O assunto é obrigatório.', 'error'); return; }
+        if (!templateId)      { showToast('Selecciona um template.', 'error'); return; }
         const btn = document.getElementById('editCampBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
         try {
@@ -4553,7 +4568,7 @@ ${body}
                             </tr>
                         </tbody>
                     </table>
-                    <div id="contactsPageFooter" class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                    <div id="contactsPageFooter" class="hidden px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
                         <span id="contactsPageInfo"></span>
                         <div id="contactsPagination" class="flex gap-1.5 items-center"></div>
                     </div>
@@ -5926,11 +5941,12 @@ ${body}
         </div>
         <div class="px-6 py-5 space-y-4">
             <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome *</label><input id="editCampName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
-            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto</label><input id="editCampSubject" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto *</label><input id="editCampSubject" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Template *</label><select id="editCampTemplate" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"><option value="">A carregar…</option></select></div>
             <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Texto de pré-visualização</label><input id="editCampPreview" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
             <div class="grid grid-cols-2 gap-3">
-                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome remetente</label><input id="editCampFromName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
-                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email remetente</label><input id="editCampFromEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome remetente *</label><input id="editCampFromName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email remetente *</label><input id="editCampFromEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
             </div>
         </div>
         <div class="px-6 pb-6 flex justify-end gap-3">
