@@ -169,7 +169,7 @@
             window._campaignsCache = data;
             el.innerHTML = data.map((c, i) => `
                 <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
-                    <td class="px-4 py-3 text-xs text-slate-400 font-mono">${c.id}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
+                    <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
                     <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.subject||'—'}</p></td>
                     <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
