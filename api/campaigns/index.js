@@ -19,18 +19,20 @@ module.exports = async function handler(req, res) {
 
       const rows = await query(
         `SELECT c.id, c.name, c.subject, c.status, c.scheduled_at, c.sent_at, c.created_at,
+                b.num AS brand_num,
                 t.name AS template_name, u.name AS created_by_name,
                 COUNT(DISTINCT cr.id)::int AS total_recipients,
                 COUNT(DISTINCT CASE WHEN cr.status='sent' THEN cr.id END)::int AS sent_count,
                 COUNT(DISTINCT CASE WHEN ee_o.type='open'  THEN ee_o.id END)::int AS open_count,
                 COUNT(DISTINCT CASE WHEN ee_c.type='click' THEN ee_c.id END)::int AS click_count
          FROM campaigns c
+         LEFT JOIN brands b ON b.id=c.brand_id
          LEFT JOIN templates t ON t.id=c.template_id
          LEFT JOIN users u ON u.id=c.created_by
          LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
          LEFT JOIN email_events ee_o ON ee_o.campaign_id=c.id AND ee_o.type='open'
          LEFT JOIN email_events ee_c ON ee_c.campaign_id=c.id AND ee_c.type='click'
-         ${where} GROUP BY c.id,t.name,u.name
+         ${where} GROUP BY c.id,b.num,t.name,u.name
          ORDER BY c.created_at DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
         params
       );
