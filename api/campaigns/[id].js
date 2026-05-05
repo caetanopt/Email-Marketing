@@ -1,6 +1,6 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
-const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
+const nodemailer = require('nodemailer');
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -85,58 +85,50 @@ module.exports = async function handler(req, res) {
           );
         }
 
-        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+        if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          return res.status(200).json({ ok: true, sent: contacts.length, warning: 'AWS SES não configurado — emails não enviados' });
+          return res.status(200).json({ ok: true, sent: contacts.length, warning: 'SMTP não configurado — emails não enviados' });
         }
 
-        const ses = new SESv2Client({
-          region: process.env.AWS_REGION || 'eu-west-1',
-          credentials: {
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        const port = parseInt(process.env.SMTP_PORT || '587', 10);
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port,
+          secure: port === 465, // true para 465 (SSL), false para 587 (STARTTLS)
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
           },
         });
         const c = camp[0];
-        const fromDomain = process.env.SES_FROM_DOMAIN || 'caetano.pt';
-        const configSet = process.env.SES_CONFIGURATION_SET || null;
+        const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
         let sent = 0, failed = 0;
 
-        const BATCH = 14; // SES default rate limit is 14/sec for new accounts
-        for (let i = 0; i < contacts.length; i += BATCH) {
-          await Promise.all(contacts.slice(i, i + BATCH).map(async contact => {
+        // SES default rate limit is 14/sec for new accounts. Adjust via SMTP_RATE.
+        const RATE = parseInt(process.env.SMTP_RATE || '14', 10);
+        for (let i = 0; i < contacts.length; i += RATE) {
+          await Promise.all(contacts.slice(i, i + RATE).map(async contact => {
             try {
-              const cmd = new SendEmailCommand({
-                FromEmailAddress: `${c.from_name||'PrimeMail'} <${c.from_email||`newsletter@${fromDomain}`}>`,
-                Destination: { ToAddresses: [contact.email] },
-                ReplyToAddresses: c.reply_to ? [c.reply_to] : undefined,
-                Content: {
-                  Simple: {
-                    Subject: { Data: c.subject || '(sem assunto)', Charset: 'UTF-8' },
-                    Body: {
-                      Html: {
-                        Data: (c.html_content||'')
-                          .replace(/\{\{name\}\}/g, contact.name||contact.email)
-                          .replace(/\{\{email\}\}/g, contact.email),
-                        Charset: 'UTF-8',
-                      },
-                    },
-                  },
+              const info = await transporter.sendMail({
+                from: `${c.from_name||'PrimeMail'} <${c.from_email||`newsletter@${fromDomain}`}>`,
+                to: contact.email,
+                subject: c.subject || '(sem assunto)',
+                replyTo: c.reply_to || undefined,
+                html: (c.html_content||'')
+                  .replace(/\{\{name\}\}/g, contact.name||contact.email)
+                  .replace(/\{\{email\}\}/g, contact.email),
+                headers: {
+                  'X-Campaign-Id': String(id),
+                  'X-Contact-Id':  String(contact.id),
                 },
-                ...(configSet ? { ConfigurationSetName: configSet } : {}),
-                EmailTags: [
-                  { Name: 'campaign_id', Value: String(id) },
-                  { Name: 'contact_id',  Value: String(contact.id) },
-                ],
               });
-              const out = await ses.send(cmd);
               await query(
                 "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
-                [out?.MessageId||null, id, contact.id]
+                [info?.messageId||null, id, contact.id]
               );
               sent++;
             } catch (err) {
-              console.error('SES send error:', err?.message);
+              console.error('SMTP send error:', err?.message);
               await query(
                 "UPDATE campaign_recipients SET status='failed' WHERE campaign_id=$1 AND contact_id=$2",
                 [id, contact.id]
@@ -144,10 +136,11 @@ module.exports = async function handler(req, res) {
               failed++;
             }
           }));
-          // Throttle to respect SES rate limit (1 second per batch)
-          if (i + BATCH < contacts.length) await new Promise(r => setTimeout(r, 1000));
+          // Throttle to respect rate limit (1 second per batch)
+          if (i + RATE < contacts.length) await new Promise(r => setTimeout(r, 1000));
         }
 
+        transporter.close();
         await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
         return res.status(200).json({ ok: true, sent, failed, total: contacts.length });
       }
