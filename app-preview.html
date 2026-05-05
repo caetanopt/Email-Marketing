@@ -126,6 +126,8 @@
             _setText('dash-click-val', clickRate + '%');
             _setBarWidth('dash-open-bar', parseFloat(openRate));
             _setBarWidth('dash-click-bar', parseFloat(clickRate));
+            _setText('dash-bounce-val', '0%');
+            _setBarWidth('dash-bounce-bar', 0);
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
     }
 
@@ -241,6 +243,18 @@
             await apiFetch(`/api/lists/${listId}`, { method: 'DELETE' });
             btn.closest('tr').remove();
             showToast('Lista apagada.');
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function apiDeleteCampaign() {
+        if (!_currentCampaign?.id) return;
+        if (!confirm('Apagar esta campanha permanentemente?')) return;
+        try {
+            await apiFetch(`/api/campaigns/${_currentCampaign.id}`, { method: 'DELETE' });
+            _currentCampaign = null;
+            showScreen('campaigns');
+            showToast('Campanha apagada.');
+            _loadCampaigns(_currentBrand.id);
         } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -1809,13 +1823,13 @@ ${body}
         const act = document.getElementById('campShowActions');
         if (act) {
             if (_currentCampStatus === 'draft') {
-                act.innerHTML = `<button onclick="showScreen('campaignCreate')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
                     <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
             } else if (_currentCampStatus === 'scheduled') {
-                act.innerHTML = `<button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
-                    <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>
-                    <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
+                act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
+                    <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
+                    <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>`;
             } else {
                 act.innerHTML = `<button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
                     <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
