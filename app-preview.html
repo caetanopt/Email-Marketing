@@ -1807,12 +1807,11 @@ ${body}
     let _currentCampaign = null;
 
     async function showCampaign(statusOrId, campaign) {
-        // Backwards-compatible: if first arg is a status string and no campaign object, just set status
-        if (campaign && campaign.id) _currentCampaign = campaign;
-        else if (typeof statusOrId === 'string' && statusOrId.length > 30) {
-            // Treat as ID
-            try { _currentCampaign = await apiFetch(`/api/campaigns/${statusOrId}`); }
-            catch (e) { showToast(e.message,'error'); return; }
+        // Determine campaign ID and always fetch fresh details (with lists + html_content)
+        const id = (campaign && campaign.id) || (typeof statusOrId === 'string' && statusOrId.length > 30 ? statusOrId : null);
+        if (id) {
+            try { _currentCampaign = await apiFetch(`/api/campaigns/${id}`); }
+            catch (e) { showToast(e.message, 'error'); return; }
         }
         const c = _currentCampaign || { status: typeof statusOrId === 'string' ? statusOrId : 'sent' };
         _currentCampStatus = c.status || 'sent';
@@ -1861,22 +1860,40 @@ ${body}
                 listsEl.innerHTML = `<div class="text-sm text-slate-400 py-2">Sem listas associadas.</div>`;
             }
         }
+        // Email preview — render real template HTML
+        const previewEl = document.getElementById('campShowPreviewBody');
+        if (previewEl) {
+            const html = c.html_content;
+            if (html && html.trim()) {
+                previewEl.innerHTML = `<iframe srcdoc="${html.replace(/"/g,'&quot;')}" class="w-full bg-white rounded" style="height:520px;border:1px solid #e2e8f0"></iframe>`;
+            } else {
+                previewEl.innerHTML = `<p class="text-center text-sm text-slate-400 py-12">Sem template associado a esta campanha.</p>`;
+            }
+        }
         // Performance — fetch report metrics if sent
-        const sentCount = c.sent_count || 0;
-        _setText('campShowSent', sentCount.toString());
-        if (_currentCampStatus === 'sent' && c.id) {
+        _setText('campShowSent', '—');
+        _setText('campShowOpen', '—');
+        _setText('campShowClick', '—');
+        _setText('campShowKpiOpens', '0');
+        _setText('campShowKpiClicks', '0');
+        _setText('campShowKpiFailed', '0');
+        _setText('campShowKpiSuppressed', '0');
+        if (c.id && _currentCampStatus !== 'draft') {
             try {
                 const rep = await apiFetch(`/api/campaigns/${c.id}?action=report`);
-                const open = parseFloat(rep.engagement?.open_rate || 0);
-                const click = parseFloat(rep.engagement?.click_rate || 0);
+                const dlv = rep.delivery || {}, eng = rep.engagement || {};
+                _setText('campShowSent', (dlv.sent||0).toString());
+                const open = parseFloat(eng.open_rate || 0);
+                const click = parseFloat(eng.click_rate || 0);
                 _setText('campShowOpen', open + '%');
                 _setText('campShowClick', click + '%');
                 const ob = document.getElementById('campShowOpenBar'); if (ob) ob.style.width = Math.min(open, 100) + '%';
                 const cb = document.getElementById('campShowClickBar'); if (cb) cb.style.width = Math.min(click, 100) + '%';
+                _setText('campShowKpiOpens', (eng.opens||0).toString());
+                _setText('campShowKpiClicks', (eng.unique_clicks||0).toString());
+                _setText('campShowKpiFailed', (dlv.failed||0).toString());
+                _setText('campShowKpiSuppressed', (dlv.suppressed||0).toString());
             } catch {}
-        } else {
-            _setText('campShowOpen', '—');
-            _setText('campShowClick', '—');
         }
         const sp = document.getElementById('campSendPanel');
         if (sp) sp.classList.toggle('hidden', _currentCampStatus === 'sent');
@@ -1932,7 +1949,16 @@ ${body}
         showToast(`Relatório exportado em ${fmt.toUpperCase()}. O download irá iniciar em breve.`);
     }
 
-    function openSendNowModal()  { const m=document.getElementById('sendNowModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
+    function openSendNowModal()  {
+        const c = _currentCampaign || {};
+        const totalRecipients = (c.lists||[]).reduce((s,l) => s + (parseInt(l.total)||0), 0);
+        const listsLabel = (c.lists||[]).map(l => l.name).join(', ') || '—';
+        const senderLabel = (c.from_name && c.from_email) ? `${c.from_name} <${c.from_email}>` : (c.from_email || '—');
+        _setText('snmRecipients', totalRecipients.toLocaleString('pt-PT'));
+        _setText('snmLists', listsLabel);
+        _setText('snmSender', senderLabel);
+        const m=document.getElementById('sendNowModal');  m.classList.remove('hidden'); m.classList.add('flex');
+    }
     function closeSendNowModal() { const m=document.getElementById('sendNowModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
     async function confirmSendNow() {
         if (!_currentCampaign?.id) { showToast('Campanha não identificada.','error'); return; }
@@ -3767,21 +3793,8 @@ ${body}
                                 <div class="w-3 h-3 rounded-full bg-green-400"></div>
                                 <span class="text-xs text-slate-500 ml-2">Email renderizado</span>
                             </div>
-                            <div class="p-8" style="background: #f5f7fa">
-                                <div class="max-w-lg mx-auto">
-                                    <div style="background: #1C69D4" class="p-6 text-center">
-                                        <h2 class="text-white text-xl font-bold">BMW Caetano</h2>
-                                    </div>
-                                    <div class="bg-white p-8">
-                                        <h3 class="text-2xl font-bold text-slate-900 mb-4">Olá João,</h3>
-                                        <p class="text-slate-700 mb-4">Este mês preparámos novidades exclusivas. Explora os novos modelos da BMW, agenda o teu test drive e aproveita condições únicas.</p>
-                                        <p class="text-slate-700 mb-6">Não percas — oferta válida apenas até ao final de Abril.</p>
-                                        <a class="inline-block px-6 py-3 bg-slate-900 text-white rounded font-medium">Agendar Test Drive</a>
-                                    </div>
-                                    <div style="background: #1A1A2E" class="p-4 text-center">
-                                        <p class="text-slate-400 text-xs">© 2026 BMW Caetano · <a onclick="showScreen('unsubscribe')" class="text-slate-300 cursor-pointer hover:text-white">Cancelar subscrição</a></p>
-                                    </div>
-                                </div>
+                            <div id="campShowPreviewBody" class="p-8" style="background: #f5f7fa">
+                                <p class="text-center text-sm text-slate-400 py-12">Sem template associado.</p>
                             </div>
                         </div>
                     </div>
@@ -3817,19 +3830,19 @@ ${body}
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                                <p class="text-xl font-semibold text-slate-900">2 383</p>
+                                <p id="campShowKpiOpens" class="text-xl font-semibold text-slate-900">—</p>
                                 <p class="text-xs text-slate-500 mt-0.5">Aberturas</p>
                             </div>
                             <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                                <p class="text-xl font-semibold text-slate-900">514</p>
+                                <p id="campShowKpiClicks" class="text-xl font-semibold text-slate-900">—</p>
                                 <p class="text-xs text-slate-500 mt-0.5">Cliques únicos</p>
                             </div>
                             <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                                <p class="text-xl font-semibold text-red-600">42</p>
+                                <p id="campShowKpiFailed" class="text-xl font-semibold text-red-600">—</p>
                                 <p class="text-xs text-slate-500 mt-0.5">Falhados</p>
                             </div>
                             <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                                <p class="text-xl font-semibold text-slate-500">18</p>
+                                <p id="campShowKpiSuppressed" class="text-xl font-semibold text-slate-500">—</p>
                                 <p class="text-xs text-slate-500 mt-0.5">Suprimidos</p>
                             </div>
                         </div>
@@ -5644,9 +5657,9 @@ ${body}
                 ⚠️ Esta acção não pode ser desfeita. A campanha será enviada para todas as listas seleccionadas.
             </div>
             <div class="mt-4 space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-slate-500">Destinatários estimados:</span><span class="font-semibold text-slate-900">3 421</span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Lista:</span><span class="font-semibold text-slate-900">BMW Clientes Premium</span></div>
-                <div class="flex justify-between"><span class="text-slate-500">Remetente:</span><span class="font-semibold text-slate-900">BMW Caetano &lt;bmw@caetano.pt&gt;</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Destinatários estimados:</span><span id="snmRecipients" class="font-semibold text-slate-900">—</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Listas:</span><span id="snmLists" class="font-semibold text-slate-900">—</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Remetente:</span><span id="snmSender" class="font-semibold text-slate-900">—</span></div>
             </div>
         </div>
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
