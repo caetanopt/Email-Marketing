@@ -48,6 +48,12 @@
         if (btn) { btn.disabled = true; btn.textContent = 'A entrar…'; }
         try {
             const data = await apiFetch('/api/auth', { method: 'POST', body: JSON.stringify({ email, password: pass }) });
+            const remember = document.getElementById('loginRemember')?.checked;
+            if (remember) {
+                localStorage.setItem('pm_remember_email', email);
+            } else {
+                localStorage.removeItem('pm_remember_email');
+            }
             setToken(data.token);
             localStorage.setItem('pm_user', JSON.stringify(data.user));
             localStorage.setItem('pm_brands', JSON.stringify(data.brands));
@@ -2038,15 +2044,30 @@ ${body}
         }
     }
 
-    function mockDuplicateCampaign() {
-        _dupMode = 'campaign'; _dupSrcId = null; _dupBrandSel = null;
-        const t = document.getElementById('dupModalTitle'); if (t) t.textContent='Duplicar Campanha';
-        const d = document.getElementById('dupModalDesc'); if (d) d.textContent='Selecciona a marca de destino onde a campanha será duplicada.';
-        const srch = document.getElementById('dupBrandSearch'); if (srch) srch.value = '';
-        const list = document.getElementById('dupBrandList');
-        if (list) list.innerHTML = _dupBrands.map(_dupBrandItem).join('');
-        const modal = document.getElementById('dupBrandModal');
-        if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    async function mockDuplicateCampaign() {
+        if (!_currentCampaign) return;
+        const c = _currentCampaign;
+        if (!confirm(`Duplicar a campanha "${c.name}"?`)) return;
+        try {
+            const listIds = (c.lists||[]).map(l => l.id).filter(Boolean);
+            const { id: newId } = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: `Cópia de ${c.name}`,
+                    subject: c.subject || '',
+                    preview_text: c.preview_text || '',
+                    from_name: c.from_name || 'Caetano',
+                    from_email: c.from_email || 'info@caetano.pt',
+                    template_id: c.template_id || null,
+                    list_ids: listIds,
+                })
+            });
+            await _loadCampaigns(_currentBrand.id);
+            showToast(`Campanha duplicada com ID #${newId}.`);
+            showScreen('campaigns');
+        } catch(e) {
+            showToast(e.message || 'Erro ao duplicar campanha.', 'error');
+        }
     }
 
     function mockSendTestEmail() {
@@ -2504,6 +2525,10 @@ ${body}
                     </div>
                     <input id="loginPass" type="password" placeholder="••••••••"
                            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <input id="loginRemember" type="checkbox" class="rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
+                    <label for="loginRemember" class="text-sm text-slate-600 cursor-pointer">Lembrar email</label>
                 </div>
                 <p id="loginErr" class="hidden text-sm text-red-600 text-center"></p>
                 <button id="loginBtn" type="submit"
@@ -3254,6 +3279,14 @@ ${body}
                 if (lines) lines.scrollTop = ev.target.scrollTop;
             }
         }, true);
+        // Pre-fill remembered email
+        const remembered = localStorage.getItem('pm_remember_email');
+        if (remembered) {
+            const emailEl = document.getElementById('loginEmail');
+            if (emailEl) emailEl.value = remembered;
+            const remEl = document.getElementById('loginRemember');
+            if (remEl) remEl.checked = true;
+        }
         // Check for existing session
         const token = getToken();
         const brands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
@@ -5768,6 +5801,30 @@ ${body}
         <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
             <button onclick="closePermissionsModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button onclick="savePermissions()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar permissões</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — EDITAR CAMPANHA
+═══════════════════════════════════════════════════════════════════ -->
+<div id="editCampaignModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closeEditCampaignModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <h2 class="text-lg font-semibold text-slate-900">Editar Campanha</h2>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome *</label><input id="editCampName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto</label><input id="editCampSubject" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Texto de pré-visualização</label><input id="editCampPreview" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            <div class="grid grid-cols-2 gap-3">
+                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome remetente</label><input id="editCampFromName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email remetente</label><input id="editCampFromEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            </div>
+        </div>
+        <div class="px-6 pb-6 flex justify-end gap-3">
+            <button onclick="closeEditCampaignModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button id="editCampBtn" onclick="confirmEditCampaign()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">Guardar</button>
         </div>
     </div>
 </div>
