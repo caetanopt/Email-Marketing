@@ -25,7 +25,7 @@
     const API_BASE = 'https://email-marketing-eta.vercel.app';
     const getToken  = () => localStorage.getItem('pm_token');
     const setToken  = t  => localStorage.setItem('pm_token', t);
-    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); };
+    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); };
 
     // ── Hash-based routing ───────────────────────────────
     const _ROUTE_TO_SCREEN = {
@@ -2911,6 +2911,7 @@ ${body}
     function selectBrand(id, name, color) {
         const b = _allBrands.find(x => x.id === id) || {};
         _currentBrand = { id, name, color, bg: b.bg || '#FFFFFF', logo: b.logo || '', invert: b.invert || false };
+        localStorage.setItem('pm_current_brand', JSON.stringify(_currentBrand));
         applyBrandToSidebar();
         document.querySelectorAll('.brand-card').forEach(b => {
             b.classList.remove('brand-selected');
@@ -3353,9 +3354,18 @@ ${body}
         if (token && brands.length) {
             _userBrandIds = new Set(brands.map(b => b.brand_id));
             renderBrandSelect();
-            // Try to honour the hash on initial load
-            const startScreen = _screenFromHash(location.hash) || 'brandSelect';
-            showScreen(startScreen);
+            // Restore last selected brand
+            const savedBrand = (() => { try { return JSON.parse(localStorage.getItem('pm_current_brand')||'null'); } catch { return null; } })();
+            const hashScreen = _screenFromHash(location.hash);
+            if (savedBrand && hashScreen && hashScreen !== 'brandSelect') {
+                // Restore brand state and go directly to the screen
+                _currentBrand = savedBrand;
+                applyBrandToSidebar();
+                renderBrandData(savedBrand.id);
+                showScreen(hashScreen);
+            } else {
+                showScreen('brandSelect');
+            }
         } else {
             showScreen('login');
         }
