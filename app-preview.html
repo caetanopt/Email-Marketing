@@ -113,6 +113,19 @@
                     <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a></td>
                 </tr>`).join('');
             _setText('dash-campaigns', data.length.toString());
+            const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
+            _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
+            // Aggregate engagement
+            const sent = data.reduce((s,c) => s + (c.sent_count||0), 0);
+            const opens = data.reduce((s,c) => s + (c.open_count||0), 0);
+            const clicks = data.reduce((s,c) => s + (c.click_count||0), 0);
+            const openRate  = sent ? ((opens/sent)*100).toFixed(1) : 0;
+            const clickRate = sent ? ((clicks/sent)*100).toFixed(1) : 0;
+            _setText('dash-openrate', openRate + '%');
+            _setText('dash-open-val', openRate + '%');
+            _setText('dash-click-val', clickRate + '%');
+            _setBarWidth('dash-open-bar', parseFloat(openRate));
+            _setBarWidth('dash-click-bar', parseFloat(clickRate));
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
     }
 
@@ -1527,12 +1540,38 @@ ${body}
     }
 
     // ── Brand Settings save ──────────────────────────────
-    function mockSaveSettingsValidated() {
-        const colorText = document.getElementById('brandColorText')?.value.trim();
-        if (colorText && !/^#[0-9a-fA-F]{6}$/.test(colorText)) {
+    async function mockSaveSettingsValidated() {
+        const color = document.getElementById('brandColorText')?.value.trim();
+        if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
             showToast('Cor inválida — usa o formato #RRGGBB.', 'error'); return;
         }
-        showToast('Definições guardadas com sucesso.');
+        const payload = {
+            name:       document.getElementById('bsName')?.value.trim() || null,
+            color:      color || null,
+            logo_url:   document.getElementById('bsLogoUrl')?.value.trim() || null,
+            from_name:  document.getElementById('bsFromName')?.value.trim() || null,
+            from_email: document.getElementById('bsFromEmail')?.value.trim() || null,
+            reply_to:   document.getElementById('bsReplyTo')?.value.trim() || null,
+        };
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            // Update sidebar with new name/color
+            if (payload.name) _currentBrand.name = payload.name;
+            if (payload.color) _currentBrand.color = payload.color;
+            applyBrandToSidebar();
+            showToast('Definições guardadas com sucesso.');
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function _loadBrandSettings() {
+        if (!_currentBrand?.id) return;
+        try {
+            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
+            const fields = { bsName: b.name||'', bsLogoUrl: b.logo_url||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
+            Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
+            const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
+            const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
+        } catch {}
     }
 
     // ── Unsubscribe (público) ────────────────────────────
@@ -2471,7 +2510,20 @@ ${body}
             if (id === 'team') _syncRolesPanel();
             // Load campaign report when entering report screen
             if (id === 'campaignReport') _loadCampaignReport();
+            // Load brand settings when entering settings screen
+            if (id === 'brandSettings') _loadBrandSettings();
+            // Load lists into import select
+            if (id === 'imports') _loadImportLists();
         }
+    }
+
+    async function _loadImportLists() {
+        const sel = document.getElementById('importListSelect');
+        if (!sel || !_currentBrand?.id) return;
+        try {
+            const { data } = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}&limit=100`);
+            sel.innerHTML = `<option value="">Nenhuma — só base de dados</option>` + data.map(l => `<option value="${l.id}">${l.name} (${l.total||0})</option>`).join('');
+        } catch {}
     }
 
     async function _loadCampaignReport() {
@@ -3008,11 +3060,20 @@ ${body}
         if (btn) btn.disabled = false;
     }
 
+    let _importFile = null;
+
     function mockPickFile() {
-        const txtTab = document.getElementById('tab-txt');
-        const isTxt = txtTab && txtTab.classList.contains('bg-white');
-        const name = isTxt ? 'emails_lista.txt' : 'contactos_2026.csv';
-        _showFileFilled(name);
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.csv,.txt';
+        inp.onchange = () => {
+            const f = inp.files?.[0];
+            if (!f) return;
+            _importFile = f;
+            if (f.name.toLowerCase().endsWith('.txt')) setImportTab('txt'); else setImportTab('csv');
+            _showFileFilled(f.name);
+        };
+        inp.click();
     }
 
     function mockDragOver(el) {
@@ -3029,13 +3090,15 @@ ${body}
     function mockDropFile(e) {
         e.preventDefault();
         const file = e.dataTransfer?.files?.[0];
-        const name = file ? file.name : 'contactos_importados.csv';
-        if (name.endsWith('.txt')) setImportTab('txt');
+        if (!file) return;
+        _importFile = file;
+        if (file.name.toLowerCase().endsWith('.txt')) setImportTab('txt');
         else setImportTab('csv');
-        _showFileFilled(name);
+        _showFileFilled(file.name);
     }
 
     function clearMockFile() {
+        _importFile = null;
         document.getElementById('dropEmpty').classList.remove('hidden');
         const filled = document.getElementById('dropFilled');
         filled.classList.add('hidden');
@@ -3047,16 +3110,105 @@ ${body}
         if (btn) btn.disabled = true;
     }
 
-    function mockStartImport() {
+    function _parseCsv(text) {
+        // Auto-detect delimiter (comma, semicolon, tab)
+        const firstLine = text.split(/\r?\n/, 1)[0] || '';
+        const delim = firstLine.includes(';') ? ';' : firstLine.includes('\t') ? '\t' : ',';
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (!lines.length) return [];
+        const parseLine = line => {
+            const result = [];
+            let cur = '', inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (inQ) {
+                    if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+                    else if (ch === '"') inQ = false;
+                    else cur += ch;
+                } else {
+                    if (ch === '"') inQ = true;
+                    else if (ch === delim) { result.push(cur); cur = ''; }
+                    else cur += ch;
+                }
+            }
+            result.push(cur);
+            return result.map(s => s.trim());
+        };
+        const headers = parseLine(lines[0]).map(h => h.toLowerCase());
+        const emailIdx   = headers.findIndex(h => /^e?mail$/.test(h) || h === 'email');
+        const nameIdx    = headers.findIndex(h => h === 'name' || h === 'nome' || h === 'first_name');
+        const lastIdx    = headers.findIndex(h => h === 'last_name' || h === 'apelido');
+        const phoneIdx   = headers.findIndex(h => h === 'phone' || h === 'telefone');
+        const companyIdx = headers.findIndex(h => h === 'company' || h === 'empresa');
+        if (emailIdx < 0) return [];
+        return lines.slice(1).map(l => {
+            const cols = parseLine(l);
+            const fname = nameIdx >= 0 ? cols[nameIdx] : '';
+            const lname = lastIdx >= 0 ? cols[lastIdx] : '';
+            return {
+                email:   (cols[emailIdx]||'').toLowerCase(),
+                name:    [fname, lname].filter(Boolean).join(' ').trim() || null,
+                phone:   phoneIdx >= 0 ? cols[phoneIdx] : null,
+                company: companyIdx >= 0 ? cols[companyIdx] : null,
+            };
+        }).filter(c => c.email && c.email.includes('@'));
+    }
+
+    async function mockStartImport() {
         const btn = document.getElementById('importSubmitBtn');
         if (!btn || btn.disabled) return;
+        if (!_importFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
         btn.disabled = true;
         btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-2 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…';
-        setTimeout(() => {
+        try {
+            const text = await _importFile.text();
+            const isTxt = _importFile.name.toLowerCase().endsWith('.txt');
+            let rows = [];
+            if (isTxt) {
+                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && l.includes('@')).map(email => ({ email: email.toLowerCase() }));
+            } else {
+                rows = _parseCsv(text);
+            }
+            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
+
+            // Determine target list (existing or new)
+            const isNewList = document.getElementById('new-list-input')?.classList.contains('hidden') === false;
+            let listId = null;
+            if (isNewList) {
+                const newName = document.querySelector('#new-list-input input')?.value.trim();
+                if (newName) {
+                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; } catch {}
+                }
+            } else {
+                const sel = document.getElementById('importListSelect');
+                listId = sel?.value || null;
+            }
+
+            let imported = 0, failed = 0;
+            const CHUNK = 5;
+            for (let i = 0; i < rows.length; i += CHUNK) {
+                const chunk = rows.slice(i, i + CHUNK);
+                await Promise.all(chunk.map(async c => {
+                    try {
+                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
+                        imported++;
+                        if (listId && r.id) {
+                            try { await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch {}
+                        }
+                    } catch { failed++; }
+                }));
+            }
             clearMockFile();
-            showScreen('imports');
-            showToast('Importação iniciada com sucesso! A processar em segundo plano.');
-        }, 1400);
+            btn.innerHTML = 'Importar';
+            showToast(`${imported} contactos importados${failed?`, ${failed} falhas`:''}.`);
+            _loadContacts(_currentBrand.id);
+            _loadLists(_currentBrand.id);
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = 'Importar';
+            showToast('Erro: ' + e.message, 'error');
+            return;
+        }
     }
 
     function selectListMode(mode) {
@@ -4735,11 +4887,8 @@ ${body}
                         </div>
                         <!-- Select / input (largura total) -->
                         <div id="existing-input">
-                            <select class="w-full pl-3 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
-                                <option>Nenhuma — só base de dados</option>
-                                <option>Clientes Premium</option>
-                                <option>Newsletter Geral</option>
-                                <option>VIP — Fidelização</option>
+                            <select id="importListSelect" class="w-full pl-3 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                <option value="">Nenhuma — só base de dados</option>
                             </select>
                         </div>
                         <div id="new-list-input" class="hidden">
@@ -5072,7 +5221,7 @@ ${body}
                         <div class="space-y-4">
                             <div>
                                 <label class="block text-xs text-slate-500 mb-1">Nome da marca</label>
-                                <input type="text" value="Caetano Retail" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                <input id="bsName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                             </div>
                             <div>
                                 <label class="block text-xs text-slate-500 mb-1">Cor principal</label>
@@ -5082,8 +5231,8 @@ ${body}
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-slate-500 mb-1">Domínio de envio</label>
-                                <input type="text" value="caetanoretail.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                <label class="block text-xs text-slate-500 mb-1">URL do logo</label>
+                                <input id="bsLogoUrl" type="text" placeholder="https://..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                             </div>
                         </div>
                     </div>
@@ -5135,11 +5284,15 @@ ${body}
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs text-slate-500 mb-1">Nome do remetente</label>
-                                <input type="text" value="Caetano Retail" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                                <input id="bsFromName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
                             </div>
                             <div>
                                 <label class="block text-xs text-slate-500 mb-1">Email do remetente</label>
-                                <input type="email" value="noreply@caetanoretail.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                                <input id="bsFromEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Reply-to</label>
+                                <input id="bsReplyTo" type="email" placeholder="opcional" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
                             </div>
                         </div>
                     </div>
