@@ -78,8 +78,12 @@ module.exports = async function handler(req, res) {
       // ── Enviar campanha ──────────────────────────────
       if (action === 'send') {
         const camp = await query(
-          `SELECT c.*, t.html_content FROM campaigns c
-           LEFT JOIN templates t ON t.id=c.template_id WHERE c.id=$1`, [id]
+          `SELECT c.*, t.html_content,
+                  b.from_name AS brand_from_name, b.from_email AS brand_from_email, b.reply_to AS brand_reply_to
+           FROM campaigns c
+           LEFT JOIN templates t ON t.id=c.template_id
+           LEFT JOIN brands b ON b.id=c.brand_id
+           WHERE c.id=$1`, [id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         if (camp[0].status === 'sending')
@@ -124,6 +128,9 @@ module.exports = async function handler(req, res) {
         const c = camp[0];
         const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
         const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+        const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
+        const fromEmail = c.from_email || c.brand_from_email || `info@${fromDomain}`;
+        const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         let sent = 0, failed = 0;
 
         // SES default rate limit is 14/sec for new accounts. Adjust via SMTP_RATE.
@@ -144,10 +151,10 @@ module.exports = async function handler(req, res) {
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
               const info = await transporter.sendMail({
-                from: `${c.from_name||'PrimeMail'} <${c.from_email||`newsletter@${fromDomain}`}>`,
+                from: `${fromName} <${fromEmail}>`,
                 to: contact.email,
                 subject: c.subject || '(sem assunto)',
-                replyTo: c.reply_to || undefined,
+                replyTo,
                 text: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
                 html: finalHtml,
                 headers: {
@@ -186,8 +193,12 @@ module.exports = async function handler(req, res) {
         if (!to || !to.includes('@')) return res.status(400).json({ error: 'Email de destino inválido' });
 
         const camp = await query(
-          `SELECT c.*, t.html_content FROM campaigns c
-           LEFT JOIN templates t ON t.id=c.template_id WHERE c.id=$1`, [id]
+          `SELECT c.*, t.html_content,
+                  b.from_name AS brand_from_name, b.from_email AS brand_from_email, b.reply_to AS brand_reply_to
+           FROM campaigns c
+           LEFT JOIN templates t ON t.id=c.template_id
+           LEFT JOIN brands b ON b.id=c.brand_id
+           WHERE c.id=$1`, [id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
 
@@ -203,6 +214,9 @@ module.exports = async function handler(req, res) {
         const c = camp[0];
         const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
         const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+        const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
+        const fromEmail = c.from_email || c.brand_from_email || `info@${fromDomain}`;
+        const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         const unsubUrl = `${appUrl}#unsubscribe`;
         const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
           <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo PrimeMail.</p>
@@ -217,10 +231,10 @@ module.exports = async function handler(req, res) {
           : rawHtml + unsubBlock;
         try {
           const info = await transporter.sendMail({
-            from: `${c.from_name||'PrimeMail'} <${c.from_email||`newsletter@${fromDomain}`}>`,
+            from: `${fromName} <${fromEmail}>`,
             to,
             subject: `[TESTE] ${c.subject || '(sem assunto)'}`,
-            replyTo: c.reply_to || undefined,
+            replyTo,
             text: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml),
             html: finalHtml,
           });
