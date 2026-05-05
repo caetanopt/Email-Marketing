@@ -2483,37 +2483,28 @@ ${body}
 </head>
 <body class="bg-slate-50">
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     NAVEGAÇÃO SUPERIOR DO MOCKUP
-═══════════════════════════════════════════════════════════════════ -->
-<div class="fixed top-0 left-0 right-0 z-50 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <span class="text-xs font-medium text-amber-800">🖼️ MOCKUP INTERACTIVO</span>
-        <span class="text-xs text-amber-600">Clica nos botões para navegar entre ecrãs</span><span class="text-xs text-amber-500 ml-4 font-mono">v29Apr-BrandIsolation</span>
-    </div>
-    <select id="screenSelector" class="pl-3 pr-8 py-1 border border-amber-300 rounded-md text-xs bg-white" onchange="showScreen(this.value)">
-        <option value="login">Login</option>
-        <option value="forgotPassword">Recuperar Password</option>
-        <option value="brandSelect">Seletor de Marca</option>
-        <option value="dashboard">Dashboard</option>
-        <option value="campaigns">Campanhas (lista)</option>
-        <option value="campaignCreate">Nova Campanha (wizard)</option>
-        <option value="campaignShow">Detalhe de Campanha</option>
-        <option value="campaignReport">Relatório de Campanha</option>
-        <option value="contacts">Contactos</option>
-        <option value="contactShow">Detalhe de Contacto</option>
-        <option value="templates">Templates</option>
-        <option value="templateEdit">Editor MJML</option>
-        <option value="lists">Listas</option>
-        <option value="listEdit">Editar Lista</option>
-        <option value="imports">Importações</option>
-        <option value="suppression">Supressão</option>
-        <option value="team">Equipa</option>
-        <option value="brandSettings">Definições da Marca</option>
-        <option value="unsubscribe">Unsubscribe (público)</option>
-    </select>
-</div>
-<div class="pt-10"></div>
+<!-- screenSelector kept hidden for internal JS usage -->
+<select id="screenSelector" class="hidden" onchange="showScreen(this.value)">
+    <option value="login">Login</option>
+    <option value="forgotPassword">Recuperar Password</option>
+    <option value="brandSelect">Seletor de Marca</option>
+    <option value="dashboard">Dashboard</option>
+    <option value="campaigns">Campanhas</option>
+    <option value="campaignCreate">Nova Campanha</option>
+    <option value="campaignShow">Detalhe de Campanha</option>
+    <option value="campaignReport">Relatório de Campanha</option>
+    <option value="contacts">Contactos</option>
+    <option value="contactShow">Detalhe de Contacto</option>
+    <option value="templates">Templates</option>
+    <option value="templateEdit">Editor MJML</option>
+    <option value="lists">Listas</option>
+    <option value="listEdit">Editar Lista</option>
+    <option value="imports">Importações</option>
+    <option value="suppression">Supressão</option>
+    <option value="team">Equipa</option>
+    <option value="brandSettings">Definições da Marca</option>
+    <option value="unsubscribe">Unsubscribe (público)</option>
+</select>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      ECRÃ 1 — LOGIN
@@ -2631,11 +2622,18 @@ ${body}
                     <div class="w-px h-8 bg-slate-300"></div>
                     <span class="text-sm font-semibold tracking-widest text-slate-400 uppercase">PrimeMail</span>
                 </div>
-                <h1 class="text-2xl font-semibold text-slate-900 mb-1">Olá, Administrador</h1>
+                <h1 id="brandSelectGreeting" class="text-2xl font-semibold text-slate-900 mb-1">Olá</h1>
                 <p class="text-slate-500 text-sm">Escolhe a marca com que queres trabalhar hoje</p>
             </div>
 
             <div id="brandSelectGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3">
+            </div>
+
+            <div class="text-center mt-12">
+                <button onclick="doLogout()" class="text-sm text-slate-400 hover:text-slate-600 transition-colors inline-flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    Terminar sessão
+                </button>
             </div>
         </div>
     </div>
@@ -2645,7 +2643,7 @@ ${body}
      COMPONENTE SIDEBAR (reutilizado em todas as páginas internas)
 ═══════════════════════════════════════════════════════════════════ -->
 <template id="sidebar">
-    <aside class="w-64 bg-slate-900 flex flex-col fixed inset-y-0 top-10 left-0 z-20">
+    <aside class="w-64 bg-slate-900 flex flex-col fixed inset-y-0 top-0 left-0 z-20">
         <!-- Logo Caetano -->
         <div class="px-5 pt-4 pb-3 border-b border-white/10">
             <div class="flex items-center gap-2">
@@ -2929,6 +2927,9 @@ ${body}
     function renderBrandSelect() {
         const grid = document.getElementById('brandSelectGrid');
         if (!grid) return;
+        const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+        const greet = document.getElementById('brandSelectGreeting');
+        if (greet) greet.textContent = `Olá, ${_u.name || _u.email || 'Administrador'}`;
         const visible = _userBrandIds.size > 0
             ? _allBrands.filter(b => _userBrandIds.has(b.id))
             : _allBrands;
