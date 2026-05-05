@@ -1892,16 +1892,20 @@ ${body}
         // Action buttons
         const act = document.getElementById('campShowActions');
         if (act) {
+            const testBtn = `<button onclick="openTestEmailModal()" class="px-4 py-2 text-sm border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">Enviar teste</button>`;
             if (_currentCampStatus === 'draft') {
                 act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
+                    ${testBtn}
                     <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
             } else if (_currentCampStatus === 'scheduled') {
                 act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
+                    ${testBtn}
                     <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>`;
             } else {
                 act.innerHTML = `<button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
+                    ${testBtn}
                     <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
             }
         }
@@ -2050,6 +2054,34 @@ ${body}
     }
     function openScheduleModal()  { const m=document.getElementById('scheduleModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
     function closeScheduleModal() { const m=document.getElementById('scheduleModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
+
+    function openTestEmailModal() {
+        if (!_currentCampaign?.id) { showToast('Abre uma campanha primeiro.', 'error'); return; }
+        const user = JSON.parse(localStorage.getItem('pm_user') || '{}');
+        const emailEl = document.getElementById('testEmailInput');
+        if (emailEl && user.email) emailEl.value = user.email;
+        const m = document.getElementById('testEmailModal');
+        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+    }
+    function closeTestEmailModal() { const m = document.getElementById('testEmailModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+    async function confirmTestEmail() {
+        const email = document.getElementById('testEmailInput')?.value.trim();
+        if (!email || !email.includes('@')) { showToast('Insere um email válido.', 'error'); return; }
+        const btn = document.getElementById('testEmailBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'A enviar…'; }
+        try {
+            const r = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=test`, {
+                method: 'POST',
+                body: JSON.stringify({ to: email })
+            });
+            closeTestEmailModal();
+            showToast(`Email de teste enviado para ${email}. messageId: ${r.messageId || 'ok'}`);
+        } catch (e) {
+            showToast(`Erro: ${e.message}`, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Enviar teste'; }
+        }
+    }
     async function confirmSchedule() {
         const d=document.getElementById('schedDate')?.value, t=document.getElementById('schedTime')?.value;
         if (!d||!t) { showToast('Escolhe a data e hora.','error'); return; }
@@ -5685,6 +5717,29 @@ ${body}
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
             <button onclick="closeSendNowModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button onclick="confirmSendNow()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Confirmar Envio</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — EMAIL DE TESTE
+═══════════════════════════════════════════════════════════════════ -->
+<div id="testEmailModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closeTestEmailModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <h2 class="text-lg font-semibold text-slate-900">Enviar Email de Teste</h2>
+            <p class="text-sm text-slate-500 mt-1">Envia uma cópia de teste desta campanha para verificar o conteúdo e entrega.</p>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Endereço de destino</label>
+                <input id="testEmailInput" type="email" placeholder="teste@exemplo.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                <p class="text-xs text-slate-400 mt-1.5">O assunto terá o prefixo [TESTE]. Não afecta a campanha original.</p>
+            </div>
+        </div>
+        <div class="px-6 pb-6 flex justify-end gap-3">
+            <button onclick="closeTestEmailModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button id="testEmailBtn" onclick="confirmTestEmail()" class="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50">Enviar teste</button>
         </div>
     </div>
 </div>

@@ -3,10 +3,24 @@ const { requireAuth, cors } = require('../../lib/auth');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
-function unsubToken(email, brandId) {
-  return crypto.createHmac('sha256', process.env.JWT_SECRET || 'secret')
-    .update(`${email}:${brandId}`)
-    .digest('hex');
+function htmlToText(html) {
+  return (html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 module.exports = async function handler(req, res) {
@@ -134,6 +148,7 @@ module.exports = async function handler(req, res) {
                 to: contact.email,
                 subject: c.subject || '(sem assunto)',
                 replyTo: c.reply_to || undefined,
+                text: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
                 html: finalHtml,
                 headers: {
                   'X-Campaign-Id': String(id),
@@ -163,6 +178,58 @@ module.exports = async function handler(req, res) {
         transporter.close();
         await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
         return res.status(200).json({ ok: true, sent, failed, total: contacts.length });
+      }
+
+      // ── Email de teste ───────────────────────────────
+      if (action === 'test') {
+        const { to } = req.body || {};
+        if (!to || !to.includes('@')) return res.status(400).json({ error: 'Email de destino inválido' });
+
+        const camp = await query(
+          `SELECT c.*, t.html_content FROM campaigns c
+           LEFT JOIN templates t ON t.id=c.template_id WHERE c.id=$1`, [id]
+        );
+        if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
+
+        if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)
+          return res.status(400).json({ error: 'SMTP não configurado' });
+
+        const port = parseInt(process.env.SMTP_PORT || '587', 10);
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST, port,
+          secure: port === 465,
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        });
+        const c = camp[0];
+        const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+        const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+        const unsubUrl = `${appUrl}#unsubscribe`;
+        const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
+          <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo PrimeMail.</p>
+          <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
+        </div>`;
+        const rawHtml = ('[TESTE] ' + (c.html_content||'<p>Sem conteúdo de template.</p>'))
+          .replace(/\{\{name\}\}/g, 'Utilizador Teste')
+          .replace(/\{\{email\}\}/g, to)
+          .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+        const finalHtml = rawHtml.includes('</body>')
+          ? rawHtml.replace('</body>', unsubBlock + '</body>')
+          : rawHtml + unsubBlock;
+        try {
+          const info = await transporter.sendMail({
+            from: `${c.from_name||'PrimeMail'} <${c.from_email||`newsletter@${fromDomain}`}>`,
+            to,
+            subject: `[TESTE] ${c.subject || '(sem assunto)'}`,
+            replyTo: c.reply_to || undefined,
+            text: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml),
+            html: finalHtml,
+          });
+          transporter.close();
+          return res.status(200).json({ ok: true, messageId: info?.messageId || null });
+        } catch (err) {
+          transporter.close();
+          return res.status(500).json({ error: 'Falha no envio SMTP', detail: err.message });
+        }
       }
 
       // ── Relatório ────────────────────────────────────
