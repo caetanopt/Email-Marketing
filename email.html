@@ -98,14 +98,25 @@
         return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
     }
 
-    async function _loadContacts(brandId) {
+    let _contactsApiTotal = 0;
+    async function _loadContacts(brandId, page) {
+        page = page || 1;
+        _contactsPage = page;
         const el = document.getElementById('contactsTbody');
         if (!el) return;
         el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
-            const { data } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=50`);
+            const { data, total } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=${_contactsPerPage}&page=${page}`);
+            _contactsApiTotal = total || 0;
             const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>' };
-            if (!data.length) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`; return; }
+            if (!data.length) {
+                el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
+                _setText('contactsPageInfo', 'Sem contactos');
+                const nav = document.getElementById('contactsPagination'); if (nav) nav.innerHTML = '';
+                const footer = document.getElementById('contactsPageFooter'); if (footer) footer.classList.add('hidden');
+                _setText('dash-contacts', '0');
+                return;
+            }
             window._contactsCache = data;
             el.innerHTML = data.map((c, i) => `
                 <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
@@ -116,8 +127,35 @@
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
                     <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button></td>
                 </tr>`).join('');
-            _setText('dash-contacts', data.length >= 50 ? '50+' : data.length.toString());
+            _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
+            _updateContactsPagination();
         } catch (e) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+    }
+
+    function _updateContactsPagination() {
+        const total = _contactsApiTotal, per = _contactsPerPage, p = _contactsPage;
+        const pages = Math.max(1, Math.ceil(total / per));
+        const footer = document.getElementById('contactsPageFooter');
+        if (footer) footer.classList.toggle('hidden', total <= per);
+        const info = document.getElementById('contactsPageInfo');
+        if (info) {
+            const start = (p - 1) * per + 1, end = Math.min(p * per, total);
+            info.textContent = total > 0 ? `Mostrando ${start}–${end} de ${total.toLocaleString('pt-PT')} contactos` : 'Sem contactos';
+        }
+        const nav = document.getElementById('contactsPagination');
+        if (!nav) return;
+        const show = new Set([1, pages]);
+        for (let i = Math.max(1, p - 2); i <= Math.min(pages, p + 2); i++) show.add(i);
+        const sorted = Array.from(show).sort((a, b) => a - b);
+        let html = `<button onclick="contactsGoPage(${p-1})" ${p===1?'disabled':''} class="px-3 py-1 border border-slate-200 rounded ${p===1?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">Anterior</button>`;
+        let prev = 0;
+        for (const pg of sorted) {
+            if (pg - prev > 1) html += `<span class="px-1 py-1 text-slate-400">…</span>`;
+            html += `<button onclick="contactsGoPage(${pg})" class="px-3 py-1 border rounded ${pg===p?'border-slate-900 bg-slate-900 text-white font-semibold':'border-slate-200 hover:bg-slate-50'}">${pg}</button>`;
+            prev = pg;
+        }
+        html += `<button onclick="contactsGoPage(${p+1})" ${p===pages?'disabled':''} class="px-3 py-1 border border-slate-200 rounded ${p===pages?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">Próxima</button>`;
+        nav.innerHTML = html;
     }
 
     async function _loadCampaigns(brandId) {
@@ -1848,13 +1886,20 @@ ${body}
 
     async function mockCampaignNext() {
         if (_wizStep === 1) {
-            const name = document.getElementById('wizName')?.value.trim();
-            const subj = document.getElementById('wizSubject')?.value.trim();
-            if (!name) { showToast('O nome da campanha é obrigatório.', 'error'); return; }
-            if (!subj) { showToast('O assunto é obrigatório.', 'error'); return; }
+            const name      = document.getElementById('wizName')?.value.trim();
+            const subj      = document.getElementById('wizSubject')?.value.trim();
+            const fromName  = document.getElementById('wizFromName')?.value.trim();
+            const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
+            if (!name)      { showToast('O nome da campanha é obrigatório.', 'error'); return; }
+            if (!subj)      { showToast('O assunto é obrigatório.', 'error'); return; }
+            if (!fromName)  { showToast('O nome do remetente é obrigatório.', 'error'); return; }
+            if (!fromEmail || !fromEmail.includes('@')) { showToast('Indica um email de remetente válido.', 'error'); return; }
             wizShowStep(2); return;
         }
-        if (_wizStep === 2) { wizShowStep(3); return; }
+        if (_wizStep === 2) {
+            if (!_wizSelectedTemplateId) { showToast('Selecciona um template para a campanha.', 'error'); return; }
+            wizShowStep(3); return;
+        }
         if (_wizStep === 3) {
             const checked = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
             if (!checked.length) {
@@ -2211,7 +2256,6 @@ ${body}
     let _currentListId = null;  // list ID currently being edited
     let _contactsPage = 1;
     const _contactsPerPage = 50;
-    function _contactsTotal() { return document.querySelectorAll('#contactsTbody tr').length; }
 
     function showContact(mode, contact) {
         _contactMode = mode || 'view';
@@ -2382,32 +2426,9 @@ ${body}
     }
 
     function contactsGoPage(p) {
-        const total = _contactsTotal(), per = _contactsPerPage;
-        const pages = Math.max(1, Math.ceil(total / per));
+        const pages = Math.max(1, Math.ceil(_contactsApiTotal / _contactsPerPage));
         if (p < 1 || p > pages) return;
-        _contactsPage = p;
-        const start = (p-1)*per+1, end = Math.min(p*per, total);
-        const info = document.getElementById('contactsPageInfo');
-        if (info) info.textContent = total > 0
-            ? `Mostrando ${start}–${end} de ${total.toLocaleString('pt-PT')} contactos`
-            : 'Sem contactos';
-        // Render page buttons
-        const nav = document.getElementById('contactsPagination');
-        if (!nav) return;
-        // Build page numbers to show: always show 1, last, and window ±2 around current
-        const show = new Set([1, pages]);
-        for (let i = Math.max(1,p-2); i <= Math.min(pages,p+2); i++) show.add(i);
-        const sorted = Array.from(show).sort((a,b)=>a-b);
-        let html = `<button onclick="contactsGoPage(${p-1})" ${p===1?'disabled':''} class="px-3 py-1 border border-slate-200 rounded ${p===1?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">Anterior</button>`;
-        let prev = 0;
-        for (const pg of sorted) {
-            if (pg - prev > 1) html += `<span class="px-1 py-1 text-slate-400">…</span>`;
-            const active = pg === p;
-            html += `<button onclick="contactsGoPage(${pg})" class="contacts-page-btn px-3 py-1 border rounded ${active?'border-slate-900 bg-slate-900 text-white font-semibold':'border-slate-200 hover:bg-slate-50'}">${pg}</button>`;
-            prev = pg;
-        }
-        html += `<button onclick="contactsGoPage(${p+1})" ${p===pages?'disabled':''} class="px-3 py-1 border border-slate-200 rounded ${p===pages?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">Próxima</button>`;
-        nav.innerHTML = html;
+        _loadContacts(_currentBrand.id, p);
     }
 
     // ── Settings ──────────────────────────────────────────
@@ -4524,11 +4545,9 @@ ${body}
                             </tr>
                         </tbody>
                     </table>
-                    <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-                        <span id="contactsPageInfo">Mostrando 1–5 de 12 483 contactos</span>
-                        <div id="contactsPagination" class="flex gap-1.5 items-center">
-                            <!-- rendered by contactsGoPage() -->
-                        </div>
+                    <div id="contactsPageFooter" class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                        <span id="contactsPageInfo"></span>
+                        <div id="contactsPagination" class="flex gap-1.5 items-center"></div>
                     </div>
                 </div>
             </main>

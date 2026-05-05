@@ -21,6 +21,16 @@ module.exports = async function handler(req, res) {
       if (status)  { params.push(status);         where += ` AND c.status = $${params.length}`; }
       if (search)  { params.push(`%${search}%`);  where += ` AND (c.email ILIKE $${params.length} OR c.name ILIKE $${params.length})`; }
 
+      const countParams = [brand_id];
+      let countJoin = '', countWhere = 'WHERE c.brand_id = $1';
+      if (list_id)  { countParams.push(list_id);        countJoin  = `JOIN list_members lm ON lm.contact_id = c.id AND lm.list_id = $${countParams.length}`; }
+      if (status)   { countParams.push(status);          countWhere += ` AND c.status = $${countParams.length}`; }
+      if (search)   { countParams.push(`%${search}%`);  countWhere += ` AND (c.email ILIKE $${countParams.length} OR c.name ILIKE $${countParams.length})`; }
+
+      const [{ total }] = await query(
+        `SELECT COUNT(*)::int AS total FROM contacts c ${countJoin} ${countWhere}`, countParams
+      );
+
       params.push(parseInt(limit));
       params.push((parseInt(page) - 1) * parseInt(limit));
 
@@ -31,7 +41,7 @@ module.exports = async function handler(req, res) {
          ORDER BY c.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params
       );
-      return res.status(200).json({ data: rows, page: parseInt(page), limit: parseInt(limit) });
+      return res.status(200).json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) });
     }
 
     if (req.method === 'POST') {
