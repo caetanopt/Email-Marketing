@@ -103,13 +103,14 @@
             const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=50`);
             const statusBadge = { sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>', scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>', draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>', sending:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">A enviar</span>' };
             if (!data.length) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
-            el.innerHTML = data.map(c => `
-                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign('${c.status}')">
+            window._campaignsCache = data;
+            el.innerHTML = data.map((c, i) => `
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
                     <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.subject||'—'}</p></td>
                     <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
                     <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
-                    <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign('${c.status}')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a></td>
+                    <td class="px-4 py-3 text-right"><a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a></td>
                 </tr>`).join('');
             _setText('dash-campaigns', data.length.toString());
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
@@ -1306,7 +1307,7 @@ ${body}
         });
     }
 
-    function mockEditList(btn) {
+    async function mockEditList(btn) {
         const tr = btn.closest('tr');
         const name = tr?.cells[0]?.textContent.trim() || 'Lista';
         const count = tr?.cells[1]?.textContent.trim() || '0';
@@ -1318,9 +1319,49 @@ ${body}
         if (nameInp) nameInp.value = name;
         const countSpan = document.getElementById('listEditCount');
         if (countSpan) countSpan.textContent = count;
-        _listEditPage = 1;
-        listEditGoPage(1);
         showScreen('listEdit');
+        await _loadListMembers();
+    }
+
+    async function _loadListMembers() {
+        const tbody = document.getElementById('listEditMembersBody');
+        if (!tbody) return;
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        if (!_currentListId) { tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Lista não identificada.</td></tr>`; return; }
+        try {
+            const { data } = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&list_id=${_currentListId}&limit=100`);
+            const sBadge = { active:'bg-green-100 text-green-700', suppressed:'bg-red-100 text-red-700', unsubscribed:'bg-yellow-100 text-yellow-700' };
+            const sLbl = { active:'Subscrito', suppressed:'Suprimido', unsubscribed:'Dessubscrito' };
+            const countSpan = document.getElementById('listEditCount');
+            if (countSpan) countSpan.textContent = data.length.toString();
+            const pageInfo = document.getElementById('listEditPageInfo');
+            if (pageInfo) pageInfo.textContent = `${data.length} contactos`;
+            if (!data.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos nesta lista.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = data.map(c => `
+                <tr class="hover:bg-slate-50" data-email="${c.email}" data-name="${(c.name||'').toLowerCase()}">
+                    <td class="px-4 py-3 text-slate-900 font-medium">${c.email}</td>
+                    <td class="px-4 py-3 text-slate-600">${c.name||'—'}</td>
+                    <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${sBadge[c.status]||'bg-slate-100 text-slate-700'}">${sLbl[c.status]||c.status}</span></td>
+                    <td class="px-4 py-3 text-slate-500 text-xs">${_fmtDate(c.created_at)}</td>
+                    <td class="px-4 py-3 text-right"><button onclick="apiRemoveContactFromList(this,'${c.id}')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                </tr>`).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`;
+        }
+    }
+
+    async function apiRemoveContactFromList(btn, contactId) {
+        if (!confirm('Remover este contacto da lista?')) return;
+        try {
+            await apiFetch(`/api/lists/${_currentListId}?action=remove_contact&contact_id=${contactId}`, { method: 'DELETE' });
+            btn.closest('tr').remove();
+            const countSpan = document.getElementById('listEditCount');
+            if (countSpan) countSpan.textContent = (parseInt(countSpan.textContent)||1)-1;
+            showToast('Contacto removido da lista.');
+        } catch (e) { showToast(e.message, 'error'); }
     }
 
     function mockDeleteList(btn) {
@@ -1710,8 +1751,22 @@ ${body}
         if (err) err.classList.add('hidden');
     }
 
-    function showCampaign(status) {
-        _currentCampStatus = status || 'sent';
+    let _currentCampaign = null;
+
+    async function showCampaign(statusOrId, campaign) {
+        // Backwards-compatible: if first arg is a status string and no campaign object, just set status
+        if (campaign && campaign.id) _currentCampaign = campaign;
+        else if (typeof statusOrId === 'string' && statusOrId.length > 30) {
+            // Treat as ID
+            try { _currentCampaign = await apiFetch(`/api/campaigns/${statusOrId}`); }
+            catch (e) { showToast(e.message,'error'); return; }
+        }
+        const c = _currentCampaign || { status: typeof statusOrId === 'string' ? statusOrId : 'sent' };
+        _currentCampStatus = c.status || 'sent';
+        // Title
+        const t = document.getElementById('campShowTitle');
+        if (t) t.textContent = c.name || '—';
+        // Action buttons
         const act = document.getElementById('campShowActions');
         if (act) {
             if (_currentCampStatus === 'draft') {
@@ -1719,7 +1774,7 @@ ${body}
                     <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
             } else if (_currentCampStatus === 'scheduled') {
-                act.innerHTML = `<button onclick="showScreen('campaignCreate')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                act.innerHTML = `<button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>
                     <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
             } else {
@@ -1727,11 +1782,48 @@ ${body}
                     <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
             }
         }
+        // Badge
         const badge = document.getElementById('campStatusBadge');
         if (badge) {
             const cfg = {draft:['bg-slate-100 text-slate-600','Rascunho'],scheduled:['bg-blue-100 text-blue-700','Agendada'],sending:['bg-yellow-100 text-yellow-700','A enviar'],sent:['bg-green-100 text-green-700','Enviada'],failed:['bg-red-100 text-red-700','Falhou']};
             const [cls,lbl] = cfg[_currentCampStatus]||cfg.sent;
             badge.className=`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`; badge.textContent=lbl;
+        }
+        // Detail fields
+        _setText('campShowSubject', c.subject || '—');
+        _setText('campShowPreview', c.preview_text || '—');
+        _setText('campShowSender', (c.from_name && c.from_email) ? `${c.from_name} <${c.from_email}>` : '—');
+        const dateLbl = c.sent_at ? `Enviado em ${_fmtDate(c.sent_at)}` : c.scheduled_at ? `Agendado para ${_fmtDate(c.scheduled_at)}` : c.created_at ? `Criado em ${_fmtDate(c.created_at)}` : '—';
+        _setText('campShowDate', dateLbl);
+        // Lists
+        const listsEl = document.getElementById('campShowLists');
+        if (listsEl) {
+            if (c.lists?.length) {
+                listsEl.innerHTML = c.lists.map(l => `
+                    <div class="flex items-center justify-between py-2 border-b border-slate-100">
+                        <span class="text-sm text-slate-700">${l.name}</span>
+                        <span class="text-xs text-slate-400">${l.total||0} contactos</span>
+                    </div>`).join('');
+            } else {
+                listsEl.innerHTML = `<div class="text-sm text-slate-400 py-2">Sem listas associadas.</div>`;
+            }
+        }
+        // Performance — fetch report metrics if sent
+        const sentCount = c.sent_count || 0;
+        _setText('campShowSent', sentCount.toString());
+        if (_currentCampStatus === 'sent' && c.id) {
+            try {
+                const rep = await apiFetch(`/api/campaigns/${c.id}?action=report`);
+                const open = parseFloat(rep.engagement?.open_rate || 0);
+                const click = parseFloat(rep.engagement?.click_rate || 0);
+                _setText('campShowOpen', open + '%');
+                _setText('campShowClick', click + '%');
+                const ob = document.getElementById('campShowOpenBar'); if (ob) ob.style.width = Math.min(open, 100) + '%';
+                const cb = document.getElementById('campShowClickBar'); if (cb) cb.style.width = Math.min(click, 100) + '%';
+            } catch {}
+        } else {
+            _setText('campShowOpen', '—');
+            _setText('campShowClick', '—');
         }
         const sp = document.getElementById('campSendPanel');
         if (sp) sp.classList.toggle('hidden', _currentCampStatus === 'sent');
@@ -1789,13 +1881,38 @@ ${body}
 
     function openSendNowModal()  { const m=document.getElementById('sendNowModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
     function closeSendNowModal() { const m=document.getElementById('sendNowModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
-    function confirmSendNow()    { closeSendNowModal(); showScreen('campaigns'); showToast('Campanha enviada com sucesso!'); }
+    async function confirmSendNow() {
+        if (!_currentCampaign?.id) { showToast('Campanha não identificada.','error'); return; }
+        const btn = document.querySelector('#sendNowModal button[onclick*="confirmSendNow"]');
+        if (btn) { btn.disabled = true; btn.textContent = 'A enviar…'; }
+        try {
+            const r = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send`, { method: 'POST' });
+            closeSendNowModal();
+            showScreen('campaigns');
+            if (r.warning) showToast(`Campanha marcada como enviada (${r.warning}).`, 'info');
+            else showToast(`Campanha enviada: ${r.sent||0}/${r.total||0} sucesso${r.failed?`, ${r.failed} falhas`:''}.`);
+            _loadCampaigns(_currentBrand.id);
+        } catch (e) {
+            showToast(e.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Envio'; }
+        }
+    }
     function openScheduleModal()  { const m=document.getElementById('scheduleModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
     function closeScheduleModal() { const m=document.getElementById('scheduleModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
-    function confirmSchedule() {
+    async function confirmSchedule() {
         const d=document.getElementById('schedDate')?.value, t=document.getElementById('schedTime')?.value;
         if (!d||!t) { showToast('Escolhe a data e hora.','error'); return; }
-        closeScheduleModal(); showScreen('campaigns'); showToast(`Campanha agendada para ${d} às ${t}.`);
+        if (!_currentCampaign?.id) { showToast('Campanha não identificada.','error'); return; }
+        try {
+            await apiFetch(`/api/campaigns/${_currentCampaign.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ scheduled_at: `${d}T${t}:00`, status: 'scheduled' })
+            });
+            closeScheduleModal(); showScreen('campaigns');
+            showToast(`Campanha agendada para ${d} às ${t}.`);
+            _loadCampaigns(_currentBrand.id);
+        } catch (e) { showToast(e.message, 'error'); }
     }
 
     // ── Contacts ──────────────────────────────────────────
@@ -1848,8 +1965,45 @@ ${body}
             // Populate view fields
             const fields = { cvName: c.name||'—', cvEmail: c.email||'—', cvPhone: c.phone||'—', cvCompany: c.company||'—', cvSource: c.source||'—', cvCreated: _fmtDate(c.created_at) };
             Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.textContent=val; });
+            _loadContactLists();
         }
         showScreen('contactShow');
+    }
+
+    async function _loadContactLists() {
+        const panel = document.getElementById('contactListsPanel');
+        const select = document.getElementById('addListSelect');
+        if (!panel || !select || !_currentContact?.id) return;
+        try {
+            // Get all lists for the brand
+            const { data: allLists } = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}&limit=100`);
+            // Get full contact info to know which lists they belong to
+            const contactDetail = await apiFetch(`/api/contacts/${_currentContact.id}`).catch(() => null);
+            const memberLists = (contactDetail?.lists || []).map(l => l.id || l.list_id);
+            const memberSet = new Set(memberLists);
+            // Render member lists
+            const memberObjs = allLists.filter(l => memberSet.has(l.id));
+            panel.innerHTML = memberObjs.length
+                ? memberObjs.map(l => `
+                    <div class="list-item flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 group" data-list-id="${l.id}">
+                        <div class="flex items-center gap-2 text-sm"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span><span class="text-slate-700 font-medium">${l.name}</span></div>
+                        <button onclick="apiContactRemoveFromList(this,'${l.id}')" class="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">Remover</button>
+                    </div>`).join('')
+                : `<p class="text-xs text-slate-400 px-3 py-2">Sem listas associadas.</p>`;
+            // Populate dropdown with non-member lists
+            const available = allLists.filter(l => !memberSet.has(l.id));
+            select.innerHTML = `<option value="">Adicionar a lista…</option>` + available.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+        } catch {}
+    }
+
+    async function apiContactRemoveFromList(btn, listId) {
+        if (!confirm('Remover este contacto da lista?')) return;
+        try {
+            await apiFetch(`/api/lists/${listId}?action=remove_contact&contact_id=${_currentContact.id}`, { method: 'DELETE' });
+            btn.closest('.list-item')?.remove();
+            showToast('Contacto removido da lista.');
+            _loadContactLists();
+        } catch (e) { showToast(e.message, 'error'); }
     }
 
     function fillContactForm(c) {
@@ -1893,14 +2047,20 @@ ${body}
         showToast('Contacto removido da lista.');
     }
 
-    function mockAddToList() {
+    async function mockAddToList() {
         const sel = document.getElementById('addListSelect');
         if (!sel?.value) { showToast('Selecciona uma lista.', 'error'); return; }
+        if (!_currentContact?.id) { showToast('Contacto não identificado.', 'error'); return; }
         const name = sel.options[sel.selectedIndex].text;
+        const listId = sel.value;
+        try {
+            await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: _currentContact.id }) });
+        } catch (e) { showToast(e.message, 'error'); return; }
         const panel = document.getElementById('contactListsPanel');
         if (panel) {
             const div = document.createElement('div');
             div.className = 'list-item flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 group';
+            div.dataset.listId = listId;
             div.innerHTML = `<div class="flex items-center gap-2 text-sm"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span><span class="text-slate-700 font-medium">${name}</span></div><button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">Remover</button>`;
             panel.insertBefore(div, panel.querySelector('.add-list-row'));
         }
@@ -2309,7 +2469,51 @@ ${body}
             if (id === 'campaignCreate') wizShowStep(1);
             // Roles info panel: only visible to owner / admin / administrador
             if (id === 'team') _syncRolesPanel();
+            // Load campaign report when entering report screen
+            if (id === 'campaignReport') _loadCampaignReport();
         }
+    }
+
+    async function _loadCampaignReport() {
+        if (!_currentCampaign?.id) return;
+        const c = _currentCampaign;
+        _setText('repTitle', `Relatório — ${c.name||''}`);
+        _setText('repSubtitle', c.sent_at ? `Enviada a ${_fmtDate(c.sent_at)} · ${_currentBrand.name}` : `${_currentBrand.name}`);
+        try {
+            const r = await apiFetch(`/api/campaigns/${c.id}?action=report`);
+            const dlv = r.delivery || {}, eng = r.engagement || {};
+            _setText('repTotalSent', (dlv.sent||0).toString());
+            _setText('repDeliveryRate', (dlv.delivery_rate||0) + '%');
+            _setText('repFailed', (dlv.failed||0).toString());
+            _setText('repBounced', (dlv.bounced||0).toString());
+            _setText('repSuppressed', (dlv.suppressed||0).toString());
+            _setText('repOpenRate', (eng.open_rate||0) + '%');
+            _setText('repOpenUnique', (eng.unique_opens||0) + ' únicos');
+            _setText('repClickRate', (eng.click_rate||0) + '%');
+            _setText('repClickUnique', (eng.unique_clicks||0) + ' únicos');
+            _setText('repCTOR', (eng.ctor||0) + '%');
+            _setText('repUnsubs', (eng.unsubscribes||0).toString());
+            _setText('repSpam', (eng.spam_complaints||0).toString());
+            // Top links
+            const linksEl = document.getElementById('repTopLinks');
+            if (linksEl) {
+                if (r.top_links?.length) {
+                    const max = Math.max(...r.top_links.map(l => l.clicks||0)) || 1;
+                    linksEl.innerHTML = r.top_links.map(l => {
+                        const pct = ((l.clicks||0)/max*100).toFixed(1);
+                        return `<div>
+                            <div class="flex items-center justify-between text-xs mb-1">
+                                <span class="text-slate-700 truncate max-w-xs" title="${l.url}">${l.url}</span>
+                                <span class="font-semibold text-slate-900 ml-2 flex-shrink-0">${l.clicks} <span class="text-slate-400 font-normal">(${l.unique_clicks} únicos)</span></span>
+                            </div>
+                            <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 bg-indigo-500 rounded-full" style="width:${pct}%"></div></div>
+                        </div>`;
+                    }).join('');
+                } else {
+                    linksEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Sem dados de cliques.</p>`;
+                }
+            }
+        } catch (e) { showToast('Erro a carregar relatório: ' + e.message, 'error'); }
     }
 
     function injectSidebar() {
@@ -2739,8 +2943,9 @@ ${body}
                     const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=5`);
                     const statusBadge = { sent:'Enviada', scheduled:'Agendada', draft:'Rascunho', sending:'A enviar' };
                     if (rcEl && data.length) {
+                        window._dashCampaignsCache = data;
                         rcEl.innerHTML = data.map((c,i) => `
-                            <tr class="${i<data.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign('${c.status}')">
+                            <tr class="${i<data.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign(null, _dashCampaignsCache[${i}])">
                                 <td class="px-5 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-400">${c.subject||'—'}</p></td>
                                 <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
                                 <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${statusBadge[c.status]||c.status}</span><span class="text-blue-600">${c.sent_count||0} enviados</span></div></td>
@@ -3340,7 +3545,7 @@ ${body}
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <button onclick="showScreen('campaigns')" class="text-slate-400 hover:text-slate-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
-                    <h1 class="text-xl font-semibold text-slate-900">Newsletter BMW — Abril 2026</h1>
+                    <h1 id="campShowTitle" class="text-xl font-semibold text-slate-900">—</h1>
                 </div>
                 <div id="campShowActions" class="flex items-center gap-3">
                     <button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
@@ -3357,19 +3562,19 @@ ${body}
                             <dl class="grid grid-cols-2 gap-4 text-sm">
                                 <div>
                                     <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Assunto</dt>
-                                    <dd class="text-slate-900 font-medium">Descobre as novidades do mês na BMW Caetano</dd>
+                                    <dd id="campShowSubject" class="text-slate-900 font-medium">—</dd>
                                 </div>
                                 <div>
                                     <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Preview</dt>
-                                    <dd class="text-slate-700">Carros novos, eventos exclusivos e muito mais...</dd>
+                                    <dd id="campShowPreview" class="text-slate-700">—</dd>
                                 </div>
                                 <div>
                                     <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Remetente</dt>
-                                    <dd class="text-slate-900">BMW Caetano &lt;bmw@caetano.pt&gt;</dd>
+                                    <dd id="campShowSender" class="text-slate-900">—</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Enviado em</dt>
-                                    <dd class="text-slate-900">18/04/2026, 09:30</dd>
+                                    <dt class="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Data</dt>
+                                    <dd id="campShowDate" class="text-slate-900">—</dd>
                                 </div>
                             </dl>
                         </div>
@@ -3384,15 +3589,8 @@ ${body}
 
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas destinatárias</h3>
-                            <div class="space-y-2">
-                                <div class="flex items-center justify-between py-2 border-b border-slate-100">
-                                    <span class="text-sm text-slate-700">BMW Clientes Premium</span>
-                                    <span class="text-xs text-slate-400">3 421 contactos</span>
-                                </div>
-                                <div class="flex items-center justify-between py-2 border-b border-slate-100">
-                                    <span class="text-sm text-slate-700">BMW Newsletter Geral</span>
-                                    <span class="text-xs text-slate-400">5 000 contactos</span>
-                                </div>
+                            <div id="campShowLists" class="space-y-2">
+                                <div class="text-sm text-slate-400 py-2">A carregar…</div>
                             </div>
                         </div>
 
@@ -3432,22 +3630,22 @@ ${body}
                                 <div>
                                     <div class="flex justify-between text-sm mb-1">
                                         <span class="text-slate-500">Enviados</span>
-                                        <span class="font-semibold">8 421</span>
+                                        <span id="campShowSent" class="font-semibold">—</span>
                                     </div>
                                 </div>
                                 <div>
                                     <div class="flex justify-between text-sm mb-1">
                                         <span class="text-slate-500">Taxa de abertura</span>
-                                        <span class="font-semibold text-green-700">28.3%</span>
+                                        <span id="campShowOpen" class="font-semibold text-green-700">—</span>
                                     </div>
-                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div class="h-1.5 bg-green-500 rounded-full" style="width: 28.3%"></div></div>
+                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div id="campShowOpenBar" class="h-1.5 bg-green-500 rounded-full" style="width: 0%"></div></div>
                                 </div>
                                 <div>
                                     <div class="flex justify-between text-sm mb-1">
                                         <span class="text-slate-500">Taxa de clique</span>
-                                        <span class="font-semibold text-blue-700">6.1%</span>
+                                        <span id="campShowClick" class="font-semibold text-blue-700">—</span>
                                     </div>
-                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div class="h-1.5 bg-blue-500 rounded-full" style="width: 6.1%"></div></div>
+                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div id="campShowClickBar" class="h-1.5 bg-blue-500 rounded-full" style="width: 0%"></div></div>
                                 </div>
                             </div>
                         </div>
@@ -3485,8 +3683,8 @@ ${body}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-10 z-10 flex items-center justify-between">
                 <div>
-                    <h1 class="text-xl font-semibold text-slate-900">Relatório — Newsletter BMW Abril 2026</h1>
-                    <p class="text-xs text-slate-400 mt-0.5">Enviada a 18/04/2026, 09:30 · BMW Group Portugal</p>
+                    <h1 id="repTitle" class="text-xl font-semibold text-slate-900">Relatório</h1>
+                    <p id="repSubtitle" class="text-xs text-slate-400 mt-0.5">—</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="relative" id="exportDropdown">
@@ -3516,23 +3714,23 @@ ${body}
                     <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Entrega</h2>
                     <div class="grid grid-cols-5 gap-3">
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-slate-900">8 421</p>
+                            <p id="repTotalSent" class="text-2xl font-bold text-slate-900">—</p>
                             <p class="text-xs text-slate-500 mt-1">Enviados</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-green-600">99,2%</p>
+                            <p id="repDeliveryRate" class="text-2xl font-bold text-green-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">Taxa de entrega</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-red-500">42</p>
+                            <p id="repFailed" class="text-2xl font-bold text-red-500">—</p>
                             <p class="text-xs text-slate-500 mt-1">Falhados</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-orange-500">7</p>
+                            <p id="repBounced" class="text-2xl font-bold text-orange-500">—</p>
                             <p class="text-xs text-slate-500 mt-1">Bounces</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-slate-400">18</p>
+                            <p id="repSuppressed" class="text-2xl font-bold text-slate-400">—</p>
                             <p class="text-xs text-slate-500 mt-1">Suprimidos</p>
                         </div>
                     </div>
@@ -3543,34 +3741,34 @@ ${body}
                     <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Engagement</h2>
                     <div class="grid grid-cols-6 gap-3">
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-blue-600">34,1%</p>
+                            <p id="repOpenRate" class="text-2xl font-bold text-blue-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">Taxa de abertura</p>
-                            <p class="text-xs text-slate-400 mt-0.5">2 847 únicos</p>
+                            <p id="repOpenUnique" class="text-xs text-slate-400 mt-0.5">— únicos</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-indigo-600">4,2%</p>
+                            <p id="repClickRate" class="text-2xl font-bold text-indigo-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">Taxa de clique</p>
-                            <p class="text-xs text-slate-400 mt-0.5">352 únicos</p>
+                            <p id="repClickUnique" class="text-xs text-slate-400 mt-0.5">— únicos</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-violet-600">12,4%</p>
+                            <p id="repCTOR" class="text-2xl font-bold text-violet-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">CTOR</p>
                             <p class="text-xs text-slate-400 mt-0.5">cliques / abertos</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-emerald-600">28</p>
+                            <p id="repConversions" class="text-2xl font-bold text-emerald-600">0</p>
                             <p class="text-xs text-slate-500 mt-1">Conversões</p>
-                            <p class="text-xs text-slate-400 mt-0.5">0,33% dos enviados</p>
+                            <p class="text-xs text-slate-400 mt-0.5">tracked</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-amber-600">3</p>
+                            <p id="repUnsubs" class="text-2xl font-bold text-amber-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">Cancelamentos</p>
                             <p class="text-xs text-slate-400 mt-0.5">de subscrição</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-red-600">1</p>
+                            <p id="repSpam" class="text-2xl font-bold text-red-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">Spam complaints</p>
-                            <p class="text-xs text-slate-400 mt-0.5">0,01% dos enviados</p>
+                            <p class="text-xs text-slate-400 mt-0.5">reports</p>
                         </div>
                     </div>
                 </div>
@@ -3580,42 +3778,8 @@ ${body}
                     <!-- Links mais clicados -->
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <h3 class="text-sm font-semibold text-slate-900 mb-4">Links mais clicados</h3>
-                        <div class="space-y-3">
-                            <div>
-                                <div class="flex items-center justify-between text-xs mb-1">
-                                    <span class="text-slate-700 truncate max-w-xs">Ver oferta exclusiva</span>
-                                    <span class="font-semibold text-slate-900 ml-2 flex-shrink-0">187 <span class="text-slate-400 font-normal">(53,1%)</span></span>
-                                </div>
-                                <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 bg-indigo-500 rounded-full" style="width:53.1%"></div></div>
-                            </div>
-                            <div>
-                                <div class="flex items-center justify-between text-xs mb-1">
-                                    <span class="text-slate-700 truncate max-w-xs">Agendar test drive</span>
-                                    <span class="font-semibold text-slate-900 ml-2 flex-shrink-0">94 <span class="text-slate-400 font-normal">(26,7%)</span></span>
-                                </div>
-                                <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 bg-indigo-500 rounded-full" style="width:26.7%"></div></div>
-                            </div>
-                            <div>
-                                <div class="flex items-center justify-between text-xs mb-1">
-                                    <span class="text-slate-700 truncate max-w-xs">Configurar o meu BMW</span>
-                                    <span class="font-semibold text-slate-900 ml-2 flex-shrink-0">41 <span class="text-slate-400 font-normal">(11,6%)</span></span>
-                                </div>
-                                <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 bg-indigo-400 rounded-full" style="width:11.6%"></div></div>
-                            </div>
-                            <div>
-                                <div class="flex items-center justify-between text-xs mb-1">
-                                    <span class="text-slate-700 truncate max-w-xs">Concessionário mais próximo</span>
-                                    <span class="font-semibold text-slate-900 ml-2 flex-shrink-0">24 <span class="text-slate-400 font-normal">(6,8%)</span></span>
-                                </div>
-                                <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 bg-slate-400 rounded-full" style="width:6.8%"></div></div>
-                            </div>
-                            <div>
-                                <div class="flex items-center justify-between text-xs mb-1">
-                                    <span class="text-slate-700 truncate max-w-xs">Saber mais sobre financiamento</span>
-                                    <span class="font-semibold text-slate-900 ml-2 flex-shrink-0">6 <span class="text-slate-400 font-normal">(1,7%)</span></span>
-                                </div>
-                                <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-1.5 bg-slate-300 rounded-full" style="width:1.7%"></div></div>
-                            </div>
+                        <div id="repTopLinks" class="space-y-3">
+                            <p class="text-xs text-slate-400 text-center py-4">Sem dados de cliques.</p>
                         </div>
                     </div>
 
@@ -3961,28 +4125,10 @@ ${body}
                     <div class="space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas</h3>
-                            <div id="contactListsPanel" class="space-y-1">
-                                <div class="list-item flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 group">
-                                    <div class="flex items-center gap-2 text-sm">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span>
-                                        <span class="text-slate-700 font-medium">Clientes Premium</span>
-                                    </div>
-                                    <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">Remover</button>
-                                </div>
-                                <div class="list-item flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 group">
-                                    <div class="flex items-center gap-2 text-sm">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span>
-                                        <span class="text-slate-700 font-medium">Newsletter Geral</span>
-                                    </div>
-                                    <button onclick="mockRemoveFromList(this)" class="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">Remover</button>
-                                </div>
-                            </div>
+                            <div id="contactListsPanel" class="space-y-1"></div>
                             <div class="add-list-row mt-3 pt-3 border-t border-slate-100 flex gap-2">
                                 <select id="addListSelect" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                                     <option value="">Adicionar a lista…</option>
-                                    <option value="leads">Leads — Test Drive</option>
-                                    <option value="events">Evento M Performance</option>
-                                    <option value="ix1">Promoção iX1</option>
                                 </select>
                                 <button onclick="mockAddToList()" class="px-3 py-2 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 flex-shrink-0">+</button>
                             </div>
