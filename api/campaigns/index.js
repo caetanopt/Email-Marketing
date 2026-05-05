@@ -42,15 +42,14 @@ module.exports = async function handler(req, res) {
               template_id, list_ids, scheduled_at } = req.body || {};
       if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
 
-      const campaignId = `${brand_id}-${Date.now()}`;
-
-      await query(
-        `INSERT INTO campaigns (id, brand_id, name, subject, preview_text, from_name, from_email,
+      const rows = await query(
+        `INSERT INTO campaigns (brand_id, name, subject, preview_text, from_name, from_email,
          template_id, scheduled_at, status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [campaignId, brand_id, name, subject||null, preview_text||null, from_name||null, from_email||null,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, created_at`,
+        [brand_id, name, subject||null, preview_text||null, from_name||null, from_email||null,
          template_id||null, scheduled_at||null, scheduled_at ? 'scheduled' : 'draft', user.id]
       );
+      const campaignId = rows[0].id;
 
       if (list_ids?.length) {
         const vals = list_ids.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',');
