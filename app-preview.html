@@ -27,6 +27,25 @@
     const setToken  = t  => localStorage.setItem('pm_token', t);
     const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); };
 
+    // ── Hash-based routing ───────────────────────────────
+    const _ROUTE_TO_SCREEN = {
+        'login': 'login', 'forgot-password': 'forgotPassword', 'brands': 'brandSelect',
+        'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
+        'imports': 'imports', 'templates': 'templates', 'campaigns': 'campaigns',
+        'campaigns/new': 'campaignCreate', 'suppression': 'suppression',
+        'team': 'team', 'settings': 'brandSettings', 'unsubscribe': 'unsubscribe',
+    };
+    const _SCREEN_TO_ROUTE = {
+        'login': 'login', 'forgotPassword': 'forgot-password', 'brandSelect': 'brands',
+        'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
+        'imports': 'imports', 'templates': 'templates', 'campaigns': 'campaigns',
+        'campaignCreate': 'campaigns/new', 'suppression': 'suppression',
+        'team': 'team', 'brandSettings': 'settings', 'unsubscribe': 'unsubscribe',
+    };
+    // screens handled via dedicated functions (they push their own hash)
+    const _SCREENS_CUSTOM_ROUTE = new Set(['campaignShow','campaignReport','contactShow','listEdit','templateEdit']);
+    let _historyNav = false; // true when navigating via popstate (suppress pushState)
+
     async function apiFetch(path, options = {}) {
         const token = getToken();
         const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) };
@@ -2001,6 +2020,11 @@ ${body}
         }
         const sp = document.getElementById('campSendPanel');
         if (sp) sp.classList.toggle('hidden', _currentCampStatus === 'sent');
+        // Push hash before showScreen so popstate can reconstruct this view
+        if (!_historyNav && _currentCampaign?.id) {
+            const hash = `#campaigns/${_currentCampaign.id}`;
+            if (location.hash !== hash) history.pushState({ screen: 'campaignShow', id: _currentCampaign.id }, '', hash);
+        }
         showScreen('campaignShow');
     }
 
@@ -2753,11 +2777,25 @@ ${body}
             // Roles info panel: only visible to owner / admin / administrador
             if (id === 'team') { _syncRolesPanel(); _loadTeamMembers(); }
             // Load campaign report when entering report screen
-            if (id === 'campaignReport') _loadCampaignReport();
+            if (id === 'campaignReport') {
+                _loadCampaignReport();
+                if (!_historyNav && _currentCampaign?.id) {
+                    const hash = `#campaigns/${_currentCampaign.id}/report`;
+                    if (location.hash !== hash) history.pushState({ screen: 'campaignReport', id: _currentCampaign.id }, '', hash);
+                }
+            }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings') _loadBrandSettings();
             // Load lists into import select
             if (id === 'imports') _loadImportLists();
+            // Push history state (skip for screens that manage their own hash and for popstate navigation)
+            if (!_historyNav && !_SCREENS_CUSTOM_ROUTE.has(id)) {
+                const route = _SCREEN_TO_ROUTE[id];
+                if (route) {
+                    const hash = '#' + route;
+                    if (location.hash !== hash) history.pushState({ screen: id }, '', hash);
+                }
+            }
         }
     }
 
@@ -3293,11 +3331,56 @@ ${body}
         if (token && brands.length) {
             _userBrandIds = new Set(brands.map(b => b.brand_id));
             renderBrandSelect();
-            showScreen('brandSelect');
+            // Try to honour the hash on initial load
+            const startScreen = _screenFromHash(location.hash) || 'brandSelect';
+            showScreen(startScreen);
         } else {
             showScreen('login');
         }
+
+        // ── popstate: handle back/forward ───────────────
+        window.addEventListener('popstate', async (ev) => {
+            _historyNav = true;
+            try {
+                const state = ev.state;
+                const hash = location.hash;
+                // Campaign detail: #campaigns/123
+                const campMatch = hash.match(/^#campaigns\/(\d+)$/);
+                if (campMatch) {
+                    const campId = campMatch[1];
+                    await showCampaign(campId);
+                    _historyNav = false;
+                    return;
+                }
+                // Campaign report: #campaigns/123/report
+                const repMatch = hash.match(/^#campaigns\/(\d+)\/report$/);
+                if (repMatch) {
+                    if (_currentCampaign?.id == repMatch[1]) {
+                        showScreen('campaignReport');
+                    } else {
+                        _currentCampaign = await apiFetch(`/api/campaigns/${repMatch[1]}`).catch(() => null);
+                        if (_currentCampaign) showScreen('campaignReport');
+                    }
+                    _historyNav = false;
+                    return;
+                }
+                // Regular screen from hash
+                const screenId = state?.screen || _screenFromHash(hash);
+                if (screenId) showScreen(screenId);
+            } finally {
+                _historyNav = false;
+            }
+        });
     });
+
+    function _screenFromHash(hash) {
+        if (!hash || hash === '#') return null;
+        const route = hash.replace(/^#/, '');
+        // Campaign detail
+        if (/^campaigns\/\d+$/.test(route)) return 'campaignShow';
+        if (/^campaigns\/\d+\/report$/.test(route)) return 'campaignReport';
+        return _ROUTE_TO_SCREEN[route] || null;
+    }
 
     function _showFileFilled(name) {
         document.getElementById('dropEmpty').classList.add('hidden');
