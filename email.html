@@ -1679,12 +1679,14 @@ ${body}
             showToast('Cor inválida — usa o formato #RRGGBB.', 'error'); return;
         }
         const payload = {
-            name:       document.getElementById('bsName')?.value.trim() || null,
-            color:      color || null,
-            logo_url:   document.getElementById('bsLogoUrl')?.value.trim() || null,
-            from_name:  document.getElementById('bsFromName')?.value.trim() || null,
-            from_email: document.getElementById('bsFromEmail')?.value.trim() || null,
-            reply_to:   document.getElementById('bsReplyTo')?.value.trim() || null,
+            name:        document.getElementById('bsName')?.value.trim() || null,
+            color:       color || null,
+            logo_url:    document.getElementById('bsLogoUrl')?.value.trim() || null,
+            from_name:   document.getElementById('bsFromName')?.value.trim() || null,
+            from_email:  document.getElementById('bsFromEmail')?.value.trim() || null,
+            reply_to:    document.getElementById('bsReplyTo')?.value.trim() || null,
+            header_html: document.getElementById('bsHeaderHtml')?.value || null,
+            footer_html: document.getElementById('bsFooterHtml')?.value || null,
         };
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -1700,11 +1702,22 @@ ${body}
         if (!_currentBrand?.id) return;
         try {
             const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
-            const fields = { bsName: b.name||'', bsLogoUrl: b.logo_url||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
+            const fields = { bsName: b.name||'', bsLogoUrl: b.logo_url||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'', bsHeaderHtml: b.header_html||'', bsFooterHtml: b.footer_html||'' };
             Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
             const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
             const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
         } catch {}
+    }
+
+    function _bsPreviewBlock(type) {
+        const html = document.getElementById(type === 'header' ? 'bsHeaderHtml' : 'bsFooterHtml')?.value || '';
+        const panel = document.getElementById('bsBlockPreview');
+        const frame = document.getElementById('bsBlockPreviewFrame');
+        const label = document.getElementById('bsBlockPreviewLabel');
+        if (!panel || !frame) return;
+        label.textContent = type === 'header' ? 'Pré-visualização — Cabeçalho' : 'Pré-visualização — Rodapé';
+        frame.srcdoc = html;
+        panel.classList.remove('hidden');
     }
 
     // ── Unsubscribe (público) ────────────────────────────
@@ -2444,6 +2457,124 @@ ${body}
         const pages = Math.max(1, Math.ceil(_contactsApiTotal / _contactsPerPage));
         if (p < 1 || p > pages) return;
         _loadContacts(_currentBrand.id, p);
+    }
+
+    // ── Wizard: criar template inline ──────────────────────
+    function openWizCreateTemplate() {
+        document.getElementById('wizTplName').value = '';
+        document.getElementById('wizTplHtml').value = '';
+        const m = document.getElementById('wizCreateTemplateModal');
+        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+    }
+    function closeWizCreateTemplate() {
+        const m = document.getElementById('wizCreateTemplateModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+    async function wizTplInsertBlock(type) {
+        const ta = document.getElementById('wizTplHtml');
+        if (!ta) return;
+        try {
+            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
+            const block = type === 'header' ? (b.header_html || '') : (b.footer_html || '');
+            if (!block) { showToast(`Sem ${type === 'header' ? 'cabeçalho' : 'rodapé'} definido nas definições da marca.`, 'info'); return; }
+            const pos = ta.selectionStart;
+            ta.value = ta.value.slice(0, pos) + block + ta.value.slice(pos);
+        } catch { showToast('Erro ao carregar blocos da marca.', 'error'); }
+    }
+    async function saveWizTemplate() {
+        const name = document.getElementById('wizTplName')?.value.trim();
+        const html = document.getElementById('wizTplHtml')?.value.trim();
+        if (!name) { showToast('O nome do template é obrigatório.', 'error'); return; }
+        if (!html)  { showToast('O conteúdo HTML é obrigatório.', 'error'); return; }
+        try {
+            const { id } = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
+                method: 'POST', body: JSON.stringify({ name, html_content: html })
+            });
+            closeWizCreateTemplate();
+            showToast(`Template "${name}" criado e seleccionado.`);
+            // Reload template list and select new template
+            await _wizLoadTemplates();
+            const newCard = document.querySelector(`#wizTplList [data-tpl-id="${id}"]`);
+            if (newCard) wizSelectTemplate(newCard);
+        } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    // ── Conversor HTML → MJML ──────────────────────────────
+    function teConvertHtmlToMjml() {
+        const input = document.getElementById('te_converterInput')?.value || '';
+        if (!input.trim()) { showToast('Cola o HTML antes de converter.', 'info'); return; }
+        document.getElementById('te_converterOutput').value = _convertHtmlToMjml(input);
+    }
+    function teApplyConvertedMjml() {
+        const mjml = document.getElementById('te_converterOutput')?.value || '';
+        if (!mjml.trim()) { showToast('Converte o HTML primeiro.', 'info'); return; }
+        const ta = document.getElementById('te_mjmlCode');
+        if (ta) { ta.value = mjml; teSyncMjmlLines && teSyncMjmlLines(); }
+        document.getElementById('te_converterPanel').classList.add('hidden');
+        // Switch to code mode
+        const codeBtn = document.querySelector('[onclick*="teSwitchMode"][onclick*="code"]') || document.getElementById('te_codeModeBtn');
+        if (typeof teSwitchMode === 'function') teSwitchMode('code');
+        showToast('MJML importado para o editor. Verifica e ajusta conforme necessário.', 'info');
+    }
+    function _convertHtmlToMjml(html) {
+        // Extract body content
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        let content = bodyMatch ? bodyMatch[1] : html;
+
+        // Extract inline styles from <style> tags for reference
+        const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) || [];
+        const styleComment = styleMatch.length ? `  <!-- Estilos originais (referência):\n${styleMatch.join('\n').replace(/<!--.*?-->/gs,'').slice(0,400)}... -->\n` : '';
+
+        // Helpers
+        const attr = (str, name) => { const m = str.match(new RegExp(`${name}="([^"]*)"`,'i')); return m ? m[1] : ''; };
+        const inlineStyle = (str, prop) => { const m = str.match(new RegExp(`${prop}\\s*:\\s*([^;"}]+)`,'i')); return m ? m[1].trim() : ''; };
+
+        // Convert images
+        content = content.replace(/<img([^>]*)>/gi, (_, attrs) => {
+            const src = attr(attrs,'src'), alt = attr(attrs,'alt'), w = attr(attrs,'width') || '600';
+            return `        <mj-image src="${src}" alt="${alt}" width="${parseInt(w)||600}px" padding="0"></mj-image>`;
+        });
+        // Convert headings
+        content = content.replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi, (_, lvl, inner) => {
+            const sizes = {1:'28',2:'22',3:'18',4:'15'};
+            return `        <mj-text font-size="${sizes[lvl]||'16'}px" font-weight="700" padding="8px 0">${inner.replace(/<[^>]+>/g,'').trim()}</mj-text>`;
+        });
+        // Convert paragraphs
+        content = content.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (_, attrs, inner) => {
+            const color = inlineStyle(attrs+inner,'color');
+            const colorAttr = color ? ` color="${color}"` : '';
+            return `        <mj-text${colorAttr} padding="6px 0">${inner.trim()}</mj-text>`;
+        });
+        // Convert buttons/CTA links
+        content = content.replace(/<a([^>]*)class="[^"]*btn[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi, (_, a1, a2, inner) => {
+            const href = attr(a1+a2,'href') || '#';
+            return `        <mj-button href="${href}" background-color="#1e293b" color="#ffffff" border-radius="6px" padding="12px 24px">${inner.replace(/<[^>]+>/g,'').trim()}</mj-button>`;
+        });
+        // Convert hr dividers
+        content = content.replace(/<hr[^>]*>/gi, '        <mj-divider border-color="#e2e8f0" border-width="1px" padding="8px 0"></mj-divider>');
+        // Strip remaining block tags (div, table, tr, td, tbody, thead) but keep content
+        content = content.replace(/<\/?(div|table|tbody|thead|tr|td|th|ul|ol|li|span)[^>]*>/gi, '');
+        // Collapse excessive whitespace
+        content = content.replace(/\n{3,}/g, '\n\n').trim();
+        // Remove any remaining HTML tags that weren't converted but keep their text
+        const lines = content.split('\n').filter(l => l.trim()).map(l => '        ' + l.trim());
+
+        return `<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-all font-family="Arial, Helvetica, sans-serif" font-size="14px" color="#334155"></mj-all>
+      <mj-body background-color="#f8fafc"></mj-body>
+      <mj-section background-color="#ffffff" padding="20px"></mj-section>
+    </mj-attributes>
+${styleComment}  </mj-head>
+  <mj-body>
+    <mj-section>
+      <mj-column>
+${lines.join('\n')}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`;
     }
 
     // ── Settings ──────────────────────────────────────────
@@ -3975,7 +4106,10 @@ ${body}
                         <div class="grid gap-6" style="grid-template-columns:1fr 1.3fr">
                             <!-- Lista de templates: 2 cols, scroll após 6 -->
                             <div>
-                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Escolhe um template</p>
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Escolhe um template</p>
+                                    <button onclick="openWizCreateTemplate()" class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Criar template</button>
+                                </div>
                                 <div id="wizTplList" class="grid grid-cols-2 gap-2.5 overflow-y-auto pr-1" style="max-height:370px">
                                     <div class="col-span-2 py-6 text-center text-slate-400 text-sm">A carregar templates…</div>
                                 </div>
@@ -4920,6 +5054,12 @@ ${body}
                         </button>
                     </div>
 
+                    <!-- Converter HTML → MJML -->
+                    <button type="button" onclick="document.getElementById('te_converterPanel').classList.remove('hidden')"
+                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                        Converter HTML
+                    </button>
                     <!-- Open preview modal -->
                     <button type="button" onclick="teOpenPreviewModal()"
                             class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
@@ -5062,6 +5202,40 @@ ${body}
                     </div>
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- ── Conversor HTML → MJML ──────────────────────────────────────── -->
+    <div id="te_converterPanel" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)this.classList.add('hidden')">
+        <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style="max-height:88vh">
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                <div>
+                    <h2 class="text-base font-semibold text-slate-900">Conversor HTML → MJML</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Cola o teu HTML existente e converte para MJML editável</p>
+                </div>
+                <button onclick="document.getElementById('te_converterPanel').classList.add('hidden')" class="text-slate-400 hover:text-slate-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex-1 grid grid-cols-2 gap-0 min-h-0" style="overflow:hidden">
+                <div class="flex flex-col border-r border-slate-200">
+                    <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                        <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">HTML original</span>
+                        <button onclick="teConvertHtmlToMjml()" class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">Converter →</button>
+                    </div>
+                    <textarea id="te_converterInput" spellcheck="false" placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html&gt;...&#10;&#10;Cola aqui o teu HTML" class="flex-1 px-4 py-3 text-sm font-mono text-slate-700 resize-none focus:outline-none" style="overflow-y:auto"></textarea>
+                </div>
+                <div class="flex flex-col">
+                    <div class="px-4 py-2 bg-[#21252b] border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+                        <span class="text-xs font-medium text-slate-400 uppercase tracking-wide font-mono">MJML gerado</span>
+                        <button onclick="teApplyConvertedMjml()" class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700">Usar no editor</button>
+                    </div>
+                    <textarea id="te_converterOutput" spellcheck="false" readonly placeholder="O MJML gerado aparecerá aqui…" class="flex-1 px-4 py-3 text-sm font-mono text-slate-300 bg-[#282c34] resize-none focus:outline-none" style="overflow-y:auto"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-slate-200 bg-slate-50 flex-shrink-0">
+                <p class="text-xs text-slate-400">⚠️ A conversão é automática e pode requerer ajustes manuais. Verifica sempre o resultado no editor antes de enviar.</p>
+            </div>
         </div>
     </div>
 
@@ -5611,6 +5785,43 @@ ${body}
                             </div>
                         </div>
                     </div>
+                    <!-- Blocos da marca -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-semibold text-slate-900 text-sm">Blocos da marca</h3>
+                            <span class="text-xs text-slate-400">Inseridos automaticamente nos templates</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mb-4">Define o cabeçalho e rodapé HTML que serão aplicados a todos os emails desta marca.</p>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Cabeçalho (header)</label>
+                                <div class="border border-slate-200 rounded-lg overflow-hidden">
+                                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between">
+                                        <span class="text-xs text-slate-400 font-mono">HTML</span>
+                                        <button onclick="_bsPreviewBlock('header')" class="text-xs text-slate-500 hover:text-slate-800">Pré-visualizar</button>
+                                    </div>
+                                    <textarea id="bsHeaderHtml" rows="6" spellcheck="false" placeholder="<!-- HTML do cabeçalho da marca -->" class="w-full px-3 py-2 text-sm font-mono text-slate-700 focus:outline-none resize-y"></textarea>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Rodapé (footer)</label>
+                                <div class="border border-slate-200 rounded-lg overflow-hidden">
+                                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between">
+                                        <span class="text-xs text-slate-400 font-mono">HTML</span>
+                                        <button onclick="_bsPreviewBlock('footer')" class="text-xs text-slate-500 hover:text-slate-800">Pré-visualizar</button>
+                                    </div>
+                                    <textarea id="bsFooterHtml" rows="6" spellcheck="false" placeholder="<!-- HTML do rodapé da marca -->" class="w-full px-3 py-2 text-sm font-mono text-slate-700 focus:outline-none resize-y"></textarea>
+                                </div>
+                            </div>
+                            <div id="bsBlockPreview" class="hidden border border-slate-200 rounded-lg overflow-hidden">
+                                <div class="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between">
+                                    <span class="text-xs text-slate-500 font-medium" id="bsBlockPreviewLabel">Pré-visualização</span>
+                                    <button onclick="document.getElementById('bsBlockPreview').classList.add('hidden')" class="text-xs text-slate-400 hover:text-slate-700">Fechar</button>
+                                </div>
+                                <iframe id="bsBlockPreviewFrame" class="w-full bg-white" style="height:160px;border:none"></iframe>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>
@@ -6032,6 +6243,41 @@ ${body}
 </div>
 
 <!-- Modal: alterações não guardadas no editor de templates -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — CRIAR TEMPLATE (no wizard)
+═══════════════════════════════════════════════════════════════════ -->
+<div id="wizCreateTemplateModal" class="hidden fixed inset-0 z-[75] bg-slate-900/70 items-center justify-center p-6">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col" style="max-height:88vh">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+            <div>
+                <h2 class="text-base font-semibold text-slate-900">Criar novo template</h2>
+                <p class="text-xs text-slate-400 mt-0.5">O template ficará disponível para esta marca</p>
+            </div>
+            <button onclick="closeWizCreateTemplate()" class="text-slate-400 hover:text-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-6 py-4 flex-shrink-0 border-b border-slate-100">
+            <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Nome do template *</label>
+            <input id="wizTplName" type="text" placeholder="Ex: Newsletter Maio 2026" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+        </div>
+        <div class="flex-1 flex flex-col min-h-0">
+            <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">Conteúdo HTML</span>
+                <div class="flex items-center gap-2">
+                    <button onclick="wizTplInsertBlock('header')" class="text-xs px-2 py-1 border border-slate-200 rounded hover:bg-slate-100">+ Cabeçalho marca</button>
+                    <button onclick="wizTplInsertBlock('footer')" class="text-xs px-2 py-1 border border-slate-200 rounded hover:bg-slate-100">+ Rodapé marca</button>
+                </div>
+            </div>
+            <textarea id="wizTplHtml" spellcheck="false" placeholder="<!DOCTYPE html>&#10;<html>&#10;  <body>&#10;    <!-- O teu conteúdo HTML aqui -->&#10;  </body>&#10;</html>" class="flex-1 px-4 py-3 text-sm font-mono text-slate-700 resize-none focus:outline-none" style="overflow-y:auto;min-height:260px"></textarea>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 flex-shrink-0">
+            <button onclick="closeWizCreateTemplate()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button onclick="saveWizTemplate()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Guardar e seleccionar</button>
+        </div>
+    </div>
+</div>
+
 <div id="teUnsavedModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6">
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
