@@ -106,6 +106,7 @@
             window._campaignsCache = data;
             el.innerHTML = data.map((c, i) => `
                 <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
+                    <td class="px-4 py-3 text-xs text-slate-400 w-12">#${c.id}</td>
                     <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.subject||'—'}</p></td>
                     <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
@@ -156,8 +157,9 @@
                 </tr>`).join('');
             if (wizLists) wizLists.innerHTML = data.map((l, i) => `
                 <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" class="rounded" data-contacts="${l.total||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" ${i===0?'checked':''} />
+                    <input type="checkbox" class="rounded" data-contacts="${l.total||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
                     <div class="flex-1"><p class="text-sm font-medium text-slate-900">${l.name}</p><p class="text-xs text-slate-400">${l.total||0} contactos</p></div>
+                    <span class="text-xs font-semibold text-slate-500">${l.total||0}</span>
                 </label>`).join('');
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
     }
@@ -1703,18 +1705,29 @@ ${body}
         if (navBar) navBar.className='flex items-center justify-between pt-5 '+(step===2?'':'max-w-2xl');
 
         if (step === 4) {
-            const name = document.getElementById('wizName')?.value || 'Nova Campanha';
+            const name = document.getElementById('wizName')?.value || '—';
             const subj = document.getElementById('wizSubject')?.value || '—';
-            const fn   = document.getElementById('wizFromName')?.value || `${_currentBrand.name} Caetano`;
-            const fe   = document.getElementById('wizFromEmail')?.value || `${_currentBrand.id}@caetano.pt`;
-            const rev  = document.getElementById('wizReviewContent');
+            const prev = document.getElementById('wizPreviewText')?.value || '—';
+            const fn   = document.getElementById('wizFromName')?.value || 'Caetano';
+            const fe   = document.getElementById('wizFromEmail')?.value || 'info@caetano.pt';
+            const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
+            const schedDate = document.getElementById('wizScheduleDate')?.value || '';
+            const schedTime = document.getElementById('wizScheduleTime')?.value || '';
+            const checkedLists = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'));
+            const listsText = checkedLists.length ? checkedLists.map(cb => cb.closest('label')?.querySelector('p')?.textContent || '').filter(Boolean).join(', ') : 'Nenhuma';
+            const totalContacts = checkedLists.reduce((s, cb) => s + (parseInt(cb.dataset.contacts)||0), 0);
+            const tplName = document.querySelector('#wizTplList .wiz-tpl-item.border-slate-900 .wiz-tpl-name')?.textContent || (document.querySelector('#wizTplList .wiz-tpl-item.border-slate-900') ? 'Template seleccionado' : 'Nenhum');
+            let sendLabel = sendType === 'now' ? 'Enviar agora' : sendType === 'schedule' ? `Agendar: ${schedDate} ${schedTime}` : 'Guardar como rascunho';
+            const rev = document.getElementById('wizReviewContent');
             if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Nome</dt><dd class="font-medium text-slate-900">${name}</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Template</dt><dd class="text-slate-900">Newsletter Base ${_currentBrand.name}</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Template</dt><dd class="text-slate-900">${tplName}</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Assunto</dt><dd class="text-slate-900">${subj}</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">${_currentBrand.name} Clientes Premium</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">${listsText}</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Remetente</dt><dd class="text-slate-900">${fn} &lt;${fe}&gt;</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">~ 3 421 contactos</dd></div></dl>`;
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">${totalContacts.toLocaleString('pt-PT')} contactos</dd></div>
+                <div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Envio</dt><dd class="font-medium text-slate-900">${sendLabel}</dd></div>
+            </dl>`;
         }
     }
 
@@ -1841,12 +1854,20 @@ ${body}
                 scheduled_at = `${d}T${t}:00`;
             }
             try {
-                await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
+                const { id: campaignId } = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
                     method: 'POST',
                     body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: _wizSelectedTemplateId || null })
                 });
+                if (sendType === 'now' && campaignId) {
+                    showToast('Campanha criada. A enviar…', 'info');
+                    const r = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
+                    showToast(`Campanha enviada: ${r.sent||0}/${r.total||0} sucesso${r.failed?`, ${r.failed} falhas`:''}.`);
+                } else if (sendType === 'schedule') {
+                    showToast('Campanha agendada!');
+                } else {
+                    showToast('Rascunho guardado.');
+                }
                 showScreen('campaigns');
-                showToast(sendType === 'schedule' ? `Campanha agendada!` : sendType === 'draft' ? 'Rascunho guardado.' : 'Campanha criada!');
                 wizShowStep(1);
                 _loadCampaigns(_currentBrand.id);
             } catch (e) { showToast(e.message, 'error'); }
@@ -1896,11 +1917,13 @@ ${body}
             if (_currentCampStatus === 'draft') {
                 act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
                     ${testBtn}
+                    <button onclick="openEditCampaignModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
                     <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
             } else if (_currentCampStatus === 'scheduled') {
                 act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
                     ${testBtn}
+                    <button onclick="openEditCampaignModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
                     <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>`;
             } else {
@@ -1973,6 +1996,46 @@ ${body}
         const sp = document.getElementById('campSendPanel');
         if (sp) sp.classList.toggle('hidden', _currentCampStatus === 'sent');
         showScreen('campaignShow');
+    }
+
+    function openEditCampaignModal() {
+        if (!_currentCampaign) return;
+        const c = _currentCampaign;
+        document.getElementById('editCampName').value = c.name || '';
+        document.getElementById('editCampSubject').value = c.subject || '';
+        document.getElementById('editCampPreview').value = c.preview_text || '';
+        document.getElementById('editCampFromName').value = c.from_name || 'Caetano';
+        document.getElementById('editCampFromEmail').value = c.from_email || 'info@caetano.pt';
+        const m = document.getElementById('editCampaignModal');
+        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+    }
+    function closeEditCampaignModal() {
+        const m = document.getElementById('editCampaignModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+    async function confirmEditCampaign() {
+        const payload = {
+            name: document.getElementById('editCampName')?.value.trim(),
+            subject: document.getElementById('editCampSubject')?.value.trim(),
+            preview_text: document.getElementById('editCampPreview')?.value.trim(),
+            from_name: document.getElementById('editCampFromName')?.value.trim(),
+            from_email: document.getElementById('editCampFromEmail')?.value.trim(),
+        };
+        if (!payload.name) { showToast('O nome é obrigatório.', 'error'); return; }
+        const btn = document.getElementById('editCampBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
+        try {
+            await apiFetch(`/api/campaigns/${_currentCampaign.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            Object.assign(_currentCampaign, payload);
+            showCampaign(null, _currentCampaign);
+            closeEditCampaignModal();
+            showToast('Campanha actualizada.');
+            _loadCampaigns(_currentBrand.id);
+        } catch(e) {
+            showToast(e.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+        }
     }
 
     function mockDuplicateCampaign() {
@@ -2648,7 +2711,20 @@ ${body}
                 n.classList.remove('text-white/50');
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
-            if (id === 'campaignCreate') wizShowStep(1);
+            if (id === 'campaignCreate') {
+                wizShowStep(1);
+                // Clear fields
+                ['wizName','wizSubject','wizPreviewText'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+                // Set sender defaults
+                const fromEmail = _currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`;
+                const fnEl = document.getElementById('wizFromName'); if (fnEl) fnEl.value = 'Caetano';
+                const feEl = document.getElementById('wizFromEmail'); if (feEl) feEl.value = fromEmail;
+                // Reset template selection
+                _wizSelectedTemplateId = null;
+                // Reset send type to 'now'
+                const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
+                if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
+            }
             // Roles info panel: only visible to owner / admin / administrador
             if (id === 'team') { _syncRolesPanel(); _loadTeamMembers(); }
             // Load campaign report when entering report screen
@@ -3106,11 +3182,11 @@ ${body}
     }
 
     async function renderBrandData(brandId) {
-        // Wizard: sender fields
+        // Wizard sender defaults: always "Caetano" as from_name; info@caetano.pt for caetano brand, info@{brandId}.caetano.pt for others
         const fromName = document.getElementById('wizFromName');
         const fromEmail = document.getElementById('wizFromEmail');
-        if (fromName) fromName.value = `${_currentBrand.name} Caetano`;
-        if (fromEmail) fromEmail.value = `${brandId}@caetano.pt`;
+        if (fromName) fromName.value = 'Caetano';
+        if (fromEmail) fromEmail.value = brandId === 'caetano' ? 'info@caetano.pt' : `info@${brandId}.caetano.pt`;
 
         // Dashboard KPIs — reset while loading
         _setText('dash-contacts', '…');
@@ -3593,6 +3669,7 @@ ${body}
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50">
+                                <th class="px-4 py-3 text-left font-medium text-slate-500">ID</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Campanha</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Estado</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Destinatários</th>
