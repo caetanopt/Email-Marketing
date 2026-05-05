@@ -1,172 +1,160 @@
--- PrimeMail — Schema inicial
--- Executar no MariaDB: mysql -u claude -p email_apps < migrations/001_schema.sql
-
-SET FOREIGN_KEY_CHECKS = 0;
+-- PrimeMail — Schema PostgreSQL (Supabase)
+-- Executar no Supabase: Project → SQL Editor → New Query → colar e Run
 
 -- ── Marcas ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS brands (
-  id          VARCHAR(50)  PRIMARY KEY,
-  name        VARCHAR(100) NOT NULL,
-  color       VARCHAR(7)   DEFAULT '#1C1C1C',
-  logo_url    VARCHAR(500),
-  from_name   VARCHAR(100),
-  from_email  VARCHAR(255),
-  active      TINYINT(1)   DEFAULT 1,
-  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id         TEXT        PRIMARY KEY,
+  name       TEXT        NOT NULL,
+  color      TEXT        DEFAULT '#1C1C1C',
+  logo_url   TEXT,
+  from_name  TEXT,
+  from_email TEXT,
+  active     BOOLEAN     DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ── Utilizadores ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
-  id            INT          AUTO_INCREMENT PRIMARY KEY,
-  name          VARCHAR(100) NOT NULL,
-  email         VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  active        TINYINT(1)   DEFAULT 1,
-  created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
-  last_login    DATETIME     NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id            SERIAL      PRIMARY KEY,
+  name          TEXT        NOT NULL,
+  email         TEXT        NOT NULL UNIQUE,
+  password_hash TEXT        NOT NULL,
+  active        BOOLEAN     DEFAULT TRUE,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  last_login    TIMESTAMPTZ
+);
 
 -- ── Roles por marca ──────────────────────────────────
+CREATE TYPE user_role AS ENUM ('owner','admin','editor','viewer');
+
 CREATE TABLE IF NOT EXISTS user_brand_roles (
-  id         INT         AUTO_INCREMENT PRIMARY KEY,
-  user_id    INT         NOT NULL,
-  brand_id   VARCHAR(50) NOT NULL,
-  role       ENUM('owner','admin','editor','viewer') NOT NULL DEFAULT 'viewer',
-  created_at DATETIME    DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_user_brand (user_id, brand_id),
-  FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE,
-  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id         SERIAL      PRIMARY KEY,
+  user_id    INT         NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+  brand_id   TEXT        NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  role       user_role   NOT NULL DEFAULT 'viewer',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, brand_id)
+);
 
 -- ── Contactos ───────────────────────────────────────
+CREATE TYPE contact_status AS ENUM ('active','unsubscribed','bounced','suppressed');
+
 CREATE TABLE IF NOT EXISTS contacts (
-  id                INT          AUTO_INCREMENT PRIMARY KEY,
-  brand_id          VARCHAR(50)  NOT NULL,
-  email             VARCHAR(255) NOT NULL,
-  name              VARCHAR(100),
-  phone             VARCHAR(50),
-  company           VARCHAR(100),
-  status            ENUM('active','unsubscribed','bounced','suppressed') DEFAULT 'active',
-  source            VARCHAR(50),
-  custom_attributes JSON,
-  created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_brand_email (brand_id, email),
-  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE CASCADE,
-  INDEX idx_brand_status (brand_id, status),
-  INDEX idx_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id                SERIAL        PRIMARY KEY,
+  brand_id          TEXT          NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  email             TEXT          NOT NULL,
+  name              TEXT,
+  phone             TEXT,
+  company           TEXT,
+  status            contact_status DEFAULT 'active',
+  source            TEXT,
+  custom_attributes JSONB,
+  created_at        TIMESTAMPTZ   DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ   DEFAULT NOW(),
+  UNIQUE (brand_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_brand_status ON contacts(brand_id, status);
 
 -- ── Listas ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS lists (
-  id          INT          AUTO_INCREMENT PRIMARY KEY,
-  brand_id    VARCHAR(50)  NOT NULL,
-  name        VARCHAR(100) NOT NULL,
+  id          SERIAL      PRIMARY KEY,
+  brand_id    TEXT        NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  name        TEXT        NOT NULL,
   description TEXT,
-  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE CASCADE,
-  INDEX idx_brand (brand_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lists_brand ON lists(brand_id);
 
 -- ── Membros das listas ──────────────────────────────
 CREATE TABLE IF NOT EXISTS list_members (
-  list_id    INT      NOT NULL,
-  contact_id INT      NOT NULL,
-  added_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (list_id, contact_id),
-  FOREIGN KEY (list_id)    REFERENCES lists(id)    ON DELETE CASCADE,
-  FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  list_id    INT         NOT NULL REFERENCES lists(id)    ON DELETE CASCADE,
+  contact_id INT         NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  added_at   TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (list_id, contact_id)
+);
 
 -- ── Templates ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS templates (
-  id           INT          AUTO_INCREMENT PRIMARY KEY,
-  brand_id     VARCHAR(50)  NOT NULL,
-  name         VARCHAR(100) NOT NULL,
-  subject      VARCHAR(255),
-  preview_text VARCHAR(255),
-  html_content LONGTEXT,
-  created_by   INT,
-  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (brand_id)   REFERENCES brands(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id)  ON DELETE SET NULL,
-  INDEX idx_brand (brand_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id           SERIAL      PRIMARY KEY,
+  brand_id     TEXT        NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  name         TEXT        NOT NULL,
+  subject      TEXT,
+  preview_text TEXT,
+  html_content TEXT,
+  created_by   INT         REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_templates_brand ON templates(brand_id);
 
 -- ── Campanhas ───────────────────────────────────────
+CREATE TYPE campaign_status AS ENUM ('draft','scheduled','sending','sent','paused','cancelled');
+
 CREATE TABLE IF NOT EXISTS campaigns (
-  id           INT          AUTO_INCREMENT PRIMARY KEY,
-  brand_id     VARCHAR(50)  NOT NULL,
-  name         VARCHAR(100) NOT NULL,
-  subject      VARCHAR(255),
-  preview_text VARCHAR(255),
-  from_name    VARCHAR(100),
-  from_email   VARCHAR(255),
-  template_id  INT,
-  status       ENUM('draft','scheduled','sending','sent','paused','cancelled') DEFAULT 'draft',
-  scheduled_at DATETIME NULL,
-  sent_at      DATETIME NULL,
-  created_by   INT,
-  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (brand_id)    REFERENCES brands(id)    ON DELETE CASCADE,
-  FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL,
-  FOREIGN KEY (created_by)  REFERENCES users(id)     ON DELETE SET NULL,
-  INDEX idx_brand_status (brand_id, status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id           SERIAL          PRIMARY KEY,
+  brand_id     TEXT            NOT NULL REFERENCES brands(id)    ON DELETE CASCADE,
+  name         TEXT            NOT NULL,
+  subject      TEXT,
+  preview_text TEXT,
+  from_name    TEXT,
+  from_email   TEXT,
+  template_id  INT             REFERENCES templates(id) ON DELETE SET NULL,
+  status       campaign_status DEFAULT 'draft',
+  scheduled_at TIMESTAMPTZ,
+  sent_at      TIMESTAMPTZ,
+  created_by   INT             REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ     DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ     DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_campaigns_brand_status ON campaigns(brand_id, status);
 
 -- ── Listas de cada campanha ──────────────────────────
 CREATE TABLE IF NOT EXISTS campaign_lists (
-  campaign_id INT NOT NULL,
-  list_id     INT NOT NULL,
-  PRIMARY KEY (campaign_id, list_id),
-  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
-  FOREIGN KEY (list_id)     REFERENCES lists(id)     ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  campaign_id INT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  list_id     INT NOT NULL REFERENCES lists(id)     ON DELETE CASCADE,
+  PRIMARY KEY (campaign_id, list_id)
+);
 
--- ── Destinatários (registo por envio) ───────────────
+-- ── Destinatários ────────────────────────────────────
+CREATE TYPE recipient_status AS ENUM ('pending','sent','failed','bounced','suppressed');
+
 CREATE TABLE IF NOT EXISTS campaign_recipients (
-  id          INT          AUTO_INCREMENT PRIMARY KEY,
-  campaign_id INT          NOT NULL,
-  contact_id  INT          NOT NULL,
-  email       VARCHAR(255) NOT NULL,
-  status      ENUM('pending','sent','failed','bounced','suppressed') DEFAULT 'pending',
-  message_id  VARCHAR(255),
-  sent_at     DATETIME NULL,
-  UNIQUE KEY uq_campaign_contact (campaign_id, contact_id),
-  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
-  FOREIGN KEY (contact_id)  REFERENCES contacts(id)  ON DELETE CASCADE,
-  INDEX idx_campaign (campaign_id),
-  INDEX idx_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id          SERIAL           PRIMARY KEY,
+  campaign_id INT              NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  contact_id  INT              NOT NULL REFERENCES contacts(id)  ON DELETE CASCADE,
+  email       TEXT             NOT NULL,
+  status      recipient_status DEFAULT 'pending',
+  message_id  TEXT,
+  sent_at     TIMESTAMPTZ,
+  UNIQUE (campaign_id, contact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recipients_campaign ON campaign_recipients(campaign_id);
 
 -- ── Eventos de email ────────────────────────────────
+CREATE TYPE event_type AS ENUM ('delivered','open','click','bounce','unsubscribe','spam');
+
 CREATE TABLE IF NOT EXISTS email_events (
-  id          INT          AUTO_INCREMENT PRIMARY KEY,
-  campaign_id INT          NOT NULL,
-  contact_id  INT,
-  email       VARCHAR(255),
-  type        ENUM('delivered','open','click','bounce','unsubscribe','spam') NOT NULL,
-  url         VARCHAR(500),
-  ip          VARCHAR(45),
-  user_agent  VARCHAR(500),
-  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
-  INDEX idx_campaign_type (campaign_id, type),
-  INDEX idx_contact (contact_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  id          SERIAL      PRIMARY KEY,
+  campaign_id INT         NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  contact_id  INT         REFERENCES contacts(id),
+  email       TEXT,
+  type        event_type  NOT NULL,
+  url         TEXT,
+  ip          TEXT,
+  user_agent  TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_events_campaign_type ON email_events(campaign_id, type);
 
 -- ── Supressão ───────────────────────────────────────
-CREATE TABLE IF NOT EXISTS suppression (
-  id         INT          AUTO_INCREMENT PRIMARY KEY,
-  brand_id   VARCHAR(50)  NOT NULL,
-  email      VARCHAR(255) NOT NULL,
-  reason     ENUM('manual','bounce','unsubscribe','spam') DEFAULT 'manual',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_brand_email (brand_id, email),
-  FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE CASCADE,
-  INDEX idx_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TYPE suppression_reason AS ENUM ('manual','bounce','unsubscribe','spam');
 
-SET FOREIGN_KEY_CHECKS = 1;
+CREATE TABLE IF NOT EXISTS suppression (
+  id         SERIAL             PRIMARY KEY,
+  brand_id   TEXT               NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  email      TEXT               NOT NULL,
+  reason     suppression_reason DEFAULT 'manual',
+  created_at TIMESTAMPTZ        DEFAULT NOW(),
+  UNIQUE (brand_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_suppression_email ON suppression(email);

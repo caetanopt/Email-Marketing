@@ -1,4 +1,4 @@
-const { getPool } = require('../../lib/db');
+const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -6,19 +6,18 @@ module.exports = async function handler(req, res) {
   const user = requireAuth(req, res);
   if (!user) return;
 
-  const db = getPool();
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Método não permitido' });
 
-  if (req.method === 'GET') {
-    const [rows] = await db.query(
+  try {
+    const rows = await query(
       `SELECT b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, ubr.role
        FROM brands b
-       JOIN user_brand_roles ubr ON ubr.brand_id = b.id AND ubr.user_id = ?
-       WHERE b.active = 1
-       ORDER BY b.name`,
+       JOIN user_brand_roles ubr ON ubr.brand_id = b.id AND ubr.user_id = $1
+       WHERE b.active = TRUE ORDER BY b.name`,
       [user.id]
     );
-    return res.status(200).json({ data: rows });
+    res.status(200).json({ data: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
   }
-
-  res.status(405).json({ error: 'Método não permitido' });
 };
