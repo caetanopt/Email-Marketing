@@ -68,8 +68,8 @@ module.exports = async function handler(req, res) {
            LEFT JOIN templates t ON t.id=c.template_id WHERE c.id=$1`, [id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
-        if (!['draft','scheduled'].includes(camp[0].status))
-          return res.status(400).json({ error: 'Campanha já enviada' });
+        if (camp[0].status === 'sending')
+          return res.status(400).json({ error: 'Campanha já está a ser enviada, aguarda…' });
 
         const contacts = await query(
           `SELECT DISTINCT c.id, c.email, c.name
@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
              AND c.email NOT IN (SELECT email FROM suppression WHERE brand_id=$2)`,
           [id, camp[0].brand_id]
         );
-        if (!contacts.length) return res.status(400).json({ error: 'Sem destinatários activos' });
+        if (!contacts.length) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas com contactos activos.' });
 
         await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
 
