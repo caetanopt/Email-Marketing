@@ -1,6 +1,13 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+function unsubToken(email, brandId) {
+  return crypto.createHmac('sha256', process.env.JWT_SECRET || 'secret')
+    .update(`${email}:${brandId}`)
+    .digest('hex');
+}
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -102,6 +109,7 @@ module.exports = async function handler(req, res) {
         });
         const c = camp[0];
         const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+        const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         let sent = 0, failed = 0;
 
         // SES default rate limit is 14/sec for new accounts. Adjust via SMTP_RATE.
@@ -109,17 +117,29 @@ module.exports = async function handler(req, res) {
         for (let i = 0; i < contacts.length; i += RATE) {
           await Promise.all(contacts.slice(i, i + RATE).map(async contact => {
             try {
+              const token = unsubToken(contact.email, c.brand_id);
+              const unsubUrl = `${appUrl}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
+              const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
+                <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
+              </div>`;
+              const rawHtml = (c.html_content||'')
+                .replace(/\{\{name\}\}/g, contact.name||contact.email)
+                .replace(/\{\{email\}\}/g, contact.email)
+                .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+              const finalHtml = rawHtml.includes('</body>')
+                ? rawHtml.replace('</body>', unsubBlock + '</body>')
+                : rawHtml + unsubBlock;
               const info = await transporter.sendMail({
                 from: `${c.from_name||'PrimeMail'} <${c.from_email||`newsletter@${fromDomain}`}>`,
                 to: contact.email,
                 subject: c.subject || '(sem assunto)',
                 replyTo: c.reply_to || undefined,
-                html: (c.html_content||'')
-                  .replace(/\{\{name\}\}/g, contact.name||contact.email)
-                  .replace(/\{\{email\}\}/g, contact.email),
+                html: finalHtml,
                 headers: {
                   'X-Campaign-Id': String(id),
                   'X-Contact-Id':  String(contact.id),
+                  'List-Unsubscribe': `<${unsubUrl}>`,
+                  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
                 },
               });
               await query(

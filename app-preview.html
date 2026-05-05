@@ -379,44 +379,98 @@
         document.querySelectorAll(sel).forEach(i => i.checked = val);
     }
 
-    function mockInviteTeam() {
-        const inp = document.getElementById('inviteEmailInput');
-        const roleEl = document.getElementById('inviteRoleSelect');
-        const email = inp ? inp.value.trim() : '';
-        if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
-        const exists = Array.from(document.querySelectorAll('#teamMembersBody tr'))
-            .some(tr => tr.textContent.toLowerCase().includes(email.toLowerCase()));
-        if (exists) { showToast(`${email} já é membro da equipa.`, 'error'); return; }
-        const role = roleEl ? roleEl.value : 'editor';
+    async function _loadTeamMembers() {
+        if (!_currentBrand?.id) return;
         const tbody = document.getElementById('teamMembersBody');
-        if (tbody) {
-            const initials = email[0].toUpperCase();
-            const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600'];
-            const c = colors[tbody.rows.length % colors.length];
-            const memberId = 'm' + Date.now();
-            // Por defeito: marca activa + áreas relevantes pela função
-            const defaultBrands = [_currentBrand?.id || 'bmw'];
-            const defaultAreas = role === 'admin'
-                ? _allAreas.map(a=>a.id)
-                : role === 'editor'
-                    ? ['dashboard','contacts','lists','templates','campaigns']
-                    : ['dashboard','campaigns'];
-            _memberPermissions[memberId] = { brands: defaultBrands, areas: defaultAreas };
-            const summary = _accessSummaryText(_memberPermissions[memberId]);
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-slate-50';
-            tr.dataset.memberId = memberId;
-            tr.dataset.memberName = email;
-            tr.innerHTML = `
-                <td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${c} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${email}</p><p class="text-xs text-slate-400">${email}</p></div></div></td>
-                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">pendente</span></td>
-                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">${summary}</span></td>
-                <td class="px-4 py-3 text-slate-500">hoje</td>
-                <td class="px-4 py-3 text-right"><div class="flex items-center justify-end gap-2"><button onclick="openPermissionsModal(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Permissões</button><button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button></div></td>`;
-            tbody.appendChild(tr);
+        if (!tbody) return;
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        try {
+            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=team`);
+            const roleBadge = { owner:'bg-purple-100 text-purple-700', admin:'bg-blue-100 text-blue-700', editor:'bg-green-100 text-green-700', viewer:'bg-slate-100 text-slate-600' };
+            const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600','bg-blue-600','bg-green-600'];
+            const _currentUserId = JSON.parse(localStorage.getItem('pm_user')||'{}').id;
+            tbody.innerHTML = (data||[]).map((m, i) => {
+                const initials = (m.name||m.email||'?')[0].toUpperCase();
+                const col = colors[i % colors.length];
+                const badge = roleBadge[m.role] || 'bg-slate-100 text-slate-600';
+                const isMe = m.id === _currentUserId;
+                const since = m.last_login ? new Date(m.last_login).toLocaleDateString('pt-PT') : '—';
+                const roleOptions = ['owner','admin','editor','viewer'].map(r =>
+                    `<option value="${r}"${r===m.role?' selected':''}>${r}</option>`
+                ).join('');
+                const actions = isMe
+                    ? `<span class="text-xs text-slate-300">—</span>`
+                    : (m.role === 'owner'
+                        ? `<span class="text-xs text-slate-400">owner</span>`
+                        : `<div class="flex items-center justify-end gap-2">
+                            <select onchange="doUpdateRole(this,${m.id})" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">${roleOptions}</select>
+                            <button onclick="doRemoveMember(this,${m.id})" class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                          </div>`);
+                return `<tr class="hover:bg-slate-50" data-member-id="${m.id}" data-member-name="${(m.name||'').replace(/"/g,'&quot;')}">
+                    <td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${col} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${m.name||'—'}</p><p class="text-xs text-slate-400">${m.email}</p></div></div></td>
+                    <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${badge}">${m.role}</span></td>
+                    <td class="px-4 py-3 text-xs text-slate-500">${m.active ? '<span class="text-green-600">Activo</span>' : '<span class="text-slate-400">Inactivo</span>'}</td>
+                    <td class="px-4 py-3 text-slate-500 text-xs">${since}</td>
+                    <td class="px-4 py-3 text-right">${actions}</td>
+                </tr>`;
+            }).join('') || `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Sem membros.</td></tr>`;
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400 text-sm">Erro ao carregar membros.</td></tr>`;
         }
-        inp.value = '';
-        showToast(`Convite enviado para ${email}.`);
+    }
+
+    async function mockInviteTeam() {
+        const nameInp = document.getElementById('inviteNameInput');
+        const inp = document.getElementById('inviteEmailInput');
+        const passInp = document.getElementById('invitePasswordInput');
+        const roleEl = document.getElementById('inviteRoleSelect');
+        const name = nameInp ? nameInp.value.trim() : '';
+        const email = inp ? inp.value.trim() : '';
+        const password = passInp ? passInp.value.trim() : '';
+        const role = roleEl ? roleEl.value : 'editor';
+        if (!name) { showToast('Insira o nome.', 'error'); return; }
+        if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
+        if (!password || password.length < 6) { showToast('Password deve ter pelo menos 6 caracteres.', 'error'); return; }
+        const btn = document.getElementById('inviteBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=invite`, {
+                method: 'POST',
+                body: JSON.stringify({ name, email, password, role })
+            });
+            if (nameInp) nameInp.value = '';
+            inp.value = '';
+            if (passInp) passInp.value = '';
+            showToast(`Membro ${email} adicionado com sucesso.`);
+            await _loadTeamMembers();
+        } catch(e) {
+            showToast(e.message || 'Erro ao convidar membro.', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+    async function doRemoveMember(btn, memberId) {
+        if (!confirm('Remover este membro da equipa?')) return;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=remove_member&member_id=${memberId}`, { method: 'DELETE' });
+            btn.closest('tr').remove();
+            showToast('Membro removido.');
+        } catch(e) {
+            showToast(e.message || 'Erro ao remover membro.', 'error');
+        }
+    }
+    async function doUpdateRole(select, memberId) {
+        const role = select.value;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=update_role&member_id=${memberId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ role })
+            });
+            showToast('Função actualizada.');
+        } catch(e) {
+            showToast(e.message || 'Erro ao actualizar função.', 'error');
+            await _loadTeamMembers();
+        }
     }
     function mockRemoveTeamMember(btn) {
         if (!confirm('Remover este membro da equipa?')) return;
@@ -1589,9 +1643,26 @@ ${body}
     }
 
     // ── Unsubscribe (público) ────────────────────────────
-    function confirmUnsubscribe() {
+    async function confirmUnsubscribe() {
         const email = document.getElementById('unsubEmail')?.value.trim();
         if (!email || !email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        const params = new URLSearchParams(window.location.search);
+        const brandId = params.get('brand_id') || _currentBrand?.id;
+        const token = params.get('token');
+        const btn = document.querySelector('#unsubConfirmPanel button');
+        if (btn) btn.disabled = true;
+        try {
+            if (brandId) {
+                const url = token
+                    ? `/api/suppression?brand_id=${brandId}&action=unsubscribe&email=${encodeURIComponent(email)}&token=${token}`
+                    : `/api/suppression?brand_id=${brandId}`;
+                if (token) {
+                    await fetch(API_BASE + url);
+                } else {
+                    await apiFetch(url, { method: 'POST', body: JSON.stringify({ email, reason: 'unsubscribe' }) });
+                }
+            }
+        } catch(e) { /* best-effort */ }
         document.getElementById('unsubConfirmPanel').classList.add('hidden');
         document.getElementById('unsubSuccessPanel').classList.remove('hidden');
         const sp = document.getElementById('unsubSuccessEmail');
@@ -2547,7 +2618,7 @@ ${body}
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') wizShowStep(1);
             // Roles info panel: only visible to owner / admin / administrador
-            if (id === 'team') _syncRolesPanel();
+            if (id === 'team') { _syncRolesPanel(); _loadTeamMembers(); }
             // Load campaign report when entering report screen
             if (id === 'campaignReport') _loadCampaignReport();
             // Load brand settings when entering settings screen
@@ -5094,13 +5165,21 @@ ${body}
             <main class="flex-1 px-8 py-6 space-y-6">
                 <!-- Invite form -->
                 <div class="bg-white border border-slate-200 rounded-xl p-5">
-                    <h3 class="font-semibold text-slate-900 mb-4 text-sm">Convidar membro</h3>
-                    <div class="flex items-end gap-3">
-                        <div class="flex-1">
-                            <label class="text-xs text-slate-500 block mb-1">Email</label>
+                    <h3 class="font-semibold text-slate-900 mb-4 text-sm">Adicionar membro</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                        <div>
+                            <label class="text-xs text-slate-500 block mb-1">Nome *</label>
+                            <input id="inviteNameInput" type="text" placeholder="Nome completo" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500 block mb-1">Email *</label>
                             <input id="inviteEmailInput" type="email" placeholder="novo@utilizador.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                         </div>
-                        <div class="w-36">
+                        <div>
+                            <label class="text-xs text-slate-500 block mb-1">Password *</label>
+                            <input id="invitePasswordInput" type="password" placeholder="Mínimo 6 caracteres" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        </div>
+                        <div>
                             <label class="text-xs text-slate-500 block mb-1">Função</label>
                             <select id="inviteRoleSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
                                 <option value="admin">Admin</option>
@@ -5108,8 +5187,8 @@ ${body}
                                 <option value="viewer">Viewer</option>
                             </select>
                         </div>
-                        <button onclick="mockInviteTeam()" class="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 whitespace-nowrap">Enviar convite</button>
                     </div>
+                    <button id="inviteBtn" onclick="mockInviteTeam()" class="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 whitespace-nowrap disabled:opacity-50">Adicionar membro</button>
                 </div>
                 <!-- Members list -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -5122,72 +5201,13 @@ ${body}
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Utilizador</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Função</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Acesso</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Membro desde</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Estado</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Último login</th>
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
                         <tbody id="teamMembersBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50" data-member-id="m1" data-member-name="Miguel Caetano">
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full bg-slate-800 text-white text-xs font-semibold flex items-center justify-center">M</div>
-                                        <div><p class="font-medium text-slate-900">Miguel Caetano</p><p class="text-xs text-slate-400">miguel@caetano.pt</p></div>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">owner</span>
-                                </td>
-                                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">Todas (8 marcas · 9 áreas)</span></td>
-                                <td class="px-4 py-3 text-slate-500">01/01/2026</td>
-                                <td class="px-4 py-3 text-right"><span class="text-xs text-slate-300">—</span></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-member-id="m2" data-member-name="Ana Rodrigues">
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">A</div>
-                                        <div><p class="font-medium text-slate-900">Ana Rodrigues</p><p class="text-xs text-slate-400">ana@caetano.pt</p></div>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <select onchange="mockUpdateRole(this)" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">
-                                        <option>admin</option>
-                                        <option selected>editor</option>
-                                        <option>viewer</option>
-                                    </select>
-                                </td>
-                                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">2 marcas · 5 áreas</span></td>
-                                <td class="px-4 py-3 text-slate-500">15/01/2026</td>
-                                <td class="px-4 py-3 text-right">
-                                    <div class="flex items-center justify-end gap-2">
-                                        <button onclick="openPermissionsModal(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Permissões</button>
-                                        <button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-member-id="m3" data-member-name="Carlos Lima">
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full bg-green-600 text-white text-xs font-semibold flex items-center justify-center">C</div>
-                                        <div><p class="font-medium text-slate-900">Carlos Lima</p><p class="text-xs text-slate-400">carlos@agencia.pt</p></div>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <select onchange="mockUpdateRole(this)" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">
-                                        <option>admin</option>
-                                        <option>editor</option>
-                                        <option selected>viewer</option>
-                                    </select>
-                                </td>
-                                <td class="px-4 py-3 text-xs text-slate-500"><span class="member-access-summary">1 marca · 2 áreas</span></td>
-                                <td class="px-4 py-3 text-slate-500">03/02/2026</td>
-                                <td class="px-4 py-3 text-right">
-                                    <div class="flex items-center justify-end gap-2">
-                                        <button onclick="openPermissionsModal(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Permissões</button>
-                                        <button onclick="mockRemoveTeamMember(this)" class="text-xs text-red-500 hover:text-red-700">Remover</button>
-                                    </div>
-                                </td>
-                            </tr>
+                            <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>
                         </tbody>
                     </table>
                 </div>
