@@ -34,12 +34,12 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Admin: password = Admin1234!
 INSERT INTO users (name, email, password_hash) VALUES
-  ('Administrador', 'admin@caetano.pt', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi')
+  ('Administrador', 'admin@primemail.io', '$2a$10$dILi66UINh/EBnA6.VrvOu9cxl/K0QkW.bo8nN9jRpPqBRGX46F5S')
 ON CONFLICT (email) DO NOTHING;
 
 -- Dar acesso owner a todas as marcas ao admin
 INSERT INTO user_brand_roles (user_id, brand_id, role)
 SELECT u.id, b.id, 'owner'
 FROM users u, brands b
-WHERE u.email = 'admin@caetano.pt'
+WHERE u.email = 'admin@primemail.io'
 ON CONFLICT (user_id, brand_id) DO NOTHING;
