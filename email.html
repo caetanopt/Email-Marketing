@@ -2626,8 +2626,16 @@ ${body}
         const modal = document.getElementById('blockPickerModal');
         modal.classList.remove('hidden'); modal.classList.add('flex');
         try {
-            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=blocks&type=${type}`);
-            if (!data || !data.length) {
+            const resp = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=blocks&type=${type}`);
+            const data = resp.data || [];
+            if (resp._migration_pending) {
+                list.innerHTML = `<div class="text-center py-8">
+                    <p class="text-sm text-amber-700 mb-2 font-medium">Funcionalidade ainda não activada</p>
+                    <p class="text-xs text-slate-500">A migração 007_brand_blocks_multi.sql ainda não foi corrida no Supabase.</p>
+                </div>`;
+                return;
+            }
+            if (!data.length) {
                 list.innerHTML = `<div class="text-center py-8">
                     <p class="text-sm text-slate-500 mb-3">Sem ${type === 'header' ? 'cabeçalhos' : 'rodapés'} criados para esta marca.</p>
                     <button onclick="closeBlockPicker();showScreen('blocks')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Criar agora</button>
@@ -3128,7 +3136,7 @@ ${lines.join('\n')}
                 campaignCreate: 'campaigns', campaignShow: 'campaigns', campaignReport: 'campaigns',
                 contactShow: 'contacts', contactEdit: 'contacts',
                 listEdit: 'lists',
-                templateEdit: 'campaigns',
+                templateEdit: (typeof _teMode !== 'undefined' && _teMode === 'block') ? 'blocks' : 'campaigns',
             };
             const navKey = _navParent[id] || id;
             document.querySelectorAll('.nav-item').forEach(n => {

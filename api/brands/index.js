@@ -17,24 +17,34 @@ module.exports = async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       if (id && action === 'blocks') {
-        const params = [id];
-        let where = 'WHERE brand_id=$1';
-        if (type) { params.push(type); where += ` AND type=$${params.length}`; }
-        const rows = await query(
-          `SELECT id, brand_id, type, name, html_content, created_at, updated_at
-           FROM brand_blocks ${where} ORDER BY type, name`,
-          params
-        );
-        return res.status(200).json({ data: rows });
+        try {
+          const params = [id];
+          let where = 'WHERE brand_id=$1';
+          if (type) { params.push(type); where += ` AND type=$${params.length}`; }
+          const rows = await query(
+            `SELECT id, brand_id, type, name, html_content, created_at, updated_at
+             FROM brand_blocks ${where} ORDER BY type, name`,
+            params
+          );
+          return res.status(200).json({ data: rows });
+        } catch (e) {
+          if (e.code === '42P01') return res.status(200).json({ data: [], _migration_pending: true });
+          throw e;
+        }
       }
       if (id && action === 'block' && block_id) {
-        const rows = await query(
-          `SELECT id, brand_id, type, name, html_content, created_at, updated_at
-           FROM brand_blocks WHERE id=$1 AND brand_id=$2`,
-          [block_id, id]
-        );
-        if (!rows[0]) return res.status(404).json({ error: 'Bloco não encontrado' });
-        return res.status(200).json(rows[0]);
+        try {
+          const rows = await query(
+            `SELECT id, brand_id, type, name, html_content, created_at, updated_at
+             FROM brand_blocks WHERE id=$1 AND brand_id=$2`,
+            [block_id, id]
+          );
+          if (!rows[0]) return res.status(404).json({ error: 'Bloco não encontrado' });
+          return res.status(200).json(rows[0]);
+        } catch (e) {
+          if (e.code === '42P01') return res.status(503).json({ error: 'Tabela brand_blocks não existe — corre a migração 007_brand_blocks_multi.sql no Supabase.' });
+          throw e;
+        }
       }
       if (id && action === 'team') {
         const rows = await query(
@@ -69,12 +79,17 @@ module.exports = async function handler(req, res) {
       const { type: bType, name, html_content } = req.body || {};
       if (!['header','footer'].includes(bType)) return res.status(400).json({ error: 'type deve ser header ou footer' });
       if (!name) return res.status(400).json({ error: 'name obrigatório' });
-      const r = await query(
-        `INSERT INTO brand_blocks (brand_id, type, name, html_content) VALUES ($1,$2,$3,$4)
-         RETURNING id, brand_id, type, name, html_content, created_at, updated_at`,
-        [id, bType, name, html_content || null]
-      );
-      return res.status(201).json(r[0]);
+      try {
+        const r = await query(
+          `INSERT INTO brand_blocks (brand_id, type, name, html_content) VALUES ($1,$2,$3,$4)
+           RETURNING id, brand_id, type, name, html_content, created_at, updated_at`,
+          [id, bType, name, html_content || null]
+        );
+        return res.status(201).json(r[0]);
+      } catch (e) {
+        if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 007_brand_blocks_multi.sql no Supabase para activar os blocos.' });
+        throw e;
+      }
     }
 
     if (req.method === 'PUT' && id && action === 'block' && block_id) {
@@ -91,16 +106,26 @@ module.exports = async function handler(req, res) {
       sets.push(`updated_at=NOW()`);
       params.push(block_id);
       params.push(id);
-      await query(
-        `UPDATE brand_blocks SET ${sets.join(', ')} WHERE id=$${params.length-1} AND brand_id=$${params.length}`,
-        params
-      );
-      return res.status(200).json({ ok: true });
+      try {
+        await query(
+          `UPDATE brand_blocks SET ${sets.join(', ')} WHERE id=$${params.length-1} AND brand_id=$${params.length}`,
+          params
+        );
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 007_brand_blocks_multi.sql no Supabase.' });
+        throw e;
+      }
     }
 
     if (req.method === 'DELETE' && id && action === 'block' && block_id) {
-      await query('DELETE FROM brand_blocks WHERE id=$1 AND brand_id=$2', [block_id, id]);
-      return res.status(200).json({ ok: true });
+      try {
+        await query('DELETE FROM brand_blocks WHERE id=$1 AND brand_id=$2', [block_id, id]);
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 007_brand_blocks_multi.sql no Supabase.' });
+        throw e;
+      }
     }
 
     if (req.method === 'POST' && id && action === 'invite') {
