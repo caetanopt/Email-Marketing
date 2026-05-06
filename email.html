@@ -829,6 +829,9 @@
         ]
     };
 
+    let _teCtx = 'te_';
+    const _teEl = id => document.getElementById(_teCtx + id);
+
     const teState = {
         selected: null,
         viewport: 'desktop',
@@ -938,12 +941,12 @@
 
     // ── Mode tabs / preview modal ───────────────────────────────────
     function teSetMode(mode) {
-        const visual = document.getElementById('te_visualMode');
-        const code   = document.getElementById('te_codeMode');
+        const visual = _teEl('visualMode');
+        const code   = _teEl('codeMode');
         if (visual) visual.style.display = mode === 'visual' ? '' : 'none';
         if (code)   code.style.display   = mode === 'code'   ? '' : 'none';
-        const tv = document.getElementById('te_tabVisual');
-        const tc = document.getElementById('te_tabCode');
+        const tv = _teEl('tabVisual');
+        const tc = _teEl('tabCode');
         ['bg-white','shadow-sm','text-slate-900'].forEach(c => {
             tv?.classList.toggle(c, mode === 'visual');
             tc?.classList.toggle(c, mode === 'code');
@@ -951,6 +954,14 @@
         tv?.classList.toggle('text-slate-500', mode !== 'visual');
         tc?.classList.toggle('text-slate-500', mode !== 'code');
         if (mode === 'code') teRenderMjml();
+    }
+    function teOpenConverter() {
+        const p = document.getElementById('te_converterPanel');
+        if (p) { p.classList.remove('hidden'); p.classList.add('flex'); }
+    }
+    function teCloseConverter() {
+        const p = document.getElementById('te_converterPanel');
+        if (p) { p.classList.add('hidden'); p.classList.remove('flex'); }
     }
     function teOpenPreviewModal()  {
         const m = document.getElementById('te_previewModal');
@@ -1016,12 +1027,12 @@
         return d;
     }
     function teRenderCanvas() {
-        const list = document.getElementById('te_canvasList');
+        const list = _teEl('canvasList');
         if (!list) return;
-        const wrap = document.getElementById('te_canvasWrap');
+        const wrap = _teEl('canvasWrap');
         if (wrap) wrap.style.maxWidth = teState.viewport === 'mobile' ? '380px' : '640px';
-        const dBtn = document.getElementById('te_btnDesktop');
-        const mBtn = document.getElementById('te_btnMobile');
+        const dBtn = _teEl('btnDesktop');
+        const mBtn = _teEl('btnMobile');
         if (dBtn && mBtn) {
             dBtn.classList.toggle('bg-slate-900', teState.viewport === 'desktop');
             dBtn.classList.toggle('text-white',   teState.viewport === 'desktop');
@@ -1189,7 +1200,7 @@
 
     // ── Properties panel ────────────────────────────────────────────
     function teRenderProperties() {
-        const root = document.getElementById('te_props');
+        const root = _teEl('props');
         if (!root) return;
         if (!teState.selected) {
             root.innerHTML = '<p class="text-xs text-slate-400 italic text-center mt-8 px-2">Clica num bloco para editar as propriedades.</p>';
@@ -1256,8 +1267,8 @@
 
     // ── MJML output ────────────────────────────────────────────────
     function teRenderMjml() {
-        const code  = document.getElementById('te_mjmlCode');
-        const lines = document.getElementById('te_mjmlLines');
+        const code  = _teEl('mjmlCode');
+        const lines = _teEl('mjmlLines');
         if (!code) return;
         const mjml = teBuildMjml();
         code.value = mjml;
@@ -1265,8 +1276,8 @@
     }
     let _mjmlDebounce = null;
     function teSyncMjmlLines() {
-        const code  = document.getElementById('te_mjmlCode');
-        const lines = document.getElementById('te_mjmlLines');
+        const code  = _teEl('mjmlCode');
+        const lines = _teEl('mjmlLines');
         if (!code || !lines) return;
         lines.textContent = code.value.split('\n').map((_,i) => i+1).join('\n');
         lines.scrollTop = code.scrollTop;
@@ -1339,7 +1350,7 @@
         } catch(e) { return null; }
     }
     function teApplyMjml(silent) {
-        const code = document.getElementById('te_mjmlCode');
+        const code = _teEl('mjmlCode');
         if (!code) return;
         const blocks = teParseMjmlToBlocks(code.value);
         if (!blocks) {
@@ -1350,7 +1361,7 @@
         teState.selected = null;
         teRenderCanvas();
         teRenderProperties();
-        const status = document.getElementById('te_mjmlStatus');
+        const status = _teEl('mjmlStatus');
         if (status) { status.textContent = 'Sincronizado'; status.className = 'text-xs text-green-400 flex items-center gap-1'; }
         if (!silent) showToast('MJML aplicado ao editor visual.');
     }
@@ -1759,6 +1770,7 @@ ${body}
     const _checkSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`;
 
     function wizShowStep(step) {
+        if (_wizStep === 2 && step !== 2) _teCtx = 'te_';
         _wizStep = step;
         const labels = ['Detalhes', 'Template', 'Destinatários', 'Revisão'];
         [1,2,3,4].forEach(s => {
@@ -1792,7 +1804,7 @@ ${body}
             const checkedLists = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'));
             const listsText = checkedLists.length ? checkedLists.map(cb => cb.closest('label')?.querySelector('p')?.textContent || '').filter(Boolean).join(', ') : 'Nenhuma';
             const totalContacts = checkedLists.reduce((s, cb) => s + (parseInt(cb.dataset.contacts)||0), 0);
-            const tplName = document.querySelector('#wizTplList .wiz-tpl-item.border-slate-900 .wiz-tpl-name')?.textContent || (document.querySelector('#wizTplList .wiz-tpl-item.border-slate-900') ? 'Template seleccionado' : 'Nenhum');
+            const tplName = teState.blocks.length ? `${teState.blocks.length} bloco(s)` : 'Nenhum';
             let sendLabel = sendType === 'now' ? 'Enviar agora' : sendType === 'schedule' ? `Agendar: ${schedDate} ${schedTime}` : 'Guardar como rascunho';
             const rev = document.getElementById('wizReviewContent');
             if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -1894,7 +1906,13 @@ ${body}
     }
 
     function _wizInitPreview() {
-        _wizLoadTemplates();
+        _teCtx = 'wiz_te_';
+        teState.blocks = teState.blocks.length ? teState.blocks : [];
+        teState.selected = null;
+        teState.viewport = 'desktop';
+        teSetMode('visual');
+        teRenderCanvas();
+        teRenderProperties();
     }
 
     async function mockCampaignNext() {
@@ -1910,8 +1928,7 @@ ${body}
             wizShowStep(2); return;
         }
         if (_wizStep === 2) {
-            const tplContent = document.getElementById('wizTplHtml')?.value.trim();
-            if (!tplContent) { showToast('Adiciona o conteúdo HTML do template antes de continuar.', 'error'); return; }
+            if (!teState.blocks.length) { showToast('Adiciona pelo menos um bloco ao template antes de continuar.', 'error'); return; }
             wizShowStep(3); return;
         }
         if (_wizStep === 3) {
@@ -1938,13 +1955,13 @@ ${body}
                 scheduled_at = `${d}T${t}:00`;
             }
             try {
-                // Auto-save the inline template from step 2
-                const tplHtml = document.getElementById('wizTplHtml')?.value.trim() || '';
+                // Auto-save template from wizard step 2
                 let templateId = null;
-                if (tplHtml) {
+                if (teState.blocks.length) {
                     const tplName = `${name} — Template`;
+                    const tplMjml = teBuildMjml();
                     const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
-                        method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplHtml })
+                        method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplMjml })
                     });
                     templateId = tplRes.id || null;
                 }
@@ -2549,7 +2566,7 @@ ${body}
     function teApplyConvertedMjml() {
         const mjml = document.getElementById('te_converterOutput')?.value || '';
         if (!mjml.trim()) { showToast('Converte o HTML primeiro.', 'info'); return; }
-        const ta = document.getElementById('te_mjmlCode');
+        const ta = _teEl('mjmlCode');
         if (ta) { ta.value = mjml; teSyncMjmlLines && teSyncMjmlLines(); }
         document.getElementById('te_converterPanel').classList.add('hidden');
         // Switch to code mode
@@ -2974,11 +2991,9 @@ ${lines.join('\n')}
                 const feEl = document.getElementById('wizFromEmail'); if (feEl) feEl.value = fromEmail;
                 // Reset template content
                 _wizSelectedTemplateId = null;
-                const wizTplHtmlEl = document.getElementById('wizTplHtml');
-                if (wizTplHtmlEl) wizTplHtmlEl.value = '';
-                const wizTplFrame = document.getElementById('wizTplPreviewFrame');
-                if (wizTplFrame) wizTplFrame.srcdoc = '';
-                document.getElementById('wizTplConverterPanel')?.classList.add('hidden');
+                _teCtx = 'te_';
+                teState.blocks = [];
+                teState.selected = null;
                 // Reset send type to 'now'
                 const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                 if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
@@ -3525,8 +3540,8 @@ ${lines.join('\n')}
         if (typeof teRender === 'function') teRender();
         // Sync MJML line numbers with textarea scroll
         document.addEventListener('scroll', (ev) => {
-            if (ev.target && ev.target.id === 'te_mjmlCode') {
-                const lines = document.getElementById('te_mjmlLines');
+            if (ev.target && (ev.target.id === 'te_mjmlCode' || ev.target.id === 'wiz_te_mjmlCode')) {
+                const lines = _teEl('mjmlLines');
                 if (lines) lines.scrollTop = ev.target.scrollTop;
             }
         }, true);
@@ -5144,7 +5159,7 @@ ${lines.join('\n')}
                     </div>
 
                     <!-- Converter HTML → MJML -->
-                    <button type="button" onclick="document.getElementById('te_converterPanel').classList.remove('hidden')"
+                    <button type="button" onclick="teOpenConverter()"
                             class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         Converter HTML
