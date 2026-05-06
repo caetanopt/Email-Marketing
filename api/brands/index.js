@@ -12,10 +12,30 @@ module.exports = async function handler(req, res) {
   const user = requireAuth(req, res);
   if (!user) return;
 
-  const { id, action, member_id } = req.query;
+  const { id, action, member_id, block_id, type } = req.query;
 
   try {
     if (req.method === 'GET') {
+      if (id && action === 'blocks') {
+        const params = [id];
+        let where = 'WHERE brand_id=$1';
+        if (type) { params.push(type); where += ` AND type=$${params.length}`; }
+        const rows = await query(
+          `SELECT id, brand_id, type, name, html_content, created_at, updated_at
+           FROM brand_blocks ${where} ORDER BY type, name`,
+          params
+        );
+        return res.status(200).json({ data: rows });
+      }
+      if (id && action === 'block' && block_id) {
+        const rows = await query(
+          `SELECT id, brand_id, type, name, html_content, created_at, updated_at
+           FROM brand_blocks WHERE id=$1 AND brand_id=$2`,
+          [block_id, id]
+        );
+        if (!rows[0]) return res.status(404).json({ error: 'Bloco não encontrado' });
+        return res.status(200).json(rows[0]);
+      }
       if (id && action === 'team') {
         const rows = await query(
           `SELECT u.id, u.name, u.email, u.active, u.last_login, ubr.role
@@ -43,6 +63,44 @@ module.exports = async function handler(req, res) {
         [user.id]
       );
       return res.status(200).json({ data: rows });
+    }
+
+    if (req.method === 'POST' && id && action === 'block') {
+      const { type: bType, name, html_content } = req.body || {};
+      if (!['header','footer'].includes(bType)) return res.status(400).json({ error: 'type deve ser header ou footer' });
+      if (!name) return res.status(400).json({ error: 'name obrigatório' });
+      const r = await query(
+        `INSERT INTO brand_blocks (brand_id, type, name, html_content) VALUES ($1,$2,$3,$4)
+         RETURNING id, brand_id, type, name, html_content, created_at, updated_at`,
+        [id, bType, name, html_content || null]
+      );
+      return res.status(201).json(r[0]);
+    }
+
+    if (req.method === 'PUT' && id && action === 'block' && block_id) {
+      const body = req.body || {};
+      const sets = [];
+      const params = [];
+      for (const f of ['name','html_content','type']) {
+        if (Object.prototype.hasOwnProperty.call(body, f)) {
+          params.push(body[f] === '' ? null : body[f]);
+          sets.push(`${f}=$${params.length}`);
+        }
+      }
+      if (!sets.length) return res.status(200).json({ ok: true });
+      sets.push(`updated_at=NOW()`);
+      params.push(block_id);
+      params.push(id);
+      await query(
+        `UPDATE brand_blocks SET ${sets.join(', ')} WHERE id=$${params.length-1} AND brand_id=$${params.length}`,
+        params
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (req.method === 'DELETE' && id && action === 'block' && block_id) {
+      await query('DELETE FROM brand_blocks WHERE id=$1 AND brand_id=$2', [block_id, id]);
+      return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'POST' && id && action === 'invite') {

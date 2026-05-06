@@ -621,7 +621,17 @@
         }
         showToast('Template apagado.');
     }
+    function _teExit() {
+        if (typeof _teMode !== 'undefined' && _teMode === 'block') {
+            _teMode = 'template';
+            _editingBlockId = null;
+            showScreen('blocks');
+        } else {
+            showScreen('campaigns');
+        }
+    }
     async function mockSaveTemplate() {
+        if (typeof _teMode !== 'undefined' && _teMode === 'block') { return _blockSave(); }
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim() || 'Template';
         const html = teBuildMjml ? teBuildMjml() : '';
@@ -1719,33 +1729,123 @@ ${body}
     }
 
     // ── Brand blocks (cabeçalhos & rodapés) ─────────────
+    let _blocksType = 'header';
+    let _blocksData = { header: [], footer: [] };
+    let _editingBlockId = null;
+    let _teMode = 'template';
+    let _teBlockType = 'header';
+
     async function _loadBlocks() {
         if (!_currentBrand?.id) return;
         try {
-            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
-            const h = document.getElementById('bsHeaderHtml'); if (h) h.value = b.header_html || '';
-            const f = document.getElementById('bsFooterHtml'); if (f) f.value = b.footer_html || '';
-            _blocksLivePreview('header');
-            _blocksLivePreview('footer');
-        } catch {}
+            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=blocks`);
+            _blocksData = { header: [], footer: [] };
+            (data || []).forEach(b => { _blocksData[b.type].push(b); });
+            const ch = document.getElementById('blocksCountHeader'); if (ch) ch.textContent = `(${_blocksData.header.length})`;
+            const cf = document.getElementById('blocksCountFooter'); if (cf) cf.textContent = `(${_blocksData.footer.length})`;
+            _renderBlocksList();
+        } catch (e) { showToast('Erro ao carregar blocos.', 'error'); }
     }
-    function _blocksReload() { _loadBlocks(); showToast('Blocos recarregados.', 'info'); }
-    function _blocksLivePreview(type) {
-        const taId = type === 'header' ? 'bsHeaderHtml' : 'bsFooterHtml';
-        const frId = type === 'header' ? 'blocksHeaderPreview' : 'blocksFooterPreview';
-        const html = document.getElementById(taId)?.value || '';
-        const fr = document.getElementById(frId);
-        if (fr) fr.srcdoc = html || '<div style="font-family:sans-serif;color:#94a3b8;padding:24px;text-align:center;font-size:12px">Sem conteúdo</div>';
+    function _blocksSwitchTab(type) {
+        _blocksType = type;
+        const ah = document.getElementById('blocksTabHeader');
+        const af = document.getElementById('blocksTabFooter');
+        if (ah) ah.className = `px-4 py-2 text-sm font-medium border-b-2 ${type==='header'?'border-slate-900 text-slate-900':'border-transparent text-slate-500 hover:text-slate-700'}`;
+        if (af) af.className = `px-4 py-2 text-sm font-medium border-b-2 ${type==='footer'?'border-slate-900 text-slate-900':'border-transparent text-slate-500 hover:text-slate-700'}`;
+        const lbl = document.getElementById('blocksNewBtnLabel'); if (lbl) lbl.textContent = type === 'header' ? 'Novo cabeçalho' : 'Novo rodapé';
+        const et = document.getElementById('blocksEmptyText'); if (et) et.textContent = type === 'header' ? 'Sem cabeçalhos para esta marca.' : 'Sem rodapés para esta marca.';
+        _renderBlocksList();
     }
-    async function _blocksSave() {
-        if (!_currentBrand?.id) return;
-        const payload = {
-            header_html: document.getElementById('bsHeaderHtml')?.value || null,
-            footer_html: document.getElementById('bsFooterHtml')?.value || null,
-        };
+    function _renderBlocksList() {
+        const list = document.getElementById('blocksList');
+        const empty = document.getElementById('blocksEmpty');
+        if (!list || !empty) return;
+        const items = _blocksData[_blocksType] || [];
+        if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        list.innerHTML = items.map(b => `
+            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                <div class="h-32 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer relative" onclick="_blockEdit(${b.id})">
+                    <iframe srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                </div>
+                <div class="p-4 flex-1 flex flex-col">
+                    <p class="font-semibold text-slate-900 text-sm">${escHtml(b.name)}</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Editado em ${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
+                    <div class="flex items-center gap-2 mt-3">
+                        <button onclick="_blockEdit(${b.id})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                        <button onclick="_blockDelete(${b.id})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+    function _blockNew() {
+        _editingBlockId = null;
+        _teMode = 'block';
+        _teBlockType = _blocksType;
+        teState.blocks = [];
+        teState.selected = null;
+        _teCtx = 'te_';
+        showScreen('templateEdit');
+        const h1 = document.querySelector('#templateEdit h1');
+        if (h1) h1.textContent = `Novo ${_blocksType === 'header' ? 'cabeçalho' : 'rodapé'}`;
+        const nameEl = document.querySelector('#templateEdit input[type=text]');
+        if (nameEl) nameEl.value = '';
+        document.getElementById('te_btnPickHeader')?.classList.add('hidden');
+        document.getElementById('te_btnPickFooter')?.classList.add('hidden');
+        if (typeof teRender === 'function') teRender();
+    }
+    async function _blockEdit(blockId) {
         try {
-            await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-            showToast('Cabeçalho e rodapé guardados.');
+            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${blockId}`);
+            _editingBlockId = blockId;
+            _teMode = 'block';
+            _teBlockType = b.type;
+            const blocks = (typeof teParseMjmlToBlocks === 'function') ? teParseMjmlToBlocks(b.html_content || '') : null;
+            teState.blocks = blocks || [];
+            teState.selected = null;
+            _teCtx = 'te_';
+            showScreen('templateEdit');
+            const h1 = document.querySelector('#templateEdit h1');
+            if (h1) h1.textContent = `Editar ${b.type === 'header' ? 'cabeçalho' : 'rodapé'} — ${b.name}`;
+            const nameEl = document.querySelector('#templateEdit input[type=text]');
+            if (nameEl) nameEl.value = b.name || '';
+            document.getElementById('te_btnPickHeader')?.classList.add('hidden');
+            document.getElementById('te_btnPickFooter')?.classList.add('hidden');
+            if (typeof teRender === 'function') teRender();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+    async function _blockDelete(blockId) {
+        if (!confirm('Apagar este bloco? Esta acção não pode ser anulada.')) return;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${blockId}`, { method: 'DELETE' });
+            showToast('Bloco apagado.');
+            _loadBlocks();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+    async function _blockSave() {
+        const nameEl = document.querySelector('#templateEdit input[type=text]');
+        const name = nameEl?.value?.trim();
+        if (!name) { showToast('Indica um nome para o bloco.', 'error'); return; }
+        const html = (typeof teBuildMjml === 'function') ? teBuildMjml() : '';
+        try {
+            if (_editingBlockId) {
+                await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${_editingBlockId}`, {
+                    method: 'PUT', body: JSON.stringify({ name, html_content: html })
+                });
+            } else {
+                const created = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block`, {
+                    method: 'POST', body: JSON.stringify({ type: _teBlockType, name, html_content: html })
+                });
+                _editingBlockId = created?.id || null;
+            }
+            showToast('Bloco guardado.');
+            _teMode = 'template';
+            _editingBlockId = null;
+            _blocksType = _teBlockType;
+            showScreen('blocks');
         } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -2516,16 +2616,57 @@ ${body}
         const m = document.getElementById('wizCreateTemplateModal');
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
     }
-    async function wizTplInsertBlock(type) {
-        const ta = document.getElementById('wizTplHtml');
-        if (!ta) return;
+    // ── Block picker (insert brand header/footer in editor) ─
+    async function openBlockPicker(type) {
+        if (!_currentBrand?.id) return;
+        const titleEl = document.getElementById('blockPickerTitle');
+        if (titleEl) titleEl.textContent = type === 'header' ? 'Escolher cabeçalho da marca' : 'Escolher rodapé da marca';
+        const list = document.getElementById('blockPickerList');
+        if (list) list.innerHTML = '<p class="text-sm text-slate-400 text-center py-8">A carregar…</p>';
+        const modal = document.getElementById('blockPickerModal');
+        modal.classList.remove('hidden'); modal.classList.add('flex');
         try {
-            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
-            const block = type === 'header' ? (b.header_html || '') : (b.footer_html || '');
-            if (!block) { showToast(`Sem ${type === 'header' ? 'cabeçalho' : 'rodapé'} definido nas definições da marca.`, 'info'); return; }
-            const pos = ta.selectionStart;
-            ta.value = ta.value.slice(0, pos) + block + ta.value.slice(pos);
-        } catch { showToast('Erro ao carregar blocos da marca.', 'error'); }
+            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=blocks&type=${type}`);
+            if (!data || !data.length) {
+                list.innerHTML = `<div class="text-center py-8">
+                    <p class="text-sm text-slate-500 mb-3">Sem ${type === 'header' ? 'cabeçalhos' : 'rodapés'} criados para esta marca.</p>
+                    <button onclick="closeBlockPicker();showScreen('blocks')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Criar agora</button>
+                </div>`;
+                return;
+            }
+            const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            list.innerHTML = data.map(b => `
+                <button onclick="pickBlock(${b.id})" class="w-full flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 text-left transition-colors">
+                    <div class="w-24 h-16 bg-slate-50 rounded overflow-hidden flex-shrink-0">
+                        <iframe srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</p>
+                        <p class="text-xs text-slate-400">Editado em ${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
+                    </div>
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </button>
+            `).join('');
+        } catch (e) { showToast(e.message, 'error'); closeBlockPicker(); }
+    }
+    function closeBlockPicker() {
+        const modal = document.getElementById('blockPickerModal');
+        modal.classList.add('hidden'); modal.classList.remove('flex');
+    }
+    async function pickBlock(blockId) {
+        try {
+            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${blockId}`);
+            const parsed = (typeof teParseMjmlToBlocks === 'function') ? teParseMjmlToBlocks(b.html_content || '') : null;
+            if (!parsed || !parsed.length) { showToast('Bloco vazio ou em formato não reconhecido.', 'error'); return; }
+            // Insert at top for header, bottom for footer
+            if (b.type === 'header') teState.blocks = [...parsed, ...teState.blocks];
+            else teState.blocks = [...teState.blocks, ...parsed];
+            teState.selected = null;
+            if (typeof teRender === 'function') teRender();
+            closeBlockPicker();
+            showToast(`Bloco "${b.name}" inserido.`);
+        } catch (e) { showToast(e.message, 'error'); }
     }
     async function saveWizTemplate() {
         const name = document.getElementById('wizTplName')?.value.trim();
@@ -4198,6 +4339,17 @@ ${lines.join('\n')}
                                     MJML
                                 </button>
                             </div>
+                            <!-- Inserir bloco da marca -->
+                            <button type="button" onclick="openBlockPicker('header')"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16"/></svg>
+                                + Cabeçalho da marca
+                            </button>
+                            <button type="button" onclick="openBlockPicker('footer')"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 14h16M4 18h16"/></svg>
+                                + Rodapé da marca
+                            </button>
                             <!-- Converter HTML → MJML -->
                             <button type="button" onclick="teOpenConverter()"
                                     class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
@@ -5068,75 +5220,34 @@ ${lines.join('\n')}
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
                 <div>
                     <h1 class="text-xl font-semibold text-slate-900">Cabeçalhos & Rodapés</h1>
-                    <p class="text-xs text-slate-400 mt-0.5">Definidos por marca · inseridos automaticamente nos templates</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Cria várias versões e escolhe na criação de campanhas</p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button onclick="_blocksReload()" class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Recarregar</button>
-                    <button onclick="_blocksSave()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Guardar</button>
+                    <button onclick="_blockNew()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span id="blocksNewBtnLabel">Novo cabeçalho</span>
+                    </button>
                 </div>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="max-w-6xl mx-auto space-y-6">
-                    <!-- Info card -->
-                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-                        <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <div class="text-sm text-blue-800">
-                            <p class="font-medium mb-0.5">Como funcionam estes blocos?</p>
-                            <p class="text-xs text-blue-700">O cabeçalho e rodapé definidos aqui ficam disponíveis na criação de campanhas. Podes inseri-los rapidamente no editor de template através dos botões "+ Cabeçalho da marca" e "+ Rodapé da marca" da paleta.</p>
-                        </div>
-                    </div>
+                <!-- Type tabs -->
+                <div class="flex items-center gap-1 mb-6 border-b border-slate-200">
+                    <button id="blocksTabHeader" onclick="_blocksSwitchTab('header')" class="px-4 py-2 text-sm font-medium border-b-2 border-slate-900 text-slate-900">
+                        Cabeçalhos <span id="blocksCountHeader" class="ml-1 text-xs text-slate-400">(0)</span>
+                    </button>
+                    <button id="blocksTabFooter" onclick="_blocksSwitchTab('footer')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        Rodapés <span id="blocksCountFooter" class="ml-1 text-xs text-slate-400">(0)</span>
+                    </button>
+                </div>
 
-                    <!-- Header (cabeçalho) -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                        <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v4H4z M4 14h16v6H4z"/></svg>
-                                <h3 class="font-semibold text-slate-900 text-sm">Cabeçalho (header)</h3>
-                            </div>
-                            <span class="text-xs text-slate-400">HTML</span>
-                        </div>
-                        <div class="grid" style="grid-template-columns:1fr 1fr">
-                            <div class="border-r border-slate-200">
-                                <textarea id="bsHeaderHtml" spellcheck="false" oninput="_blocksLivePreview('header')" placeholder="<!-- HTML do cabeçalho da marca -->&#10;&#10;<table style=&quot;width:100%;background:#0f172a;color:#fff;padding:24px&quot;>&#10;  <tr><td>Logótipo da marca</td></tr>&#10;</table>" class="w-full px-4 py-3 text-xs font-mono text-slate-700 focus:outline-none resize-none border-none" style="min-height:240px"></textarea>
-                            </div>
-                            <div class="bg-slate-50">
-                                <div class="px-3 py-1.5 border-b border-slate-200 bg-white flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
-                                    <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
-                                    <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-                                    <span class="text-xs text-slate-400 ml-2">Pré-visualização</span>
-                                </div>
-                                <iframe id="blocksHeaderPreview" class="w-full bg-white" style="height:208px;border:none"></iframe>
-                            </div>
-                        </div>
-                    </div>
+                <!-- List of blocks -->
+                <div id="blocksList" class="grid grid-cols-3 gap-5"></div>
 
-                    <!-- Footer (rodapé) -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                        <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h16v6H4z M4 14h16v6H4z"/></svg>
-                                <h3 class="font-semibold text-slate-900 text-sm">Rodapé (footer)</h3>
-                            </div>
-                            <span class="text-xs text-slate-400">HTML</span>
-                        </div>
-                        <div class="grid" style="grid-template-columns:1fr 1fr">
-                            <div class="border-r border-slate-200">
-                                <textarea id="bsFooterHtml" spellcheck="false" oninput="_blocksLivePreview('footer')" placeholder="<!-- HTML do rodapé da marca -->&#10;&#10;<table style=&quot;width:100%;background:#f1f5f9;padding:16px;text-align:center;font-size:12px;color:#64748b&quot;>&#10;  <tr><td>© 2026 Marca · <a href=&quot;{{unsubscribe_url}}&quot;>Cancelar subscrição</a></td></tr>&#10;</table>" class="w-full px-4 py-3 text-xs font-mono text-slate-700 focus:outline-none resize-none border-none" style="min-height:240px"></textarea>
-                            </div>
-                            <div class="bg-slate-50">
-                                <div class="px-3 py-1.5 border-b border-slate-200 bg-white flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
-                                    <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
-                                    <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-                                    <span class="text-xs text-slate-400 ml-2">Pré-visualização</span>
-                                </div>
-                                <iframe id="blocksFooterPreview" class="w-full bg-white" style="height:208px;border:none"></iframe>
-                            </div>
-                        </div>
-                    </div>
-
-                    <p class="text-xs text-slate-400 text-center">Variáveis suportadas no rodapé: <code class="bg-slate-100 px-1.5 py-0.5 rounded">{{unsubscribe_url}}</code></p>
+                <!-- Empty state -->
+                <div id="blocksEmpty" class="hidden text-center py-16">
+                    <svg class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <p class="text-sm text-slate-500" id="blocksEmptyText">Sem cabeçalhos para esta marca.</p>
+                    <button onclick="_blockNew()" class="mt-3 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Criar o primeiro</button>
                 </div>
             </main>
         </div>
@@ -5152,7 +5263,7 @@ ${lines.join('\n')}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                    <button onclick="showScreen('campaigns')" class="text-slate-400 hover:text-slate-700">
+                    <button onclick="_teExit()" class="text-slate-400 hover:text-slate-700">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     </button>
                     <h1 class="text-xl font-semibold text-slate-900">Editar — Newsletter Primavera 2026</h1>
@@ -5191,6 +5302,17 @@ ${lines.join('\n')}
                         </button>
                     </div>
 
+                    <!-- Inserir bloco da marca (apenas em modo template) -->
+                    <button type="button" id="te_btnPickHeader" onclick="openBlockPicker('header')"
+                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16"/></svg>
+                        + Cabeçalho da marca
+                    </button>
+                    <button type="button" id="te_btnPickFooter" onclick="openBlockPicker('footer')"
+                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 14h16M4 18h16"/></svg>
+                        + Rodapé da marca
+                    </button>
                     <!-- Converter HTML → MJML -->
                     <button type="button" onclick="teOpenConverter()"
                             class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
@@ -5208,7 +5330,7 @@ ${lines.join('\n')}
                     </button>
 
                     <button onclick="mockSaveTemplate()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar</button>
-                    <button onclick="showScreen('campaigns')" class="px-3 py-2 text-sm text-slate-600 hover:text-slate-900">Cancelar</button>
+                    <button onclick="_teExit()" class="px-3 py-2 text-sm text-slate-600 hover:text-slate-900">Cancelar</button>
                 </div>
 
                 <!-- ── Editor area (mode-dependent) ────────────────────── -->
@@ -6271,6 +6393,25 @@ ${lines.join('\n')}
 <!-- ═══════════════════════════════════════════════════════════════════
      MODAL — CONFIRMAR ENVIO
 ═══════════════════════════════════════════════════════════════════ -->
+<div id="blockPickerModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)closeBlockPicker()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+            <div>
+                <h2 class="text-base font-semibold text-slate-900" id="blockPickerTitle">Escolher cabeçalho</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Os blocos disponíveis são geridos em Cabeçalhos & Rodapés</p>
+            </div>
+            <button onclick="closeBlockPicker()" class="text-slate-400 hover:text-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div id="blockPickerList" class="flex-1 overflow-y-auto p-4 space-y-2"></div>
+        <div class="px-6 py-3 border-t border-slate-200 flex justify-between items-center">
+            <a onclick="closeBlockPicker();showScreen('blocks')" class="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer">Gerir cabeçalhos & rodapés</a>
+            <button onclick="closeBlockPicker()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <div id="sendNowModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closeSendNowModal()">
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
