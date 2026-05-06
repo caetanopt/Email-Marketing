@@ -829,6 +829,9 @@
         ]
     };
 
+    let _teCtx = 'te_';
+    const _teEl = id => document.getElementById(_teCtx + id);
+
     const teState = {
         selected: null,
         viewport: 'desktop',
@@ -938,12 +941,12 @@
 
     // ── Mode tabs / preview modal ───────────────────────────────────
     function teSetMode(mode) {
-        const visual = document.getElementById('te_visualMode');
-        const code   = document.getElementById('te_codeMode');
+        const visual = _teEl('visualMode');
+        const code   = _teEl('codeMode');
         if (visual) visual.style.display = mode === 'visual' ? '' : 'none';
         if (code)   code.style.display   = mode === 'code'   ? '' : 'none';
-        const tv = document.getElementById('te_tabVisual');
-        const tc = document.getElementById('te_tabCode');
+        const tv = _teEl('tabVisual');
+        const tc = _teEl('tabCode');
         ['bg-white','shadow-sm','text-slate-900'].forEach(c => {
             tv?.classList.toggle(c, mode === 'visual');
             tc?.classList.toggle(c, mode === 'code');
@@ -951,6 +954,14 @@
         tv?.classList.toggle('text-slate-500', mode !== 'visual');
         tc?.classList.toggle('text-slate-500', mode !== 'code');
         if (mode === 'code') teRenderMjml();
+    }
+    function teOpenConverter() {
+        const p = document.getElementById('te_converterPanel');
+        if (p) { p.classList.remove('hidden'); p.classList.add('flex'); }
+    }
+    function teCloseConverter() {
+        const p = document.getElementById('te_converterPanel');
+        if (p) { p.classList.add('hidden'); p.classList.remove('flex'); }
     }
     function teOpenPreviewModal()  {
         const m = document.getElementById('te_previewModal');
@@ -1016,12 +1027,12 @@
         return d;
     }
     function teRenderCanvas() {
-        const list = document.getElementById('te_canvasList');
+        const list = _teEl('canvasList');
         if (!list) return;
-        const wrap = document.getElementById('te_canvasWrap');
+        const wrap = _teEl('canvasWrap');
         if (wrap) wrap.style.maxWidth = teState.viewport === 'mobile' ? '380px' : '640px';
-        const dBtn = document.getElementById('te_btnDesktop');
-        const mBtn = document.getElementById('te_btnMobile');
+        const dBtn = _teEl('btnDesktop');
+        const mBtn = _teEl('btnMobile');
         if (dBtn && mBtn) {
             dBtn.classList.toggle('bg-slate-900', teState.viewport === 'desktop');
             dBtn.classList.toggle('text-white',   teState.viewport === 'desktop');
@@ -1189,7 +1200,7 @@
 
     // ── Properties panel ────────────────────────────────────────────
     function teRenderProperties() {
-        const root = document.getElementById('te_props');
+        const root = _teEl('props');
         if (!root) return;
         if (!teState.selected) {
             root.innerHTML = '<p class="text-xs text-slate-400 italic text-center mt-8 px-2">Clica num bloco para editar as propriedades.</p>';
@@ -1256,8 +1267,8 @@
 
     // ── MJML output ────────────────────────────────────────────────
     function teRenderMjml() {
-        const code  = document.getElementById('te_mjmlCode');
-        const lines = document.getElementById('te_mjmlLines');
+        const code  = _teEl('mjmlCode');
+        const lines = _teEl('mjmlLines');
         if (!code) return;
         const mjml = teBuildMjml();
         code.value = mjml;
@@ -1265,8 +1276,8 @@
     }
     let _mjmlDebounce = null;
     function teSyncMjmlLines() {
-        const code  = document.getElementById('te_mjmlCode');
-        const lines = document.getElementById('te_mjmlLines');
+        const code  = _teEl('mjmlCode');
+        const lines = _teEl('mjmlLines');
         if (!code || !lines) return;
         lines.textContent = code.value.split('\n').map((_,i) => i+1).join('\n');
         lines.scrollTop = code.scrollTop;
@@ -1339,7 +1350,7 @@
         } catch(e) { return null; }
     }
     function teApplyMjml(silent) {
-        const code = document.getElementById('te_mjmlCode');
+        const code = _teEl('mjmlCode');
         if (!code) return;
         const blocks = teParseMjmlToBlocks(code.value);
         if (!blocks) {
@@ -1350,7 +1361,7 @@
         teState.selected = null;
         teRenderCanvas();
         teRenderProperties();
-        const status = document.getElementById('te_mjmlStatus');
+        const status = _teEl('mjmlStatus');
         if (status) { status.textContent = 'Sincronizado'; status.className = 'text-xs text-green-400 flex items-center gap-1'; }
         if (!silent) showToast('MJML aplicado ao editor visual.');
     }
@@ -1759,6 +1770,7 @@ ${body}
     const _checkSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`;
 
     function wizShowStep(step) {
+        if (_wizStep === 2 && step !== 2) _teCtx = 'te_';
         _wizStep = step;
         const labels = ['Detalhes', 'Template', 'Destinatários', 'Revisão'];
         [1,2,3,4].forEach(s => {
@@ -1792,7 +1804,7 @@ ${body}
             const checkedLists = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'));
             const listsText = checkedLists.length ? checkedLists.map(cb => cb.closest('label')?.querySelector('p')?.textContent || '').filter(Boolean).join(', ') : 'Nenhuma';
             const totalContacts = checkedLists.reduce((s, cb) => s + (parseInt(cb.dataset.contacts)||0), 0);
-            const tplName = document.querySelector('#wizTplList .wiz-tpl-item.border-slate-900 .wiz-tpl-name')?.textContent || (document.querySelector('#wizTplList .wiz-tpl-item.border-slate-900') ? 'Template seleccionado' : 'Nenhum');
+            const tplName = teState.blocks.length ? `${teState.blocks.length} bloco(s)` : 'Nenhum';
             let sendLabel = sendType === 'now' ? 'Enviar agora' : sendType === 'schedule' ? `Agendar: ${schedDate} ${schedTime}` : 'Guardar como rascunho';
             const rev = document.getElementById('wizReviewContent');
             if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -1894,7 +1906,13 @@ ${body}
     }
 
     function _wizInitPreview() {
-        _wizLoadTemplates();
+        _teCtx = 'wiz_te_';
+        teState.blocks = teState.blocks.length ? teState.blocks : [];
+        teState.selected = null;
+        teState.viewport = 'desktop';
+        teSetMode('visual');
+        teRenderCanvas();
+        teRenderProperties();
     }
 
     async function mockCampaignNext() {
@@ -1910,7 +1928,7 @@ ${body}
             wizShowStep(2); return;
         }
         if (_wizStep === 2) {
-            if (!_wizSelectedTemplateId) { showToast('Selecciona um template para a campanha.', 'error'); return; }
+            if (!teState.blocks.length) { showToast('Adiciona pelo menos um bloco ao template antes de continuar.', 'error'); return; }
             wizShowStep(3); return;
         }
         if (_wizStep === 3) {
@@ -1937,9 +1955,19 @@ ${body}
                 scheduled_at = `${d}T${t}:00`;
             }
             try {
+                // Auto-save template from wizard step 2
+                let templateId = null;
+                if (teState.blocks.length) {
+                    const tplName = `${name} — Template`;
+                    const tplMjml = teBuildMjml();
+                    const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
+                        method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplMjml })
+                    });
+                    templateId = tplRes.id || null;
+                }
                 const { id: campaignId } = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
                     method: 'POST',
-                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: _wizSelectedTemplateId || null })
+                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId })
                 });
                 if (sendType === 'now' && campaignId) {
                     showToast('Campanha criada. A enviar…', 'info');
@@ -2499,6 +2527,36 @@ ${body}
         } catch(e) { showToast(e.message, 'error'); }
     }
 
+    // ── Wizard step 2: inline template editor functions ────
+    function wizTplLivePreview() {
+        const html = document.getElementById('wizTplHtml')?.value || '';
+        const frame = document.getElementById('wizTplPreviewFrame');
+        if (frame) frame.srcdoc = html || '<div style="font-family:sans-serif;color:#94a3b8;padding:40px;text-align:center">Pré-visualização aparece aqui</div>';
+    }
+    function wizTplPreviewContent() {
+        const html = document.getElementById('wizTplHtml')?.value || '';
+        if (!html.trim()) { showToast('Adiciona conteúdo HTML antes de pré-visualizar.', 'info'); return; }
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
+    }
+    function wizTplOpenConverter() {
+        const p = document.getElementById('wizTplConverterPanel');
+        if (p) p.classList.toggle('hidden');
+    }
+    function wizTplConvert() {
+        const input = document.getElementById('wizTplConverterIn')?.value || '';
+        if (!input.trim()) { showToast('Cola o HTML antes de converter.', 'info'); return; }
+        document.getElementById('wizTplConverterOut').value = _convertHtmlToMjml(input);
+    }
+    function wizTplApplyConvert() {
+        const mjml = document.getElementById('wizTplConverterOut')?.value || '';
+        if (!mjml.trim()) { showToast('Converte o HTML primeiro.', 'info'); return; }
+        const ta = document.getElementById('wizTplHtml');
+        if (ta) { ta.value = mjml; wizTplLivePreview(); }
+        document.getElementById('wizTplConverterPanel')?.classList.add('hidden');
+        showToast('Conteúdo importado para o editor.', 'info');
+    }
+
     // ── Conversor HTML → MJML ──────────────────────────────
     function teConvertHtmlToMjml() {
         const input = document.getElementById('te_converterInput')?.value || '';
@@ -2508,7 +2566,7 @@ ${body}
     function teApplyConvertedMjml() {
         const mjml = document.getElementById('te_converterOutput')?.value || '';
         if (!mjml.trim()) { showToast('Converte o HTML primeiro.', 'info'); return; }
-        const ta = document.getElementById('te_mjmlCode');
+        const ta = _teEl('mjmlCode');
         if (ta) { ta.value = mjml; teSyncMjmlLines && teSyncMjmlLines(); }
         document.getElementById('te_converterPanel').classList.add('hidden');
         // Switch to code mode
@@ -2931,8 +2989,11 @@ ${lines.join('\n')}
                 const fromEmail = _currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`;
                 const fnEl = document.getElementById('wizFromName'); if (fnEl) fnEl.value = 'Caetano';
                 const feEl = document.getElementById('wizFromEmail'); if (feEl) feEl.value = fromEmail;
-                // Reset template selection
+                // Reset template content
                 _wizSelectedTemplateId = null;
+                _teCtx = 'te_';
+                teState.blocks = [];
+                teState.selected = null;
                 // Reset send type to 'now'
                 const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                 if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
@@ -3479,8 +3540,8 @@ ${lines.join('\n')}
         if (typeof teRender === 'function') teRender();
         // Sync MJML line numbers with textarea scroll
         document.addEventListener('scroll', (ev) => {
-            if (ev.target && ev.target.id === 'te_mjmlCode') {
-                const lines = document.getElementById('te_mjmlLines');
+            if (ev.target && (ev.target.id === 'te_mjmlCode' || ev.target.id === 'wiz_te_mjmlCode')) {
+                const lines = _teEl('mjmlLines');
                 if (lines) lines.scrollTop = ev.target.scrollTop;
             }
         }, true);
@@ -4103,29 +4164,151 @@ ${lines.join('\n')}
 
                     <!-- Passo 2: Template -->
                     <div id="wizStep2" class="hidden">
-                        <div class="grid gap-6" style="grid-template-columns:1fr 1.3fr">
-                            <!-- Lista de templates: 2 cols, scroll após 6 -->
-                            <div>
-                                <div class="flex items-center justify-between mb-3">
-                                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Escolhe um template</p>
-                                    <button onclick="openWizCreateTemplate()" class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Criar template</button>
-                                </div>
-                                <div id="wizTplList" class="grid grid-cols-2 gap-2.5 overflow-y-auto pr-1" style="max-height:370px">
-                                    <div class="col-span-2 py-6 text-center text-slate-400 text-sm">A carregar templates…</div>
-                                </div>
+                        <!-- Top bar: mode tabs + actions -->
+                        <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-3 mb-3">
+                            <!-- Mode tabs -->
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                                <button id="wiz_te_tabVisual" type="button" onclick="teSetMode('visual')"
+                                        class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white shadow-sm text-slate-900">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+                                    Visual
+                                </button>
+                                <button id="wiz_te_tabCode" type="button" onclick="teSetMode('code')"
+                                        class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-slate-500 hover:text-slate-700">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                                    MJML
+                                </button>
                             </div>
-                            <!-- Preview à direita -->
-                            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
-                                <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
-                                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Pré-visualização</p>
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span>
-                                        <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block"></span>
-                                        <span class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>
+                            <!-- Converter HTML → MJML -->
+                            <button type="button" onclick="teOpenConverter()"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                                Converter HTML
+                            </button>
+                            <!-- Preview -->
+                            <button type="button" onclick="teOpenPreviewModal()"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                                Preview
+                            </button>
+                            <span class="text-xs text-slate-400 ml-auto">O template é guardado automaticamente ao criar a campanha</span>
+                        </div>
+                        <!-- Editor area -->
+                        <div style="height:calc(100vh - 380px);min-height:520px;">
+                            <!-- VISUAL MODE -->
+                            <div id="wiz_te_visualMode" class="h-full">
+                                <div class="grid grid-cols-[170px_minmax(0,1fr)_260px] gap-4 h-full">
+                                    <!-- Palette -->
+                                    <div class="bg-white border border-slate-200 rounded-xl p-2 overflow-y-auto">
+                                        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5">Blocos</p>
+                                        <div class="grid grid-cols-2 gap-1.5">
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'header')" ondragend="teDragEnd()" onclick="teInsertBlock('header')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v6H4z M4 14h16v2H4z M4 18h10v2H4z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Cabeçalho</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'heading')" ondragend="teDragEnd()" onclick="teInsertBlock('heading')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 4v16 M19 4v16 M5 12h14"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Título</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'text')" ondragend="teDragEnd()" onclick="teInsertBlock('text')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16 M4 12h16 M4 18h10"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Texto</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'button')" ondragend="teDragEnd()" onclick="teInsertBlock('button')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18 M3 14h18 M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Botão</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'image')" ondragend="teDragEnd()" onclick="teInsertBlock('image')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v16H4z M4 14l4-4 4 4 6-6 2 2 M9 9a1 1 0 100-2 1 1 0 000 2z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Imagem</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'divider')" ondragend="teDragEnd()" onclick="teInsertBlock('divider')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12h18"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Separador</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'spacer')" ondragend="teDragEnd()" onclick="teInsertBlock('spacer')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16 M8 4h8 M8 20h8"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Espaço</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'footer')" ondragend="teDragEnd()" onclick="teInsertBlock('footer')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h16v12H4z M4 18h16v2H4z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Rodapé</span>
+                                            </button>
+                                        </div>
+                                        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5 mt-3 border-t border-slate-100 pt-3">Layout</p>
+                                        <div class="grid grid-cols-2 gap-1.5">
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'columns2')" ondragend="teDragEnd()" onclick="teInsertBlock('columns2')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h7v16H4z M13 4h7v16h-7z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">2 Colunas</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'columns3')" ondragend="teDragEnd()" onclick="teInsertBlock('columns3')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4z M10 4h4v16h-4z M16 4h4v16h-4z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">3 Colunas</span>
+                                            </button>
+                                        </div>
+                                        <p class="text-[10px] text-slate-400 px-2 py-2 mt-2 border-t border-slate-100">Arrasta um bloco para o canvas (ou clica) para o adicionar.</p>
+                                    </div>
+                                    <!-- Canvas -->
+                                    <div class="bg-slate-100 border border-slate-200 rounded-xl flex flex-col min-w-0 overflow-hidden" id="wiz_te_canvas"
+                                         ondragover="event.preventDefault();event.dataTransfer.dropEffect=teDrag&&teDrag.kind==='block'?'move':'copy'"
+                                         ondrop="event.preventDefault();if(!teDrag)return;if(teDrag.kind==='palette')teInsertBlock(teDrag.type,{kind:'top'});else teMoveTo(teDrag.id,{kind:'top'});teDrag=null;">
+                                        <div class="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-center gap-1">
+                                            <button type="button" id="wiz_te_btnDesktop" onclick="teSetViewport('desktop')" title="Vista desktop"
+                                                    class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 bg-slate-900 text-white hover:opacity-90 transition-colors">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                                Desktop
+                                            </button>
+                                            <button type="button" id="wiz_te_btnMobile" onclick="teSetViewport('mobile')" title="Vista mobile"
+                                                    class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 text-slate-500 hover:bg-slate-50 transition-colors">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                                                Mobile
+                                            </button>
+                                        </div>
+                                        <div class="flex-1 overflow-auto py-6 px-4">
+                                            <div id="wiz_te_canvasWrap" class="mx-auto transition-all" style="max-width:640px;">
+                                                <div id="wiz_te_canvasList" class="bg-white rounded shadow-sm min-h-[200px]"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Properties panel -->
+                                    <div class="bg-white border border-slate-200 rounded-xl p-3 overflow-y-auto" id="wiz_te_props">
+                                        <p class="text-xs text-slate-400 italic text-center mt-8 px-2">Clica num bloco para editar as propriedades.</p>
                                     </div>
                                 </div>
-                                <div id="wizTplPreview" class="flex-1 bg-slate-100 flex items-start justify-center p-6 overflow-y-auto" style="max-height:370px">
-                                    <!-- injected by JS -->
+                            </div>
+                            <!-- CODE MODE -->
+                            <div id="wiz_te_codeMode" class="h-full" style="display:none">
+                                <div class="bg-[#282c34] border border-slate-700 rounded-xl overflow-hidden flex flex-col h-full">
+                                    <div class="px-4 py-2.5 border-b border-slate-700 bg-[#21252b] flex items-center justify-between gap-3">
+                                        <span class="text-xs font-mono font-semibold text-slate-300">MJML · XML</span>
+                                        <div class="flex items-center gap-3 ml-auto">
+                                            <span id="wiz_te_mjmlStatus" class="text-xs text-green-400 flex items-center gap-1">
+                                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                                Sincronizado
+                                            </span>
+                                            <button type="button" onclick="teApplyMjml(false)"
+                                                    class="px-2.5 py-1 rounded text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors">
+                                                Aplicar no visual
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1 overflow-hidden flex font-mono text-xs leading-[1.6]">
+                                        <pre id="wiz_te_mjmlLines" class="bg-[#21252b] text-slate-500 text-right px-3 py-3 select-none border-r border-slate-700 overflow-hidden"></pre>
+                                        <textarea id="wiz_te_mjmlCode" spellcheck="false" oninput="teSyncMjmlLines()" class="px-3 py-3 text-slate-300 flex-1 bg-transparent border-none outline-none resize-none whitespace-pre overflow-auto" style="font-family:inherit;font-size:inherit;line-height:inherit;tab-size:2;"></textarea>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -5055,7 +5238,7 @@ ${lines.join('\n')}
                     </div>
 
                     <!-- Converter HTML → MJML -->
-                    <button type="button" onclick="document.getElementById('te_converterPanel').classList.remove('hidden')"
+                    <button type="button" onclick="teOpenConverter()"
                             class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         Converter HTML
