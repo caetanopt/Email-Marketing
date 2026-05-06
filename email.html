@@ -31,14 +31,14 @@
     const _ROUTE_TO_SCREEN = {
         'login': 'login', 'forgot-password': 'forgotPassword', 'brands': 'brandSelect',
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
-        'imports': 'imports', 'templates': 'templates', 'campaigns': 'campaigns',
+        'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaigns/new': 'campaignCreate', 'suppression': 'suppression',
         'team': 'team', 'settings': 'brandSettings', 'unsubscribe': 'unsubscribe',
     };
     const _SCREEN_TO_ROUTE = {
         'login': 'login', 'forgotPassword': 'forgot-password', 'brandSelect': 'brands',
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
-        'imports': 'imports', 'templates': 'templates', 'campaigns': 'campaigns',
+        'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaignCreate': 'campaigns/new', 'suppression': 'suppression',
         'team': 'team', 'brandSettings': 'settings', 'unsubscribe': 'unsubscribe',
     };
@@ -378,7 +378,7 @@
         { id:'contacts',      name:'Contactos' },
         { id:'lists',         name:'Listas' },
         { id:'imports',       name:'Importações' },
-        { id:'templates',     name:'Templates' },
+        { id:'blocks',        name:'Cabeçalhos & Rodapés' },
         { id:'campaigns',     name:'Campanhas' },
         { id:'suppression',   name:'Supressão' },
         { id:'team',          name:'Equipa' },
@@ -386,7 +386,7 @@
     ];
     const _memberPermissions = {
         m1: { brands: _allBrands.map(b=>b.id), areas: _allAreas.map(a=>a.id) },
-        m2: { brands: ['bmw','hyundai'], areas: ['dashboard','contacts','lists','templates','campaigns'] },
+        m2: { brands: ['bmw','hyundai'], areas: ['dashboard','contacts','lists','blocks','campaigns'] },
         m3: { brands: ['bmw'], areas: ['dashboard','campaigns'] },
     };
     let _editingMemberId = null;
@@ -1696,8 +1696,6 @@ ${body}
             from_name:   document.getElementById('bsFromName')?.value.trim() || null,
             from_email:  document.getElementById('bsFromEmail')?.value.trim() || null,
             reply_to:    document.getElementById('bsReplyTo')?.value.trim() || null,
-            header_html: document.getElementById('bsHeaderHtml')?.value || null,
-            footer_html: document.getElementById('bsFooterHtml')?.value || null,
         };
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -1713,22 +1711,42 @@ ${body}
         if (!_currentBrand?.id) return;
         try {
             const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
-            const fields = { bsName: b.name||'', bsLogoUrl: b.logo_url||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'', bsHeaderHtml: b.header_html||'', bsFooterHtml: b.footer_html||'' };
+            const fields = { bsName: b.name||'', bsLogoUrl: b.logo_url||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
             Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
             const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
             const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
         } catch {}
     }
 
-    function _bsPreviewBlock(type) {
-        const html = document.getElementById(type === 'header' ? 'bsHeaderHtml' : 'bsFooterHtml')?.value || '';
-        const panel = document.getElementById('bsBlockPreview');
-        const frame = document.getElementById('bsBlockPreviewFrame');
-        const label = document.getElementById('bsBlockPreviewLabel');
-        if (!panel || !frame) return;
-        label.textContent = type === 'header' ? 'Pré-visualização — Cabeçalho' : 'Pré-visualização — Rodapé';
-        frame.srcdoc = html;
-        panel.classList.remove('hidden');
+    // ── Brand blocks (cabeçalhos & rodapés) ─────────────
+    async function _loadBlocks() {
+        if (!_currentBrand?.id) return;
+        try {
+            const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
+            const h = document.getElementById('bsHeaderHtml'); if (h) h.value = b.header_html || '';
+            const f = document.getElementById('bsFooterHtml'); if (f) f.value = b.footer_html || '';
+            _blocksLivePreview('header');
+            _blocksLivePreview('footer');
+        } catch {}
+    }
+    function _blocksReload() { _loadBlocks(); showToast('Blocos recarregados.', 'info'); }
+    function _blocksLivePreview(type) {
+        const taId = type === 'header' ? 'bsHeaderHtml' : 'bsFooterHtml';
+        const frId = type === 'header' ? 'blocksHeaderPreview' : 'blocksFooterPreview';
+        const html = document.getElementById(taId)?.value || '';
+        const fr = document.getElementById(frId);
+        if (fr) fr.srcdoc = html || '<div style="font-family:sans-serif;color:#94a3b8;padding:24px;text-align:center;font-size:12px">Sem conteúdo</div>';
+    }
+    async function _blocksSave() {
+        if (!_currentBrand?.id) return;
+        const payload = {
+            header_html: document.getElementById('bsHeaderHtml')?.value || null,
+            footer_html: document.getElementById('bsFooterHtml')?.value || null,
+        };
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            showToast('Cabeçalho e rodapé guardados.');
+        } catch (e) { showToast(e.message, 'error'); }
     }
 
     // ── Unsubscribe (público) ────────────────────────────
@@ -1881,7 +1899,7 @@ ${body}
         try {
             const { data } = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}&limit=50`);
             if (!data.length) {
-                list.innerHTML = `<div class="col-span-2 py-6 text-center text-slate-400 text-sm">Sem templates para esta marca.<br><a onclick="showScreen('templates')" class="text-slate-600 underline cursor-pointer text-xs mt-1 inline-block">Criar um template →</a></div>`;
+                list.innerHTML = `<div class="col-span-2 py-6 text-center text-slate-400 text-sm">Sem templates para esta marca.<br><a onclick="showScreen('campaigns')" class="text-slate-600 underline cursor-pointer text-xs mt-1 inline-block">Criar um template →</a></div>`;
                 return;
             }
             list.innerHTML = data.map((t, i) => `
@@ -2720,7 +2738,7 @@ ${lines.join('\n')}
     <option value="campaignReport">Relatório de Campanha</option>
     <option value="contacts">Contactos</option>
     <option value="contactShow">Detalhe de Contacto</option>
-    <option value="templates">Templates</option>
+    <option value="blocks">Cabeçalhos & Rodapés</option>
     <option value="templateEdit">Editor MJML</option>
     <option value="lists">Listas</option>
     <option value="listEdit">Editar Lista</option>
@@ -2906,9 +2924,9 @@ ${lines.join('\n')}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                 Importações
             </a>
-            <a onclick="showScreen('templates')" data-nav class="nav-item nav-templates flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
-                Templates
+            <a onclick="showScreen('blocks')" data-nav class="nav-item nav-blocks flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                Cabeçalhos & Rodapés
             </a>
             <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
@@ -2969,7 +2987,7 @@ ${lines.join('\n')}
                 campaignCreate: 'campaigns', campaignShow: 'campaigns', campaignReport: 'campaigns',
                 contactShow: 'contacts', contactEdit: 'contacts',
                 listEdit: 'lists',
-                templateEdit: 'templates',
+                templateEdit: 'campaigns',
             };
             const navKey = _navParent[id] || id;
             document.querySelectorAll('.nav-item').forEach(n => {
@@ -3010,6 +3028,7 @@ ${lines.join('\n')}
             }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings') _loadBrandSettings();
+            if (id === 'blocks') _loadBlocks();
             // Load lists into import select
             if (id === 'imports') _loadImportLists();
             // Push history state (skip for screens that manage their own hash and for popstate navigation)
@@ -5042,147 +5061,82 @@ ${lines.join('\n')}
 <!-- ═══════════════════════════════════════════════════════════════════
      ECRÃ — TEMPLATES
 ═══════════════════════════════════════════════════════════════════ -->
-<div id="templates" class="screen fade-in">
+<div id="blocks" class="screen fade-in">
     <div class="min-h-screen bg-slate-50 flex">
         <div data-sidebar-slot></div>
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
-                <h1 class="text-xl font-semibold text-slate-900">Templates</h1>
+                <div>
+                    <h1 class="text-xl font-semibold text-slate-900">Cabeçalhos & Rodapés</h1>
+                    <p class="text-xs text-slate-400 mt-0.5">Definidos por marca · inseridos automaticamente nos templates</p>
+                </div>
                 <div class="flex items-center gap-3">
-                    <!-- View toggle -->
-                    <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                        <button id="tplBtnGrid" type="button" onclick="teTplSetView('grid')"
-                                class="px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors bg-slate-900 text-white"
-                                title="Vista em grelha">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                        </button>
-                        <button id="tplBtnList" type="button" onclick="teTplSetView('list')"
-                                class="px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500"
-                                title="Vista em lista">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-                        </button>
-                    </div>
-                    <button onclick="teNewTemplate()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Novo Template</button>
+                    <button onclick="_blocksReload()" class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Recarregar</button>
+                    <button onclick="_blocksSave()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Guardar</button>
                 </div>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="mb-4">
-                    <input id="tplSearch" type="text" placeholder="Pesquisar template…" oninput="filterTemplates()" class="w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                </div>
-                <!-- ── Grid view ── -->
-                <div id="tplGrid" class="grid grid-cols-3 gap-5">
-                    <!-- Template card 1 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" data-brand="bmw" onclick="teEditTemplate('tpl1')">
-                        <div class="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-                            <div class="text-center px-6">
-                                <div class="w-12 h-1 bg-blue-300 rounded mx-auto mb-2"></div>
-                                <div class="w-20 h-2 bg-blue-200 rounded mx-auto mb-1"></div>
-                                <div class="w-16 h-1.5 bg-blue-100 rounded mx-auto"></div>
-                            </div>
-                        </div>
-                        <div class="p-4">
-                            <p class="font-semibold text-slate-900 text-sm">Newsletter Primavera 2026</p>
-                            <p class="text-xs text-slate-400 mt-1">Editado em 17/04/2026</p>
-                            <div class="flex items-center gap-2 mt-3">
-                                <button onclick="event.stopPropagation();teEditTemplate('tpl1')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                            </div>
+                <div class="max-w-6xl mx-auto space-y-6">
+                    <!-- Info card -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                        <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <div class="text-sm text-blue-800">
+                            <p class="font-medium mb-0.5">Como funcionam estes blocos?</p>
+                            <p class="text-xs text-blue-700">O cabeçalho e rodapé definidos aqui ficam disponíveis na criação de campanhas. Podes inseri-los rapidamente no editor de template através dos botões "+ Cabeçalho da marca" e "+ Rodapé da marca" da paleta.</p>
                         </div>
                     </div>
-                    <!-- Template card 2 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" data-brand="bmw" onclick="teEditTemplate('tpl2')">
-                        <div class="h-40 bg-gradient-to-br from-orange-50 to-red-100 flex items-center justify-center">
-                            <div class="text-center px-6">
-                                <div class="w-12 h-1 bg-orange-300 rounded mx-auto mb-2"></div>
-                                <div class="w-20 h-2 bg-orange-200 rounded mx-auto mb-1"></div>
-                                <div class="w-16 h-1.5 bg-orange-100 rounded mx-auto"></div>
-                            </div>
-                        </div>
-                        <div class="p-4">
-                            <p class="font-semibold text-slate-900 text-sm">Promoção Flash — Verão</p>
-                            <p class="text-xs text-slate-400 mt-1">Editado em 02/03/2026</p>
-                            <div class="flex items-center gap-2 mt-3">
-                                <button onclick="event.stopPropagation();teEditTemplate('tpl2')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Template card 3 -->
-                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer tmpl-card" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" data-brand="bmw" onclick="teEditTemplate('tpl3')">
-                        <div class="h-40 bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center">
-                            <div class="text-center px-6">
-                                <div class="w-12 h-1 bg-green-300 rounded mx-auto mb-2"></div>
-                                <div class="w-20 h-2 bg-green-200 rounded mx-auto mb-1"></div>
-                                <div class="w-16 h-1.5 bg-green-100 rounded mx-auto"></div>
-                            </div>
-                        </div>
-                        <div class="p-4">
-                            <p class="font-semibold text-slate-900 text-sm">Boas-vindas — Welcome</p>
-                            <p class="text-xs text-slate-400 mt-1">Editado em 15/01/2026</p>
-                            <div class="flex items-center gap-2 mt-3">
-                                <button onclick="event.stopPropagation();teEditTemplate('tpl3')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- New template card -->
-                    <div class="bg-white border-2 border-dashed border-slate-200 rounded-xl h-48 flex items-center justify-center cursor-pointer hover:border-slate-400 transition-colors" onclick="teNewTemplate()">
-                        <div class="text-center">
-                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2">
-                                <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            </div>
-                            <p class="text-sm text-slate-500">Novo template</p>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- ── List view ── -->
-                <div id="tplList" class="bg-white border border-slate-200 rounded-xl overflow-hidden" style="display:none">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Nome</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Descrição</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Editado em</th>
-                                <th class="px-4 py-3"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="tplListBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl1" data-tpl-name="newsletter primavera 2026" data-brand="bmw" onclick="teEditTemplate('tpl1')">
-                                <td class="px-4 py-3 font-medium text-slate-900">Newsletter Primavera 2026</td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">Newsletter trimestral com ofertas de Primavera</td>
-                                <td class="px-4 py-3 text-xs text-slate-400">17/04/2026</td>
-                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button onclick="event.stopPropagation();teEditTemplate('tpl1')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                                </td>
-                            </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl2" data-tpl-name="promoção flash verão" data-brand="bmw" onclick="teEditTemplate('tpl2')">
-                                <td class="px-4 py-3 font-medium text-slate-900">Promoção Flash — Verão</td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">Campanha de promoção sazonal de Verão</td>
-                                <td class="px-4 py-3 text-xs text-slate-400">02/03/2026</td>
-                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button onclick="event.stopPropagation();teEditTemplate('tpl2')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                                </td>
-                            </tr>
-                            <tr class="hover:bg-slate-50 cursor-pointer" data-tpl-id="tpl3" data-tpl-name="boas-vindas welcome" data-brand="bmw" onclick="teEditTemplate('tpl3')">
-                                <td class="px-4 py-3 font-medium text-slate-900">Boas-vindas — Welcome</td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">Email automático enviado após registo</td>
-                                <td class="px-4 py-3 text-xs text-slate-400">15/01/2026</td>
-                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                                    <button onclick="event.stopPropagation();teEditTemplate('tpl3')" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                                    <button onclick="event.stopPropagation();mockDuplicateTemplate(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Duplicar</button>
-                                    <button onclick="event.stopPropagation();mockDeleteTemplate(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <!-- Header (cabeçalho) -->
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                        <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v4H4z M4 14h16v6H4z"/></svg>
+                                <h3 class="font-semibold text-slate-900 text-sm">Cabeçalho (header)</h3>
+                            </div>
+                            <span class="text-xs text-slate-400">HTML</span>
+                        </div>
+                        <div class="grid" style="grid-template-columns:1fr 1fr">
+                            <div class="border-r border-slate-200">
+                                <textarea id="bsHeaderHtml" spellcheck="false" oninput="_blocksLivePreview('header')" placeholder="<!-- HTML do cabeçalho da marca -->&#10;&#10;<table style=&quot;width:100%;background:#0f172a;color:#fff;padding:24px&quot;>&#10;  <tr><td>Logótipo da marca</td></tr>&#10;</table>" class="w-full px-4 py-3 text-xs font-mono text-slate-700 focus:outline-none resize-none border-none" style="min-height:240px"></textarea>
+                            </div>
+                            <div class="bg-slate-50">
+                                <div class="px-3 py-1.5 border-b border-slate-200 bg-white flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
+                                    <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+                                    <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+                                    <span class="text-xs text-slate-400 ml-2">Pré-visualização</span>
+                                </div>
+                                <iframe id="blocksHeaderPreview" class="w-full bg-white" style="height:208px;border:none"></iframe>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer (rodapé) -->
+                    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                        <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h16v6H4z M4 14h16v6H4z"/></svg>
+                                <h3 class="font-semibold text-slate-900 text-sm">Rodapé (footer)</h3>
+                            </div>
+                            <span class="text-xs text-slate-400">HTML</span>
+                        </div>
+                        <div class="grid" style="grid-template-columns:1fr 1fr">
+                            <div class="border-r border-slate-200">
+                                <textarea id="bsFooterHtml" spellcheck="false" oninput="_blocksLivePreview('footer')" placeholder="<!-- HTML do rodapé da marca -->&#10;&#10;<table style=&quot;width:100%;background:#f1f5f9;padding:16px;text-align:center;font-size:12px;color:#64748b&quot;>&#10;  <tr><td>© 2026 Marca · <a href=&quot;{{unsubscribe_url}}&quot;>Cancelar subscrição</a></td></tr>&#10;</table>" class="w-full px-4 py-3 text-xs font-mono text-slate-700 focus:outline-none resize-none border-none" style="min-height:240px"></textarea>
+                            </div>
+                            <div class="bg-slate-50">
+                                <div class="px-3 py-1.5 border-b border-slate-200 bg-white flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
+                                    <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+                                    <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+                                    <span class="text-xs text-slate-400 ml-2">Pré-visualização</span>
+                                </div>
+                                <iframe id="blocksFooterPreview" class="w-full bg-white" style="height:208px;border:none"></iframe>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-slate-400 text-center">Variáveis suportadas no rodapé: <code class="bg-slate-100 px-1.5 py-0.5 rounded">{{unsubscribe_url}}</code></p>
                 </div>
             </main>
         </div>
@@ -5198,7 +5152,7 @@ ${lines.join('\n')}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                    <button onclick="showScreen('templates')" class="text-slate-400 hover:text-slate-700">
+                    <button onclick="showScreen('campaigns')" class="text-slate-400 hover:text-slate-700">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     </button>
                     <h1 class="text-xl font-semibold text-slate-900">Editar — Newsletter Primavera 2026</h1>
@@ -5254,7 +5208,7 @@ ${lines.join('\n')}
                     </button>
 
                     <button onclick="mockSaveTemplate()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar</button>
-                    <button onclick="showScreen('templates')" class="px-3 py-2 text-sm text-slate-600 hover:text-slate-900">Cancelar</button>
+                    <button onclick="showScreen('campaigns')" class="px-3 py-2 text-sm text-slate-600 hover:text-slate-900">Cancelar</button>
                 </div>
 
                 <!-- ── Editor area (mode-dependent) ────────────────────── -->
@@ -5968,43 +5922,7 @@ ${lines.join('\n')}
                             </div>
                         </div>
                     </div>
-                    <!-- Blocos da marca -->
-                    <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <div class="flex items-center justify-between mb-1">
-                            <h3 class="font-semibold text-slate-900 text-sm">Blocos da marca</h3>
-                            <span class="text-xs text-slate-400">Inseridos automaticamente nos templates</span>
-                        </div>
-                        <p class="text-xs text-slate-400 mb-4">Define o cabeçalho e rodapé HTML que serão aplicados a todos os emails desta marca.</p>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Cabeçalho (header)</label>
-                                <div class="border border-slate-200 rounded-lg overflow-hidden">
-                                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between">
-                                        <span class="text-xs text-slate-400 font-mono">HTML</span>
-                                        <button onclick="_bsPreviewBlock('header')" class="text-xs text-slate-500 hover:text-slate-800">Pré-visualizar</button>
-                                    </div>
-                                    <textarea id="bsHeaderHtml" rows="6" spellcheck="false" placeholder="<!-- HTML do cabeçalho da marca -->" class="w-full px-3 py-2 text-sm font-mono text-slate-700 focus:outline-none resize-y"></textarea>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Rodapé (footer)</label>
-                                <div class="border border-slate-200 rounded-lg overflow-hidden">
-                                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between">
-                                        <span class="text-xs text-slate-400 font-mono">HTML</span>
-                                        <button onclick="_bsPreviewBlock('footer')" class="text-xs text-slate-500 hover:text-slate-800">Pré-visualizar</button>
-                                    </div>
-                                    <textarea id="bsFooterHtml" rows="6" spellcheck="false" placeholder="<!-- HTML do rodapé da marca -->" class="w-full px-3 py-2 text-sm font-mono text-slate-700 focus:outline-none resize-y"></textarea>
-                                </div>
-                            </div>
-                            <div id="bsBlockPreview" class="hidden border border-slate-200 rounded-lg overflow-hidden">
-                                <div class="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between">
-                                    <span class="text-xs text-slate-500 font-medium" id="bsBlockPreviewLabel">Pré-visualização</span>
-                                    <button onclick="document.getElementById('bsBlockPreview').classList.add('hidden')" class="text-xs text-slate-400 hover:text-slate-700">Fechar</button>
-                                </div>
-                                <iframe id="bsBlockPreviewFrame" class="w-full bg-white" style="height:160px;border:none"></iframe>
-                            </div>
-                        </div>
-                    </div>
+                    <p class="text-xs text-slate-400 text-center pt-2">Os cabeçalhos e rodapés desta marca são geridos em <a onclick="showScreen('blocks')" class="text-slate-600 underline cursor-pointer">Cabeçalhos & Rodapés</a>.</p>
                 </div>
             </main>
         </div>

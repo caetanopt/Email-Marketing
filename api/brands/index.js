@@ -88,15 +88,19 @@ module.exports = async function handler(req, res) {
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'id obrigatório' });
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
-      const { name, color, logo_url, from_name, from_email, reply_to, header_html, footer_html } = req.body || {};
-      await query(
-        `UPDATE brands SET name=COALESCE($1,name), color=COALESCE($2,color), logo_url=$3,
-         from_name=COALESCE($4,from_name), from_email=COALESCE($5,from_email), reply_to=$6,
-         header_html=$7, footer_html=$8
-         WHERE id=$9`,
-        [name||null, color||null, logo_url||null, from_name||null, from_email||null, reply_to||null,
-         header_html||null, footer_html||null, id]
-      );
+      const body = req.body || {};
+      const fields = ['name','color','logo_url','from_name','from_email','reply_to','header_html','footer_html'];
+      const sets = [];
+      const params = [];
+      for (const f of fields) {
+        if (Object.prototype.hasOwnProperty.call(body, f)) {
+          params.push(body[f] === '' ? null : body[f]);
+          sets.push(`${f}=$${params.length}`);
+        }
+      }
+      if (!sets.length) return res.status(200).json({ ok: true });
+      params.push(id);
+      await query(`UPDATE brands SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
       return res.status(200).json({ ok: true });
     }
 
