@@ -4333,49 +4333,8 @@ ${lines.join('\n')}
 
                     <!-- Passo 2: Template -->
                     <div id="wizStep2" class="hidden">
-                        <!-- Top bar: mode tabs + actions -->
-                        <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-3 mb-3">
-                            <!-- Mode tabs -->
-                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                                <button id="wiz_te_tabVisual" type="button" onclick="teSetMode('visual')"
-                                        class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white shadow-sm text-slate-900">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
-                                    Visual
-                                </button>
-                                <button id="wiz_te_tabCode" type="button" onclick="teSetMode('code')"
-                                        class="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-slate-500 hover:text-slate-700">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
-                                    MJML
-                                </button>
-                            </div>
-                            <!-- Inserir bloco da marca -->
-                            <button type="button" onclick="openBlockPicker('header')"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16"/></svg>
-                                + Cabeçalho da marca
-                            </button>
-                            <button type="button" onclick="openBlockPicker('footer')"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 14h16M4 18h16"/></svg>
-                                + Rodapé da marca
-                            </button>
-                            <!-- Converter HTML → MJML -->
-                            <button type="button" onclick="teOpenConverter()"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-                                Converter HTML
-                            </button>
-                            <!-- Preview -->
-                            <button type="button" onclick="teOpenPreviewModal()"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                </svg>
-                                Preview
-                            </button>
-                            <span class="text-xs text-slate-400 ml-auto">O template é guardado automaticamente ao criar a campanha</span>
-                        </div>
+                        <!-- Auto-save hint -->
+                        <p class="text-xs text-slate-400 mb-2 text-right">O template é guardado automaticamente ao criar a campanha</p>
                         <!-- Editor area -->
                         <div style="height:calc(100vh - 380px);min-height:520px;">
                             <!-- VISUAL MODE -->
@@ -4491,6 +4450,21 @@ ${lines.join('\n')}
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                        <!-- Bottom toolbar: mode tabs + actions -->
+                        <div class="bg-white border border-slate-200 rounded-xl p-3 mt-3 flex flex-wrap items-center gap-2">
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                                <button id="wiz_te_tabVisual" type="button" onclick="teSetMode('visual')"
+                                        class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-white shadow-sm text-slate-900">Visual</button>
+                                <button id="wiz_te_tabCode" type="button" onclick="teSetMode('code')"
+                                        class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">MJML</button>
+                            </div>
+                            <button type="button" onclick="openBlockPicker('header')"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Cabeçalho da marca</button>
+                            <button type="button" onclick="openBlockPicker('footer')"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Rodapé da marca</button>
+                            <button type="button" onclick="teOpenConverter()"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">+ Converter HTML</button>
                         </div>
                     </div>
 
