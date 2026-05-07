@@ -1842,6 +1842,7 @@ ${body}
                 _editingBlockId = created?.id || null;
             }
             showToast('Bloco guardado.');
+            _teMarkClean();
             _teMode = 'template';
             _editingBlockId = null;
             _blocksType = _teBlockType;
