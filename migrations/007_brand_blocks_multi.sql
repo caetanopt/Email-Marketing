@@ -22,12 +22,15 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'brands' AND column_name = 'header_html'
   ) THEN
-    INSERT INTO brand_blocks (brand_id, type, name, html_content)
-    SELECT id, 'header', 'Padrão', header_html FROM brands WHERE header_html IS NOT NULL AND header_html <> ''
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO brand_blocks (brand_id, type, name, html_content)
-    SELECT id, 'footer', 'Padrão', footer_html FROM brands WHERE footer_html IS NOT NULL AND footer_html <> ''
-    ON CONFLICT DO NOTHING;
+    EXECUTE $q$
+      INSERT INTO brand_blocks (brand_id, type, name, html_content)
+      SELECT id, 'header', 'Padrão', header_html FROM brands WHERE header_html IS NOT NULL AND header_html <> ''
+      ON CONFLICT DO NOTHING
+    $q$;
+    EXECUTE $q$
+      INSERT INTO brand_blocks (brand_id, type, name, html_content)
+      SELECT id, 'footer', 'Padrão', footer_html FROM brands WHERE footer_html IS NOT NULL AND footer_html <> ''
+      ON CONFLICT DO NOTHING
+    $q$;
   END IF;
 END $$;
