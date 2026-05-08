@@ -171,8 +171,14 @@ module.exports = async function handler(req, res) {
       if (!sets.length) return res.status(200).json({ ok: true });
       sets.push(`updated_at=NOW()`);
       params.push(media_id);
+      params.push(user.id);
       try {
-        await query(`UPDATE media SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
+        const r = await query(
+          `UPDATE media SET ${sets.join(', ')}
+           WHERE id=$${params.length-1}
+             AND brand_id IN (SELECT brand_id FROM user_brand_roles WHERE user_id=$${params.length})`,
+          params
+        );
         return res.status(200).json({ ok: true });
       } catch (e) {
         if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 008_media.sql no Supabase.' });
@@ -182,7 +188,12 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'DELETE' && action === 'media' && media_id) {
       try {
-        await query('DELETE FROM media WHERE id=$1', [media_id]);
+        await query(
+          `DELETE FROM media
+           WHERE id=$1
+             AND brand_id IN (SELECT brand_id FROM user_brand_roles WHERE user_id=$2)`,
+          [media_id, user.id]
+        );
         return res.status(200).json({ ok: true });
       } catch (e) {
         if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 008_media.sql no Supabase.' });

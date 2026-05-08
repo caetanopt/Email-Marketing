@@ -1,6 +1,18 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 
+// Helper: confirm caller has access to the contact's brand
+async function authorizeContact(userId, contactId) {
+  const r = await query(
+    `SELECT c.*
+     FROM contacts c
+     JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
+     WHERE c.id = $1`,
+    [contactId, userId]
+  );
+  return r[0] || null;
+}
+
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
   const user = requireAuth(req, res);
@@ -9,10 +21,10 @@ module.exports = async function handler(req, res) {
   const { id } = req.query;
 
   try {
-    if (req.method === 'GET') {
-      const rows = await query('SELECT * FROM contacts WHERE id = $1', [id]);
-      if (!rows[0]) return res.status(404).json({ error: 'Contacto não encontrado' });
+    const contact = await authorizeContact(user.id, id);
+    if (!contact) return res.status(404).json({ error: 'Contacto não encontrado' });
 
+    if (req.method === 'GET') {
       const lists = await query(
         `SELECT l.id, l.name FROM lists l
          JOIN list_members lm ON lm.list_id = l.id WHERE lm.contact_id = $1`, [id]
@@ -22,7 +34,7 @@ module.exports = async function handler(req, res) {
          FROM email_events ee JOIN campaigns c ON c.id = ee.campaign_id
          WHERE ee.contact_id = $1 ORDER BY ee.created_at DESC LIMIT 20`, [id]
       );
-      return res.status(200).json({ ...rows[0], lists, events });
+      return res.status(200).json({ ...contact, lists, events });
     }
 
     if (req.method === 'PUT') {
@@ -32,15 +44,15 @@ module.exports = async function handler(req, res) {
            email=COALESCE($1,email), name=$2, phone=$3, company=$4,
            status=COALESCE($5,status),
            custom_attributes=COALESCE($6,custom_attributes), updated_at=NOW()
-         WHERE id=$7`,
+         WHERE id=$7 AND brand_id=$8`,
         [email?.toLowerCase().trim()||null, name||null, phone||null, company||null,
-         status||null, custom_attributes ? JSON.stringify(custom_attributes) : null, id]
+         status||null, custom_attributes ? JSON.stringify(custom_attributes) : null, id, contact.brand_id]
       );
       return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'DELETE') {
-      await query('DELETE FROM contacts WHERE id = $1', [id]);
+      await query('DELETE FROM contacts WHERE id = $1 AND brand_id = $2', [id, contact.brand_id]);
       return res.status(200).json({ ok: true });
     }
 
