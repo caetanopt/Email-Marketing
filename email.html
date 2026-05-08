@@ -3017,8 +3017,7 @@ ${body}
         if (ta) { ta.value = mjml; teSyncMjmlLines && teSyncMjmlLines(); }
         document.getElementById('te_converterPanel').classList.add('hidden');
         // Switch to code mode
-        const codeBtn = document.querySelector('[onclick*="teSwitchMode"][onclick*="code"]') || document.getElementById('te_codeModeBtn');
-        if (typeof teSwitchMode === 'function') teSwitchMode('code');
+        if (typeof teSetMode === 'function') teSetMode('code');
         showToast('MJML importado para o editor. Verifica e ajusta conforme necessário.', 'info');
     }
     function _convertHtmlToMjml(html) {
