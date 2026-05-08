@@ -3,6 +3,23 @@ const { requireAuth, cors } = require('../../lib/auth');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
+function unsubToken(email, brandId) {
+  return crypto.createHmac('sha256', process.env.JWT_SECRET)
+    .update(`${email}:${brandId}`)
+    .digest('hex');
+}
+
+async function authorizeCampaign(userId, campaignId) {
+  const r = await query(
+    `SELECT c.*
+     FROM campaigns c
+     JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
+     WHERE c.id = $1`,
+    [campaignId, userId]
+  );
+  return r[0] || null;
+}
+
 function htmlToText(html) {
   return (html || '')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -31,6 +48,9 @@ module.exports = async function handler(req, res) {
   const { id, action } = req.query;
 
   try {
+    const camp = await authorizeCampaign(user.id, id);
+    if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+
     if (req.method === 'GET') {
       const rows = await query(
         `SELECT c.*, t.html_content, t.name AS template_name
@@ -53,9 +73,9 @@ module.exports = async function handler(req, res) {
       await query(
         `UPDATE campaigns SET name=COALESCE($1,name), subject=$2, preview_text=$3,
          from_name=$4, from_email=$5, template_id=COALESCE($6,template_id),
-         scheduled_at=$7, status=COALESCE($8,status), updated_at=NOW() WHERE id=$9`,
+         scheduled_at=$7, status=COALESCE($8,status), updated_at=NOW() WHERE id=$9 AND brand_id=$10`,
         [name||null, subject||null, preview_text||null, from_name||null, from_email||null,
-         template_id||null, scheduled_at||null, status||null, id]
+         template_id||null, scheduled_at||null, status||null, id, camp.brand_id]
       );
       if (list_ids) {
         await query('DELETE FROM campaign_lists WHERE campaign_id=$1', [id]);
@@ -69,7 +89,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      await query('DELETE FROM campaigns WHERE id=$1', [id]);
+      await query('DELETE FROM campaigns WHERE id=$1 AND brand_id=$2', [id, camp.brand_id]);
       return res.status(200).json({ ok: true });
     }
 
