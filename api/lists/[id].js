@@ -6,16 +6,30 @@ module.exports = async function handler(req, res) {
   const user = requireAuth(req, res);
   if (!user) return;
 
-  const { id, action, contact_id } = req.query;
+  const { id, action, contact_id, brand_id } = req.query;
+
+  // Verify the user has access to the list's owner-brand
+  const auth = await query(
+    `SELECT l.* FROM lists l
+     JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
+     WHERE l.id = $1`,
+    [id, user.id]
+  );
+  if (!auth[0]) return res.status(404).json({ error: 'Lista não encontrada' });
 
   try {
     if (req.method === 'GET') {
       const rows = await query(
-        `SELECT l.*, COUNT(lm.contact_id)::int AS total_contacts
-         FROM lists l LEFT JOIN list_members lm ON lm.list_id = l.id
-         WHERE l.id = $1 GROUP BY l.id`, [id]
+        `SELECT l.*, b.name AS brand_name,
+                COUNT(lm.contact_id)::int AS total_contacts,
+                COUNT(lm.contact_id) FILTER (WHERE c.brand_id = $2)::int AS total_contacts_in_brand
+         FROM lists l
+         LEFT JOIN brands b ON b.id = l.brand_id
+         LEFT JOIN list_members lm ON lm.list_id = l.id
+         LEFT JOIN contacts c ON c.id = lm.contact_id
+         WHERE l.id = $1 GROUP BY l.id, b.name`,
+        [id, brand_id || auth[0].brand_id]
       );
-      if (!rows[0]) return res.status(404).json({ error: 'Lista não encontrada' });
       return res.status(200).json(rows[0]);
     }
 
