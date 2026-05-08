@@ -4617,6 +4617,13 @@ ${lines.join('\n')}
                                     class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">+ Converter HTML</button>
                             <span class="text-xs text-slate-400 ml-auto">O template é guardado automaticamente ao criar a campanha</span>
                         </div>
+                        <!-- Brand blocks toolbar (under main top toolbar) -->
+                        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2">
+                            <button type="button" onclick="openBlockPicker('header')"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Cabeçalho da marca</button>
+                            <button type="button" onclick="openBlockPicker('footer')"
+                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Rodapé da marca</button>
+                        </div>
                         <!-- Editor area -->
                         <div style="height:calc(100vh - 380px);min-height:520px;">
                             <!-- VISUAL MODE -->
@@ -4732,13 +4739,6 @@ ${lines.join('\n')}
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <!-- Bottom toolbar: brand blocks -->
-                        <div class="bg-white border border-slate-200 rounded-xl p-3 mt-3 flex flex-wrap items-center gap-2">
-                            <button type="button" onclick="openBlockPicker('header')"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Cabeçalho da marca</button>
-                            <button type="button" onclick="openBlockPicker('footer')"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Rodapé da marca</button>
                         </div>
                     </div>
 
