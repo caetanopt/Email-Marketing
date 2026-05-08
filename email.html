@@ -2179,36 +2179,98 @@ ${body}
     }
 
     // ── Unsubscribe (público) ────────────────────────────
+    // Parses URL params from either querystring (?brand_id=…) or hash fragment
+    // (#unsubscribe?brand_id=…) so the unsubscribe link works as either a
+    // standalone URL or an SPA hash route.
+    function _unsubParams() {
+        const qs = new URLSearchParams(window.location.search);
+        const hash = location.hash || '';
+        const hashQuery = hash.includes('?') ? new URLSearchParams(hash.slice(hash.indexOf('?') + 1)) : null;
+        const get = k => qs.get(k) || (hashQuery && hashQuery.get(k));
+        return {
+            brand_id: get('brand_id'),
+            email:    get('email'),
+            token:    get('token'),
+        };
+    }
+
+    async function _unsubApplyBranding() {
+        const { brand_id, email } = _unsubParams();
+        if (email) {
+            const inp = document.getElementById('unsubEmail');
+            if (inp) inp.value = email;
+        }
+        if (!brand_id) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/suppression?action=brand_info&brand_id=${encodeURIComponent(brand_id)}`);
+            if (!r.ok) return;
+            const b = await r.json();
+            const header = document.getElementById('unsubHeader');
+            const title  = document.getElementById('unsubBrandName');
+            const footer = document.getElementById('unsubFooterBrand');
+            if (header && b.color) header.style.background = b.color;
+            if (title)  title.textContent  = b.name || '';
+            if (footer) footer.textContent = `© ${new Date().getFullYear()} ${b.name||''}`;
+        } catch (err) { /* best-effort, no toast on public page */ }
+    }
+
     async function confirmUnsubscribe() {
         const email = document.getElementById('unsubEmail')?.value.trim();
         if (!email || !email.includes('@')) { showToast('Email inválido.', 'error'); return; }
-        const params = new URLSearchParams(window.location.search);
-        const brandId = params.get('brand_id') || _currentBrand?.id;
-        const token = params.get('token');
-        const btn = document.querySelector('#unsubConfirmPanel button');
+        const reason = document.getElementById('unsubReason')?.value || '';
+        const { brand_id, token } = _unsubParams();
+        const effectiveBrand = brand_id || _currentBrand?.id;
+        const btn = document.querySelector('#unsubConfirmPanel button[onclick*="confirmUnsubscribe"]');
         if (btn) btn.disabled = true;
+        let ok = false;
         try {
-            if (brandId) {
-                const url = token
-                    ? `/api/suppression?brand_id=${brandId}&action=unsubscribe&email=${encodeURIComponent(email)}&token=${token}`
-                    : `/api/suppression?brand_id=${brandId}`;
+            if (effectiveBrand) {
                 if (token) {
-                    await fetch(API_BASE + url);
+                    // Public path with HMAC token
+                    const r = await fetch(`${API_BASE}/api/suppression?brand_id=${effectiveBrand}&action=unsubscribe&email=${encodeURIComponent(email)}&token=${token}`, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: reason || 'unsubscribe' }),
+                    });
+                    ok = r.ok;
+                    if (!r.ok) {
+                        const j = await r.json().catch(() => ({}));
+                        showToast(j.error || 'Não foi possível processar o pedido.', 'error');
+                    }
                 } else {
-                    await apiFetch(url, { method: 'POST', body: JSON.stringify({ email, reason: 'unsubscribe' }) });
+                    // Authenticated path (used internally by admins)
+                    await apiFetch(`/api/suppression?brand_id=${effectiveBrand}`, { method: 'POST', body: JSON.stringify({ email, reason: reason || 'unsubscribe' }) });
+                    ok = true;
                 }
             }
-        } catch(e) { /* best-effort */ }
+        } catch(err) { console.error('unsubscribe failed:', err); showToast('Erro inesperado.', 'error'); }
+        finally { if (btn) btn.disabled = false; }
+        if (!ok) return;
         document.getElementById('unsubConfirmPanel').classList.add('hidden');
         document.getElementById('unsubSuccessPanel').classList.remove('hidden');
         const sp = document.getElementById('unsubSuccessEmail');
         if (sp) sp.textContent = email;
     }
 
-    function resetUnsubscribe() {
+    async function resetUnsubscribe() {
+        const email = document.getElementById('unsubSuccessEmail')?.textContent?.trim()
+                   || document.getElementById('unsubEmail')?.value?.trim();
+        const { brand_id, token } = _unsubParams();
+        if (email && brand_id && token) {
+            try {
+                const r = await fetch(`${API_BASE}/api/suppression?brand_id=${brand_id}&action=resubscribe&email=${encodeURIComponent(email)}&token=${token}`, {
+                    method: 'POST', headers: { 'Accept': 'application/json' }
+                });
+                if (r.ok) {
+                    showToast('Subscrição reactivada.', 'success');
+                } else {
+                    const j = await r.json().catch(() => ({}));
+                    showToast(j.error || 'Não foi possível reactivar.', 'error');
+                }
+            } catch(err) { console.error('resubscribe failed:', err); }
+        }
         document.getElementById('unsubConfirmPanel').classList.remove('hidden');
         document.getElementById('unsubSuccessPanel').classList.add('hidden');
-        showToast('Podes confirmar novamente se quiseres cancelar.','info');
     }
 
     // ── Campaigns ─────────────────────────────────────────
@@ -4246,6 +4308,14 @@ ${lines.join('\n')}
                 if (lines) lines.scrollTop = ev.target.scrollTop;
             }
         }, true);
+        // Public unsubscribe page — render directly without any auth flow.
+        const _hash = (location.hash || '').toLowerCase();
+        const _qs   = new URLSearchParams(location.search);
+        if (_hash.startsWith('#unsubscribe') || _qs.get('unsubscribe') === '1') {
+            showScreen('unsubscribe');
+            _unsubApplyBranding();
+            return; // skip auth/dev-bypass entirely
+        }
         // Pre-fill remembered email
         const remembered = localStorage.getItem('pm_remember_email');
         if (remembered) {
@@ -6779,8 +6849,8 @@ ${lines.join('\n')}
     <div class="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-100 to-slate-200">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
             <!-- Cabeçalho com cor da marca -->
-            <div class="px-8 py-6 text-center" style="background: #1C69D4">
-                <h1 class="text-white text-xl font-bold">BMW Caetano</h1>
+            <div id="unsubHeader" class="px-8 py-6 text-center" style="background: #1C69D4">
+                <h1 id="unsubBrandName" class="text-white text-xl font-bold">A tua marca</h1>
             </div>
             <!-- Estado: confirmar -->
             <div id="unsubConfirmPanel" class="px-8 py-7">
@@ -6789,7 +6859,7 @@ ${lines.join('\n')}
                 <div class="space-y-4">
                     <div>
                         <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email</label>
-                        <input id="unsubEmail" type="email" value="joao.silva@empresa.pt" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        <input id="unsubEmail" type="email" placeholder="o.teu@email.com" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     </div>
                     <div>
                         <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Motivo (opcional)</label>
@@ -6813,11 +6883,11 @@ ${lines.join('\n')}
                     <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 </div>
                 <h2 class="text-xl font-semibold text-slate-900 mb-2">Subscrição cancelada</h2>
-                <p class="text-sm text-slate-600 mb-1">O endereço <span id="unsubSuccessEmail" class="font-medium text-slate-900">joao.silva@empresa.pt</span> deixou de receber os nossos emails.</p>
+                <p class="text-sm text-slate-600 mb-1">O endereço <span id="unsubSuccessEmail" class="font-medium text-slate-900">—</span> deixou de receber os nossos emails.</p>
                 <p class="text-xs text-slate-400 mt-4">Mudaste de ideias? <a onclick="resetUnsubscribe()" class="text-slate-700 underline cursor-pointer">Reverter</a></p>
             </div>
             <div class="px-8 py-3 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-400">
-                © 2026 BMW Caetano · <span class="cursor-pointer hover:text-slate-600">Política de Privacidade</span>
+                <span id="unsubFooterBrand">© 2026</span> · <span class="cursor-pointer hover:text-slate-600">Política de Privacidade</span>
             </div>
         </div>
     </div>
