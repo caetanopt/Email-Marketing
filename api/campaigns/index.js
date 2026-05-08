@@ -6,10 +6,54 @@ module.exports = async function handler(req, res) {
   const user = requireAuth(req, res);
   if (!user) return;
 
-  const { brand_id, status, page = 1, limit = 20 } = req.query;
+  const { brand_id, status, page = 1, limit = 20, action, range } = req.query;
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
   try {
+    // Dashboard aggregates for a brand + range (7d/30d/90d/12m).
+    if (action === 'dashboard' && req.method === 'GET') {
+      const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || '30d'] || 30;
+      const sinceParams = [brand_id, days];
+      const [agg] = await query(
+        `SELECT
+            COUNT(DISTINCT c.id)::int AS campaigns,
+            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int  AS sent,
+            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int AS bounced,
+            COUNT(DISTINCT cr.id)::int AS total_recipients,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+         FROM campaigns c
+         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+         LEFT JOIN email_events ee ON ee.campaign_id=c.id
+         WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')`,
+        sinceParams
+      );
+      const recent = await query(
+        `SELECT c.id, c.name, c.subject, c.sent_at, c.status,
+                COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
+                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+         FROM campaigns c
+         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+         LEFT JOIN email_events ee ON ee.campaign_id=c.id
+         WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
+         GROUP BY c.id ORDER BY c.sent_at DESC NULLS LAST LIMIT 5`,
+        sinceParams
+      );
+      const sent = agg?.sent || 0;
+      const openRate   = sent ? +((agg.unique_opens  / sent) * 100).toFixed(1) : 0;
+      const clickRate  = sent ? +((agg.unique_clicks / sent) * 100).toFixed(1) : 0;
+      const bounceRate = (agg.total_recipients) ? +((agg.bounced / agg.total_recipients) * 100).toFixed(1) : 0;
+      return res.status(200).json({
+        campaigns: agg?.campaigns || 0,
+        emails:    sent,
+        openRate,
+        clickRate,
+        bounceRate,
+        recent,
+      });
+    }
+
     if (req.method === 'GET') {
       const params = [brand_id];
       let where = 'WHERE c.brand_id=$1';
