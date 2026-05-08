@@ -5028,24 +5028,25 @@ ${lines.join('\n')}
 
                     <!-- Passo 2: Template -->
                     <div id="wizStep2" class="hidden">
-                        <!-- Top toolbar: brand blocks (cabeçalho / rodapé) -->
-                        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2">
-                            <button type="button" onclick="openBlockPicker('header')"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Cabeçalho da marca</button>
-                            <button type="button" onclick="openBlockPicker('footer')"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Rodapé da marca</button>
-                        </div>
-                        <!-- Centered toolbar: mode tabs + Converter HTML + auto-save hint -->
-                        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3 flex flex-wrap items-center justify-center gap-2 relative">
-                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                                <button id="wiz_te_tabVisual" type="button" onclick="teSetMode('visual')"
-                                        class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-white shadow-sm text-slate-900">Visual</button>
-                                <button id="wiz_te_tabCode" type="button" onclick="teSetMode('code')"
-                                        class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">MJML</button>
+                        <!-- Single toolbar: brand blocks (left) + modes/converter (centered) + auto-save hint (right) -->
+                        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3 grid grid-cols-3 items-center gap-2">
+                            <div class="flex flex-wrap items-center gap-2 justify-self-start">
+                                <button type="button" onclick="openBlockPicker('header')"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Cabeçalho da marca</button>
+                                <button type="button" onclick="openBlockPicker('footer')"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Rodapé da marca</button>
                             </div>
-                            <button type="button" onclick="teOpenConverter()"
-                                    class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">+ Converter HTML</button>
-                            <span class="text-xs text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 hidden md:block">O template é guardado automaticamente ao criar a campanha</span>
+                            <div class="flex items-center gap-2 justify-self-center">
+                                <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                                    <button id="wiz_te_tabVisual" type="button" onclick="teSetMode('visual')"
+                                            class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-white shadow-sm text-slate-900">Visual</button>
+                                    <button id="wiz_te_tabCode" type="button" onclick="teSetMode('code')"
+                                            class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">MJML</button>
+                                </div>
+                                <button type="button" onclick="teOpenConverter()"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">+ Converter HTML</button>
+                            </div>
+                            <span class="text-xs text-slate-400 justify-self-end hidden md:block text-right">O template é guardado automaticamente ao criar a campanha</span>
                         </div>
                         <!-- Editor area -->
                         <div style="height:calc(100vh - 380px);min-height:520px;">
