@@ -3145,7 +3145,7 @@ ${body}
         if (!mjml.trim()) { showToast('Converte o HTML primeiro.', 'info'); return; }
         const ta = _teEl('mjmlCode');
         if (ta) { ta.value = mjml; teSyncMjmlLines && teSyncMjmlLines(); }
-        document.getElementById('te_converterPanel').classList.add('hidden');
+        teCloseConverter();
         // Switch to code mode
         if (typeof teSetMode === 'function') teSetMode('code');
         showToast('MJML importado para o editor. Verifica e ajusta conforme necessário.', 'info');
@@ -6264,15 +6264,17 @@ ${lines.join('\n')}
         </div>
     </div>
 
+</div>
+
     <!-- ── Conversor HTML → MJML ──────────────────────────────────────── -->
-    <div id="te_converterPanel" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div id="te_converterPanel" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)teCloseConverter()">
         <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style="max-height:88vh">
             <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
                 <div>
                     <h2 class="text-base font-semibold text-slate-900">Conversor HTML → MJML</h2>
                     <p class="text-xs text-slate-400 mt-0.5">Cola o teu HTML existente e converte para MJML editável</p>
                 </div>
-                <button onclick="document.getElementById('te_converterPanel').classList.add('hidden')" class="text-slate-400 hover:text-slate-700">
+                <button onclick="teCloseConverter()" class="text-slate-400 hover:text-slate-700">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
@@ -6317,7 +6319,6 @@ ${lines.join('\n')}
             <div id="te_previewBody" class="flex-1 overflow-auto bg-slate-100 p-6"></div>
         </div>
     </div>
-</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      ECRÃ — LISTAS
