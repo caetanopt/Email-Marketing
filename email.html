@@ -1231,10 +1231,17 @@
         }
         const fields = teFieldSchemas[b.type] || [];
         const html = fields.map((key) => teRenderField(b, key)).join('');
+        const extra = b.type === 'image'
+            ? `<button onclick="openMediaPicker(url => teUpdateField('${b.id}','src',url))" class="w-full mt-3 px-2 py-1.5 text-xs font-medium text-slate-700 border border-slate-200 rounded hover:bg-slate-50 flex items-center justify-center gap-1.5">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  Escolher da biblioteca
+              </button>`
+            : '';
         root.innerHTML = `
             <p class="text-xs font-semibold text-slate-700 mb-1">${teLabels[b.type] || b.type}</p>
             <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
             <div class="space-y-3">${html}</div>
+            ${extra}
             <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
         `;
     }
@@ -1854,6 +1861,9 @@ ${body}
     // ── Biblioteca de Multimédia ────────────────────────
     let _mediaItems = [];
     let _mediaTab = 'all';
+    let _mediaSource = 'upload';
+    let _mediaPendingDataUrl = null;
+    let _mediaPickerCallback = null;
 
     async function _loadMedia() {
         if (!_currentBrand?.id) return;
@@ -1879,6 +1889,8 @@ ${body}
         let items = _mediaItems;
         if (_mediaTab === 'brand')  items = items.filter(i => i.brand_id === bId && !i.is_shared);
         if (_mediaTab === 'shared') items = items.filter(i => i.is_shared);
+        const q = (document.getElementById('mediaSearch')?.value || '').trim().toLowerCase();
+        if (q) items = items.filter(i => (i.name || '').toLowerCase().includes(q));
         // counts
         document.getElementById('mediaCountAll').textContent    = `(${_mediaItems.length})`;
         document.getElementById('mediaCountBrand').textContent  = `(${_mediaItems.filter(i => i.brand_id === bId && !i.is_shared).length})`;
@@ -1938,12 +1950,56 @@ ${body}
         document.getElementById('mediaName').value = '';
         document.getElementById('mediaUrl').value = '';
         document.getElementById('mediaShared').checked = false;
+        document.getElementById('mediaFile').value = '';
         document.getElementById('mediaPreviewBox').classList.add('hidden');
+        _mediaPendingDataUrl = null;
+        _mediaSetSource('upload');
         m.classList.remove('hidden'); m.classList.add('flex');
     }
     function _mediaCloseUpload() {
         const m = document.getElementById('mediaUploadModal');
         m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function _mediaSetSource(src) {
+        _mediaSource = src;
+        const dz = document.getElementById('mediaDropZone');
+        const ub = document.getElementById('mediaUrlBlock');
+        const tu = document.getElementById('mediaTabUpload');
+        const tr = document.getElementById('mediaTabUrl');
+        if (src === 'upload') {
+            dz.classList.remove('hidden'); ub.classList.add('hidden');
+            tu.classList.add('bg-white','shadow-sm','text-slate-900'); tu.classList.remove('text-slate-500');
+            tr.classList.remove('bg-white','shadow-sm','text-slate-900'); tr.classList.add('text-slate-500');
+        } else {
+            dz.classList.add('hidden'); ub.classList.remove('hidden');
+            tr.classList.add('bg-white','shadow-sm','text-slate-900'); tr.classList.remove('text-slate-500');
+            tu.classList.remove('bg-white','shadow-sm','text-slate-900'); tu.classList.add('text-slate-500');
+        }
+    }
+    function _mediaDrop(ev) {
+        ev.preventDefault();
+        ev.currentTarget.classList.remove('border-slate-900','bg-slate-50');
+        const file = ev.dataTransfer?.files?.[0];
+        if (file) _mediaReadFile(file);
+    }
+    function _mediaPickFile(ev) {
+        const file = ev.target.files?.[0];
+        if (file) _mediaReadFile(file);
+    }
+    function _mediaReadFile(file) {
+        if (!file.type.startsWith('image/')) { showToast('Apenas ficheiros de imagem.', 'error'); return; }
+        if (file.size > 2 * 1024 * 1024) { showToast('Ficheiro demasiado grande (máx 2 MB).', 'error'); return; }
+        const reader = new FileReader();
+        reader.onload = e => {
+            _mediaPendingDataUrl = e.target.result;
+            const box = document.getElementById('mediaPreviewBox');
+            const img = document.getElementById('mediaPreviewImg');
+            img.src = _mediaPendingDataUrl;
+            box.classList.remove('hidden');
+            const nameEl = document.getElementById('mediaName');
+            if (!nameEl.value) nameEl.value = file.name.replace(/\.[^.]+$/, '');
+        };
+        reader.readAsDataURL(file);
     }
     function _mediaPreview() {
         const url = document.getElementById('mediaUrl').value.trim();
@@ -1952,25 +2008,92 @@ ${body}
         if (url && /^https?:\/\//i.test(url)) {
             img.src = url;
             box.classList.remove('hidden');
-        } else {
+        } else if (!_mediaPendingDataUrl) {
             box.classList.add('hidden');
         }
     }
     async function _mediaSave() {
         const name = document.getElementById('mediaName').value.trim();
-        const url  = document.getElementById('mediaUrl').value.trim();
         const is_shared = document.getElementById('mediaShared').checked;
+        let url, mime_type;
+        if (_mediaSource === 'upload') {
+            if (!_mediaPendingDataUrl) { showToast('Escolhe um ficheiro primeiro.', 'error'); return; }
+            url = _mediaPendingDataUrl;
+            mime_type = (url.match(/^data:([^;]+)/) || [])[1] || null;
+        } else {
+            url = document.getElementById('mediaUrl').value.trim();
+            if (!url || !/^https?:\/\//i.test(url)) { showToast('URL inválido (deve começar por http/https).', 'error'); return; }
+        }
         if (!name) { showToast('Indica um nome.', 'error'); return; }
-        if (!url || !/^https?:\/\//i.test(url)) { showToast('URL inválido (deve começar por http/https).', 'error'); return; }
         try {
             await apiFetch('/api/media', {
                 method: 'POST',
-                body: JSON.stringify({ brand_id: _currentBrand.id, name, url, is_shared })
+                body: JSON.stringify({ brand_id: _currentBrand.id, name, url, mime_type, is_shared })
             });
             showToast('Imagem adicionada.');
             _mediaCloseUpload();
             _loadMedia();
         } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    // ── Picker modal (para usar dentro do editor) ────
+    async function openMediaPicker(callback) {
+        if (!_currentBrand?.id) return;
+        _mediaPickerCallback = callback;
+        const modal = document.getElementById('mediaPickerModal');
+        const list  = document.getElementById('mediaPickerList');
+        list.innerHTML = '<p class="text-sm text-slate-400 text-center py-8 col-span-full">A carregar…</p>';
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+        try {
+            const r = await apiFetch(`/api/media?brand_id=${_currentBrand.id}`);
+            const items = r.data || [];
+            if (r._migration_pending) {
+                list.innerHTML = '<p class="text-sm text-amber-700 text-center py-8 col-span-full">Corre <code>migrations/008_media.sql</code> no Supabase para activar.</p>';
+                return;
+            }
+            _mediaPickerRender(items);
+        } catch (e) { showToast(e.message, 'error'); closeMediaPicker(); }
+    }
+    function _mediaPickerRender(items) {
+        const list = document.getElementById('mediaPickerList');
+        const q = (document.getElementById('mediaPickerSearch')?.value || '').trim().toLowerCase();
+        const filtered = q ? items.filter(i => (i.name||'').toLowerCase().includes(q)) : items;
+        if (!filtered.length) {
+            list.innerHTML = `<div class="col-span-full text-center py-8">
+                <p class="text-sm text-slate-500 mb-3">${q ? 'Nenhum resultado.' : 'Sem imagens na biblioteca.'}</p>
+                ${q ? '' : '<button onclick="closeMediaPicker();showScreen(\'media\')" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Adicionar imagens</button>'}
+            </div>`;
+            return;
+        }
+        const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        list.innerHTML = filtered.map(m => `
+            <button onclick="_mediaPickerSelect('${escAttr(m.url)}')" class="text-left bg-white border border-slate-200 rounded-lg overflow-hidden hover:border-slate-900 hover:shadow-md transition-all">
+                <div class="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
+                    <img src="${escAttr(m.url)}" alt="${escAttr(m.name)}" class="w-full h-full object-contain" loading="lazy">
+                </div>
+                <div class="p-2 border-t border-slate-100">
+                    <p class="text-[11px] font-medium text-slate-900 truncate">${escHtml(m.name)}</p>
+                    ${m.is_shared ? '<span class="text-[9px] text-emerald-600">Partilhada</span>' : ''}
+                </div>
+            </button>
+        `).join('');
+        // store items on the modal for re-search
+        list.dataset.json = JSON.stringify(items);
+    }
+    function _mediaPickerSearch() {
+        const list = document.getElementById('mediaPickerList');
+        const items = list.dataset.json ? JSON.parse(list.dataset.json) : [];
+        _mediaPickerRender(items);
+    }
+    function _mediaPickerSelect(url) {
+        if (typeof _mediaPickerCallback === 'function') _mediaPickerCallback(url);
+        closeMediaPicker();
+    }
+    function closeMediaPicker() {
+        const m = document.getElementById('mediaPickerModal');
+        m.classList.add('hidden'); m.classList.remove('flex');
+        _mediaPickerCallback = null;
     }
     async function _mediaDelete(id) {
         if (!confirm('Apagar esta imagem da biblioteca?')) return;
@@ -5374,6 +5497,11 @@ ${lines.join('\n')}
                         Partilhadas <span id="mediaCountShared" class="ml-1 text-xs text-slate-400">(0)</span>
                     </button>
                 </div>
+                <!-- Search -->
+                <div class="mb-5 relative max-w-md">
+                    <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <input id="mediaSearch" type="text" placeholder="Pesquisar por nome…" oninput="_renderMediaGrid()" class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+                </div>
                 <!-- Grid -->
                 <div id="mediaGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
                 <!-- Empty state -->
@@ -5397,14 +5525,27 @@ ${lines.join('\n')}
             </button>
         </div>
         <div class="p-5 space-y-4">
-            <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">Nome *</label>
-                <input id="mediaName" type="text" placeholder="Ex.: Banner promocional verão" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+            <!-- Tabs upload / URL -->
+            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium">
+                <button id="mediaTabUpload" type="button" onclick="_mediaSetSource('upload')" class="px-3 py-1 rounded-md bg-white shadow-sm text-slate-900">Carregar ficheiro</button>
+                <button id="mediaTabUrl" type="button" onclick="_mediaSetSource('url')" class="px-3 py-1 rounded-md text-slate-500 hover:text-slate-700">Colar URL</button>
             </div>
-            <div>
+            <!-- Drop zone -->
+            <div id="mediaDropZone" ondrop="_mediaDrop(event)" ondragover="event.preventDefault();this.classList.add('border-slate-900','bg-slate-50')" ondragleave="this.classList.remove('border-slate-900','bg-slate-50')" onclick="document.getElementById('mediaFile').click()" class="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
+                <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                <p class="text-sm text-slate-600">Arrasta uma imagem ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
+                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG, GIF, WebP, SVG · até 2 MB</p>
+                <input id="mediaFile" type="file" accept="image/*" class="hidden" onchange="_mediaPickFile(event)">
+            </div>
+            <!-- URL field (hidden by default) -->
+            <div id="mediaUrlBlock" class="hidden">
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">URL da imagem *</label>
                 <input id="mediaUrl" type="url" placeholder="https://…" oninput="_mediaPreview()" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
                 <p class="text-[11px] text-slate-400 mt-1">Cola um URL público (HTTPS).</p>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">Nome *</label>
+                <input id="mediaName" type="text" placeholder="Ex.: Banner promocional verão" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
             </div>
             <div id="mediaPreviewBox" class="hidden border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
                 <img id="mediaPreviewImg" class="w-full max-h-48 object-contain" alt="Pré-visualização">
@@ -5420,6 +5561,29 @@ ${lines.join('\n')}
         <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50">
             <button onclick="_mediaCloseUpload()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
             <button onclick="_mediaSave()" class="px-4 py-2 text-sm bg-slate-900 text-white font-medium rounded-lg hover:bg-slate-700">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: picker de imagem (a partir do editor) -->
+<div id="mediaPickerModal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)closeMediaPicker()">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-slate-900">Escolher da biblioteca</h3>
+            <button onclick="closeMediaPicker()" class="text-slate-400 hover:text-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-5 py-3 border-b border-slate-200 relative">
+            <svg class="w-4 h-4 text-slate-400 absolute left-8 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input id="mediaPickerSearch" type="text" placeholder="Pesquisar…" oninput="_mediaPickerSearch()" class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+        </div>
+        <div class="flex-1 overflow-y-auto p-5">
+            <div id="mediaPickerList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+        </div>
+        <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+            <button onclick="closeMediaPicker();showScreen('media')" class="text-xs text-slate-600 hover:text-slate-900">Gerir biblioteca →</button>
+            <button onclick="closeMediaPicker()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
         </div>
     </div>
 </div>
