@@ -3639,7 +3639,7 @@ ${lines.join('\n')}
             if (id === 'blocks') _loadBlocks();
             if (id === 'media') _loadMedia();
             // Load lists into import select
-            if (id === 'imports') _loadImportLists();
+            if (id === 'imports') { _loadImportLists(); _loadImportHistory(); }
             // Push history state (skip for screens that manage their own hash and for popstate navigation)
             if (!_historyNav && !_SCREENS_CUSTOM_ROUTE.has(id)) {
                 const route = _SCREEN_TO_ROUTE[id];
@@ -3649,6 +3649,60 @@ ${lines.join('\n')}
                 }
             }
         }
+    }
+
+    async function _loadImportHistory() {
+        const tbody = document.getElementById('importsTbody');
+        if (!tbody || !_currentBrand?.id) return;
+        try {
+            const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`);
+            const rows = r.data || [];
+            if (r._migration_pending) {
+                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-6 text-center text-amber-700 text-sm">Funcionalidade ainda não activada — corre <code class="bg-amber-50 px-1 py-0.5 rounded">migrations/012_imports.sql</code> no Supabase.</td></tr>`;
+                return;
+            }
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
+                return;
+            }
+            const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const stCfg = {
+                completed: ['bg-green-100 text-green-700', 'Concluído'],
+                partial:   ['bg-amber-100 text-amber-700', 'Parcial'],
+                failed:    ['bg-red-100 text-red-700',     'Falhou'],
+                processing:['bg-blue-100 text-blue-700',   'Em processamento'],
+            };
+            tbody.innerHTML = rows.map(r => {
+                const [bg,lbl] = stCfg[r.status] || ['bg-slate-100 text-slate-700', r.status||'—'];
+                return `<tr class="hover:bg-slate-50">
+                    <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(r.file_name)}</p><p class="text-xs text-slate-400">${(r.total_rows||0).toLocaleString('pt-PT')} linhas</p></td>
+                    <td class="px-4 py-3 text-slate-600">${escHtml(r.list_name||'—')}</td>
+                    <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${bg}">${lbl}</span></td>
+                    <td class="px-4 py-3 text-green-700 font-medium">${(r.imported||0).toLocaleString('pt-PT')}</td>
+                    <td class="px-4 py-3 text-yellow-700">${(r.skipped||0).toLocaleString('pt-PT')}</td>
+                    <td class="px-4 py-3 text-red-600">${(r.failed||0).toLocaleString('pt-PT')}</td>
+                    <td class="px-4 py-3 text-xs text-slate-500">${new Date(r.created_at).toLocaleDateString('pt-PT')}</td>
+                    <td class="px-4 py-3 text-right"><button onclick="showImportDetails(${r.id})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Detalhes</button></td>
+                </tr>`;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-6 text-center text-red-400 text-sm">Erro ao carregar histórico.</td></tr>`;
+            console.error('imports history:', e);
+        }
+    }
+    async function showImportDetails(id) {
+        try {
+            const d = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports&import_id=${id}`);
+            const lines = [
+                `Ficheiro: ${d.file_name}`,
+                `Lista: ${d.list_name||'—'}`,
+                `Estado: ${d.status}`,
+                `Total: ${d.total_rows} · Importados: ${d.imported} · Ignorados: ${d.skipped} · Falhados: ${d.failed}`,
+                `Por: ${d.created_by_name||'—'}`,
+                `Data: ${new Date(d.created_at).toLocaleString('pt-PT')}`,
+            ];
+            alert(lines.join('\n'));
+        } catch (e) { showToast('Erro ao obter detalhes: ' + e.message, 'error'); }
     }
 
     async function _loadImportLists() {
@@ -4534,14 +4588,16 @@ ${lines.join('\n')}
             // Determine target list (existing or new)
             const isNewList = document.getElementById('new-list-input')?.classList.contains('hidden') === false;
             let listId = null;
+            let listName = null;
             if (isNewList) {
                 const newName = document.querySelector('#new-list-input input')?.value.trim();
                 if (newName) {
-                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; } catch (err) { console.error(err); showToast('Não foi possível criar a lista: ' + (err.message||''), 'error'); }
+                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; listName = newName; } catch (err) { console.error(err); showToast('Não foi possível criar a lista: ' + (err.message||''), 'error'); }
                 }
             } else {
                 const sel = document.getElementById('importListSelect');
                 listId = sel?.value || null;
+                listName = sel?.selectedOptions?.[0]?.textContent?.split(' (')[0] || null;
             }
 
             let imported = 0, failed = 0;
@@ -4558,10 +4614,26 @@ ${lines.join('\n')}
                     } catch (err) { failed++; console.error('import contact failed:', err); }
                 }));
             }
+            // Record import history (best-effort)
+            try {
+                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        file_name: _importFile.name,
+                        list_id: listId,
+                        list_name: listName,
+                        total_rows: rows.length,
+                        imported,
+                        skipped: rows.length - imported - failed,
+                        failed,
+                        status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed'),
+                    })
+                });
+            } catch (err) { console.error('record import:', err); }
             clearMockFile();
             btn.innerHTML = 'Importar';
             showToast(`${imported} contactos importados${failed?`, ${failed} falhas`:''}.`);
-            Promise.all([_loadContacts(_currentBrand.id), _loadLists(_currentBrand.id)]).catch(err => console.error(err));
+            Promise.all([_loadContacts(_currentBrand.id), _loadLists(_currentBrand.id), _loadImportHistory()]).catch(err => console.error(err));
         } catch (e) {
             btn.disabled = false;
             btn.innerHTML = 'Importar';
@@ -6414,41 +6486,7 @@ ${lines.join('\n')}
                             </tr>
                         </thead>
                         <tbody id="importsTbody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-4 py-3"><p class="font-medium text-slate-900">clientes_abril_2026.csv</p><p class="text-xs text-slate-400">1 323 linhas</p></td>
-                                <td class="px-4 py-3 text-slate-600">Clientes Premium</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Concluído</span></td>
-                                <td class="px-4 py-3 text-green-700 font-medium">1 234</td>
-                                <td class="px-4 py-3 text-yellow-700">89</td>
-                                <td class="px-4 py-3 text-red-600">0</td>
-                                <td class="px-4 py-3 text-xs text-slate-500">17/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockShowImportDetails(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Detalhes</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-4 py-3"><p class="font-medium text-slate-900">newsletter_q1.csv</p><p class="text-xs text-slate-400">2 000 linhas</p></td>
-                                <td class="px-4 py-3 text-slate-600">Newsletter Geral</td>
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-2">
-                                        <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Em processamento</span>
-                                        <div class="w-16 bg-slate-100 rounded-full h-1.5"><div class="h-1.5 bg-blue-500 rounded-full" style="width:62%"></div></div>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3 text-green-700 font-medium">1 240</td>
-                                <td class="px-4 py-3 text-yellow-700">0</td>
-                                <td class="px-4 py-3 text-red-600">0</td>
-                                <td class="px-4 py-3 text-xs text-slate-500">18/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockShowImportDetails(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Detalhes</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-4 py-3"><p class="font-medium text-slate-900">emails_vip.txt</p><p class="text-xs text-slate-400">653 linhas</p></td>
-                                <td class="px-4 py-3 text-slate-600">VIP — Fidelização</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Concluído</span></td>
-                                <td class="px-4 py-3 text-green-700 font-medium">653</td>
-                                <td class="px-4 py-3 text-yellow-700">0</td>
-                                <td class="px-4 py-3 text-red-600">0</td>
-                                <td class="px-4 py-3 text-xs text-slate-500">01/03/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockShowImportDetails(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Detalhes</button></td>
-                            </tr>
+                            <tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>
                         </tbody>
                     </table>
                 </div>
