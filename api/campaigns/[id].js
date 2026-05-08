@@ -306,6 +306,42 @@ module.exports = async function handler(req, res) {
            WHERE campaign_id=$1 AND type IN ('open','click')
            GROUP BY bucket ORDER BY bucket LIMIT 168`, [id]
         );
+        // Per-list (segment) performance
+        const segments = await query(
+          `SELECT l.id, l.name,
+                  COUNT(DISTINCT cr.contact_id)::int AS sent,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS opens,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS clicks
+           FROM campaign_lists cl
+           JOIN lists l ON l.id = cl.list_id
+           JOIN list_members lm ON lm.list_id = l.id
+           JOIN campaign_recipients cr ON cr.campaign_id = cl.campaign_id AND cr.contact_id = lm.contact_id AND cr.status='sent'
+           LEFT JOIN email_events ee ON ee.campaign_id = cl.campaign_id AND ee.contact_id = lm.contact_id
+           WHERE cl.campaign_id = $1
+           GROUP BY l.id, l.name
+           ORDER BY sent DESC`, [id]
+        );
+        // Comparison with previous sent campaigns from same brand (last 5 incl current)
+        const compare = await query(
+          `WITH last_camps AS (
+             SELECT id, name, sent_at
+             FROM campaigns
+             WHERE brand_id = $1 AND status = 'sent'
+             ORDER BY sent_at DESC NULLS LAST LIMIT 5
+           )
+           SELECT lc.id, lc.name, lc.sent_at,
+                  COUNT(cr.*) FILTER (WHERE cr.status='sent')::int AS sent,
+                  COUNT(cr.*)::int AS total_recipients,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS unique_opens,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
+                  COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+           FROM last_camps lc
+           LEFT JOIN campaign_recipients cr ON cr.campaign_id = lc.id
+           LEFT JOIN email_events ee ON ee.campaign_id = lc.id
+           GROUP BY lc.id, lc.name, lc.sent_at
+           ORDER BY lc.sent_at DESC NULLS LAST`,
+          [camp[0].brand_id]
+        );
 
         const delivered = counts?.sent || 0;
         const openUniq  = opens?.unique_count || 0;
@@ -329,6 +365,8 @@ module.exports = async function handler(req, res) {
           },
           top_links,
           timeseries,
+          segments,
+          compare,
         });
       }
     }
