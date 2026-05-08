@@ -9,6 +9,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+    // ── Debounce helper ────────────────────────────────
+    function _debounce(fn, ms = 250) {
+        let t;
+        return function (...args) {
+            clearTimeout(t);
+            t = setTimeout(() => fn.apply(this, args), ms);
+        };
+    }
+    // Debounced filter handlers (used by oninput to avoid filtering on every keystroke)
+    const _dbFilterCampaigns = _debounce(() => filterCampaigns(), 220);
+    const _dbFilterContacts  = _debounce(() => filterContacts(),  220);
+    const _dbFilterLists     = _debounce(() => filterLists(),     220);
+    const _dbMediaGrid       = _debounce(() => _renderMediaGrid(),220);
     // ── Toast notification ─────────────────────────────
     function showToast(msg, type) {
         const colors = { success:'bg-green-600', error:'bg-red-600', info:'bg-slate-800' };
@@ -1733,7 +1746,7 @@ ${body}
             Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
             const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
             const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
-        } catch {}
+        } catch (err) { console.error(err); }
     }
 
     // ── Brand blocks (cabeçalhos & rodapés) ─────────────
@@ -1776,7 +1789,7 @@ ${body}
         list.innerHTML = items.map(b => `
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                 <div class="h-32 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer relative" onclick="_blockEdit(${b.id})">
-                    <iframe srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                    <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
                 </div>
                 <div class="p-4 flex-1 flex flex-col">
                     <p class="font-semibold text-slate-900 text-sm">${escHtml(b.name)}</p>
@@ -2377,7 +2390,7 @@ ${body}
         try {
             await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name, subject }) });
             _loadCampaigns(_currentBrand.id);
-        } catch {}
+        } catch (err) { console.error(err); }
         showScreen('campaigns');
         showToast('Campanha guardada como rascunho.');
     }
@@ -2459,7 +2472,7 @@ ${body}
         if (previewEl) {
             const html = c.html_content;
             if (html && html.trim()) {
-                previewEl.innerHTML = `<iframe srcdoc="${html.replace(/"/g,'&quot;')}" class="w-full bg-white rounded" style="height:520px;border:1px solid #e2e8f0"></iframe>`;
+                previewEl.innerHTML = `<iframe loading="lazy" srcdoc="${html.replace(/"/g,'&quot;')}" class="w-full bg-white rounded" style="height:520px;border:1px solid #e2e8f0"></iframe>`;
             } else {
                 previewEl.innerHTML = `<p class="text-center text-sm text-slate-400 py-12">Sem template associado a esta campanha.</p>`;
             }
@@ -2487,7 +2500,7 @@ ${body}
                 _setText('campShowKpiClicks', (eng.unique_clicks||0).toString());
                 _setText('campShowKpiFailed', (dlv.failed||0).toString());
                 _setText('campShowKpiSuppressed', (dlv.suppressed||0).toString());
-            } catch {}
+            } catch (err) { console.error(err); }
         }
         const sp = document.getElementById('campSendPanel');
         if (sp) sp.classList.toggle('hidden', _currentCampStatus === 'sent');
@@ -2768,7 +2781,7 @@ ${body}
             // Populate dropdown with non-member lists
             const available = allLists.filter(l => !memberSet.has(l.id));
             select.innerHTML = `<option value="">Adicionar a lista…</option>` + available.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-        } catch {}
+        } catch (err) { console.error(err); }
     }
 
     async function apiContactRemoveFromList(btn, listId) {
@@ -2846,7 +2859,7 @@ ${body}
     async function mockDeleteContact() {
         if (!confirm('Eliminar este contacto permanentemente?')) return;
         if (_currentContact?.id) {
-            try { await apiFetch(`/api/contacts/${_currentContact.id}`, { method: 'DELETE' }); } catch {}
+            try { await apiFetch(`/api/contacts/${_currentContact.id}`, { method: 'DELETE' }); } catch (err) { console.error(err); }
         }
         _currentContact = null;
         showScreen('contacts');
@@ -2914,7 +2927,7 @@ ${body}
             list.innerHTML = data.map(b => `
                 <button onclick="pickBlock(${b.id})" class="w-full flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 text-left transition-colors">
                     <div class="w-24 h-16 bg-slate-50 rounded overflow-hidden flex-shrink-0">
-                        <iframe srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
+                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</p>
@@ -3470,7 +3483,7 @@ ${lines.join('\n')}
         try {
             const { data } = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}&limit=100`);
             sel.innerHTML = `<option value="">Nenhuma — só base de dados</option>` + data.map(l => `<option value="${l.id}">${l.name} (${l.total_contacts||0})</option>`).join('');
-        } catch {}
+        } catch (err) { console.error(err); }
     }
 
     async function _loadCampaignReport() {
@@ -3956,7 +3969,7 @@ ${lines.join('\n')}
                     } else if (rcEl) {
                         rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas recentes.</td></tr>`;
                     }
-                } catch {}
+                } catch (err) { console.error(err); }
             }),
             _loadLists(brandId),
             _loadSuppression(brandId),
@@ -4190,7 +4203,7 @@ ${lines.join('\n')}
             if (isNewList) {
                 const newName = document.querySelector('#new-list-input input')?.value.trim();
                 if (newName) {
-                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; } catch {}
+                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; } catch (err) { console.error(err); }
                 }
             } else {
                 const sel = document.getElementById('importListSelect');
@@ -4206,16 +4219,15 @@ ${lines.join('\n')}
                         const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
                         imported++;
                         if (listId && r.id) {
-                            try { await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch {}
+                            try { await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch (err) { console.error(err); }
                         }
-                    } catch { failed++; }
+                    } catch (err) { failed++; console.error('import contact failed:', err); }
                 }));
             }
             clearMockFile();
             btn.innerHTML = 'Importar';
             showToast(`${imported} contactos importados${failed?`, ${failed} falhas`:''}.`);
-            _loadContacts(_currentBrand.id);
-            _loadLists(_currentBrand.id);
+            Promise.all([_loadContacts(_currentBrand.id), _loadLists(_currentBrand.id)]).catch(err => console.error(err));
         } catch (e) {
             btn.disabled = false;
             btn.innerHTML = 'Importar';
@@ -4450,7 +4462,7 @@ ${lines.join('\n')}
             </header>
             <main class="flex-1 px-8 py-6">
                 <div class="mb-4 flex items-center gap-3">
-                    <input id="campSearch" type="text" placeholder="Pesquisar campanha…" oninput="filterCampaigns()" class="flex-1 max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <input id="campSearch" type="text" placeholder="Pesquisar campanha…" oninput="_dbFilterCampaigns()" class="flex-1 max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     <select id="campStatusFilter" onchange="filterCampaigns()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todos os estados</option>
                         <option value="sent">Enviada</option>
@@ -5243,7 +5255,7 @@ ${lines.join('\n')}
             <main class="flex-1 px-8 py-6">
                 <!-- Filtros -->
                 <div class="mb-4 flex gap-3 flex-wrap">
-                    <input id="contactSearch" type="text" placeholder="Pesquisar por nome ou email…" oninput="filterContacts()" class="flex-1 min-w-48 px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <input id="contactSearch" type="text" placeholder="Pesquisar por nome ou email…" oninput="_dbFilterContacts()" class="flex-1 min-w-48 px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     <select id="contactListFilter" onchange="filterContacts()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todas as listas</option>
                         <option value="premium">Clientes Premium</option>
@@ -5502,7 +5514,7 @@ ${lines.join('\n')}
                 <!-- Search -->
                 <div class="mb-5 relative max-w-md">
                     <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                    <input id="mediaSearch" type="text" placeholder="Pesquisar por nome…" oninput="_renderMediaGrid()" class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+                    <input id="mediaSearch" type="text" placeholder="Pesquisar por nome…" oninput="_dbMediaGrid()" class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
                 </div>
                 <!-- Grid -->
                 <div id="mediaGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
@@ -5912,7 +5924,7 @@ ${lines.join('\n')}
             </header>
             <main class="flex-1 px-8 py-6">
                 <div class="mb-4">
-                    <input id="listsSearch" type="text" placeholder="Pesquisar lista…" oninput="filterLists()" class="w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <input id="listsSearch" type="text" placeholder="Pesquisar lista…" oninput="_dbFilterLists()" class="w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <table class="w-full text-sm">
