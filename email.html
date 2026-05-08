@@ -9,6 +9,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+    // ── DEV BYPASS LOGIN (modo de testes) ───────────────
+    // Para desativar: muda DEV_BYPASS_LOGIN para false (e faz commit).
+    // Edita o email/password se as credenciais de teste forem outras.
+    const DEV_BYPASS_LOGIN    = true;
+    const DEV_BYPASS_EMAIL    = 'admin@primemail.io';
+    const DEV_BYPASS_PASSWORD = 'Admin1234!';
     // ── Theme (light/dark) ─────────────────────────────
     (function bootTheme() {
         try {
@@ -4101,6 +4107,23 @@ ${lines.join('\n')}
             } else {
                 showScreen('brandSelect');
             }
+        } else if (DEV_BYPASS_LOGIN) {
+            // Modo de testes: autentica automaticamente com as credenciais hardcoded
+            (async () => {
+                try {
+                    const data = await apiFetch('/api/auth', { method: 'POST', body: JSON.stringify({ email: DEV_BYPASS_EMAIL, password: DEV_BYPASS_PASSWORD }) });
+                    setToken(data.token);
+                    localStorage.setItem('pm_user', JSON.stringify(data.user));
+                    localStorage.setItem('pm_brands', JSON.stringify(data.brands));
+                    _userBrandIds = new Set(data.brands.map(b => b.brand_id));
+                    renderBrandSelect();
+                    showScreen('brandSelect');
+                } catch (err) {
+                    console.error('DEV_BYPASS_LOGIN falhou:', err);
+                    showToast('Auto-login falhou — verifica DEV_BYPASS_EMAIL/PASSWORD.', 'error');
+                    showScreen('login');
+                }
+            })();
         } else {
             showScreen('login');
         }
