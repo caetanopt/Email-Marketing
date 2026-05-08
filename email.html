@@ -1802,6 +1802,45 @@ ${body}
             const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
             const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
         } catch (err) { console.error(err); }
+        _loadBrandSettingsBlocks();
+    }
+
+    async function _loadBrandSettingsBlocks() {
+        if (!_currentBrand?.id) return;
+        const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        try {
+            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=blocks`);
+            const headers = (data||[]).filter(b => b.type === 'header');
+            const footers = (data||[]).filter(b => b.type === 'footer');
+            const renderBlock = (block, type) => block ? `
+                <div class="border border-slate-200 rounded-lg overflow-hidden">
+                    <div class="h-24 bg-slate-50 border-b border-slate-100 overflow-hidden relative cursor-pointer" onclick="_blockEdit(${block.id})">
+                        <iframe loading="lazy" srcdoc="${escAttr(block.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.4);transform-origin:top left;width:250%;height:250%"></iframe>
+                    </div>
+                    <div class="px-3 py-2 flex items-center justify-between">
+                        <span class="text-xs text-slate-600 font-medium truncate max-w-[60%]">${escHtml(block.name)}</span>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="_blockEdit(${block.id})" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                            <button onclick="_bsNewBlock('${type}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50">+ Novo</button>
+                        </div>
+                    </div>
+                </div>` : `
+                <div class="border border-dashed border-slate-200 rounded-lg p-4 text-center">
+                    <p class="text-xs text-slate-400 mb-2">Sem ${type === 'header' ? 'cabeçalho' : 'rodapé'} definido</p>
+                    <button onclick="_bsNewBlock('${type}')" class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Criar ${type === 'header' ? 'cabeçalho' : 'rodapé'}</button>
+                </div>`;
+            const hEl = document.getElementById('bsBlockHeader');
+            const fEl = document.getElementById('bsBlockFooter');
+            if (hEl) hEl.innerHTML = renderBlock(headers[0], 'header');
+            if (fEl) fEl.innerHTML = renderBlock(footers[0], 'footer');
+        } catch (err) { console.error(err); }
+    }
+
+    function _bsNewBlock(type) {
+        _blocksType = type;
+        _teBlockType = type;
+        _blockNew();
     }
 
     // ── Brand blocks (cabeçalhos & rodapés) ─────────────
@@ -6811,7 +6850,26 @@ ${lines.join('\n')}
                             </div>
                         </div>
                     </div>
-                    <p class="text-xs text-slate-400 text-center pt-2">Os cabeçalhos e rodapés desta marca são geridos em <a onclick="showScreen('blocks')" class="text-slate-600 underline cursor-pointer">Cabeçalhos & Rodapés</a>.</p>
+                    <!-- Cabeçalho & Rodapé por defeito -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-slate-900 text-sm">Cabeçalho & Rodapé</h3>
+                                <p class="text-xs text-slate-400 mt-0.5">Blocos por defeito aplicados às campanhas desta marca.</p>
+                            </div>
+                            <a onclick="showScreen('blocks')" class="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer">Ver todos</a>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-xs text-slate-500 mb-2 font-medium">Cabeçalho</p>
+                                <div id="bsBlockHeader"><div class="h-24 bg-slate-100 rounded-lg animate-pulse"></div></div>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 mb-2 font-medium">Rodapé</p>
+                                <div id="bsBlockFooter"><div class="h-24 bg-slate-100 rounded-lg animate-pulse"></div></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>
