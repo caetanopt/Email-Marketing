@@ -2390,7 +2390,7 @@ ${body}
         try {
             await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name, subject }) });
             _loadCampaigns(_currentBrand.id);
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error(err); showToast('Não foi possível guardar o rascunho: ' + (err.message||''), 'error'); }
         showScreen('campaigns');
         showToast('Campanha guardada como rascunho.');
     }
@@ -2859,7 +2859,7 @@ ${body}
     async function mockDeleteContact() {
         if (!confirm('Eliminar este contacto permanentemente?')) return;
         if (_currentContact?.id) {
-            try { await apiFetch(`/api/contacts/${_currentContact.id}`, { method: 'DELETE' }); } catch (err) { console.error(err); }
+            try { await apiFetch(`/api/contacts/${_currentContact.id}`, { method: 'DELETE' }); } catch (err) { console.error(err); showToast('Erro a eliminar contacto: ' + (err.message||''), 'error'); return; }
         }
         _currentContact = null;
         showScreen('contacts');
@@ -4203,7 +4203,7 @@ ${lines.join('\n')}
             if (isNewList) {
                 const newName = document.querySelector('#new-list-input input')?.value.trim();
                 if (newName) {
-                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; } catch (err) { console.error(err); }
+                    try { const r = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name: newName }) }); listId = r.id; } catch (err) { console.error(err); showToast('Não foi possível criar a lista: ' + (err.message||''), 'error'); }
                 }
             } else {
                 const sel = document.getElementById('importListSelect');
