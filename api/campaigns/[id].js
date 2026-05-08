@@ -51,6 +51,44 @@ module.exports = async function handler(req, res) {
     const camp = await authorizeCampaign(user.id, id);
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
 
+    if (req.method === 'GET' && action === 'send_log') {
+      // Per-recipient status (sent/failed/bounced) for this campaign
+      let recipients;
+      try {
+        recipients = await query(
+          `SELECT cr.email, cr.status, cr.message_id, cr.sent_at, cr.attempted_at, cr.error_message,
+                  ct.name AS contact_name, ct.id AS contact_id
+           FROM campaign_recipients cr
+           LEFT JOIN contacts ct ON ct.id = cr.contact_id
+           WHERE cr.campaign_id = $1 ORDER BY COALESCE(cr.attempted_at, cr.sent_at) DESC NULLS LAST LIMIT 500`,
+          [id]
+        );
+      } catch (e) {
+        if (e.code === '42703') {
+          recipients = await query(
+            `SELECT cr.email, cr.status, cr.message_id, cr.sent_at,
+                    NULL::timestamptz AS attempted_at, NULL::text AS error_message,
+                    ct.name AS contact_name, ct.id AS contact_id
+             FROM campaign_recipients cr
+             LEFT JOIN contacts ct ON ct.id = cr.contact_id
+             WHERE cr.campaign_id = $1 ORDER BY cr.sent_at DESC NULLS LAST LIMIT 500`,
+            [id]
+          );
+        } else { throw e; }
+      }
+      let events = [];
+      try {
+        events = await query(
+          `SELECT email, event_type, message_id, error, created_at
+           FROM email_send_log WHERE campaign_id = $1 ORDER BY created_at DESC LIMIT 200`,
+          [id]
+        );
+      } catch (e) {
+        if (e.code !== '42P01') throw e;
+      }
+      return res.status(200).json({ recipients, events });
+    }
+
     if (req.method === 'GET') {
       const rows = await query(
         `SELECT c.*, t.html_content, t.name AS template_name
@@ -121,6 +159,14 @@ module.exports = async function handler(req, res) {
         if (!contacts.length) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas com contactos activos.' });
 
         await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
+        // Log campaign start (best-effort; ignore if migration 013 not run)
+        try {
+          await query(
+            `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
+             VALUES ($1,$2,$3,'campaign_started',$4)`,
+            [camp[0].brand_id, id, `${contacts.length} destinatários`, user.id]
+          );
+        } catch (err) { if (err.code !== '42P01') console.error('send log start:', err); }
 
         if (contacts.length) {
           const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
@@ -184,17 +230,50 @@ module.exports = async function handler(req, res) {
                   'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
                 },
               });
-              await query(
-                "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
-                [info?.messageId||null, id, contact.id]
-              );
+              try {
+                await query(
+                  "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
+                  [info?.messageId||null, id, contact.id]
+                );
+              } catch (e1) {
+                if (e1.code === '42703') {
+                  await query(
+                    "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
+                    [info?.messageId||null, id, contact.id]
+                  );
+                } else { throw e1; }
+              }
+              try {
+                await query(
+                  `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, message_id, created_by)
+                   VALUES ($1,$2,$3,$4,'sent',$5,$6)`,
+                  [c.brand_id, id, contact.id, contact.email, info?.messageId||null, user.id]
+                );
+              } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
               sent++;
             } catch (err) {
               console.error('SMTP send error:', err?.message);
-              await query(
-                "UPDATE campaign_recipients SET status='failed' WHERE campaign_id=$1 AND contact_id=$2",
-                [id, contact.id]
-              );
+              const errMsg = (err?.message || 'unknown').slice(0, 500);
+              try {
+                await query(
+                  "UPDATE campaign_recipients SET status='failed',attempted_at=NOW(),error_message=$3 WHERE campaign_id=$1 AND contact_id=$2",
+                  [id, contact.id, errMsg]
+                );
+              } catch (e2) {
+                if (e2.code === '42703') {
+                  await query(
+                    "UPDATE campaign_recipients SET status='failed' WHERE campaign_id=$1 AND contact_id=$2",
+                    [id, contact.id]
+                  );
+                } else { throw e2; }
+              }
+              try {
+                await query(
+                  `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, error, created_by)
+                   VALUES ($1,$2,$3,$4,'failed',$5,$6)`,
+                  [c.brand_id, id, contact.id, contact.email, errMsg, user.id]
+                );
+              } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
               failed++;
             }
           }));
@@ -204,6 +283,13 @@ module.exports = async function handler(req, res) {
 
         transporter.close();
         await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
+        try {
+          await query(
+            `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
+             VALUES ($1,$2,$3,'campaign_completed',$4)`,
+            [camp[0].brand_id, id, `enviados=${sent} falhados=${failed}`, user.id]
+          );
+        } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
         return res.status(200).json({ ok: true, sent, failed, total: contacts.length });
       }
 
@@ -259,9 +345,23 @@ module.exports = async function handler(req, res) {
             html: finalHtml,
           });
           transporter.close();
+          try {
+            await query(
+              `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, message_id, created_by)
+               VALUES ($1,$2,$3,'test_sent',$4,$5)`,
+              [c.brand_id, id, to, info?.messageId||null, user.id]
+            );
+          } catch (e) { if (e.code !== '42P01') console.error('send log test:', e); }
           return res.status(200).json({ ok: true, messageId: info?.messageId || null });
         } catch (err) {
           transporter.close();
+          try {
+            await query(
+              `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, error, created_by)
+               VALUES ($1,$2,$3,'test_failed',$4,$5)`,
+              [c.brand_id, id, to, (err.message||'').slice(0, 500), user.id]
+            );
+          } catch (e) { if (e.code !== '42P01') console.error('send log test fail:', e); }
           return res.status(500).json({ error: 'Falha no envio SMTP', detail: err.message });
         }
       }

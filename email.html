@@ -3774,7 +3774,52 @@ ${lines.join('\n')}
             // Per-segment performance + comparison
             _renderReportSegments(r.segments || []);
             _renderReportCompare(r.compare || [], c.id);
+            // Send log (per-recipient status)
+            _loadReportSendLog(c.id);
         } catch (e) { showToast('Erro a carregar relatório: ' + e.message, 'error'); }
+    }
+
+    let _repLogRecipients = [];
+    async function _loadReportSendLog(campaignId) {
+        try {
+            const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_log`);
+            _repLogRecipients = r.recipients || [];
+            _renderReportLog();
+        } catch (e) {
+            const tb = document.getElementById('repLogBody');
+            if (tb) tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-red-400">Erro ao carregar log: ${e.message}</td></tr>`;
+        }
+    }
+    function _renderReportLog() {
+        const tb = document.getElementById('repLogBody');
+        if (!tb) return;
+        const status = document.getElementById('repLogFilter')?.value || '';
+        const q = (document.getElementById('repLogSearch')?.value || '').trim().toLowerCase();
+        let rows = _repLogRecipients;
+        if (status) rows = rows.filter(r => r.status === status);
+        if (q) rows = rows.filter(r => (r.email||'').toLowerCase().includes(q) || (r.contact_name||'').toLowerCase().includes(q));
+        if (!rows.length) {
+            tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Sem registos.</td></tr>`;
+            return;
+        }
+        const stCfg = {
+            sent:       ['bg-green-100 text-green-700',  'Enviado'],
+            failed:     ['bg-red-100 text-red-700',      'Falhou'],
+            bounced:    ['bg-orange-100 text-orange-700','Bounce'],
+            suppressed: ['bg-slate-100 text-slate-600',  'Suprimido'],
+            pending:    ['bg-slate-100 text-slate-500',  'Pendente'],
+        };
+        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        tb.innerHTML = rows.slice(0, 500).map(r => {
+            const [bg, lbl] = stCfg[r.status] || ['bg-slate-100 text-slate-600', r.status||'—'];
+            const when = r.sent_at || r.attempted_at;
+            return `<tr class="hover:bg-slate-50">
+                <td class="px-4 py-2"><p class="text-slate-900 font-medium">${escHtml(r.contact_name||r.email)}</p><p class="text-[10px] text-slate-400">${escHtml(r.email)}</p></td>
+                <td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-medium ${bg}">${lbl}</span></td>
+                <td class="px-4 py-2 text-slate-500">${when ? new Date(when).toLocaleString('pt-PT') : '—'}</td>
+                <td class="px-4 py-2 text-slate-500">${r.error_message ? `<span class="text-red-600" title="${escHtml(r.error_message)}">${escHtml(r.error_message.slice(0, 80))}${r.error_message.length>80?'…':''}</span>` : (r.message_id ? `<span class="text-[10px] font-mono text-slate-400" title="${escHtml(r.message_id)}">msg ${escHtml(r.message_id.slice(0,16))}…</span>` : '—')}</td>
+            </tr>`;
+        }).join('');
     }
 
     function _renderReportSegments(rows) {
@@ -5433,6 +5478,38 @@ ${lines.join('\n')}
                         </div>
                     </div>
                     <div id="repTimeseries" class="w-full" style="min-height:160px"></div>
+                </div>
+
+                <!-- ── Log de envio ─── -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-slate-900">Log de envio</h3>
+                        <div class="flex items-center gap-2 text-xs">
+                            <select id="repLogFilter" onchange="_renderReportLog()" class="pl-2 pr-7 py-1 border border-slate-200 rounded text-xs bg-white">
+                                <option value="">Todos</option>
+                                <option value="sent">Enviados</option>
+                                <option value="failed">Falhados</option>
+                                <option value="bounced">Bounces</option>
+                                <option value="suppressed">Suprimidos</option>
+                            </select>
+                            <input id="repLogSearch" type="search" placeholder="Pesquisar email…" oninput="_renderReportLog()" class="px-2 py-1 border border-slate-200 rounded text-xs w-48">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto" style="max-height:380px">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-50 sticky top-0">
+                                <tr class="border-b border-slate-200">
+                                    <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Email</th>
+                                    <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Estado</th>
+                                    <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Quando</th>
+                                    <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Detalhe</th>
+                                </tr>
+                            </thead>
+                            <tbody id="repLogBody" class="divide-y divide-slate-50">
+                                <tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">A carregar…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- ── Links + Segmentos ─── -->
