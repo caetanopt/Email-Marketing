@@ -298,6 +298,14 @@ module.exports = async function handler(req, res) {
            FROM email_events WHERE campaign_id=$1 AND type='click' AND url IS NOT NULL
            GROUP BY url ORDER BY clicks DESC LIMIT 10`, [id]
         );
+        const timeseries = await query(
+          `SELECT date_trunc('hour', created_at) AS bucket,
+                  COUNT(*) FILTER (WHERE type='open')::int AS opens,
+                  COUNT(*) FILTER (WHERE type='click')::int AS clicks
+           FROM email_events
+           WHERE campaign_id=$1 AND type IN ('open','click')
+           GROUP BY bucket ORDER BY bucket LIMIT 168`, [id]
+        );
 
         const delivered = counts?.sent || 0;
         const openUniq  = opens?.unique_count || 0;
@@ -320,6 +328,7 @@ module.exports = async function handler(req, res) {
             spam_complaints: spam?.total||0,
           },
           top_links,
+          timeseries,
         });
       }
     }

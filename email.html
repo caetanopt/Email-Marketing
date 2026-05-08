@@ -2246,6 +2246,19 @@ ${body}
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">${totalContacts.toLocaleString('pt-PT')} contactos</dd></div>
                 <div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Envio</dt><dd class="font-medium text-slate-900">${sendLabel}</dd></div>
             </dl>`;
+            // Render email preview from current teState.blocks
+            const previewBox = document.getElementById('wizPreviewBox');
+            if (previewBox && typeof teRenderBlockContent === 'function') {
+                previewBox.innerHTML = '';
+                if (teState.blocks.length) {
+                    const card = document.createElement('div');
+                    card.style.cssText = 'background:#ffffff;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:6px;overflow:hidden;';
+                    teState.blocks.forEach(b => card.appendChild(teRenderBlockContent(b)));
+                    previewBox.appendChild(card);
+                } else {
+                    previewBox.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">Sem blocos no template — volta ao passo 2 para adicionar conteúdo.</p>';
+                }
+            }
         }
     }
 
@@ -3607,7 +3620,43 @@ ${lines.join('\n')}
                     linksEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Sem dados de cliques.</p>`;
                 }
             }
+            // Timeseries chart (SVG)
+            _renderReportTimeseries(r.timeseries || []);
         } catch (e) { showToast('Erro a carregar relatório: ' + e.message, 'error'); }
+    }
+
+    // Renderiza um area chart leve (SVG inline) sem libs externas.
+    function _renderReportTimeseries(rows) {
+        const root = document.getElementById('repTimeseries');
+        if (!root) return;
+        if (!rows.length) {
+            root.innerHTML = '<p class="text-xs text-slate-400 text-center py-8">Sem eventos registados ainda.</p>';
+            return;
+        }
+        const W = 800, H = 180, PAD_L = 36, PAD_R = 12, PAD_T = 14, PAD_B = 26;
+        const innerW = W - PAD_L - PAD_R, innerH = H - PAD_T - PAD_B;
+        const opens  = rows.map(r => r.opens || 0);
+        const clicks = rows.map(r => r.clicks || 0);
+        const max = Math.max(1, ...opens, ...clicks);
+        const x = i => PAD_L + (rows.length === 1 ? innerW/2 : (i / (rows.length-1)) * innerW);
+        const y = v => PAD_T + innerH - (v / max) * innerH;
+        const buildPath = arr => arr.map((v,i) => (i?'L':'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1)).join(' ');
+        const buildArea = arr => buildPath(arr) + ` L${x(arr.length-1).toFixed(1)},${(PAD_T+innerH).toFixed(1)} L${x(0).toFixed(1)},${(PAD_T+innerH).toFixed(1)} Z`;
+        const yTicks = [0, max/2, max].map(v => Math.round(v));
+        const fmt = b => { try { return new Date(b).toLocaleString('pt-PT', { month: '2-digit', day: '2-digit', hour: '2-digit' }); } catch { return ''; } };
+        const xLabels = rows.length <= 6 ? rows.map((_,i) => i) : [0, Math.floor(rows.length/3), Math.floor(rows.length*2/3), rows.length-1];
+        root.innerHTML = `
+            <svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:200px">
+                ${yTicks.map(t => `
+                    <line x1="${PAD_L}" y1="${y(t)}" x2="${W-PAD_R}" y2="${y(t)}" stroke="#e2e8f0" stroke-dasharray="2,3"/>
+                    <text x="${PAD_L-6}" y="${y(t)+3}" font-size="10" fill="#94a3b8" text-anchor="end">${t}</text>
+                `).join('')}
+                <path d="${buildArea(opens)}" fill="rgba(59,130,246,0.18)"/>
+                <path d="${buildPath(opens)}" fill="none" stroke="rgb(59,130,246)" stroke-width="1.6"/>
+                <path d="${buildPath(clicks)}" fill="none" stroke="rgb(99,102,241)" stroke-width="1.6"/>
+                ${xLabels.map(i => `<text x="${x(i)}" y="${H-8}" font-size="9" fill="#64748b" text-anchor="middle">${fmt(rows[i].bucket)}</text>`).join('')}
+            </svg>
+        `;
     }
 
     function injectSidebar() {
@@ -4879,6 +4928,13 @@ ${lines.join('\n')}
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
                         </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <h3 class="font-semibold text-slate-900 text-sm mb-4 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                Pré-visualização do email
+                            </h3>
+                            <div id="wizPreviewBox" class="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-[480px] overflow-y-auto"></div>
+                        </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Quando enviar?</h3>
                             <div class="space-y-3">
@@ -5147,6 +5203,18 @@ ${lines.join('\n')}
                             <p class="text-xs text-slate-400 mt-0.5">reports</p>
                         </div>
                     </div>
+                </div>
+
+                <!-- ── Timeseries (aberturas / cliques por hora) ─── -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-slate-900">Atividade ao longo do tempo</h3>
+                        <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span>Aberturas</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-indigo-500"></span>Cliques</span>
+                        </div>
+                    </div>
+                    <div id="repTimeseries" class="w-full" style="min-height:160px"></div>
                 </div>
 
                 <!-- ── Links + Segmentos ─── -->
