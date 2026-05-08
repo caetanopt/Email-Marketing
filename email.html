@@ -3693,15 +3693,25 @@ ${lines.join('\n')}
     async function showImportDetails(id) {
         try {
             const d = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports&import_id=${id}`);
-            const lines = [
-                `Ficheiro: ${d.file_name}`,
-                `Lista: ${d.list_name||'—'}`,
-                `Estado: ${d.status}`,
-                `Total: ${d.total_rows} · Importados: ${d.imported} · Ignorados: ${d.skipped} · Falhados: ${d.failed}`,
-                `Por: ${d.created_by_name||'—'}`,
-                `Data: ${new Date(d.created_at).toLocaleString('pt-PT')}`,
-            ];
-            alert(lines.join('\n'));
+            const stCfg = {
+                completed: ['bg-green-100 text-green-700',  'Concluído'],
+                partial:   ['bg-amber-100 text-amber-700',  'Parcial'],
+                failed:    ['bg-red-100 text-red-700',      'Falhou'],
+                processing:['bg-blue-100 text-blue-700',    'Em processamento'],
+            };
+            const [bg, lbl] = stCfg[d.status] || ['bg-slate-100 text-slate-700', d.status||'—'];
+            document.getElementById('impDetFile').textContent  = d.file_name || '—';
+            document.getElementById('impDetOk').textContent    = (d.imported||0).toLocaleString('pt-PT');
+            document.getElementById('impDetSkip').textContent  = (d.skipped||0).toLocaleString('pt-PT');
+            document.getElementById('impDetFail').textContent  = (d.failed||0).toLocaleString('pt-PT');
+            document.getElementById('impDetTotal').textContent = (d.total_rows||0).toLocaleString('pt-PT') + ' linhas';
+            document.getElementById('impDetList').textContent  = d.list_name || '—';
+            document.getElementById('impDetUser').textContent  = d.created_by_name || '—';
+            document.getElementById('impDetDate').textContent  = d.created_at ? new Date(d.created_at).toLocaleString('pt-PT') : '—';
+            const stEl = document.getElementById('impDetStatus');
+            stEl.innerHTML = `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${bg}">${lbl}</span>`;
+            const m = document.getElementById('importDetailsModal');
+            if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
         } catch (e) { showToast('Erro ao obter detalhes: ' + e.message, 'error'); }
     }
 
@@ -6980,7 +6990,10 @@ ${lines.join('\n')}
                 </div>
             </div>
             <dl class="space-y-2 text-sm pt-2 border-t border-slate-100">
+                <div class="flex justify-between"><dt class="text-slate-500">Estado:</dt><dd id="impDetStatus" class="font-medium text-slate-900">—</dd></div>
                 <div class="flex justify-between"><dt class="text-slate-500">Lista:</dt><dd id="impDetList" class="font-medium text-slate-900">—</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Total de linhas:</dt><dd id="impDetTotal" class="font-medium text-slate-900">—</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Por:</dt><dd id="impDetUser" class="font-medium text-slate-900">—</dd></div>
                 <div class="flex justify-between"><dt class="text-slate-500">Data:</dt><dd id="impDetDate" class="font-medium text-slate-900">—</dd></div>
             </dl>
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600">
