@@ -68,6 +68,19 @@ module.exports = async function handler(req, res) {
         );
         return res.status(200).json({ data: rows });
       }
+      if (id && action === 'permissions' && member_id) {
+        try {
+          const rows = await query(
+            'SELECT area FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2',
+            [member_id, id]
+          );
+          // empty rows = full access (no restrictions configured)
+          return res.status(200).json({ areas: rows.map(r => r.area), restricted: rows.length > 0 });
+        } catch (e) {
+          if (e.code === '42P01') return res.status(200).json({ areas: [], restricted: false, _migration_pending: true });
+          throw e;
+        }
+      }
       if (id) {
         const rows = await query(
           `SELECT b.*, ubr.role FROM brands b
@@ -232,6 +245,29 @@ module.exports = async function handler(req, res) {
       if (!['owner','admin','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido' });
       await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [role, member_id, id]);
       return res.status(200).json({ ok: true });
+    }
+
+    if (req.method === 'PUT' && id && action === 'permissions' && member_id) {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      const { areas, restricted } = req.body || {};
+      try {
+        await query('DELETE FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]);
+        // restricted=false (or omitted) means full access -> no rows.
+        if (restricted && Array.isArray(areas) && areas.length) {
+          const safeAreas = areas.filter(a => typeof a === 'string' && /^[a-zA-Z]+$/.test(a));
+          if (safeAreas.length) {
+            const vals = safeAreas.map((_, i) => `($1,$2,$${i + 3})`).join(',');
+            await query(
+              `INSERT INTO user_brand_areas (user_id, brand_id, area) VALUES ${vals} ON CONFLICT DO NOTHING`,
+              [member_id, id, ...safeAreas]
+            );
+          }
+        }
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 010_user_brand_areas.sql.' });
+        throw e;
+      }
     }
 
     if (req.method === 'DELETE' && id && action === 'remove_member' && member_id) {

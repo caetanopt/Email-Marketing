@@ -430,41 +430,52 @@
         { id:'team',          name:'Equipa' },
         { id:'brandSettings', name:'Definições da marca' },
     ];
-    const _memberPermissions = {
-        m1: { brands: _allBrands.map(b=>b.id), areas: _allAreas.map(a=>a.id) },
-        m2: { brands: ['bmw','hyundai'], areas: ['dashboard','contacts','lists','blocks','campaigns'] },
-        m3: { brands: ['bmw'], areas: ['dashboard','campaigns'] },
-    };
     let _editingMemberId = null;
 
-    function _accessSummaryText(perms) {
-        const b = perms.brands.length, a = perms.areas.length;
-        if (b === _allBrands.length && a === _allAreas.length) return `Todas (${b} marcas · ${a} áreas)`;
-        if (b === 0 && a === 0) return 'Sem acesso';
-        return `${b} ${b===1?'marca':'marcas'} · ${a} ${a===1?'área':'áreas'}`;
-    }
-
-    function openPermissionsModal(btn) {
+    async function openPermissionsModal(btn) {
         const tr = btn.closest('tr');
         const id = tr?.dataset.memberId; if (!id) return;
         const name = tr.dataset.memberName || 'Utilizador';
         _editingMemberId = id;
-        const perms = _memberPermissions[id] || { brands: [], areas: [] };
         document.getElementById('permModalTitle').textContent = `Permissões — ${name}`;
-        document.getElementById('permBrandsList').innerHTML = _allBrands.map(b => `
-            <label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
-                <input type="checkbox" data-brand-id="${b.id}" class="rounded" ${perms.brands.includes(b.id)?'checked':''} />
-                <div class="w-4 h-4 rounded flex-shrink-0" style="background:${b.color}"></div>
-                <span class="text-sm text-slate-900">${b.name}</span>
-            </label>`).join('');
+        // Render area checkboxes (pre-render before API to avoid flash)
         document.getElementById('permAreasList').innerHTML = _allAreas.map(a => `
             <label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
-                <input type="checkbox" data-area-id="${a.id}" class="rounded" ${perms.areas.includes(a.id)?'checked':''} />
+                <input type="checkbox" data-area-id="${a.id}" class="rounded" />
                 <span class="text-sm text-slate-900">${a.name}</span>
             </label>`).join('');
+        // Hide the brands list (permissions are now per current brand)
+        const brandsList = document.getElementById('permBrandsList');
+        if (brandsList) brandsList.closest('div')?.classList.add('hidden');
         const m = document.getElementById('permissionsModal');
         if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+        // Fetch current permissions
+        try {
+            const r = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=permissions&member_id=${id}`);
+            const allowedAreas = new Set(r.areas || []);
+            const restricted = !!r.restricted;
+            // If unrestricted (default), check ALL areas; if restricted, check only saved
+            document.querySelectorAll('#permAreasList input').forEach(inp => {
+                inp.checked = restricted ? allowedAreas.has(inp.dataset.areaId) : true;
+            });
+            const restrictEl = document.getElementById('permRestrictToggle');
+            if (restrictEl) restrictEl.checked = restricted;
+            _togglePermAreasEnabled(restricted);
+            if (r._migration_pending) {
+                showToast('Migração 010_user_brand_areas.sql ainda não foi corrida.', 'info');
+            }
+        } catch (e) {
+            showToast('Erro a carregar permissões: ' + e.message, 'error');
+        }
     }
+
+    function _togglePermAreasEnabled(restricted) {
+        document.querySelectorAll('#permAreasList input').forEach(inp => { inp.disabled = !restricted; });
+        const list = document.getElementById('permAreasList');
+        if (list) list.style.opacity = restricted ? '1' : '0.5';
+    }
+
+    function permRestrictChanged(checked) { _togglePermAreasEnabled(checked); }
 
     function closePermissionsModal() {
         const m = document.getElementById('permissionsModal');
@@ -472,17 +483,22 @@
         _editingMemberId = null;
     }
 
-    function savePermissions() {
+    async function savePermissions() {
         if (!_editingMemberId) return;
-        const brands = Array.from(document.querySelectorAll('#permBrandsList input:checked')).map(i => i.dataset.brandId);
-        const areas  = Array.from(document.querySelectorAll('#permAreasList input:checked')).map(i => i.dataset.areaId);
-        _memberPermissions[_editingMemberId] = { brands, areas };
-        // Actualizar resumo na linha
-        const tr = document.querySelector(`#teamMembersBody tr[data-member-id="${_editingMemberId}"]`);
-        const span = tr?.querySelector('.member-access-summary');
-        if (span) span.textContent = _accessSummaryText({ brands, areas });
-        closePermissionsModal();
-        showToast(`Permissões guardadas (${brands.length} ${brands.length===1?'marca':'marcas'}, ${areas.length} ${areas.length===1?'área':'áreas'}).`);
+        const restricted = document.getElementById('permRestrictToggle')?.checked || false;
+        const areas = Array.from(document.querySelectorAll('#permAreasList input:checked')).map(i => i.dataset.areaId);
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=permissions&member_id=${_editingMemberId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ restricted, areas })
+            });
+            closePermissionsModal();
+            showToast(restricted
+                ? `Permissões guardadas — ${areas.length} ${areas.length===1?'área':'áreas'}.`
+                : 'Permissões guardadas — acesso total.');
+        } catch (e) {
+            showToast('Erro a guardar permissões: ' + e.message, 'error');
+        }
     }
 
     function permSelectAll(scope, val) {
@@ -515,6 +531,7 @@
                         ? `<span class="text-xs text-slate-400">owner</span>`
                         : `<div class="flex items-center justify-end gap-2">
                             <select onchange="doUpdateRole(this,${m.id})" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">${roleOptions}</select>
+                            <button onclick="openPermissionsModal(this)" class="text-xs text-slate-600 hover:text-slate-900 underline">Permissões</button>
                             <button onclick="doRemoveMember(this,${m.id})" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                           </div>`);
                 return `<tr class="hover:bg-slate-50" data-member-id="${m.id}" data-member-name="${(m.name||'').replace(/"/g,'&quot;')}">
@@ -3769,6 +3786,32 @@ ${lines.join('\n')}
                 fb.style.color = (_currentBrand.bg && _currentBrand.bg !== '#FFFFFF') ? '#FFFFFF' : (_currentBrand.color || '#1C69D4');
             }
         });
+        _applyAreaPermissionsToSidebar();
+    }
+
+    // Hide nav items the user does not have access to (per current brand).
+    async function _applyAreaPermissionsToSidebar() {
+        if (!_currentBrand?.id) return;
+        const me = JSON.parse(localStorage.getItem('pm_user') || '{}');
+        if (!me?.id) return;
+        try {
+            const r = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=permissions&member_id=${me.id}`);
+            // No restrictions configured -> show all (default)
+            if (!r.restricted) {
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('hidden'));
+                return;
+            }
+            const allowed = new Set(r.areas || []);
+            document.querySelectorAll('.nav-item').forEach(n => {
+                const cls = [...n.classList].find(c => c.startsWith('nav-') && c !== 'nav-item');
+                if (!cls) return;
+                const area = cls.slice(4); // 'nav-dashboard' -> 'dashboard'
+                n.classList.toggle('hidden', !allowed.has(area));
+            });
+        } catch (err) {
+            // Silent — migration may not have been run yet, fall back to full access
+            console.error('permissions fetch:', err);
+        }
     }
 
     function selectBrand(id, name, color) {
@@ -6910,17 +6953,17 @@ ${lines.join('\n')}
             <p class="text-sm text-slate-500 mt-1">Define a que marcas e áreas este utilizador tem acesso.</p>
         </div>
         <div class="px-6 py-5 space-y-6 overflow-y-auto">
-            <!-- Marcas -->
-            <div>
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-sm font-semibold text-slate-900">Marcas</h3>
-                    <div class="flex gap-1.5 text-xs">
-                        <button type="button" onclick="permSelectAll('brands', true)" class="px-2.5 py-1 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 font-medium">Seleccionar todas</button>
-                        <button type="button" onclick="permSelectAll('brands', false)" class="px-2.5 py-1 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 font-medium">Nenhuma</button>
-                    </div>
+            <!-- Acesso total / restrito -->
+            <label class="flex items-start gap-2.5 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                <input id="permRestrictToggle" type="checkbox" onchange="permRestrictChanged(this.checked)" class="mt-0.5 w-4 h-4 rounded border-slate-300">
+                <div>
+                    <p class="text-sm font-medium text-slate-900">Restringir a áreas específicas</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Sem esta opção marcada o utilizador tem acesso a todas as áreas (com base no role).</p>
                 </div>
-                <p class="text-xs text-slate-500 mb-2">O utilizador só pode alternar entre as marcas seleccionadas e ver dados das mesmas.</p>
-                <div id="permBrandsList" class="grid grid-cols-2 gap-1 border border-slate-200 rounded-lg p-2"></div>
+            </label>
+            <!-- Brands placeholder (hidden — permissões aplicam-se à marca atual) -->
+            <div class="hidden">
+                <div id="permBrandsList"></div>
             </div>
             <!-- Áreas -->
             <div>
