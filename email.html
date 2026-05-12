@@ -1801,9 +1801,10 @@ ${body}
         };
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-            // Update sidebar with new name/color
-            if (payload.name) _currentBrand.name = payload.name;
-            if (payload.color) _currentBrand.color = payload.color;
+            // Update _currentBrand and refresh sidebar
+            if (payload.name)    _currentBrand.name  = payload.name;
+            if (payload.color)   _currentBrand.color = payload.color;
+            if ('logo_url' in payload) _currentBrand.logo = payload.logo_url || '';
             applyBrandToSidebar();
             showToast('Definições guardadas com sucesso.');
         } catch (e) { showToast(e.message, 'error'); }
@@ -1838,6 +1839,9 @@ ${body}
             const urlEl = document.getElementById('bsLogoUrl');
             if (urlEl) urlEl.value = dataUrl;
             _bsLogoRefreshPreview(dataUrl);
+            // Live preview in sidebar
+            _currentBrand.logo = dataUrl;
+            applyBrandToSidebar();
         };
         reader.readAsDataURL(file);
     }
@@ -1848,6 +1852,8 @@ ${body}
         if (urlEl) urlEl.value = '';
         if (fileEl) fileEl.value = '';
         _bsLogoRefreshPreview('');
+        _currentBrand.logo = '';
+        applyBrandToSidebar();
     }
 
     function _bsLogoRefreshPreview(url) {
