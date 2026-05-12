@@ -2389,6 +2389,60 @@ ${body}
         if (cont) p.utm_content  = cont;
         return Object.keys(p).length ? p : null;
     }
+    function _wizRevUtmRender() {
+        const params = _wizGetUtmParams();
+        const badge  = document.getElementById('wizRevUtmBadge');
+        const summary = document.getElementById('wizRevUtmSummary');
+        if (badge) badge.classList.toggle('hidden', !params);
+        if (!summary) return;
+        if (params) {
+            summary.innerHTML = `<div class="flex flex-wrap gap-1.5">${Object.entries(params).map(([k,v]) =>
+                `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-50 border border-violet-200 rounded text-xs text-violet-700"><span class="font-medium">${k}</span><span class="text-violet-400">=</span>${v}</span>`
+            ).join('')}</div>`;
+        } else {
+            summary.innerHTML = `<p class="text-sm text-slate-400">Desactivado — os links não terão parâmetros UTM.</p>`;
+        }
+    }
+    function _wizRevUtmToggleEdit() {
+        const form    = document.getElementById('wizRevUtmForm');
+        const summary = document.getElementById('wizRevUtmSummary');
+        const btn     = document.getElementById('wizRevUtmEditBtn');
+        const isOpen  = !form.classList.contains('hidden');
+        if (isOpen) { _wizRevUtmCancel(); return; }
+        // Populate edit form from step-1 inputs
+        const en = document.getElementById('wizUtmEnabled')?.checked || false;
+        document.getElementById('wizRevUtmEnabled').checked = en;
+        document.getElementById('wizRevUtmSource').value   = document.getElementById('wizUtmSource')?.value  || '';
+        document.getElementById('wizRevUtmMedium').value   = document.getElementById('wizUtmMedium')?.value  || 'email';
+        document.getElementById('wizRevUtmCampaign').value = document.getElementById('wizUtmCampaign')?.value || '';
+        document.getElementById('wizRevUtmContent').value  = document.getElementById('wizUtmContent')?.value  || '';
+        _wizRevUtmToggleFields();
+        form.classList.remove('hidden');
+        summary.classList.add('hidden');
+        btn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg> Fechar`;
+    }
+    function _wizRevUtmToggleFields() {
+        const en = document.getElementById('wizRevUtmEnabled')?.checked;
+        document.getElementById('wizRevUtmInputs')?.classList.toggle('hidden', !en);
+    }
+    function _wizRevUtmSave() {
+        // Write back to step-1 inputs
+        const en = document.getElementById('wizRevUtmEnabled')?.checked || false;
+        const utmEl = document.getElementById('wizUtmEnabled'); if (utmEl) utmEl.checked = en;
+        ['Source','Medium','Campaign','Content'].forEach(f => {
+            const src = document.getElementById('wizRevUtm'+f);
+            const dst = document.getElementById('wizUtm'+f);
+            if (src && dst) dst.value = src.value;
+        });
+        _wizRevUtmCancel();
+        _wizRevUtmRender();
+    }
+    function _wizRevUtmCancel() {
+        document.getElementById('wizRevUtmForm')?.classList.add('hidden');
+        document.getElementById('wizRevUtmSummary')?.classList.remove('hidden');
+        const btn = document.getElementById('wizRevUtmEditBtn');
+        if (btn) btn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg> Editar`;
+    }
 
     // ── Campaigns ─────────────────────────────────────────
     let _wizStep = 1;
@@ -2432,15 +2486,6 @@ ${body}
             const totalContacts = checkedLists.reduce((s, cb) => s + (parseInt(cb.dataset.contacts)||0), 0);
             const tplName = teState.blocks.length ? `${teState.blocks.length} bloco(s)` : 'Nenhum';
             let sendLabel = sendType === 'now' ? 'Enviar agora' : sendType === 'schedule' ? `Agendar: ${schedDate} ${schedTime}` : 'Guardar como rascunho';
-            const utmParams = _wizGetUtmParams();
-            const utmHtml = utmParams
-                ? `<div class="col-span-2 border-t border-slate-100 pt-3 mt-1">
-                    <dt class="text-slate-400 text-xs uppercase tracking-wide mb-1.5">Parâmetros UTM</dt>
-                    <dd class="flex flex-wrap gap-1.5">${Object.entries(utmParams).map(([k,v]) =>
-                        `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-50 border border-violet-200 rounded text-xs text-violet-700"><span class="font-medium">${k}</span><span class="text-violet-400">=</span>${v}</span>`
-                    ).join('')}</dd>
-                  </div>`
-                : `<div class="col-span-2 border-t border-slate-100 pt-3 mt-1"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Rastreio UTM</dt><dd class="text-slate-400 text-sm">Desactivado</dd></div>`;
             const rev = document.getElementById('wizReviewContent');
             if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Nome</dt><dd class="font-medium text-slate-900">${name}</dd></div>
@@ -2450,8 +2495,8 @@ ${body}
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Remetente</dt><dd class="text-slate-900">${fn} &lt;${fe}&gt;</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">${totalContacts.toLocaleString('pt-PT')} contactos</dd></div>
                 <div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Envio</dt><dd class="font-medium text-slate-900">${sendLabel}</dd></div>
-                ${utmHtml}
             </dl>`;
+            _wizRevUtmRender();
             // Render email preview from current teState.blocks
             const previewBox = document.getElementById('wizPreviewBox');
             if (previewBox && typeof teRenderBlockContent === 'function') {
@@ -5319,6 +5364,55 @@ ${lines.join('\n')}
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
+                        </div>
+                        <!-- UTM card -->
+                        <div class="bg-white border border-slate-200 rounded-xl p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-semibold text-slate-900 text-sm">Rastreio UTM</h3>
+                                    <span id="wizRevUtmBadge" class="hidden px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700">Activo</span>
+                                </div>
+                                <button onclick="_wizRevUtmToggleEdit()" id="wizRevUtmEditBtn" class="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 flex items-center gap-1.5">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                    Editar
+                                </button>
+                            </div>
+                            <!-- Summary -->
+                            <div id="wizRevUtmSummary"></div>
+                            <!-- Edit form -->
+                            <div id="wizRevUtmForm" class="hidden space-y-3">
+                                <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                                    <span class="text-xs text-slate-600 font-medium">Activar rastreio UTM</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="wizRevUtmEnabled" class="sr-only peer" onchange="_wizRevUtmToggleFields()">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-slate-900"></div>
+                                    </label>
+                                </div>
+                                <div id="wizRevUtmInputs" class="space-y-3">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1">utm_source</label>
+                                            <input id="wizRevUtmSource" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                        </div>
+                                        <div>
+                                            <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1">utm_medium</label>
+                                            <input id="wizRevUtmMedium" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1">utm_campaign</label>
+                                        <input id="wizRevUtmCampaign" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1">utm_content <span class="text-slate-400 font-normal normal-case">(opcional)</span></label>
+                                        <input id="wizRevUtmContent" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                    </div>
+                                </div>
+                                <div class="flex gap-2 pt-1">
+                                    <button onclick="_wizRevUtmSave()" class="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700">Guardar</button>
+                                    <button onclick="_wizRevUtmCancel()" class="px-4 py-2 border border-slate-200 text-xs text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
+                                </div>
+                            </div>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4 flex items-center gap-2">
