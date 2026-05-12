@@ -3017,7 +3017,7 @@ ${body}
 
     async function _loadSesQuota() {
         try {
-            const d = await apiFetch('/api/ses-quota');
+            const d = await apiFetch('/api/campaigns?action=ses-quota');
             const widget = document.getElementById('sesQuotaWidget');
             if (!d.configured || !widget) return;
             if (d.error) { widget.classList.remove('hidden'); document.getElementById('sesRemaining').textContent = 'Erro'; return; }

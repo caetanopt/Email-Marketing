@@ -1,3 +1,4 @@
+const { SESClient, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 
@@ -7,6 +8,28 @@ module.exports = async function handler(req, res) {
   if (!user) return;
 
   const { brand_id, status, page = 1, limit = 20, action, range } = req.query;
+
+  // SES quota — does not require brand_id
+  if (action === 'ses-quota' && req.method === 'GET') {
+    const region = process.env.AWS_REGION || process.env.AWS_SES_REGION;
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    if (!accessKeyId || !secretAccessKey || !region) return res.status(200).json({ configured: false });
+    try {
+      const client = new SESClient({ region, credentials: { accessKeyId, secretAccessKey } });
+      const { Max24HourSend, SentLast24Hours, MaxSendRate } = await client.send(new GetSendQuotaCommand({}));
+      return res.status(200).json({
+        configured: true,
+        max24h: Math.floor(Max24HourSend),
+        sent24h: Math.floor(SentLast24Hours),
+        remaining: Math.floor(Max24HourSend - SentLast24Hours),
+        maxRate: MaxSendRate,
+      });
+    } catch (err) {
+      return res.status(200).json({ configured: true, error: err.message });
+    }
+  }
+
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
   try {
