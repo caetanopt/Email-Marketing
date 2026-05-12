@@ -1813,12 +1813,56 @@ ${body}
         if (!_currentBrand?.id) return;
         try {
             const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
-            const fields = { bsName: b.name||'', bsLogoUrl: b.logo_url||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
+            const fields = { bsName: b.name||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
             Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
             const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
             const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
+            // Logo preview
+            const logoUrl = document.getElementById('bsLogoUrl'); if (logoUrl) logoUrl.value = b.logo_url || '';
+            _bsLogoRefreshPreview(b.logo_url || '');
         } catch (err) { console.error(err); }
         _loadBlocks();
+    }
+
+    function _bsLogoUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.svg') && file.type !== 'image/svg+xml') {
+            showToast('Apenas ficheiros SVG são permitidos.', 'error');
+            input.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = e => {
+            const dataUrl = e.target.result;
+            const urlEl = document.getElementById('bsLogoUrl');
+            if (urlEl) urlEl.value = dataUrl;
+            _bsLogoRefreshPreview(dataUrl);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function _bsLogoRemove() {
+        const urlEl = document.getElementById('bsLogoUrl');
+        const fileEl = document.getElementById('bsLogoFile');
+        if (urlEl) urlEl.value = '';
+        if (fileEl) fileEl.value = '';
+        _bsLogoRefreshPreview('');
+    }
+
+    function _bsLogoRefreshPreview(url) {
+        const wrap = document.getElementById('bsLogoPreviewWrap');
+        const img  = document.getElementById('bsLogoPreviewImg');
+        const empty = document.getElementById('bsLogoEmpty');
+        if (!wrap) return;
+        if (url) {
+            if (img) img.src = url;
+            wrap.classList.remove('hidden');
+            if (empty) empty.classList.add('hidden');
+        } else {
+            wrap.classList.add('hidden');
+            if (empty) empty.classList.remove('hidden');
+        }
     }
 
     // ── Brand blocks (cabeçalhos & rodapés) ─────────────
@@ -4147,19 +4191,17 @@ ${lines.join('\n')}
 
     function _brandLogoHtml(b) {
         if (b.logo) {
-            const cls = b.invert ? 'h-10 object-contain brightness-0 invert' : 'h-10 object-contain';
-            const fallbackColor = b.invert ? 'white' : b.color;
-            return `<img src="${b.logo}" alt="${b.name}" class="${cls}" loading="lazy"
+            return `<img src="${b.logo}" alt="${b.name}" class="h-10 object-contain brightness-0" loading="lazy"
                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-                    <span class="hidden w-12 h-12 rounded-full items-center justify-center text-xs font-bold" style="background:${b.bg==='#FFFFFF'?'#eee':b.bg};color:${fallbackColor};border:${b.bg==='#FFFFFF'?'1px solid #ddd':'none'}">${b.name.replace('Mercedes-Benz','MB').substring(0,3).toUpperCase()}</span>`;
+                    <span class="hidden w-12 h-12 rounded-full items-center justify-center text-xs font-bold" style="background:#e2e8f0;color:#000">${b.name.replace('Mercedes-Benz','MB').substring(0,3).toUpperCase()}</span>`;
         }
         const svgs = {
-            caetano:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="-0.5">caetano</text></svg>`,
-            caetanoparts: `<div class="flex flex-col items-center gap-0.5"><svg width="106" height="18" viewBox="0 0 106 18"><text x="2" y="14" font-family="Montserrat,sans-serif" font-weight="700" font-size="13" fill="white" letter-spacing="0.5">CAETANO</text></svg><svg width="60" height="16" viewBox="0 0 60 16"><text x="2" y="12" font-family="Montserrat,sans-serif" font-weight="300" font-size="11" fill="rgba(255,255,255,0.8)" letter-spacing="2">PARTS</text></svg></div>`,
-            carplus:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="0.5">CARPLUS</text></svg>`,
-            farizon:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="white" letter-spacing="1">FARIZON</text></svg>`,
+            caetano:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="#000000" letter-spacing="-0.5">caetano</text></svg>`,
+            caetanoparts: `<div class="flex flex-col items-center gap-0.5"><svg width="106" height="18" viewBox="0 0 106 18"><text x="2" y="14" font-family="Montserrat,sans-serif" font-weight="700" font-size="13" fill="#000000" letter-spacing="0.5">CAETANO</text></svg><svg width="60" height="16" viewBox="0 0 60 16"><text x="2" y="12" font-family="Montserrat,sans-serif" font-weight="300" font-size="11" fill="#333333" letter-spacing="2">PARTS</text></svg></div>`,
+            carplus:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="#000000" letter-spacing="0.5">CARPLUS</text></svg>`,
+            farizon:      `<svg width="110" height="26" viewBox="0 0 110 26"><text x="2" y="21" font-family="Montserrat,sans-serif" font-weight="700" font-size="20" fill="#000000" letter-spacing="1">FARIZON</text></svg>`,
         };
-        return svgs[b.id] || `<span class="text-white font-bold text-lg">${b.name}</span>`;
+        return svgs[b.id] || `<span class="font-bold text-lg" style="color:#000">${b.name}</span>`;
     }
 
     function renderBrandSelect() {
@@ -4176,10 +4218,10 @@ ${lines.join('\n')}
                     class="brand-card bg-white border-2 border-slate-200 rounded-xl overflow-hidden transition-all text-center"
                     onmouseover="this.style.borderColor='${b.color}'"
                     onmouseout="if(!this.classList.contains('brand-selected'))this.style.borderColor=''">
-                <div class="h-20 flex items-center justify-center p-3" style="background:${b.bg}">
+                <div class="h-20 flex items-center justify-center p-3" style="background:#f1f1f1">
                     ${_brandLogoHtml(b)}
                 </div>
-                <div class="px-3 py-2.5${b.bg==='#FFFFFF'?' border-t border-slate-100':''}">
+                <div class="px-3 py-2.5 border-t border-slate-100">
                     <h3 class="font-semibold text-slate-900 text-sm truncate">${b.name}</h3>
                     <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
                 </div>
@@ -6917,8 +6959,29 @@ ${lines.join('\n')}
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-slate-500 mb-1">URL do logo</label>
-                                <input id="bsLogoUrl" type="text" placeholder="https://..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                <label class="block text-xs text-slate-500 mb-1">Logo da marca</label>
+                                <input id="bsLogoUrl" type="hidden" />
+                                <!-- Preview -->
+                                <div id="bsLogoPreviewWrap" class="hidden mb-2 flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <div class="w-24 h-12 flex items-center justify-center bg-white rounded border border-slate-100 p-1">
+                                        <img id="bsLogoPreviewImg" class="max-h-10 max-w-full object-contain" src="" alt="Logo" />
+                                    </div>
+                                    <button type="button" onclick="_bsLogoRemove()" class="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                        Remover
+                                    </button>
+                                </div>
+                                <!-- Empty state -->
+                                <div id="bsLogoEmpty" class="mb-2 flex items-center gap-2 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                    Nenhum logo carregado
+                                </div>
+                                <label class="cursor-pointer inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                                    Fazer upload de SVG
+                                    <input id="bsLogoFile" type="file" accept=".svg,image/svg+xml" class="hidden" onchange="_bsLogoUpload(this)" />
+                                </label>
+                                <p class="text-xs text-slate-400 mt-1.5">Apenas ficheiros .svg são aceites</p>
                             </div>
                         </div>
                     </div>
