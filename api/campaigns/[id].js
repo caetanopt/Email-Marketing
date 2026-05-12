@@ -254,7 +254,7 @@ module.exports = async function handler(req, res) {
            JOIN list_members lm ON lm.contact_id=c.id
            JOIN campaign_lists cl ON cl.list_id=lm.list_id AND cl.campaign_id=$1
            WHERE c.brand_id=$2 AND c.status='active'
-             AND c.email NOT IN (SELECT email FROM suppression WHERE brand_id=$2)`,
+             AND c.email NOT IN (SELECT email FROM suppression)`,
           [id, camp[0].brand_id]
         );
         if (!contacts.length) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas com contactos activos.' });

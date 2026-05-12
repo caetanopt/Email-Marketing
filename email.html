@@ -278,12 +278,12 @@
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
     }
 
-    async function _loadSuppression(brandId) {
+    async function _loadSuppression() {
         const el = document.getElementById('suppTableBody');
         if (!el) return;
         el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
-            const { data } = await apiFetch(`/api/suppression?brand_id=${brandId}&limit=50`);
+            const { data } = await apiFetch(`/api/suppression?limit=50`);
             const rBadge = { bounce:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span>', unsubscribe:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span>', spam:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span>', manual:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">manual</span>' };
             const scEl = document.getElementById('suppCount');
             if (scEl) scEl.textContent = `${data.length} endereços suprimidos`;
@@ -347,7 +347,7 @@
     async function apiRemoveSuppression(btn, email) {
         if (!confirm('Remover este endereço da lista de supressão?')) return;
         try {
-            await apiFetch(`/api/suppression?brand_id=${_currentBrand.id}`, { method: 'DELETE', body: JSON.stringify({ email }) });
+            await apiFetch(`/api/suppression`, { method: 'DELETE', body: JSON.stringify({ email }) });
             btn.closest('tr').remove();
             showToast('Endereço removido da supressão.');
         } catch (e) { showToast(e.message, 'error'); }
@@ -1669,10 +1669,10 @@ ${body}
         const reason = document.getElementById('suppReasonSelect')?.value || 'manual';
         if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
         try {
-            await apiFetch(`/api/suppression?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ email, reason }) });
+            await apiFetch(`/api/suppression`, { method: 'POST', body: JSON.stringify({ email, reason }) });
             closeAddSuppressionModal();
             showToast(`${email} adicionado à supressão.`);
-            _loadSuppression(_currentBrand.id);
+            _loadSuppression();
         } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -4361,7 +4361,7 @@ ${lines.join('\n')}
             _loadContacts(brandId),
             _loadCampaigns(brandId),
             _loadLists(brandId),
-            _loadSuppression(brandId),
+            _loadSuppression(),
             _loadTemplates(brandId),
             renderDashboardRange(brandId, '30d'),
         ]);

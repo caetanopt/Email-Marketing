@@ -66,16 +66,13 @@ module.exports = async function handler(req, res) {
             [row.campaign_id, row.contact_id]
           );
         }
-        // Hard bounces → suppress
+        // Hard bounces → suppress globally
         if (bounce.bounceType === 'Permanent') {
-          const cr = await query('SELECT brand_id FROM campaigns WHERE id=(SELECT campaign_id FROM campaign_recipients WHERE email=$1 LIMIT 1)', [email]);
-          if (cr[0]) {
-            await query(
-              'INSERT INTO suppression (brand_id, email, reason) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-              [cr[0].brand_id, email, 'bounce']
-            );
-            await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
-          }
+          await query(
+            "INSERT INTO suppression (email, reason) VALUES ($1,'bounce') ON CONFLICT (email) DO NOTHING",
+            [email]
+          );
+          await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
         }
       }
     } else if (eventType === 'complaint') {
@@ -94,15 +91,12 @@ module.exports = async function handler(req, res) {
             [row.campaign_id, row.contact_id]
           );
         }
-        // Spam complaints → suppress
-        const cr = await query('SELECT brand_id FROM campaigns WHERE id=(SELECT campaign_id FROM campaign_recipients WHERE email=$1 LIMIT 1)', [email]);
-        if (cr[0]) {
-          await query(
-            'INSERT INTO suppression (brand_id, email, reason) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-            [cr[0].brand_id, email, 'spam']
-          );
-          await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
-        }
+        // Spam complaints → suppress globally
+        await query(
+          "INSERT INTO suppression (email, reason) VALUES ($1,'spam') ON CONFLICT (email) DO NOTHING",
+          [email]
+        );
+        await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
       }
     } else if (eventType === 'open') {
       const mail = sesEvent.mail || {};

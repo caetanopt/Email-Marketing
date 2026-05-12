@@ -38,23 +38,23 @@ module.exports = async function handler(req, res) {
       const e = qEmail.toLowerCase().trim();
       const userReason = (req.body && req.body.reason) || (req.query.reason) || '';
       const details = userReason ? String(userReason).slice(0, 200) : null;
-      // Add `details` column gracefully if migration 011 ran; otherwise fall back.
       try {
         await query(
-          `INSERT INTO suppression (brand_id, email, reason, details) VALUES ($1,$2,'unsubscribe',$3)
-           ON CONFLICT (brand_id, email) DO UPDATE SET reason='unsubscribe', details=COALESCE(EXCLUDED.details, suppression.details)`,
-          [brand_id, e, details]
+          `INSERT INTO suppression (email, reason, details) VALUES ($1,'unsubscribe',$2)
+           ON CONFLICT (email) DO UPDATE SET reason='unsubscribe', details=COALESCE(EXCLUDED.details, suppression.details)`,
+          [e, details]
         );
       } catch (e1) {
         if (e1.code === '42703') {
           await query(
-            `INSERT INTO suppression (brand_id, email, reason) VALUES ($1,$2,'unsubscribe')
-             ON CONFLICT (brand_id, email) DO UPDATE SET reason='unsubscribe'`,
-            [brand_id, e]
+            `INSERT INTO suppression (email, reason) VALUES ($1,'unsubscribe')
+             ON CONFLICT (email) DO UPDATE SET reason='unsubscribe'`,
+            [e]
           );
         } else { throw e1; }
       }
-      await query("UPDATE contacts SET status='unsubscribed' WHERE brand_id=$1 AND email=$2", [brand_id, e]);
+      // Mark contact as unsubscribed across all brands
+      await query("UPDATE contacts SET status='unsubscribed' WHERE email=$1", [e]);
       // Track event for reporting
       try {
         await query(
@@ -87,8 +87,8 @@ module.exports = async function handler(req, res) {
     }
     try {
       const e = qEmail.toLowerCase().trim();
-      await query('DELETE FROM suppression WHERE brand_id=$1 AND email=$2', [brand_id, e]);
-      await query("UPDATE contacts SET status='active' WHERE brand_id=$1 AND email=$2", [brand_id, e]);
+      await query('DELETE FROM suppression WHERE email=$1', [e]);
+      await query("UPDATE contacts SET status='active' WHERE email=$1", [e]);
       return res.status(200).json({ ok: true, email: e });
     } catch (err) {
       return res.status(500).json({ error: 'Erro interno.' });
@@ -98,13 +98,11 @@ module.exports = async function handler(req, res) {
   const user = requireAuth(req, res);
   if (!user) return;
 
-  if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
-
   try {
     if (req.method === 'GET') {
-      const params = [brand_id];
-      let where = 'WHERE brand_id=$1';
-      if (search) { params.push(`%${search}%`); where += ` AND email ILIKE $${params.length}`; }
+      const params = [];
+      let where = '';
+      if (search) { params.push(`%${search}%`); where = `WHERE email ILIKE $1`; }
       params.push(parseInt(limit));
       params.push((parseInt(page) - 1) * parseInt(limit));
       const rows = await query(
@@ -120,18 +118,17 @@ module.exports = async function handler(req, res) {
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
       const e = email.toLowerCase().trim();
       await query(
-        'INSERT INTO suppression (brand_id, email, reason) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-        [brand_id, e, reason||'manual']
+        "INSERT INTO suppression (email, reason) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING",
+        [e, reason||'manual']
       );
-      await query("UPDATE contacts SET status='suppressed' WHERE brand_id=$1 AND email=$2", [brand_id, e]);
+      await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [e]);
       return res.status(201).json({ ok: true });
     }
 
     if (req.method === 'DELETE') {
       const { email } = req.body || {};
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
-      await query('DELETE FROM suppression WHERE brand_id=$1 AND email=$2',
-        [brand_id, email.toLowerCase().trim()]);
+      await query('DELETE FROM suppression WHERE email=$1', [email.toLowerCase().trim()]);
       return res.status(200).json({ ok: true });
     }
 
