@@ -3015,6 +3015,25 @@ ${body}
         }
     }
 
+    async function _loadSesQuota() {
+        try {
+            const d = await apiFetch('/api/ses-quota');
+            const widget = document.getElementById('sesQuotaWidget');
+            if (!d.configured || !widget) return;
+            if (d.error) { widget.classList.remove('hidden'); document.getElementById('sesRemaining').textContent = 'Erro'; return; }
+            widget.classList.remove('hidden');
+            const pct = d.max24h > 0 ? Math.round((d.sent24h / d.max24h) * 100) : 0;
+            const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-400' : 'bg-orange-400';
+            document.getElementById('sesRemaining').textContent = d.remaining.toLocaleString('pt-PT');
+            document.getElementById('sesSent').textContent      = d.sent24h.toLocaleString('pt-PT');
+            document.getElementById('sesMax').textContent       = d.max24h.toLocaleString('pt-PT');
+            document.getElementById('sesPercent').textContent   = pct + '%';
+            const bar = document.getElementById('sesBar');
+            bar.style.width = pct + '%';
+            bar.className = `h-2 rounded-full transition-all ${barColor}`;
+        } catch(e) {}
+    }
+
     async function _deleteCampaignItem(idx) {
         const c = window._campaignsCache?.[idx];
         if (!c) return;
@@ -3983,6 +4002,8 @@ ${lines.join('\n')}
                 const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                 if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
             }
+            // SES quota widget — load once per brand session
+            if (id === 'campaigns' && !_screenLoaded.has('sesQuota')) { _loadSesQuota(); _screenLoaded.add('sesQuota'); }
             // Roles info panel: only visible to owner / admin / administrador
             if (id === 'team' && !_screenLoaded.has('team')) { _syncRolesPanel(); _loadTeamMembers(); _screenLoaded.add('team'); }
             // Load campaign report when entering report screen (always reload — report is campaign-specific)
@@ -5187,6 +5208,39 @@ ${lines.join('\n')}
                 </button>
             </header>
             <main class="flex-1 px-8 py-6">
+                <!-- SES quota widget -->
+                <div id="sesQuotaWidget" class="hidden mb-4 bg-white border border-slate-200 rounded-xl px-5 py-4 flex items-center gap-6">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <svg class="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Amazon SES</span>
+                    </div>
+                    <div class="flex items-center gap-6 flex-1">
+                        <div class="text-center">
+                            <p id="sesRemaining" class="text-lg font-bold text-slate-900">—</p>
+                            <p class="text-xs text-slate-400">disponíveis hoje</p>
+                        </div>
+                        <div class="text-center">
+                            <p id="sesSent" class="text-lg font-bold text-slate-700">—</p>
+                            <p class="text-xs text-slate-400">enviados (24h)</p>
+                        </div>
+                        <div class="text-center">
+                            <p id="sesMax" class="text-lg font-bold text-slate-400">—</p>
+                            <p class="text-xs text-slate-400">limite diário</p>
+                        </div>
+                        <div class="flex-1 min-w-[120px]">
+                            <div class="flex justify-between text-xs text-slate-400 mb-1">
+                                <span>Utilização</span>
+                                <span id="sesPercent">—</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2">
+                                <div id="sesBar" class="h-2 rounded-full bg-orange-400 transition-all" style="width:0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="_loadSesQuota()" class="text-xs text-slate-400 hover:text-slate-600 flex-shrink-0" title="Actualizar">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
+                </div>
                 <div class="mb-4 flex items-center gap-3">
                     <input id="campSearch" type="text" placeholder="Pesquisar campanha…" oninput="_dbFilterCampaigns()" class="flex-1 max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     <select id="campStatusFilter" onchange="filterCampaigns()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
