@@ -694,7 +694,9 @@
         if (typeof _teMode !== 'undefined' && _teMode === 'block') {
             _teMode = 'template';
             _editingBlockId = null;
-            showScreen('blocks');
+            const dest = _blockReturnTo;
+            _blockReturnTo = 'blocks';
+            showScreen(dest);
         } else {
             showScreen('campaigns');
         }
@@ -1802,14 +1804,17 @@ ${body}
             const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
             const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
         } catch (err) { console.error(err); }
+        _loadBlocks();
     }
 
     // ── Brand blocks (cabeçalhos & rodapés) ─────────────
     let _blocksType = 'header';
+    let _bsBlocksType = 'header';
     let _blocksData = { header: [], footer: [] };
     let _editingBlockId = null;
     let _teMode = 'template';
     let _teBlockType = 'header';
+    let _blockReturnTo = 'blocks';
 
     async function _loadBlocks() {
         if (!_currentBrand?.id) return;
@@ -1819,7 +1824,10 @@ ${body}
             (data || []).forEach(b => { _blocksData[b.type].push(b); });
             const ch = document.getElementById('blocksCountHeader'); if (ch) ch.textContent = `(${_blocksData.header.length})`;
             const cf = document.getElementById('blocksCountFooter'); if (cf) cf.textContent = `(${_blocksData.footer.length})`;
+            const bsch = document.getElementById('bsBlocksCountHeader'); if (bsch) bsch.textContent = `(${_blocksData.header.length})`;
+            const bscf = document.getElementById('bsBlocksCountFooter'); if (bscf) bscf.textContent = `(${_blocksData.footer.length})`;
             _renderBlocksList();
+            _bsRenderBlocksList();
         } catch (e) { showToast('Erro ao carregar blocos.', 'error'); }
     }
     function _blocksSwitchTab(type) {
@@ -1831,6 +1839,16 @@ ${body}
         const lbl = document.getElementById('blocksNewBtnLabel'); if (lbl) lbl.textContent = type === 'header' ? 'Novo cabeçalho' : 'Novo rodapé';
         const et = document.getElementById('blocksEmptyText'); if (et) et.textContent = type === 'header' ? 'Sem cabeçalhos para esta marca.' : 'Sem rodapés para esta marca.';
         _renderBlocksList();
+    }
+    function _bsBlocksSwitchTab(type) {
+        _bsBlocksType = type;
+        const ah = document.getElementById('bsBlocksTabHeader');
+        const af = document.getElementById('bsBlocksTabFooter');
+        if (ah) ah.className = `px-4 py-2 text-sm font-medium border-b-2 -mb-px ${type==='header'?'border-slate-900 text-slate-900':'border-transparent text-slate-500 hover:text-slate-700'}`;
+        if (af) af.className = `px-4 py-2 text-sm font-medium border-b-2 -mb-px ${type==='footer'?'border-slate-900 text-slate-900':'border-transparent text-slate-500 hover:text-slate-700'}`;
+        const lbl = document.getElementById('bsBlocksNewBtnLabel'); if (lbl) lbl.textContent = type === 'header' ? 'Novo cabeçalho' : 'Novo rodapé';
+        const et = document.getElementById('bsBlocksEmptyText'); if (et) et.textContent = type === 'header' ? 'Sem cabeçalhos para esta marca.' : 'Sem rodapés para esta marca.';
+        _bsRenderBlocksList();
     }
     function _renderBlocksList() {
         const list = document.getElementById('blocksList');
@@ -1857,26 +1875,55 @@ ${body}
             </div>
         `).join('');
     }
-    function _blockNew() {
+    function _bsRenderBlocksList() {
+        const list = document.getElementById('bsBlocksList');
+        const empty = document.getElementById('bsBlocksEmpty');
+        if (!list || !empty) return;
+        const items = _blocksData[_bsBlocksType] || [];
+        if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        list.innerHTML = items.map(b => `
+            <div class="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-sm transition-shadow flex flex-col">
+                <div class="h-24 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
+                    <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                </div>
+                <div class="p-3 flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <p class="font-medium text-slate-900 text-xs truncate">${escHtml(b.name)}</p>
+                        <p class="text-xs text-slate-400">${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <button onclick="_blockEdit(${b.id},'brandSettings')" class="text-xs px-2 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                        <button onclick="_blockDelete(${b.id})" class="text-xs px-2 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+    function _blockNew(returnTo = 'blocks') {
         _editingBlockId = null;
+        _blockReturnTo = returnTo;
         _teMode = 'block';
-        _teBlockType = _blocksType;
+        _teBlockType = returnTo === 'brandSettings' ? _bsBlocksType : _blocksType;
         teState.blocks = [];
         teState.selected = null;
         _teCtx = 'te_';
         showScreen('templateEdit');
         const h1 = document.querySelector('#templateEdit h1');
-        if (h1) h1.textContent = `Novo ${_blocksType === 'header' ? 'cabeçalho' : 'rodapé'}`;
+        if (h1) h1.textContent = `Novo ${_teBlockType === 'header' ? 'cabeçalho' : 'rodapé'}`;
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         if (nameEl) nameEl.value = '';
         document.getElementById('te_btnPickHeader')?.classList.add('hidden');
         document.getElementById('te_btnPickFooter')?.classList.add('hidden');
         if (typeof teRender === 'function') teRender();
     }
-    async function _blockEdit(blockId) {
+    async function _blockEdit(blockId, returnTo = 'blocks') {
         try {
             const b = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${blockId}`);
             _editingBlockId = blockId;
+            _blockReturnTo = returnTo;
             _teMode = 'block';
             _teBlockType = b.type;
             const blocks = (typeof teParseMjmlToBlocks === 'function') ? teParseMjmlToBlocks(b.html_content || '') : null;
@@ -1921,8 +1968,15 @@ ${body}
             _teMarkClean();
             _teMode = 'template';
             _editingBlockId = null;
-            _blocksType = _teBlockType;
-            showScreen('blocks');
+            if (_blockReturnTo === 'brandSettings') {
+                _bsBlocksType = _teBlockType;
+            } else {
+                _blocksType = _teBlockType;
+            }
+            const dest = _blockReturnTo;
+            _blockReturnTo = 'blocks';
+            await _loadBlocks();
+            showScreen(dest);
         } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -3528,10 +3582,6 @@ ${lines.join('\n')}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                 Multimédia
             </a>
-            <a onclick="showScreen('blocks')" data-nav class="nav-item nav-blocks flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-                Cabeçalhos & Rodapés
-            </a>
             <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Campanhas
@@ -3601,7 +3651,7 @@ ${lines.join('\n')}
                 campaignCreate: 'campaigns', campaignShow: 'campaigns', campaignReport: 'campaigns',
                 contactShow: 'contacts', contactEdit: 'contacts',
                 listEdit: 'lists',
-                templateEdit: (typeof _teMode !== 'undefined' && _teMode === 'block') ? 'blocks' : 'campaigns',
+                templateEdit: (typeof _teMode !== 'undefined' && _teMode === 'block') ? (_blockReturnTo === 'brandSettings' ? 'brandSettings' : 'blocks') : 'campaigns',
             };
             const navKey = _navParent[id] || id;
             document.querySelectorAll('.nav-item').forEach(n => {
@@ -6729,7 +6779,7 @@ ${lines.join('\n')}
                 <button onclick="mockSaveSettingsValidated()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar alterações</button>
             </header>
             <main class="flex-1 px-8 py-6">
-                <div class="max-w-2xl space-y-6">
+                <div class="max-w-3xl space-y-6">
                     <!-- Identidade -->
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <h3 class="font-semibold text-slate-900 mb-4 text-sm">Identidade da marca</h3>
@@ -6811,7 +6861,29 @@ ${lines.join('\n')}
                             </div>
                         </div>
                     </div>
-                    <p class="text-xs text-slate-400 text-center pt-2">Os cabeçalhos e rodapés desta marca são geridos em <a onclick="showScreen('blocks')" class="text-slate-600 underline cursor-pointer">Cabeçalhos & Rodapés</a>.</p>
+                    <!-- Cabeçalhos & Rodapés -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-slate-900 text-sm">Cabeçalhos & Rodapés</h3>
+                            <button onclick="_blockNew('brandSettings')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                <span id="bsBlocksNewBtnLabel">Novo cabeçalho</span>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-1 mb-4 border-b border-slate-200">
+                            <button id="bsBlocksTabHeader" onclick="_bsBlocksSwitchTab('header')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px border-slate-900 text-slate-900">
+                                Cabeçalhos <span id="bsBlocksCountHeader" class="ml-1 text-xs text-slate-400">(0)</span>
+                            </button>
+                            <button id="bsBlocksTabFooter" onclick="_bsBlocksSwitchTab('footer')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-slate-500 hover:text-slate-700">
+                                Rodapés <span id="bsBlocksCountFooter" class="ml-1 text-xs text-slate-400">(0)</span>
+                            </button>
+                        </div>
+                        <div id="bsBlocksList" class="grid grid-cols-2 gap-4"></div>
+                        <div id="bsBlocksEmpty" class="hidden text-center py-8">
+                            <p class="text-sm text-slate-400" id="bsBlocksEmptyText">Sem cabeçalhos para esta marca.</p>
+                            <button onclick="_blockNew('brandSettings')" class="mt-2 px-3 py-1.5 text-xs bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Criar o primeiro</button>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>
