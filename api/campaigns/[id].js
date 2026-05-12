@@ -238,7 +238,8 @@ module.exports = async function handler(req, res) {
       if (action === 'send') {
         const camp = await query(
           `SELECT c.*, t.html_content,
-                  b.from_name AS brand_from_name, b.from_email AS brand_from_email, b.reply_to AS brand_reply_to
+                  b.from_name AS brand_from_name, b.from_email AS brand_from_email,
+                  b.reply_to AS brand_reply_to, b.variables
            FROM campaigns c
            LEFT JOIN templates t ON t.id=c.template_id
            LEFT JOIN brands b ON b.id=c.brand_id
@@ -324,10 +325,16 @@ module.exports = async function handler(req, res) {
               const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
                 <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
               </div>`;
-              const rawHtml = injectUtm((c.html_content||'')
+              const vars = c.variables || {};
+              let rawHtml = (c.html_content||'')
                 .replace(/\{\{name\}\}/g, contact.name||contact.email)
                 .replace(/\{\{email\}\}/g, contact.email)
-                .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl));
+                .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+              // Replace brand variables {{key}}
+              for (const [k, v] of Object.entries(vars)) {
+                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || '');
+              }
+              rawHtml = injectUtm(rawHtml);
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;

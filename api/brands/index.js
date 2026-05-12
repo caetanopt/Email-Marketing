@@ -290,6 +290,10 @@ module.exports = async function handler(req, res) {
           sets.push(`${f}=$${params.length}`);
         }
       }
+      if (Object.prototype.hasOwnProperty.call(body, 'variables')) {
+        params.push(body.variables ? JSON.stringify(body.variables) : null);
+        sets.push(`variables=$${params.length}`);
+      }
       if (!sets.length) return res.status(200).json({ ok: true });
       params.push(id);
       await query(`UPDATE brands SET ${sets.join(', ')} WHERE id=$${params.length}`, params);

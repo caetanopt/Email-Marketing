@@ -1798,6 +1798,7 @@ ${body}
             from_name:   document.getElementById('bsFromName')?.value.trim() || null,
             from_email:  document.getElementById('bsFromEmail')?.value.trim() || null,
             reply_to:    document.getElementById('bsReplyTo')?.value.trim() || null,
+            variables:   _bsGetVariables(),
         };
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -1821,8 +1822,31 @@ ${body}
             // Logo preview
             const logoUrl = document.getElementById('bsLogoUrl'); if (logoUrl) logoUrl.value = b.logo_url || '';
             _bsLogoRefreshPreview(b.logo_url || '');
+            // Variables
+            const vars = b.variables || {};
+            _BS_VAR_KEYS.forEach(k => { const el = document.getElementById('bsVar_'+k); if (el) el.value = vars[k] || ''; });
         } catch (err) { console.error(err); }
         _loadBlocks();
+    }
+
+    const _BS_VAR_KEYS = [
+        'facebook','instagram','linkedin','youtube','twitter',
+        'company_name','company_address','company_phone','company_email',
+        'site_url','service_booking_url'
+    ];
+
+    function _bsGetVariables() {
+        const vars = {};
+        _BS_VAR_KEYS.forEach(k => {
+            const v = document.getElementById('bsVar_'+k)?.value.trim();
+            if (v) vars[k] = v;
+        });
+        return Object.keys(vars).length ? vars : null;
+    }
+
+    function _bsCopyVar(key) {
+        const tag = `{{${key}}}`;
+        navigator.clipboard?.writeText(tag).then(() => showToast(`${tag} copiado.`)).catch(() => showToast(tag));
     }
 
     function _bsLogoUpload(input) {
@@ -7049,6 +7073,81 @@ ${lines.join('\n')}
                             </div>
                         </div>
                     </div>
+                    <!-- Variáveis de template -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div class="flex items-start justify-between mb-1">
+                            <div>
+                                <h3 class="font-semibold text-slate-900 text-sm">Variáveis de template</h3>
+                                <p class="text-xs text-slate-400 mt-0.5">Clica no nome da variável para copiar a etiqueta e usar nos templates de email</p>
+                            </div>
+                        </div>
+
+                        <!-- Redes sociais -->
+                        <div class="mt-4">
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Redes sociais</p>
+                            <div class="grid grid-cols-1 gap-3">
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('facebook')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{facebook}}</button>
+                                    <input id="bsVar_facebook" type="url" placeholder="https://facebook.com/..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('instagram')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{instagram}}</button>
+                                    <input id="bsVar_instagram" type="url" placeholder="https://instagram.com/..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('linkedin')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{linkedin}}</button>
+                                    <input id="bsVar_linkedin" type="url" placeholder="https://linkedin.com/..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('youtube')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{youtube}}</button>
+                                    <input id="bsVar_youtube" type="url" placeholder="https://youtube.com/..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('twitter')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{twitter}}</button>
+                                    <input id="bsVar_twitter" type="url" placeholder="https://x.com/..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Empresa -->
+                        <div class="mt-5 pt-4 border-t border-slate-100">
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Empresa</p>
+                            <div class="grid grid-cols-1 gap-3">
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('company_name')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{company_name}}</button>
+                                    <input id="bsVar_company_name" type="text" placeholder="Ex: Caetano Automotive Portugal" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('company_address')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{company_address}}</button>
+                                    <input id="bsVar_company_address" type="text" placeholder="Ex: Rua Exemplo, 123, Lisboa" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('company_phone')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{company_phone}}</button>
+                                    <input id="bsVar_company_phone" type="tel" placeholder="Ex: +351 210 000 000" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('company_email')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{company_email}}</button>
+                                    <input id="bsVar_company_email" type="email" placeholder="Ex: info@caetano.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Site & Serviço -->
+                        <div class="mt-5 pt-4 border-t border-slate-100">
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Site & Serviço</p>
+                            <div class="grid grid-cols-1 gap-3">
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('site_url')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{site_url}}</button>
+                                    <input id="bsVar_site_url" type="url" placeholder="https://caetano.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <button onclick="_bsCopyVar('service_booking_url')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors truncate">{{service_booking_url}}</button>
+                                    <input id="bsVar_service_booking_url" type="url" placeholder="https://..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Cabeçalhos & Rodapés -->
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <div class="flex items-center justify-between mb-4">
