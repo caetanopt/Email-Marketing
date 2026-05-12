@@ -1824,6 +1824,7 @@ ${body}
             _bsLogoRefreshPreview(b.logo_url || '');
             // Variables
             const vars = b.variables || {};
+            if (_currentBrand) _currentBrand.variables = b.variables || null;
             _BS_VAR_KEYS.forEach(k => { const el = document.getElementById('bsVar_'+k); if (el) el.value = vars[k] || ''; });
         } catch (err) { console.error(err); }
         _loadBlocks();
@@ -2419,30 +2420,56 @@ ${body}
     }
 
     // ── UTM helpers ──────────────────────────────────────
-    function _wizVarsRender() {
-        const vars = _currentBrand?.variables;
+    async function _wizVarsRender() {
+        let vars = _currentBrand?.variables;
+        if (!vars && _currentBrand?.id) {
+            try {
+                const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
+                vars = b.variables || null;
+                if (_currentBrand) _currentBrand.variables = vars;
+            } catch(e) {}
+        }
+
+        const hasVars = vars && Object.values(vars).some(Boolean);
+
+        // Step 1 panel
         const panel = document.getElementById('wizVarsPanel');
         const list  = document.getElementById('wizVarsList');
-        if (!panel || !list) return;
-        if (!vars || !Object.values(vars).some(Boolean)) { panel.classList.add('hidden'); return; }
-        panel.classList.remove('hidden');
-        list.innerHTML = Object.entries(vars).filter(([,v]) => v).map(([k, v]) => {
-            const label = k.replace(/_/g,' ');
-            return `<button type="button" onclick="_wizCopyVar('${k}')"
-                title="${v.replace(/"/g,'&quot;')}"
-                class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-violet-50 hover:border-violet-300 transition-colors group">
+        if (panel && list) {
+            if (!hasVars) { panel.classList.add('hidden'); }
+            else {
+                panel.classList.remove('hidden');
+                list.innerHTML = _wizVarsChips(vars);
+            }
+        }
+
+        // Step 2 strip
+        const panel2 = document.getElementById('wizVarsPanel2');
+        const list2  = document.getElementById('wizVarsList2');
+        if (panel2 && list2) {
+            if (!hasVars) { panel2.classList.add('hidden'); }
+            else {
+                panel2.classList.remove('hidden');
+                list2.innerHTML = _wizVarsChips(vars);
+            }
+        }
+    }
+
+    function _wizVarsChips(vars) {
+        return Object.entries(vars).filter(([,v]) => v).map(([k, v]) =>
+            `<button type="button" onclick="_wizCopyVar('${k}')" title="${v.replace(/"/g,'&quot;')}"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 hover:bg-violet-50 hover:border-violet-300 transition-colors group">
                 <code class="text-xs font-mono text-violet-700">{{${k}}}</code>
-                <span class="text-xs text-slate-400 group-hover:text-violet-500 max-w-[120px] truncate">${label}</span>
-            </button>`;
-        }).join('');
+            </button>`
+        ).join('');
     }
 
     function _wizVarsToggle() {
         const body    = document.getElementById('wizVarsBody');
         const chevron = document.getElementById('wizVarsChevron');
         if (!body) return;
-        const open = body.classList.toggle('hidden');
-        chevron?.classList.toggle('rotate-180', !open);
+        const nowHidden = body.classList.toggle('hidden');
+        chevron?.classList.toggle('rotate-180', !nowHidden);
     }
 
     function _wizCopyVar(key) {
@@ -5311,10 +5338,10 @@ ${lines.join('\n')}
                         <div id="wizVarsPanel" class="hidden bg-white border border-slate-200 rounded-xl overflow-hidden">
                             <button type="button" onclick="_wizVarsToggle()" class="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors">
                                 <span class="text-sm font-semibold text-slate-900">Variáveis disponíveis</span>
-                                <svg id="wizVarsChevron" class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                <svg id="wizVarsChevron" class="w-4 h-4 text-slate-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                             </button>
-                            <div id="wizVarsBody" class="hidden border-t border-slate-100 px-5 py-4">
-                                <p class="text-xs text-slate-400 mb-3">Clica em qualquer variável para copiar o código para usar no template.</p>
+                            <div id="wizVarsBody" class="border-t border-slate-100 px-5 py-4">
+                                <p class="text-xs text-slate-400 mb-3">Clica numa variável para copiar — usa no assunto ou no template.</p>
                                 <div id="wizVarsList" class="flex flex-wrap gap-2"></div>
                             </div>
                         </div>
@@ -5341,6 +5368,11 @@ ${lines.join('\n')}
                                         class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">+ Converter HTML</button>
                             </div>
                             <span class="text-xs text-slate-400 justify-self-end hidden md:block text-right">O template é guardado automaticamente ao criar a campanha</span>
+                        </div>
+                        <!-- Variáveis disponíveis (strip) -->
+                        <div id="wizVarsPanel2" class="hidden bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-3">
+                            <span class="text-xs font-medium text-slate-400 whitespace-nowrap">Variáveis:</span>
+                            <div id="wizVarsList2" class="flex flex-wrap gap-1.5"></div>
                         </div>
                         <!-- Editor area -->
                         <div style="height:calc(100vh - 380px);min-height:520px;">
