@@ -293,6 +293,20 @@ module.exports = async function handler(req, res) {
           },
         });
         const c = camp[0];
+
+        // Build UTM injector from utm_params JSONB
+        const utmParams = c.utm_params || {};
+        const utmStr = Object.entries(utmParams).filter(([, v]) => v)
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+        function injectUtm(html) {
+          if (!utmStr) return html;
+          return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, url) => {
+            if (url.includes('action=unsubscribe') || url.includes('action=resubscribe')) return match;
+            const sep = url.includes('?') ? '&' : '?';
+            return `href="${url}${sep}${utmStr}"`;
+          });
+        }
+
         const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
         const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
@@ -310,10 +324,10 @@ module.exports = async function handler(req, res) {
               const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
                 <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
               </div>`;
-              const rawHtml = (c.html_content||'')
+              const rawHtml = injectUtm((c.html_content||'')
                 .replace(/\{\{name\}\}/g, contact.name||contact.email)
                 .replace(/\{\{email\}\}/g, contact.email)
-                .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+                .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl));
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
