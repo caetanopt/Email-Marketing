@@ -278,16 +278,26 @@
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
     }
 
-    async function _loadSuppression() {
+    const _SUPP_PER_PAGE = 25;
+    let _suppPage = 1;
+    let _suppTotal = 0;
+
+    async function _loadSuppression(page) {
+        page = page || _suppPage;
+        _suppPage = page;
         const el = document.getElementById('suppTableBody');
         if (!el) return;
         el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
-            const { data } = await apiFetch(`/api/suppression?limit=50`);
+            const search = (document.getElementById('suppSearch')?.value || '').trim();
+            const reason = document.getElementById('suppReasonFilter')?.value || '';
+            const qs = new URLSearchParams({ limit: _SUPP_PER_PAGE, page, ...(search ? { search } : {}), ...(reason ? { reason } : {}) });
+            const { data, total } = await apiFetch(`/api/suppression?${qs}`);
+            _suppTotal = total || 0;
             const rBadge = { bounce:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span>', unsubscribe:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span>', spam:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span>', manual:'<span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">manual</span>' };
             const scEl = document.getElementById('suppCount');
-            if (scEl) scEl.textContent = `${data.length} endereços suprimidos`;
-            if (!data.length) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">Sem endereços suprimidos.</td></tr>`; return; }
+            if (scEl) scEl.textContent = `${_suppTotal} endereços suprimidos`;
+            if (!data.length) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">Sem endereços suprimidos.</td></tr>`; _renderSuppPagination(); return; }
             el.innerHTML = data.map(s => `
                 <tr class="hover:bg-slate-50" data-email="${s.email}" data-reason="${s.reason}">
                     <td class="px-4 py-3 text-slate-900">${s.email}</td>
@@ -295,7 +305,35 @@
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(s.created_at)}</td>
                     <td class="px-4 py-3 text-right"><button onclick="apiRemoveSuppression(this,'${s.email}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
                 </tr>`).join('');
+            _renderSuppPagination();
         } catch (e) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+    }
+
+    function _renderSuppPagination() {
+        const pages = Math.ceil(_suppTotal / _SUPP_PER_PAGE) || 1;
+        const p = _suppPage;
+        const infoEl = document.getElementById('suppPageInfo');
+        const navEl  = document.getElementById('suppPagination');
+        if (infoEl) {
+            const start = _suppTotal ? (p-1)*_SUPP_PER_PAGE+1 : 0;
+            const end   = Math.min(p*_SUPP_PER_PAGE, _suppTotal);
+            infoEl.textContent = _suppTotal ? `Mostrando ${start}–${end} de ${_suppTotal}` : 'Sem resultados';
+        }
+        if (!navEl) return;
+        const btn = (label, page, active, disabled) =>
+            `<button onclick="_loadSuppression(${page})" ${disabled?'disabled':''} class="supp-page-btn px-3 py-1 border border-slate-200 rounded text-xs ${active?'bg-slate-900 text-white':disabled?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">${label}</button>`;
+        let html = btn('Anterior', p-1, false, p===1);
+        const range = [], delta = 2;
+        for (let i = Math.max(1, p-delta); i <= Math.min(pages, p+delta); i++) range.push(i);
+        if (range[0] > 1) { html += btn(1, 1, false, false); if (range[0] > 2) html += `<span class="px-1 text-slate-400">…</span>`; }
+        range.forEach(i => { html += btn(i, i, i===p, false); });
+        if (range[range.length-1] < pages) { if (range[range.length-1] < pages-1) html += `<span class="px-1 text-slate-400">…</span>`; html += btn(pages, pages, false, false); }
+        html += btn('Próxima', p+1, false, p===pages);
+        navEl.innerHTML = html;
+    }
+
+    function filterSuppression() {
+        _loadSuppression(1);
     }
 
     async function _loadTemplates(brandId) {
@@ -1640,16 +1678,6 @@ ${body}
     }
 
     // ── Suppression ──────────────────────────────────────
-    function filterSuppression() {
-        const q = (document.getElementById('suppSearch')?.value || '').toLowerCase();
-        const r = document.getElementById('suppReasonFilter')?.value || '';
-        document.querySelectorAll('#suppTableBody tr').forEach(tr => {
-            const ok = (!q || (tr.dataset.email||'').toLowerCase().includes(q))
-                    && (!r || tr.dataset.reason === r);
-            tr.style.display = ok ? '' : 'none';
-        });
-    }
-
     function openAddSuppressionModal() {
         const e = document.getElementById('suppEmailInput');
         const r = document.getElementById('suppReasonSelect');
@@ -1741,25 +1769,6 @@ ${body}
         const info = document.getElementById('listEditPageInfo');
         if (info) info.textContent = `Mostrando ${start}–${end} de ${_listEditTotal.toLocaleString('pt-PT')} contactos`;
         document.querySelectorAll('.list-edit-page-btn').forEach(b => {
-            const pg = parseInt(b.dataset.page);
-            b.classList.toggle('bg-slate-900', pg === p);
-            b.classList.toggle('text-white', pg === p);
-            b.classList.toggle('hover:bg-slate-50', pg !== p);
-        });
-    }
-
-    // ── Suppression Pagination ───────────────────────────
-    let _suppPage = 1;
-    const _suppTotal = 312, _suppPerPage = 5;
-
-    function suppGoPage(p) {
-        const pages = Math.ceil(_suppTotal / _suppPerPage);
-        if (p < 1 || p > pages) return;
-        _suppPage = p;
-        const start = (p-1)*_suppPerPage+1, end = Math.min(p*_suppPerPage, _suppTotal);
-        const info = document.getElementById('suppPageInfo');
-        if (info) info.textContent = `Mostrando ${start}–${end} de ${_suppTotal}`;
-        document.querySelectorAll('.supp-page-btn').forEach(b => {
             const pg = parseInt(b.dataset.page);
             b.classList.toggle('bg-slate-900', pg === p);
             b.classList.toggle('text-white', pg === p);
@@ -6564,47 +6573,12 @@ ${lines.join('\n')}
                             </tr>
                         </thead>
                         <tbody id="suppTableBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50" data-email="pedro.nunes@hotmail.com" data-reason="bounce">
-                                <td class="px-4 py-3 text-slate-900">pedro.nunes@hotmail.com</td>
-                                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span></td>
-                                <td class="px-4 py-3 text-slate-500">15/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="rui.oliveira@empresa.pt" data-reason="unsubscribe">
-                                <td class="px-4 py-3 text-slate-900">rui.oliveira@empresa.pt</td>
-                                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span></td>
-                                <td class="px-4 py-3 text-slate-500">10/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="spam.report@dominio.net" data-reason="spam">
-                                <td class="px-4 py-3 text-slate-900">spam.report@dominio.net</td>
-                                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">spam</span></td>
-                                <td class="px-4 py-3 text-slate-500">08/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="invalido@naoexiste.pt" data-reason="bounce">
-                                <td class="px-4 py-3 text-slate-900">invalido@naoexiste.pt</td>
-                                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">bounce</span></td>
-                                <td class="px-4 py-3 text-slate-500">05/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="manuel.sousa@correo.es" data-reason="unsubscribe">
-                                <td class="px-4 py-3 text-slate-900">manuel.sousa@correo.es</td>
-                                <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">unsubscribe</span></td>
-                                <td class="px-4 py-3 text-slate-500">01/04/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="mockRemoveSuppression(this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
-                            </tr>
+                            <tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>
                         </tbody>
                     </table>
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-                        <span id="suppPageInfo">Mostrando 1–5 de 312</span>
-                        <div class="flex gap-2">
-                            <button onclick="suppGoPage(_suppPage-1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
-                            <button data-page="1" onclick="suppGoPage(1)" class="supp-page-btn px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
-                            <button data-page="2" onclick="suppGoPage(2)" class="supp-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
-                            <button data-page="3" onclick="suppGoPage(3)" class="supp-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">3</button>
-                            <button onclick="suppGoPage(_suppPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
-                        </div>
+                        <span id="suppPageInfo"></span>
+                        <div id="suppPagination" class="flex items-center gap-1"></div>
                     </div>
                 </div>
             </main>

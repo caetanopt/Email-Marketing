@@ -13,7 +13,7 @@ function verifyToken(email, brandId, token) {
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
-  const { brand_id, search, page = 1, limit = 50, action, email: qEmail, token } = req.query;
+  const { brand_id, search, reason, page = 1, limit = 50, action, email: qEmail, token } = req.query;
 
   // Public brand info for the unsubscribe page header (name + color only).
   if (action === 'brand_info' && brand_id) {
@@ -100,17 +100,24 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const params = [];
-      let where = '';
-      if (search) { params.push(`%${search}%`); where = `WHERE email ILIKE $1`; }
-      params.push(parseInt(limit));
-      params.push((parseInt(page) - 1) * parseInt(limit));
+      const filterParams = [];
+      const conditions = [];
+      if (search) { filterParams.push(`%${search}%`); conditions.push(`email ILIKE $${filterParams.length}`); }
+      if (reason) { filterParams.push(reason); conditions.push(`reason=$${filterParams.length}`); }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const [countResult] = await query(
+        `SELECT COUNT(*) FROM suppression ${where}`, filterParams
+      );
+      const total = parseInt(countResult.count);
+      const pageParams = [...filterParams];
+      pageParams.push(parseInt(limit));
+      pageParams.push((parseInt(page) - 1) * parseInt(limit));
       const rows = await query(
         `SELECT id, email, reason, created_at FROM suppression ${where}
-         ORDER BY created_at DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
-        params
+         ORDER BY created_at DESC LIMIT $${pageParams.length-1} OFFSET $${pageParams.length}`,
+        pageParams
       );
-      return res.status(200).json({ data: rows });
+      return res.status(200).json({ data: rows, total });
     }
 
     if (req.method === 'POST') {
