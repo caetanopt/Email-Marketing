@@ -690,6 +690,11 @@
         }
         showToast('Template apagado.');
     }
+
+    // ── Block editor state (declared here so _teExit can access them) ──
+    var _teMode = 'template';
+    var _blockReturnTo = 'blocks';
+
     function _teExit() {
         if (typeof _teMode !== 'undefined' && _teMode === 'block') {
             _teMode = 'template';
@@ -1812,9 +1817,8 @@ ${body}
     let _bsBlocksType = 'header';
     let _blocksData = { header: [], footer: [] };
     let _editingBlockId = null;
-    let _teMode = 'template';
+    // _teMode and _blockReturnTo are declared earlier (before _teExit)
     let _teBlockType = 'header';
-    let _blockReturnTo = 'blocks';
 
     async function _loadBlocks() {
         if (!_currentBrand?.id) return;
