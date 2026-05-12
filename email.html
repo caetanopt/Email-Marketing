@@ -2419,6 +2419,37 @@ ${body}
     }
 
     // ── UTM helpers ──────────────────────────────────────
+    function _wizVarsRender() {
+        const vars = _currentBrand?.variables;
+        const panel = document.getElementById('wizVarsPanel');
+        const list  = document.getElementById('wizVarsList');
+        if (!panel || !list) return;
+        if (!vars || !Object.values(vars).some(Boolean)) { panel.classList.add('hidden'); return; }
+        panel.classList.remove('hidden');
+        list.innerHTML = Object.entries(vars).filter(([,v]) => v).map(([k, v]) => {
+            const label = k.replace(/_/g,' ');
+            return `<button type="button" onclick="_wizCopyVar('${k}')"
+                title="${v.replace(/"/g,'&quot;')}"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-violet-50 hover:border-violet-300 transition-colors group">
+                <code class="text-xs font-mono text-violet-700">{{${k}}}</code>
+                <span class="text-xs text-slate-400 group-hover:text-violet-500 max-w-[120px] truncate">${label}</span>
+            </button>`;
+        }).join('');
+    }
+
+    function _wizVarsToggle() {
+        const body    = document.getElementById('wizVarsBody');
+        const chevron = document.getElementById('wizVarsChevron');
+        if (!body) return;
+        const open = body.classList.toggle('hidden');
+        chevron?.classList.toggle('rotate-180', !open);
+    }
+
+    function _wizCopyVar(key) {
+        const tag = `{{${key}}}`;
+        navigator.clipboard?.writeText(tag).then(() => showToast(`${tag} copiado.`)).catch(() => showToast(tag));
+    }
+
     function _wizUtmToggle() {
         const enabled = document.getElementById('wizUtmEnabled')?.checked;
         document.getElementById('wizUtmFields')?.classList.toggle('hidden', !enabled);
@@ -3856,6 +3887,8 @@ ${lines.join('\n')}
                 wizShowStep(1);
                 // Clear fields
                 ['wizName','wizSubject','wizPreviewText'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+                // Render brand variables reference
+                _wizVarsRender();
                 // Reset UTM fields
                 const utmEn = document.getElementById('wizUtmEnabled'); if (utmEn) { utmEn.checked = false; _wizUtmToggle(); }
                 ['wizUtmCampaign','wizUtmContent'].forEach(uid => { const el = document.getElementById(uid); if (el) { el.value = ''; delete el.dataset.edited; } });
@@ -5272,6 +5305,17 @@ ${lines.join('\n')}
                                     <svg class="w-8 h-8 text-slate-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
                                     <p class="text-xs text-slate-400">Activa o rastreio UTM para configurar<br>os parâmetros de tracking</p>
                                 </div>
+                            </div>
+                        </div>
+                        <!-- Variáveis disponíveis -->
+                        <div id="wizVarsPanel" class="hidden bg-white border border-slate-200 rounded-xl overflow-hidden">
+                            <button type="button" onclick="_wizVarsToggle()" class="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors">
+                                <span class="text-sm font-semibold text-slate-900">Variáveis disponíveis</span>
+                                <svg id="wizVarsChevron" class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="wizVarsBody" class="hidden border-t border-slate-100 px-5 py-4">
+                                <p class="text-xs text-slate-400 mb-3">Clica em qualquer variável para copiar o código para usar no template.</p>
+                                <div id="wizVarsList" class="flex flex-wrap gap-2"></div>
                             </div>
                         </div>
                     </div>
