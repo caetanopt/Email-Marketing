@@ -3825,9 +3825,8 @@ ${lines.join('\n')}
             }
             // Timeseries chart (SVG)
             _renderReportTimeseries(r.timeseries || []);
-            // Per-segment performance + comparison
+            // Per-segment performance
             _renderReportSegments(r.segments || []);
-            _renderReportCompare(r.compare || [], c.id);
             // Send log (per-recipient status)
             _loadReportSendLog(c.id);
         } catch (e) { showToast('Erro a carregar relatório: ' + e.message, 'error'); }
@@ -3906,44 +3905,6 @@ ${lines.join('\n')}
             document.getElementById('repSegBestClick').textContent  = bestClick.name  || '—';
             document.getElementById('repSegBestVolume').textContent = bestVolume.name || '—';
         }
-    }
-
-    function _renderReportCompare(rows, currentId) {
-        const body = document.getElementById('repCompareBody');
-        if (!body) return;
-        if (!rows.length) {
-            body.innerHTML = '<tr><td colspan="7" class="py-4 text-center text-slate-400">Sem campanhas anteriores.</td></tr>';
-            return;
-        }
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        // Compute reference rates from the current campaign for delta arrows
-        const cur = rows.find(r => String(r.id) === String(currentId));
-        const curOpen  = cur && cur.sent ? cur.unique_opens  / cur.sent : 0;
-        const curClick = cur && cur.sent ? cur.unique_clicks / cur.sent : 0;
-        body.innerHTML = rows.map(r => {
-            const sent = r.sent || 0;
-            const tot  = r.total_recipients || 0;
-            const delivPct = tot ? ((sent/tot)*100).toFixed(1) : '0';
-            const openPct  = sent ? ((r.unique_opens/sent)*100).toFixed(1)  : '0';
-            const clickPct = sent ? ((r.unique_clicks/sent)*100).toFixed(1) : '0';
-            const ctor     = r.unique_opens ? ((r.unique_clicks/r.unique_opens)*100).toFixed(1) : '0';
-            const isCur = String(r.id) === String(currentId);
-            const arrow = (val, ref) => isCur || !ref ? '' : (val < ref ? ' <span class="text-red-400">▼</span>' : val > ref ? ' <span class="text-emerald-500">▲</span>' : '');
-            const oArrow = arrow(sent ? r.unique_opens/sent : 0, curOpen);
-            const cArrow = arrow(sent ? r.unique_clicks/sent : 0, curClick);
-            return `<tr class="${isCur ? 'bg-blue-50/50' : ''}">
-                <td class="py-2.5 ${isCur ? 'text-slate-900 font-semibold' : 'text-slate-700'} flex items-center gap-1.5">
-                    ${isCur ? '<span class="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 inline-block"></span>' : ''}
-                    ${escHtml(r.name)}${isCur ? ' <span class="text-slate-400 font-normal">(atual)</span>' : ''}
-                </td>
-                <td class="py-2.5 text-right ${isCur ? 'text-slate-700' : 'text-slate-600'}">${sent.toLocaleString('pt-PT')}</td>
-                <td class="py-2.5 text-right ${isCur ? 'font-semibold text-green-600' : 'text-slate-600'}">${delivPct}%</td>
-                <td class="py-2.5 text-right ${isCur ? 'font-semibold text-blue-600' : 'text-slate-600'}">${openPct}%${oArrow}</td>
-                <td class="py-2.5 text-right ${isCur ? 'font-semibold text-indigo-600' : 'text-slate-600'}">${clickPct}%${cArrow}</td>
-                <td class="py-2.5 text-right ${isCur ? 'font-semibold text-violet-600' : 'text-slate-600'}">${ctor}%</td>
-                <td class="py-2.5 text-right text-slate-600">${r.unsubs || 0}</td>
-            </tr>`;
-        }).join('');
     }
 
     // Renderiza um area chart leve (SVG inline) sem libs externas.
@@ -5607,29 +5568,6 @@ ${lines.join('\n')}
                                 <p id="repSegBestVolume" class="text-xs font-semibold text-slate-900 mt-0.5">—</p>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- ── Comparação com campanhas anteriores ─── -->
-                <div class="bg-white border border-slate-200 rounded-xl p-5">
-                    <h3 class="text-sm font-semibold text-slate-900 mb-4">Comparação com campanhas anteriores</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead>
-                                <tr class="border-b border-slate-200">
-                                    <th class="pb-2 text-left font-medium text-slate-400 uppercase tracking-wide">Campanha</th>
-                                    <th class="pb-2 text-right font-medium text-slate-400 uppercase tracking-wide">Enviados</th>
-                                    <th class="pb-2 text-right font-medium text-slate-400 uppercase tracking-wide">Entrega</th>
-                                    <th class="pb-2 text-right font-medium text-slate-400 uppercase tracking-wide">Abertura</th>
-                                    <th class="pb-2 text-right font-medium text-slate-400 uppercase tracking-wide">Clique</th>
-                                    <th class="pb-2 text-right font-medium text-slate-400 uppercase tracking-wide">CTOR</th>
-                                    <th class="pb-2 text-right font-medium text-slate-400 uppercase tracking-wide">Cancelamentos</th>
-                                </tr>
-                            </thead>
-                            <tbody id="repCompareBody" class="divide-y divide-slate-50">
-                                <tr><td colspan="7" class="py-4 text-center text-slate-400">A carregar…</td></tr>
-                            </tbody>
-                        </table>
                     </div>
                 </div>
 
