@@ -566,8 +566,9 @@
                 const badge = roleBadge[m.role] || 'bg-slate-100 text-slate-600';
                 const isMe = m.id === _currentUserId;
                 const since = m.last_login ? new Date(m.last_login).toLocaleDateString('pt-PT') : '—';
+                const roleLabel = { owner:'owner', admin:'admin', editor:'editor', viewer:'Marketing Account' };
                 const roleOptions = ['owner','admin','editor','viewer'].map(r =>
-                    `<option value="${r}"${r===m.role?' selected':''}>${r}</option>`
+                    `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
@@ -6969,7 +6970,7 @@ ${lines.join('\n')}
                             <select id="inviteRoleSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
                                 <option value="admin">Admin</option>
                                 <option value="editor" selected>Editor</option>
-                                <option value="viewer">Viewer</option>
+                                <option value="viewer">Marketing Account</option>
                             </select>
                         </div>
                     </div>
@@ -7020,7 +7021,7 @@ ${lines.join('\n')}
                                 </div>
                                 <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
                                     <div class="flex items-center gap-2 mb-1.5">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Viewer</span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Marketing Account</span>
                                     </div>
                                     <p class="text-xs text-slate-600 leading-relaxed">Acesso apenas de leitura. Pode visualizar dashboards, relatórios e campanhas, mas não pode criar, editar nem eliminar nenhum conteúdo.</p>
                                 </div>
