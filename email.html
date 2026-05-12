@@ -1439,14 +1439,14 @@
                     if (b) blocks.push(b);
                 }
             });
-            return blocks.length > 0 ? blocks : null;
+            return blocks;
         } catch(e) { return null; }
     }
     function teApplyMjml(silent) {
         const code = _teEl('mjmlCode');
         if (!code) return;
         const blocks = teParseMjmlToBlocks(code.value);
-        if (!blocks) {
+        if (blocks === null) {
             if (!silent) showToast('MJML inválido ou formato não reconhecido.', 'error');
             return;
         }
