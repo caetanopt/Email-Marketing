@@ -221,6 +221,7 @@
                     <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex items-center justify-end gap-2">
+                            ${['draft','scheduled'].includes(c.status) ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
                             <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
                             <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
                         </div>
@@ -3012,6 +3013,18 @@ ${body}
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
         }
+    }
+
+    async function _deleteCampaignItem(idx) {
+        const c = window._campaignsCache?.[idx];
+        if (!c) return;
+        if (c.status === 'sent') { showToast('Não é possível apagar campanhas enviadas.', 'error'); return; }
+        if (!confirm(`Apagar a campanha "${c.name}" permanentemente?`)) return;
+        try {
+            await apiFetch(`/api/campaigns/${c.id}`, { method: 'DELETE' });
+            await _loadCampaigns(_currentBrand.id);
+            showToast('Campanha apagada.');
+        } catch(e) { showToast(e.message || 'Erro ao apagar campanha.', 'error'); }
     }
 
     let _dupCampaignData = null;
