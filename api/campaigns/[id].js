@@ -90,6 +90,107 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
+      if (action === 'report') {
+        const camp = await query('SELECT * FROM campaigns WHERE id=$1', [id]);
+        if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
+
+        const [counts] = await query(
+          `SELECT COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE status='sent')::int AS sent,
+                  COUNT(*) FILTER (WHERE status='failed')::int AS failed,
+                  COUNT(*) FILTER (WHERE status='bounced')::int AS bounced,
+                  COUNT(*) FILTER (WHERE status='suppressed')::int AS suppressed
+           FROM campaign_recipients WHERE campaign_id=$1`, [id]
+        );
+        const [opens] = await query(
+          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT contact_id)::int AS unique_count
+           FROM email_events WHERE campaign_id=$1 AND type='open'`, [id]
+        );
+        const [clicks] = await query(
+          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT contact_id)::int AS unique_count
+           FROM email_events WHERE campaign_id=$1 AND type='click'`, [id]
+        );
+        const [unsubs] = await query(
+          "SELECT COUNT(*)::int AS total FROM email_events WHERE campaign_id=$1 AND type='unsubscribe'", [id]
+        );
+        const [spam] = await query(
+          "SELECT COUNT(*)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
+        );
+        const top_links = await query(
+          `SELECT url, COUNT(*)::int AS clicks, COUNT(DISTINCT contact_id)::int AS unique_clicks
+           FROM email_events WHERE campaign_id=$1 AND type='click' AND url IS NOT NULL
+           GROUP BY url ORDER BY clicks DESC LIMIT 10`, [id]
+        );
+        const timeseries = await query(
+          `SELECT date_trunc('hour', created_at) AS bucket,
+                  COUNT(*) FILTER (WHERE type='open')::int AS opens,
+                  COUNT(*) FILTER (WHERE type='click')::int AS clicks
+           FROM email_events
+           WHERE campaign_id=$1 AND type IN ('open','click')
+           GROUP BY bucket ORDER BY bucket LIMIT 168`, [id]
+        );
+        const segments = await query(
+          `SELECT l.id, l.name,
+                  COUNT(DISTINCT cr.contact_id)::int AS sent,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS opens,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS clicks
+           FROM campaign_lists cl
+           JOIN lists l ON l.id = cl.list_id
+           JOIN list_members lm ON lm.list_id = l.id
+           JOIN campaign_recipients cr ON cr.campaign_id = cl.campaign_id AND cr.contact_id = lm.contact_id AND cr.status='sent'
+           LEFT JOIN email_events ee ON ee.campaign_id = cl.campaign_id AND ee.contact_id = lm.contact_id
+           WHERE cl.campaign_id = $1
+           GROUP BY l.id, l.name
+           ORDER BY sent DESC`, [id]
+        );
+        const compare = await query(
+          `WITH last_camps AS (
+             SELECT id, name, sent_at
+             FROM campaigns
+             WHERE brand_id = $1 AND status = 'sent'
+             ORDER BY sent_at DESC NULLS LAST LIMIT 5
+           )
+           SELECT lc.id, lc.name, lc.sent_at,
+                  COUNT(cr.*) FILTER (WHERE cr.status='sent')::int AS sent,
+                  COUNT(cr.*)::int AS total_recipients,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS unique_opens,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
+                  COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+           FROM last_camps lc
+           LEFT JOIN campaign_recipients cr ON cr.campaign_id = lc.id
+           LEFT JOIN email_events ee ON ee.campaign_id = lc.id
+           GROUP BY lc.id, lc.name, lc.sent_at
+           ORDER BY lc.sent_at DESC NULLS LAST`,
+          [camp[0].brand_id]
+        );
+
+        const delivered = counts?.sent || 0;
+        const openUniq  = opens?.unique_count || 0;
+        const clickUniq = clicks?.unique_count || 0;
+
+        return res.status(200).json({
+          campaign: camp[0],
+          delivery: {
+            total: counts?.total||0, sent: delivered,
+            failed: counts?.failed||0, bounced: counts?.bounced||0, suppressed: counts?.suppressed||0,
+            delivery_rate: delivered && counts?.total ? ((delivered/counts.total)*100).toFixed(1) : 0,
+          },
+          engagement: {
+            opens: opens?.total||0, unique_opens: openUniq,
+            clicks: clicks?.total||0, unique_clicks: clickUniq,
+            open_rate:  delivered ? ((openUniq/delivered)*100).toFixed(1) : 0,
+            click_rate: delivered ? ((clickUniq/delivered)*100).toFixed(1) : 0,
+            ctor:       openUniq  ? ((clickUniq/openUniq)*100).toFixed(1)  : 0,
+            unsubscribes: unsubs?.total||0,
+            spam_complaints: spam?.total||0,
+          },
+          top_links,
+          timeseries,
+          segments,
+          compare,
+        });
+      }
+
       const rows = await query(
         `SELECT c.*, t.html_content, t.name AS template_name
          FROM campaigns c LEFT JOIN templates t ON t.id=c.template_id WHERE c.id=$1`, [id]
@@ -366,109 +467,6 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // ── Relatório ────────────────────────────────────
-      if (action === 'report') {
-        const camp = await query('SELECT * FROM campaigns WHERE id=$1', [id]);
-        if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
-
-        const [counts] = await query(
-          `SELECT COUNT(*)::int AS total,
-                  COUNT(*) FILTER (WHERE status='sent')::int AS sent,
-                  COUNT(*) FILTER (WHERE status='failed')::int AS failed,
-                  COUNT(*) FILTER (WHERE status='bounced')::int AS bounced,
-                  COUNT(*) FILTER (WHERE status='suppressed')::int AS suppressed
-           FROM campaign_recipients WHERE campaign_id=$1`, [id]
-        );
-        const [opens] = await query(
-          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT contact_id)::int AS unique_count
-           FROM email_events WHERE campaign_id=$1 AND type='open'`, [id]
-        );
-        const [clicks] = await query(
-          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT contact_id)::int AS unique_count
-           FROM email_events WHERE campaign_id=$1 AND type='click'`, [id]
-        );
-        const [unsubs] = await query(
-          "SELECT COUNT(*)::int AS total FROM email_events WHERE campaign_id=$1 AND type='unsubscribe'", [id]
-        );
-        const [spam] = await query(
-          "SELECT COUNT(*)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
-        );
-        const top_links = await query(
-          `SELECT url, COUNT(*)::int AS clicks, COUNT(DISTINCT contact_id)::int AS unique_clicks
-           FROM email_events WHERE campaign_id=$1 AND type='click' AND url IS NOT NULL
-           GROUP BY url ORDER BY clicks DESC LIMIT 10`, [id]
-        );
-        const timeseries = await query(
-          `SELECT date_trunc('hour', created_at) AS bucket,
-                  COUNT(*) FILTER (WHERE type='open')::int AS opens,
-                  COUNT(*) FILTER (WHERE type='click')::int AS clicks
-           FROM email_events
-           WHERE campaign_id=$1 AND type IN ('open','click')
-           GROUP BY bucket ORDER BY bucket LIMIT 168`, [id]
-        );
-        // Per-list (segment) performance
-        const segments = await query(
-          `SELECT l.id, l.name,
-                  COUNT(DISTINCT cr.contact_id)::int AS sent,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS opens,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS clicks
-           FROM campaign_lists cl
-           JOIN lists l ON l.id = cl.list_id
-           JOIN list_members lm ON lm.list_id = l.id
-           JOIN campaign_recipients cr ON cr.campaign_id = cl.campaign_id AND cr.contact_id = lm.contact_id AND cr.status='sent'
-           LEFT JOIN email_events ee ON ee.campaign_id = cl.campaign_id AND ee.contact_id = lm.contact_id
-           WHERE cl.campaign_id = $1
-           GROUP BY l.id, l.name
-           ORDER BY sent DESC`, [id]
-        );
-        // Comparison with previous sent campaigns from same brand (last 5 incl current)
-        const compare = await query(
-          `WITH last_camps AS (
-             SELECT id, name, sent_at
-             FROM campaigns
-             WHERE brand_id = $1 AND status = 'sent'
-             ORDER BY sent_at DESC NULLS LAST LIMIT 5
-           )
-           SELECT lc.id, lc.name, lc.sent_at,
-                  COUNT(cr.*) FILTER (WHERE cr.status='sent')::int AS sent,
-                  COUNT(cr.*)::int AS total_recipients,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS unique_opens,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
-                  COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
-           FROM last_camps lc
-           LEFT JOIN campaign_recipients cr ON cr.campaign_id = lc.id
-           LEFT JOIN email_events ee ON ee.campaign_id = lc.id
-           GROUP BY lc.id, lc.name, lc.sent_at
-           ORDER BY lc.sent_at DESC NULLS LAST`,
-          [camp[0].brand_id]
-        );
-
-        const delivered = counts?.sent || 0;
-        const openUniq  = opens?.unique_count || 0;
-        const clickUniq = clicks?.unique_count || 0;
-
-        return res.status(200).json({
-          campaign: camp[0],
-          delivery: {
-            total: counts?.total||0, sent: delivered,
-            failed: counts?.failed||0, bounced: counts?.bounced||0, suppressed: counts?.suppressed||0,
-            delivery_rate: delivered && counts?.total ? ((delivered/counts.total)*100).toFixed(1) : 0,
-          },
-          engagement: {
-            opens: opens?.total||0, unique_opens: openUniq,
-            clicks: clicks?.total||0, unique_clicks: clickUniq,
-            open_rate:  delivered ? ((openUniq/delivered)*100).toFixed(1) : 0,
-            click_rate: delivered ? ((clickUniq/delivered)*100).toFixed(1) : 0,
-            ctor:       openUniq  ? ((clickUniq/openUniq)*100).toFixed(1)  : 0,
-            unsubscribes: unsubs?.total||0,
-            spam_complaints: spam?.total||0,
-          },
-          top_links,
-          timeseries,
-          segments,
-          compare,
-        });
-      }
     }
 
     res.status(405).json({ error: 'Método não permitido' });
