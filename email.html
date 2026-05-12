@@ -3732,6 +3732,9 @@ ${lines.join('\n')}
 </template>
 
 <script>
+    // Screens that have already loaded data for the current brand
+    const _screenLoaded = new Set();
+
     function showScreen(id) {
         const _currentScreen = document.querySelector('.screen.active')?.id;
         if (_currentScreen === 'templateEdit' && id !== 'templateEdit' && _teDirty) {
@@ -3740,7 +3743,8 @@ ${lines.join('\n')}
             if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
             return;
         }
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        // Remove fade-in from all screens so re-navigation never triggers the opacity-0 flash
+        document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.classList.remove('fade-in'); });
         const screen = document.getElementById(id);
         if (screen) {
             screen.classList.add('active');
@@ -3799,8 +3803,8 @@ ${lines.join('\n')}
                 if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
             }
             // Roles info panel: only visible to owner / admin / administrador
-            if (id === 'team') { _syncRolesPanel(); _loadTeamMembers(); }
-            // Load campaign report when entering report screen
+            if (id === 'team' && !_screenLoaded.has('team')) { _syncRolesPanel(); _loadTeamMembers(); _screenLoaded.add('team'); }
+            // Load campaign report when entering report screen (always reload — report is campaign-specific)
             if (id === 'campaignReport') {
                 _loadCampaignReport();
                 if (!_historyNav && _currentCampaign?.id) {
@@ -3809,11 +3813,11 @@ ${lines.join('\n')}
                 }
             }
             // Load brand settings when entering settings screen
-            if (id === 'brandSettings') _loadBrandSettings();
-            if (id === 'blocks') _loadBlocks();
-            if (id === 'media') _loadMedia();
+            if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
+            if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
+            if (id === 'media' && !_screenLoaded.has('media')) { _loadMedia(); _screenLoaded.add('media'); }
             // Load lists into import select
-            if (id === 'imports') { _loadImportLists(); _loadImportHistory(); }
+            if (id === 'imports' && !_screenLoaded.has('imports')) { _loadImportLists(); _loadImportHistory(); _screenLoaded.add('imports'); }
             // Push history state (skip for screens that manage their own hash and for popstate navigation)
             if (!_historyNav && !_SCREENS_CUSTOM_ROUTE.has(id)) {
                 const route = _SCREEN_TO_ROUTE[id];
@@ -4469,6 +4473,9 @@ ${lines.join('\n')}
             const active = btn.getAttribute('data-range') === '30d';
             btn.className = `dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
         });
+
+        // Clear screen cache — brand changed, all screens need fresh data
+        _screenLoaded.clear();
 
         // Load all sections in parallel
         await Promise.all([
