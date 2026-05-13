@@ -144,7 +144,7 @@
     async function _saveUserProfile() {
         const sel = document.getElementById('upDefaultBrand');
         if (!sel) return;
-        const brandId = sel.value ? parseInt(sel.value) : null;
+        const brandId = sel.value || null;
         try {
             await apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify({ default_brand_id: brandId }) });
             // Update cached user
