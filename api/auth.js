@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
 
     try {
       const rows = await query(
-        'SELECT id, name, email, password_hash, active FROM users WHERE email = $1',
+        'SELECT id, name, email, password_hash, active, default_brand_id FROM users WHERE email = $1',
         [email.toLowerCase().trim()]
       );
       const user = rows[0];
@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
       const token = signToken({ id: user.id, email: user.email, name: user.name });
       return res.status(200).json({
         token,
-        user: { id: user.id, name: user.name, email: user.email },
+        user: { id: user.id, name: user.name, email: user.email, default_brand_id: user.default_brand_id || null },
         brands,
       });
     } catch (err) {
@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
 
     try {
       const users = await query(
-        'SELECT id, name, email, created_at, last_login FROM users WHERE id = $1', [user.id]
+        'SELECT id, name, email, default_brand_id, created_at, last_login FROM users WHERE id = $1', [user.id]
       );
       if (!users[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
 
@@ -57,6 +57,22 @@ module.exports = async function handler(req, res) {
         [user.id]
       );
       return res.status(200).json({ user: users[0], brands });
+    } catch (err) {
+      return res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    }
+  }
+
+  // PUT — update user profile (default_brand_id, name)
+  if (req.method === 'PUT') {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const { default_brand_id } = req.body || {};
+    try {
+      await query(
+        'UPDATE users SET default_brand_id = $1 WHERE id = $2',
+        [default_brand_id || null, user.id]
+      );
+      return res.status(200).json({ ok: true });
     } catch (err) {
       return res.status(500).json({ error: 'Erro de servidor', detail: err.message });
     }

@@ -123,12 +123,47 @@
             localStorage.setItem('pm_brands', JSON.stringify(data.brands));
             _userBrandIds = new Set(data.brands.map(b => b.brand_id));
             renderBrandSelect();
-            showScreen('brandSelect');
+            _goToDefaultBrandOrSelect();
         } catch (e) {
             if (err) { err.textContent = e.message; err.classList.remove('hidden'); }
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
         }
+    }
+
+    function _goToDefaultBrandOrSelect() {
+        const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+        const defId = _u.default_brand_id;
+        if (defId) {
+            const b = _allBrands.find(x => x.id === defId);
+            if (b) { selectBrand(b.id, b.name, b.color); return; }
+        }
+        showScreen('brandSelect');
+    }
+
+    async function _saveUserProfile() {
+        const sel = document.getElementById('upDefaultBrand');
+        if (!sel) return;
+        const brandId = sel.value ? parseInt(sel.value) : null;
+        try {
+            await apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify({ default_brand_id: brandId }) });
+            // Update cached user
+            const u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+            u.default_brand_id = brandId;
+            localStorage.setItem('pm_user', JSON.stringify(u));
+            showToast('Perfil guardado.');
+        } catch(e) { showToast(e.message || 'Erro ao guardar.', 'error'); }
+    }
+
+    function _loadUserProfile() {
+        const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+        const nameEl = document.getElementById('upName'); if (nameEl) nameEl.textContent = _u.name || '—';
+        const emailEl = document.getElementById('upEmail'); if (emailEl) emailEl.textContent = _u.email || '—';
+        const sel = document.getElementById('upDefaultBrand');
+        if (!sel) return;
+        const visible = _userBrandIds.size > 0 ? _allBrands.filter(b => _userBrandIds.has(b.id)) : _allBrands;
+        sel.innerHTML = `<option value="">— Mostrar seletor de marca —</option>` +
+            visible.map(b => `<option value="${b.id}"${b.id === _u.default_brand_id ? ' selected' : ''}>${b.name}</option>`).join('');
     }
 
     function doLogout() {
@@ -3912,11 +3947,13 @@ ${lines.join('\n')}
         </nav>
         <div class="px-4 py-4 border-t border-white/10">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-white/15 text-white text-xs font-semibold flex items-center justify-center">A</div>
-                <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-white truncate">Administrador</p>
-                    <p class="text-xs text-white/45 truncate">admin@caetano.pt</p>
-                </div>
+                <button onclick="showScreen('userProfile')" class="flex items-center gap-3 min-w-0 flex-1 text-left hover:opacity-80 transition-opacity">
+                    <div class="w-8 h-8 rounded-full bg-white/15 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0">A</div>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-medium text-white truncate">Administrador</p>
+                        <p class="text-xs text-white/45 truncate">admin@caetano.pt</p>
+                    </div>
+                </button>
                 <button onclick="toggleTheme()" id="themeToggleBtn" title="Alternar tema claro/escuro" class="text-white/40 hover:text-white transition-colors">
                     <svg class="w-5 h-5 theme-icon-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
                     <svg class="w-5 h-5 theme-icon-dark hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -4002,6 +4039,8 @@ ${lines.join('\n')}
                 const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                 if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
             }
+            // User profile screen — always reload (not brand-specific)
+            if (id === 'userProfile') _loadUserProfile();
             // SES quota widget — load once per brand session
             if (id === 'campaigns' && !_screenLoaded.has('sesQuota')) { _loadSesQuota(); _screenLoaded.add('sesQuota'); }
             // Roles info panel: only visible to owner / admin / administrador
@@ -4735,7 +4774,7 @@ ${lines.join('\n')}
                 renderBrandData(savedBrand.id);
                 showScreen(hashScreen);
             } else {
-                showScreen('brandSelect');
+                _goToDefaultBrandOrSelect();
             }
         } else if (DEV_BYPASS_LOGIN) {
             // Modo de testes: autentica automaticamente com as credenciais hardcoded
@@ -4747,7 +4786,7 @@ ${lines.join('\n')}
                     localStorage.setItem('pm_brands', JSON.stringify(data.brands));
                     _userBrandIds = new Set(data.brands.map(b => b.brand_id));
                     renderBrandSelect();
-                    showScreen('brandSelect');
+                    _goToDefaultBrandOrSelect();
                 } catch (err) {
                     console.error('DEV_BYPASS_LOGIN falhou:', err);
                     showToast('Auto-login falhou — verifica DEV_BYPASS_EMAIL/PASSWORD.', 'error');
@@ -7451,6 +7490,51 @@ ${lines.join('\n')}
                             <button onclick="listEditGoPage(_listEditPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
                         </div>
                     </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ECRÃ — PERFIL DO UTILIZADOR
+═══════════════════════════════════════════════════════════════════ -->
+<div id="userProfile" class="screen fade-in">
+    <div class="min-h-screen bg-slate-50 flex">
+        <div data-sidebar-slot></div>
+        <div class="flex-1 ml-64 flex flex-col min-h-screen">
+            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
+                <h1 class="text-xl font-semibold text-slate-900">O Meu Perfil</h1>
+            </header>
+            <main class="flex-1 px-8 py-8 max-w-2xl">
+                <!-- Info -->
+                <div class="bg-white border border-slate-200 rounded-xl p-6 mb-6">
+                    <h2 class="text-sm font-semibold text-slate-900 mb-4">Informação da conta</h2>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-14 h-14 rounded-full bg-slate-900 text-white text-xl font-bold flex items-center justify-center flex-shrink-0">A</div>
+                        <div>
+                            <p id="upName" class="text-base font-semibold text-slate-900">—</p>
+                            <p id="upEmail" class="text-sm text-slate-500">—</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Marca por defeito -->
+                <div class="bg-white border border-slate-200 rounded-xl p-6 mb-6">
+                    <h2 class="text-sm font-semibold text-slate-900 mb-1">Marca por defeito</h2>
+                    <p class="text-xs text-slate-400 mb-4">Ao fazer login esta marca é seleccionada automaticamente, saltando o ecrã de selecção.</p>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Marca de entrada</label>
+                            <select id="upDefaultBrand" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                <option value="">— Mostrar seletor de marca —</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button onclick="_saveUserProfile()" class="px-5 py-2.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 font-medium">Guardar alterações</button>
                 </div>
             </main>
         </div>
