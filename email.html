@@ -1760,15 +1760,6 @@ ${body}
     // ── Lists ─────────────────────────────────────────────
     let _editingListName = '';
 
-    function mockShowNewListModal() {
-        const inp = document.getElementById('newListNameInput');
-        const desc = document.getElementById('newListDescInput');
-        if (inp) inp.value = '';
-        if (desc) desc.value = '';
-        const m = document.getElementById('newListModal');
-        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
-    }
-
     function closeNewListModal() {
         const m = document.getElementById('newListModal');
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
@@ -3887,8 +3878,10 @@ ${lines.join('\n')}
     <option value="imports">Importações</option>
     <option value="media">Multimédia</option>
     <option value="suppression">Supressão</option>
+    <option value="statistics">Estatísticas</option>
     <option value="team">Equipa</option>
     <option value="brandSettings">Definições da Marca</option>
+    <option value="userProfile">Perfil</option>
     <option value="unsubscribe">Unsubscribe (público)</option>
 </select>
 
@@ -5163,31 +5156,6 @@ ${lines.join('\n')}
             showToast('Erro: ' + e.message, 'error');
             return;
         }
-    }
-
-    function selectListMode(mode) {
-        const isNew = mode === 'new';
-        const cardExisting  = document.getElementById('card-existing');
-        const cardNew       = document.getElementById('card-new');
-        const inputExisting = document.getElementById('existing-input');
-        const inputNew      = document.getElementById('new-list-input');
-        if (!cardExisting) return;
-
-        const tick = '<svg class="absolute top-3 right-3 w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
-
-        if (isNew) {
-            cardNew.className      = 'relative text-left p-4 rounded-xl border-2 border-indigo-600 bg-indigo-600 transition-all';
-            cardNew.innerHTML      = '<span class="block text-sm font-semibold mb-0.5 text-white">Criar nova lista</span><span class="block text-xs text-indigo-200">Cria a lista e importa em simultâneo</span>' + tick.replace('class="absolute', 'class="absolute text-indigo-200');
-            cardExisting.className = 'relative text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-slate-400';
-            cardExisting.innerHTML = '<span class="block text-sm font-semibold mb-0.5 text-slate-900">Lista existente</span><span class="block text-xs text-slate-400">Seleccionar de entre as listas criadas</span>';
-        } else {
-            cardExisting.className = 'relative text-left p-4 rounded-xl border-2 border-slate-900 bg-slate-900 transition-all';
-            cardExisting.innerHTML = '<span class="block text-sm font-semibold mb-0.5 text-white">Lista existente</span><span class="block text-xs text-slate-300">Seleccionar de entre as listas criadas</span>' + tick.replace('class="absolute', 'class="absolute text-slate-300');
-            cardNew.className      = 'relative text-left p-4 rounded-xl border-2 border-slate-200 bg-white transition-all cursor-pointer hover:border-indigo-300';
-            cardNew.innerHTML      = '<span class="block text-sm font-semibold mb-0.5 text-slate-900">Criar nova lista</span><span class="block text-xs text-slate-400">Cria a lista e importa em simultâneo</span>';
-        }
-        inputExisting.classList.toggle('hidden', isNew);
-        inputNew.classList.toggle('hidden', !isNew);
     }
 
     function setImportTab(tab) {

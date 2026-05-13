@@ -47,7 +47,7 @@ module.exports = async function handler(req, res) {
           COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
        FROM brands b
        JOIN user_brand_roles ubr ON ubr.brand_id=b.id AND ubr.user_id=$${params.length+1}
-       LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause.replace('$1', `$${params.length+2}`)}
+       LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause}
        LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
        LEFT JOIN email_events ee ON ee.campaign_id=c.id
        WHERE b.active=TRUE
