@@ -2800,7 +2800,7 @@ ${body}
             if (s < 4) { const ln = document.getElementById('wizLine'+s); if (ln) ln.className='w-full h-0.5 '+(s<step?'bg-green-400':'bg-slate-200'); }
         });
         if (step === 2) _wizInitPreview();
-        const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Criar Campanha' : 'Seguinte →';
+        const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Confirmar' : 'Seguinte →';
         const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.display = step===1 ? 'none' : '';
         const navBar = document.getElementById('wizNavBar');
         if (navBar) navBar.className='flex items-center justify-between pt-5 '+(step===1||step===2?'':'max-w-2xl');
@@ -6375,16 +6375,10 @@ ${lines.join('\n')}
                     </div><!-- /wizStep4 -->
 
                     <!-- Navegação -->
-                    <div id="wizNavBar" class="flex items-center justify-between pt-5 max-w-2xl">
-                        <div class="flex items-center gap-3">
-                            <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="display:none" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
-                            <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
-                            <button onclick="showScreen('campaigns')" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
-                        </div>
-                        <button onclick="wizSaveDraft()" class="flex items-center gap-2 px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-                            Guardar Rascunho
-                        </button>
+                    <div id="wizNavBar" class="flex items-center gap-3 pt-5 max-w-2xl">
+                        <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="display:none" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
+                        <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
+                        <button onclick="showScreen('campaigns')" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
                     </div>
 
                 </div>
