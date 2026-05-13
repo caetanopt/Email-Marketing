@@ -92,9 +92,22 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) });
     }
 
+    // ── Sync suppression: mark contacts already in suppression list ──
+    if (action === 'sync_suppression' && req.method === 'POST') {
+      await query(
+        `UPDATE contacts c
+         SET status = CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' ELSE 'suppressed' END
+         FROM suppression s
+         WHERE c.email = s.email AND c.brand_id = $1 AND c.status = 'active'`,
+        [brand_id]
+      );
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === 'POST') {
       const { email, name, phone, company, source, custom_attributes } = req.body || {};
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
+      const e = email.toLowerCase().trim();
 
       const rows = await query(
         `INSERT INTO contacts (brand_id, email, name, phone, company, source, custom_attributes)
@@ -104,10 +117,16 @@ module.exports = async function handler(req, res) {
                source=EXCLUDED.source, custom_attributes=EXCLUDED.custom_attributes,
                updated_at=NOW()
          RETURNING id`,
-        [brand_id, email.toLowerCase().trim(), name||null, phone||null,
+        [brand_id, e, name||null, phone||null,
          company||null, source||null, custom_attributes ? JSON.stringify(custom_attributes) : null]
       );
-      return res.status(201).json({ id: rows[0].id, email });
+      // Immediately mark as suppressed/unsubscribed if in suppression list
+      await query(
+        `UPDATE contacts SET status = CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' ELSE 'suppressed' END
+         FROM suppression s WHERE contacts.id=$1 AND contacts.email=s.email`,
+        [rows[0].id]
+      );
+      return res.status(201).json({ id: rows[0].id, email: e });
     }
 
     res.status(405).json({ error: 'Método não permitido' });
