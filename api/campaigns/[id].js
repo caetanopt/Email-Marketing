@@ -248,9 +248,9 @@ module.exports = async function handler(req, res) {
           [contact_ids, camp.brand_id]
         );
         if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
-        const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
+        const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3},'pending')`).join(',');
         await query(
-          `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT DO NOTHING`,
+          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status) VALUES ${vals} ON CONFLICT DO NOTHING`,
           contacts.flatMap(ct => [id, ct.id, ct.email])
         );
         return res.status(200).json({ ok: true, added: contacts.length });

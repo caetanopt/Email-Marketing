@@ -2981,6 +2981,7 @@ ${body}
     }
 
     async function mockCampaignNext() {
+        if (_wizSubmitting) return;
         if (_wizStep === 1) {
             const name      = document.getElementById('wizName')?.value.trim();
             const subj      = document.getElementById('wizSubject')?.value.trim();
@@ -3021,6 +3022,7 @@ ${body}
                 scheduled_at = `${d}T${t}:00`;
             }
             try {
+                _wizSubmitting = true;
                 // Auto-save template from wizard step 2 if blocks were added/edited
                 let templateId = _editingCampaignId ? (_editingTemplateId || null) : null;
                 if (teState.blocks.length) {
@@ -3034,6 +3036,7 @@ ${body}
                 const utm_params = _wizGetUtmParams();
 
                 let campaignId;
+                const wasEditing = !!_editingCampaignId;
                 if (_editingCampaignId) {
                     // Editing existing draft — PUT
                     await apiFetch(`/api/campaigns/${_editingCampaignId}`, {
@@ -3059,9 +3062,9 @@ ${body}
                             method: 'POST',
                             body: JSON.stringify({ contact_ids: _wizDirectContactIds })
                         });
+                        _wizDirectContactIds = [];
+                        _wizUpdateDirectNotice();
                     } catch (e) { console.error('add_direct_recipients:', e); }
-                    _wizDirectContactIds = [];
-                    _wizUpdateDirectNotice();
                 }
 
                 if (sendType === 'now' && campaignId) {
@@ -3082,12 +3085,13 @@ ${body}
                 } else if (sendType === 'schedule') {
                     showToast('Campanha agendada!');
                 } else {
-                    showToast(_editingCampaignId ? 'Campanha guardada.' : 'Rascunho guardado.');
+                    showToast(wasEditing ? 'Campanha guardada.' : 'Rascunho guardado.');
                 }
                 showScreen('campaigns');
                 wizShowStep(1);
                 _loadCampaigns(_currentBrand.id);
             } catch (e) { showToast(e.message, 'error'); }
+            finally { _wizSubmitting = false; }
         }
     }
     function mockCampaignPrev() { if (_wizStep > 1) wizShowStep(_wizStep - 1); }
@@ -3096,7 +3100,11 @@ ${body}
         const subject = document.getElementById('wizSubject')?.value.trim();
         if (!name) { showScreen('campaigns'); return; }
         try {
-            await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name, subject }) });
+            if (_editingCampaignId) {
+                await apiFetch(`/api/campaigns/${_editingCampaignId}`, { method: 'PUT', body: JSON.stringify({ name, subject }) });
+            } else {
+                await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name, subject }) });
+            }
             _loadCampaigns(_currentBrand.id);
         } catch (err) { console.error(err); showToast('Não foi possível guardar o rascunho: ' + (err.message||''), 'error'); }
         showScreen('campaigns');
@@ -3119,6 +3127,7 @@ ${body}
     let _wizImportFiles = { csv: null, txt: null };
     let _wizDirectContactIds = [];
     let _wizExistingDirectCount = 0;
+    let _wizSubmitting = false;
 
     function _wizPickFile(type) {
         const inp = document.createElement('input');
