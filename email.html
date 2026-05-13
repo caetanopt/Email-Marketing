@@ -2816,7 +2816,9 @@ ${body}
             const schedTime = document.getElementById('wizScheduleTime')?.value || '';
             const checkedLists = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'));
             const listsText = checkedLists.length ? checkedLists.map(cb => cb.closest('label')?.querySelector('p')?.textContent || '').filter(Boolean).join(', ') : 'Nenhuma';
-            const totalContacts = checkedLists.reduce((s, cb) => s + (parseInt(cb.dataset.contacts)||0), 0);
+            const listContactsTotal = checkedLists.reduce((s, cb) => s + (parseInt(cb.dataset.contacts)||0), 0);
+            const directTotal = _wizExistingDirectCount + _wizDirectContactIds.length;
+            const totalContacts = listContactsTotal + directTotal;
             const tplName = teState.blocks.length ? `${teState.blocks.length} bloco(s)` : 'Nenhum';
             let sendLabel = sendType === 'now' ? 'Enviar agora' : sendType === 'schedule' ? `Agendar: ${schedDate} ${schedTime}` : 'Guardar como rascunho';
             const rev = document.getElementById('wizReviewContent');
@@ -2829,6 +2831,42 @@ ${body}
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Estimativa</dt><dd class="text-slate-900">${totalContacts.toLocaleString('pt-PT')} contactos</dd></div>
                 <div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Envio</dt><dd class="font-medium text-slate-900">${sendLabel}</dd></div>
             </dl>`;
+
+            // Right panel: recipients breakdown
+            const recipPanel = document.getElementById('wizRevRecipients');
+            if (recipPanel) {
+                const rows = [];
+                checkedLists.forEach(cb => {
+                    const label = cb.closest('label');
+                    const lname = label?.querySelector('p.font-medium')?.textContent || label?.querySelector('p')?.textContent || '—';
+                    const cnt = parseInt(cb.dataset.contacts) || 0;
+                    rows.push(`<div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            <span class="text-xs text-slate-700 truncate">${escHtml(lname.split('\n')[0].trim())}</span>
+                        </div>
+                        <span class="text-xs font-semibold text-slate-500 ml-2 flex-shrink-0">${cnt.toLocaleString('pt-PT')}</span>
+                    </div>`);
+                });
+                if (directTotal > 0) {
+                    rows.push(`<div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <svg class="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                            <span class="text-xs text-indigo-600 truncate">Importados directamente</span>
+                        </div>
+                        <span class="text-xs font-semibold text-indigo-500 ml-2 flex-shrink-0">${directTotal.toLocaleString('pt-PT')}</span>
+                    </div>`);
+                }
+                if (!rows.length) {
+                    recipPanel.innerHTML = '<p class="text-xs text-slate-400 py-2 text-center">Sem destinatários definidos.</p>';
+                } else {
+                    recipPanel.innerHTML = rows.join('') + `<div class="flex items-center justify-between pt-3 mt-1">
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Total estimado</span>
+                        <span class="text-sm font-bold text-slate-900">${totalContacts.toLocaleString('pt-PT')}</span>
+                    </div>`;
+                }
+            }
+
             _wizRevUtmRender();
             // Render email preview from current teState.blocks
             const previewBox = document.getElementById('wizPreviewBox');
@@ -6231,7 +6269,10 @@ ${lines.join('\n')}
                     </div>
 
                     <!-- Passo 4: Revisão e Envio -->
-                    <div id="wizStep4" class="hidden space-y-4 max-w-2xl">
+                    <div id="wizStep4" class="hidden">
+                        <div class="flex gap-6 items-start">
+                        <!-- Coluna principal -->
+                        <div class="flex-1 min-w-0 space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
@@ -6316,7 +6357,22 @@ ${lines.join('\n')}
                                 </label>
                             </div>
                         </div>
-                    </div>
+                        </div><!-- /coluna principal -->
+
+                        <!-- Coluna direita: destinatários -->
+                        <div class="w-64 flex-shrink-0 sticky top-4">
+                            <div class="bg-white border border-slate-200 rounded-xl p-5">
+                                <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                    Destinatários
+                                </h3>
+                                <div id="wizRevRecipients" class="max-h-96 overflow-y-auto">
+                                    <p class="text-xs text-slate-400 py-2 text-center">—</p>
+                                </div>
+                            </div>
+                        </div>
+                        </div><!-- /flex row -->
+                    </div><!-- /wizStep4 -->
 
                     <!-- Navegação -->
                     <div id="wizNavBar" class="flex items-center justify-between pt-5 max-w-2xl">
