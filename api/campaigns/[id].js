@@ -234,6 +234,24 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
 
+      // ── Adicionar destinatários directos (sem lista) ────────────
+      if (action === 'add_direct_recipients') {
+        const { contact_ids } = req.body || {};
+        if (!Array.isArray(contact_ids) || !contact_ids.length)
+          return res.status(400).json({ error: 'contact_ids obrigatório' });
+        const contacts = await query(
+          `SELECT id, email FROM contacts WHERE id = ANY($1::int[]) AND brand_id=$2`,
+          [contact_ids, camp.brand_id]
+        );
+        if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
+        const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
+        await query(
+          `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT DO NOTHING`,
+          contacts.flatMap(ct => [id, ct.id, ct.email])
+        );
+        return res.status(200).json({ ok: true, added: contacts.length });
+      }
+
       // ── Enviar campanha ──────────────────────────────
       if (action === 'send') {
         const camp = await query(
@@ -248,7 +266,8 @@ module.exports = async function handler(req, res) {
         if (camp[0].status === 'sent')
           return res.status(400).json({ error: 'Campanha já foi enviada.' });
 
-        const contacts = await query(
+        // Contacts from lists
+        const listContacts = await query(
           `SELECT DISTINCT c.id, c.email, c.name
            FROM contacts c
            JOIN list_members lm ON lm.contact_id=c.id
@@ -257,27 +276,32 @@ module.exports = async function handler(req, res) {
              AND c.email NOT IN (SELECT email FROM suppression)`,
           [id, camp[0].brand_id]
         );
-        if (!contacts.length) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas com contactos activos.' });
-
-        await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
-
-        if (contacts.length) {
-          const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
+        if (listContacts.length) {
+          const vals = listContacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
           await query(
             `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT DO NOTHING`,
-            contacts.flatMap(ct => [id, ct.id, ct.email])
+            listContacts.flatMap(ct => [id, ct.id, ct.email])
           );
         }
+
+        // Count total pending (lists + direct imports)
+        const [{ total }] = await query(
+          `SELECT COUNT(*)::int AS total FROM campaign_recipients WHERE campaign_id=$1 AND status='pending'`,
+          [id]
+        );
+        if (!total) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas ou contactos importados directamente.' });
+
+        await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
 
         try {
           await query(
             `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
              VALUES ($1,$2,$3,'campaign_started',$4)`,
-            [camp[0].brand_id, id, `${contacts.length} destinatários`, user.id]
+            [camp[0].brand_id, id, `${total} destinatários`, user.id]
           );
         } catch (err) { if (err.code !== '42P01') console.error('send log start:', err); }
 
-        return res.status(200).json({ ok: true, total: contacts.length, queued: true });
+        return res.status(200).json({ ok: true, total, queued: true });
       }
 
       // ── Enviar batch (chamado repetidamente pelo frontend) ──────

@@ -2960,7 +2960,7 @@ ${body}
         }
         if (_wizStep === 3) {
             const checked = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
-            if (!checked.length) {
+            if (!checked.length && !_wizDirectContactIds.length) {
                 _wizRecipTab('lists');
                 const err = document.getElementById('wizListsError');
                 if (err) err.classList.remove('hidden');
@@ -3012,6 +3012,18 @@ ${body}
                         body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params })
                     });
                     campaignId = res.id;
+                }
+
+                // Add direct imported contacts (if any)
+                if (_wizDirectContactIds.length && campaignId) {
+                    try {
+                        await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
+                            method: 'POST',
+                            body: JSON.stringify({ contact_ids: _wizDirectContactIds })
+                        });
+                    } catch (e) { console.error('add_direct_recipients:', e); }
+                    _wizDirectContactIds = [];
+                    _wizUpdateDirectNotice();
                 }
 
                 if (sendType === 'now' && campaignId) {
@@ -3067,6 +3079,7 @@ ${body}
     }
 
     let _wizImportFiles = { csv: null, txt: null };
+    let _wizDirectContactIds = [];
 
     function _wizPickFile(type) {
         const inp = document.createElement('input');
@@ -3077,8 +3090,6 @@ ${body}
             if (!f) return;
             _wizImportFiles[type] = f;
             _wizShowFileFilled(type, f.name);
-            const nameInput = document.getElementById(`wiz${type.charAt(0).toUpperCase()+type.slice(1)}ListName`);
-            if (nameInput && !nameInput.value) nameInput.value = f.name.replace(/\.(csv|txt)$/i, '');
         };
         inp.click();
     }
@@ -3088,8 +3099,6 @@ ${body}
         if (!file) return;
         _wizImportFiles[type] = file;
         _wizShowFileFilled(type, file.name);
-        const nameInput = document.getElementById(`wiz${type.charAt(0).toUpperCase()+type.slice(1)}ListName`);
-        if (nameInput && !nameInput.value) nameInput.value = file.name.replace(/\.(csv|txt)$/i, '');
     }
 
     function _wizDragOver(el) {
@@ -3129,14 +3138,25 @@ ${body}
         if (btn) btn.disabled = true;
     }
 
+    function _wizUpdateDirectNotice() {
+        const n = _wizDirectContactIds.length;
+        const notice = document.getElementById('wizDirectNotice');
+        const count  = document.getElementById('wizDirectCount');
+        if (notice) notice.classList.toggle('hidden', n === 0);
+        if (count)  count.textContent = n.toLocaleString('pt-PT');
+    }
+
+    function _wizClearDirect() {
+        _wizDirectContactIds = [];
+        _wizUpdateDirectNotice();
+        wizUpdateListsTotal();
+    }
+
     async function _wizStartImport(type) {
         const T = type.charAt(0).toUpperCase() + type.slice(1);
         const file = _wizImportFiles[type];
         const btn = document.getElementById(`wiz${T}ImportBtn`);
-        const nameInput = document.getElementById(`wiz${T}ListName`);
         if (!file) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
-        const listName = nameInput?.value.trim() || file.name.replace(/\.(csv|txt)$/i, '');
-        if (!listName) { showToast('Introduz um nome para a lista.', 'error'); nameInput?.focus(); return; }
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
             const text = await file.text();
@@ -3148,21 +3168,15 @@ ${body}
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 
-            // Create new list
-            const newList = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, {
-                method: 'POST', body: JSON.stringify({ name: listName })
-            });
-            const listId = newList.id;
-
-            // Import contacts + add to list
+            // Import contacts to DB, collect IDs
             let imported = 0, failed = 0;
+            const newIds = [];
             const CHUNK = 5;
             for (let i = 0; i < rows.length; i += CHUNK) {
                 await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
                     try {
                         const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
-                        imported++;
-                        if (r.id) try { await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch {}
+                        if (r.id) { newIds.push(r.id); imported++; }
                     } catch { failed++; }
                 }));
             }
@@ -3171,21 +3185,16 @@ ${body}
             try {
                 await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
                     method: 'POST',
-                    body: JSON.stringify({ file_name: file.name, list_id: listId, list_name: listName, total_rows: rows.length, imported, skipped: rows.length - imported - failed, failed, status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed') })
+                    body: JSON.stringify({ file_name: file.name, list_id: null, list_name: null, total_rows: rows.length, imported, skipped: rows.length - imported - failed, failed, status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed') })
                 });
             } catch {}
 
-            // Reload lists and auto-check the new one
-            await _loadLists(_currentBrand.id);
-            await new Promise(r => setTimeout(r, 80));
-            const cb = document.querySelector(`#wizListsContainer input[data-list-id="${listId}"]`);
-            if (cb) { cb.checked = true; wizUpdateListsTotal(); }
-
-            // Reset and go to lists tab
+            // Store IDs for direct campaign recipients (deduplicated)
+            newIds.forEach(id => { if (!_wizDirectContactIds.includes(id)) _wizDirectContactIds.push(id); });
+            _wizUpdateDirectNotice();
             _wizClearFile(type);
-            if (nameInput) nameInput.value = '';
             _wizRecipTab('lists');
-            showToast(`${imported} contactos importados para "${escHtml(listName)}".${failed ? ` (${failed} falhas)` : ''}`);
+            showToast(`${imported} contactos adicionados a esta campanha.${failed ? ` (${failed} falhas)` : ''}`);
         } catch (e) {
             showToast('Erro: ' + escHtml(e.message), 'error');
         } finally {
@@ -4508,6 +4517,12 @@ ${lines.join('\n')}
             if (id === 'campaignCreate') {
                 wizShowStep(1);
                 if (!_editingCampaignId) {
+                    _wizDirectContactIds = [];
+                    _wizUpdateDirectNotice();
+                    _wizImportFiles = { csv: null, txt: null };
+                    _wizClearFile('csv');
+                    _wizClearFile('txt');
+                    _wizRecipTab('lists');
                     // New campaign — clear everything
                     ['wizName','wizSubject','wizPreviewText'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; });
                     _wizVarsRender();
@@ -6124,9 +6139,14 @@ ${lines.join('\n')}
                                     <span class="text-xs text-slate-500">Total de contactos selecionados</span>
                                     <span id="wizListsTotalCount" class="text-sm font-semibold text-slate-900">0</span>
                                 </div>
+                                <div id="wizDirectNotice" class="hidden mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                    <span class="text-xs text-slate-600"><span id="wizDirectCount" class="font-semibold text-indigo-600">0</span> contactos importados directamente para esta campanha</span>
+                                    <button onclick="_wizClearDirect()" class="ml-auto text-xs text-red-400 hover:text-red-600">Remover</button>
+                                </div>
                                 <p id="wizListsError" class="hidden text-xs text-red-500 flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                    Seleciona pelo menos uma lista para avançar.
+                                    Seleciona pelo menos uma lista ou importa contactos para avançar.
                                 </p>
                             </div>
 
@@ -6156,10 +6176,6 @@ ${lines.join('\n')}
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>
                                     </div>
-                                </div>
-                                <div>
-                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da nova lista</label>
-                                    <input id="wizCsvListName" type="text" placeholder="Ex: Newsletter Maio 2026" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                                 <button id="wizCsvImportBtn" onclick="_wizStartImport('csv')" disabled
                                     class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
@@ -6194,10 +6210,6 @@ ${lines.join('\n')}
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>
                                     </div>
-                                </div>
-                                <div>
-                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da nova lista</label>
-                                    <input id="wizTxtListName" type="text" placeholder="Ex: Leads Evento Maio 2026" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                                 <button id="wizTxtImportBtn" onclick="_wizStartImport('txt')" disabled
                                     class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
