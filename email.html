@@ -305,22 +305,28 @@
             const statusBadge = { sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>', scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>', draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>', sending:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">A enviar</span>' };
             if (!data.length) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
             window._campaignsCache = data;
-            el.innerHTML = data.map((c, i) => `
+            const selectAll = document.getElementById('campSelectAll');
+            if (selectAll) selectAll.checked = false;
+            el.innerHTML = data.map((c, i) => {
+                const deletable = ['draft','scheduled'].includes(c.status);
+                return `
                 <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
+                    <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'')}" onchange="_updateCampBulkBar()">` : ''}</td>
                     <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
-                    <td class="px-4 py-3"><p class="font-medium text-slate-900">${c.name}</p><p class="text-xs text-slate-500">${c.subject||'—'}</p></td>
+                    <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
                     <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
                     <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex items-center justify-end gap-2">
                             ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
-                            ${['draft','scheduled'].includes(c.status) ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
+                            ${deletable ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
                             <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
                             <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
                         </div>
                     </td>
-                </tr>`).join('');
+                </tr>`;
+            }).join('');
             _setText('dash-campaigns', data.length.toString());
             const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
             _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
@@ -3260,6 +3266,39 @@ ${body}
         } catch(e) { showToast(e.message || 'Erro ao apagar campanha.', 'error'); }
     }
 
+    function _updateCampBulkBar() {
+        const checked = document.querySelectorAll('.camp-bulk-chk:checked');
+        const bar   = document.getElementById('campBulkBar');
+        const count = document.getElementById('campBulkCount');
+        const all   = document.getElementById('campSelectAll');
+        const total = document.querySelectorAll('.camp-bulk-chk').length;
+        if (bar)   bar.classList.toggle('hidden', checked.length === 0);
+        if (count) count.textContent = `${checked.length} seleccionada${checked.length !== 1 ? 's' : ''}`;
+        if (all)   all.indeterminate = checked.length > 0 && checked.length < total;
+        if (all)   all.checked = checked.length > 0 && checked.length === total;
+    }
+
+    function _selectAllDraftCampaigns(checked) {
+        document.querySelectorAll('.camp-bulk-chk').forEach(cb => { cb.checked = checked; });
+        _updateCampBulkBar();
+    }
+
+    async function _bulkDeleteCampaigns() {
+        const checked = Array.from(document.querySelectorAll('.camp-bulk-chk:checked'));
+        if (!checked.length) return;
+        const names = checked.slice(0, 3).map(cb => `"${cb.dataset.name}"`).join(', ');
+        const extra = checked.length > 3 ? ` e mais ${checked.length - 3}` : '';
+        if (!confirm(`Apagar ${checked.length} campanha${checked.length !== 1 ? 's' : ''} permanentemente?\n\n${names}${extra}`)) return;
+        const ids = checked.map(cb => cb.dataset.id);
+        let deleted = 0, errors = 0;
+        await Promise.all(ids.map(async id => {
+            try { await apiFetch(`/api/campaigns/${id}`, { method: 'DELETE' }); deleted++; }
+            catch { errors++; }
+        }));
+        await _loadCampaigns(_currentBrand.id);
+        showToast(errors ? `${deleted} apagadas, ${errors} erros.` : `${deleted} campanha${deleted !== 1 ? 's' : ''} apagada${deleted !== 1 ? 's' : ''}.`);
+    }
+
     let _dupCampaignData = null;
     function _duplicateCampaignItem(idx) {
         const c = window._campaignsCache?.[idx];
@@ -5491,10 +5530,19 @@ ${lines.join('\n')}
                         <option value="failed">Falhou</option>
                     </select>
                 </div>
+                <!-- Barra de acções em massa (oculta por defeito) -->
+                <div id="campBulkBar" class="hidden mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
+                    <span id="campBulkCount" class="text-sm text-red-700 font-medium">0 seleccionadas</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="_selectAllDraftCampaigns(false)" class="text-xs text-slate-500 hover:text-slate-700 underline">Limpar selecção</button>
+                        <button onclick="_bulkDeleteCampaigns()" class="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700">Apagar seleccionadas</button>
+                    </div>
+                </div>
                 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50">
+                                <th class="px-4 py-3 w-8"><input type="checkbox" id="campSelectAll" onchange="_selectAllDraftCampaigns(this.checked)" class="rounded border-slate-300 cursor-pointer" title="Seleccionar todos os rascunhos"></th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">ID</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Campanha</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Estado</th>
