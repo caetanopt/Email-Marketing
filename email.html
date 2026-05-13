@@ -3128,6 +3128,7 @@ ${body}
 
     let _wizImportFiles = { csv: null, txt: null };
     let _wizDirectContactIds = [];
+    let _wizDirectContacts = [];
     let _wizExistingDirectCount = 0;
     let _wizSubmitting = false;
 
@@ -3200,8 +3201,40 @@ ${body}
     function _wizClearDirect() {
         _wizDirectContactIds = [];
         _wizExistingDirectCount = 0;
+        _wizDirectContacts = [];
         _wizUpdateDirectNotice();
+        _wizRenderDirectPanel();
         wizUpdateListsTotal();
+    }
+
+    function _wizRenderDirectPanel() {
+        const panel = document.getElementById('wizDirectPanel');
+        const list  = document.getElementById('wizDirectPanelList');
+        const countEl = document.getElementById('wizDirectPanelCount');
+        if (!panel || !list) return;
+        const hasNew = _wizDirectContacts.length > 0;
+        const hasOld = _wizExistingDirectCount > 0;
+        if (!hasNew && !hasOld) { panel.classList.add('hidden'); return; }
+        panel.classList.remove('hidden');
+        const total = _wizExistingDirectCount + _wizDirectContacts.length;
+        if (countEl) countEl.textContent = total;
+        let html = '';
+        if (hasOld) {
+            html += `<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 italic">${_wizExistingDirectCount} contacto${_wizExistingDirectCount !== 1 ? 's' : ''} já guardado${_wizExistingDirectCount !== 1 ? 's' : ''}</div>`;
+        }
+        html += _wizDirectContacts.map(c => {
+            const initial = (c.name || c.email || '?')[0].toUpperCase();
+            return `<div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-slate-50 last:border-0">
+                <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                    <span class="text-xs font-semibold text-indigo-600">${escHtml(initial)}</span>
+                </div>
+                <div class="min-w-0">
+                    ${c.name ? `<p class="text-xs font-medium text-slate-900 truncate">${escHtml(c.name)}</p>` : ''}
+                    <p class="text-xs text-slate-500 truncate">${escHtml(c.email)}</p>
+                </div>
+            </div>`;
+        }).join('');
+        list.innerHTML = html;
     }
 
     async function _wizStartImport(type) {
@@ -3241,9 +3274,11 @@ ${body}
                 });
             } catch {}
 
-            // Store IDs for direct campaign recipients (deduplicated)
+            // Store IDs and display data for direct campaign recipients (deduplicated)
             newIds.forEach(id => { if (!_wizDirectContactIds.includes(id)) _wizDirectContactIds.push(id); });
+            rows.forEach(r => { if (r.email && !_wizDirectContacts.find(c => c.email === r.email.toLowerCase())) _wizDirectContacts.push({ email: r.email.toLowerCase(), name: [r.first_name, r.last_name].filter(Boolean).join(' ') }); });
             _wizUpdateDirectNotice();
+            _wizRenderDirectPanel();
             _wizClearFile(type);
             _wizRecipTab('lists');
             showToast(`${imported} contactos adicionados a esta campanha.${failed ? ` (${failed} falhas)` : ''}`);
@@ -3381,8 +3416,10 @@ ${body}
         _editingTemplateId = c.template_id || null;
         _wizExistingDirectCount = c.direct_count || 0;
         _wizDirectContactIds = [];
+        _wizDirectContacts = [];
         showScreen('campaignCreate');
         _wizUpdateDirectNotice();
+        _wizRenderDirectPanel();
         // Pre-fill step 1 fields
         const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
         sv('wizName',        c.name);
@@ -3422,8 +3459,10 @@ ${body}
             _editingTemplateId = c.template_id || null;
             _wizExistingDirectCount = c.direct_count || 0;
             _wizDirectContactIds = [];
+            _wizDirectContacts = [];
             showScreen('campaignCreate');
             _wizUpdateDirectNotice();
+            _wizRenderDirectPanel();
             const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
             sv('wizName',        c.name);
             sv('wizSubject',     c.subject);
@@ -4577,7 +4616,9 @@ ${lines.join('\n')}
                 if (!_editingCampaignId) {
                     _wizDirectContactIds = [];
                     _wizExistingDirectCount = 0;
+                    _wizDirectContacts = [];
                     _wizUpdateDirectNotice();
+                    _wizRenderDirectPanel();
                     _wizImportFiles = { csv: null, txt: null };
                     _wizClearFile('csv');
                     _wizClearFile('txt');
@@ -6180,7 +6221,10 @@ ${lines.join('\n')}
                     </div>
 
                     <!-- Passo 3: Destinatários -->
-                    <div id="wizStep3" class="hidden space-y-4 max-w-2xl">
+                    <div id="wizStep3" class="hidden">
+                      <div class="flex gap-6 items-start max-w-4xl">
+                        <!-- Coluna esquerda: tabs -->
+                        <div class="flex-1 min-w-0 space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                             <!-- Tab bar -->
                             <div class="flex border-b border-slate-200 px-2">
@@ -6277,6 +6321,18 @@ ${lines.join('\n')}
                                 </button>
                             </div>
                         </div>
+                        </div><!-- /coluna esquerda -->
+
+                        <!-- Coluna direita: contactos importados -->
+                        <div id="wizDirectPanel" class="hidden w-72 flex-shrink-0 bg-white border border-slate-200 rounded-xl overflow-hidden sticky top-4">
+                            <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                                <h3 class="text-sm font-semibold text-slate-900">Contactos importados</h3>
+                                <span id="wizDirectPanelCount" class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">0</span>
+                            </div>
+                            <div id="wizDirectPanelList" class="max-h-96 overflow-y-auto"></div>
+                        </div>
+
+                      </div><!-- /flex row -->
                     </div>
 
                     <!-- Passo 4: Revisão e Envio -->
