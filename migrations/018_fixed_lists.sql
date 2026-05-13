@@ -14,9 +14,9 @@ ON CONFLICT DO NOTHING;
 
 -- Mark contacts already in suppression as suppressed/unsubscribed
 UPDATE contacts c
-SET status = CASE
+SET status = (CASE
   WHEN s.reason = 'unsubscribe' THEN 'unsubscribed'
   ELSE 'suppressed'
-END
+END)::contact_status
 FROM suppression s
 WHERE c.email = s.email AND c.status = 'active';
