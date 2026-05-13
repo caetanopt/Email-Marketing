@@ -314,6 +314,7 @@
                     <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex items-center justify-end gap-2">
+                            ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
                             ${['draft','scheduled'].includes(c.status) ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
                             <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
                             <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
@@ -3142,6 +3143,14 @@ ${body}
         showScreen('campaignShow');
     }
 
+    async function _editCampaignFromList(idx) {
+        _currentCampaign = _campaignsCache[idx];
+        if (!_currentCampaign) return;
+        // Fetch full campaign data (includes lists)
+        try { _currentCampaign = await apiFetch(`/api/campaigns/${_currentCampaign.id}`); } catch (e) { showToast(e.message, 'error'); return; }
+        openEditCampaignModal();
+    }
+
     async function openEditCampaignModal() {
         if (!_currentCampaign) return;
         const c = _currentCampaign;
@@ -3151,16 +3160,36 @@ ${body}
         document.getElementById('editCampFromName').value = c.from_name || _currentBrand?.name || 'Caetano';
         const defaultEmail = _currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`;
         document.getElementById('editCampFromEmail').value = c.from_email || defaultEmail;
-        // Load templates into selector
+
+        const currentListIds = new Set((c.lists || []).map(l => String(l.id)));
+
+        // Load templates
         const sel = document.getElementById('editCampTemplate');
         if (sel) {
             sel.innerHTML = '<option value="">A carregar…</option>';
             try {
                 const { data } = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}&limit=100`);
                 sel.innerHTML = '<option value="">— Sem template —</option>' +
-                    data.map(t => `<option value="${t.id}" ${t.id == c.template_id ? 'selected' : ''}>${t.name}</option>`).join('');
+                    data.map(t => `<option value="${t.id}" ${t.id == c.template_id ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('');
             } catch { sel.innerHTML = '<option value="">Erro ao carregar templates</option>'; }
         }
+
+        // Load lists with checkboxes
+        const listsWrap = document.getElementById('editCampLists');
+        if (listsWrap) {
+            listsWrap.innerHTML = '<p class="text-xs text-slate-400">A carregar…</p>';
+            try {
+                const { data } = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`);
+                listsWrap.innerHTML = data.length
+                    ? data.map(l => `<label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" value="${l.id}" data-contacts="${l.total_members||0}" class="edit-camp-list-chk rounded border-slate-300"${currentListIds.has(String(l.id)) ? ' checked' : ''}>
+                        <span class="text-sm text-slate-700">${escHtml(l.name)}</span>
+                        <span class="text-xs text-slate-400">(${(l.total_members||0).toLocaleString('pt-PT')} contactos)</span>
+                      </label>`).join('')
+                    : '<p class="text-xs text-slate-400">Sem listas disponíveis.</p>';
+            } catch { listsWrap.innerHTML = '<p class="text-xs text-red-400">Erro ao carregar listas.</p>'; }
+        }
+
         const m = document.getElementById('editCampaignModal');
         if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
     }
@@ -3170,26 +3199,29 @@ ${body}
     }
     async function confirmEditCampaign() {
         const templateId = document.getElementById('editCampTemplate')?.value || null;
+        const listIds = Array.from(document.querySelectorAll('.edit-camp-list-chk:checked')).map(cb => parseInt(cb.value, 10));
         const payload = {
-            name: document.getElementById('editCampName')?.value.trim(),
-            subject: document.getElementById('editCampSubject')?.value.trim(),
+            name:         document.getElementById('editCampName')?.value.trim(),
+            subject:      document.getElementById('editCampSubject')?.value.trim(),
             preview_text: document.getElementById('editCampPreview')?.value.trim(),
-            from_name: document.getElementById('editCampFromName')?.value.trim(),
-            from_email: document.getElementById('editCampFromEmail')?.value.trim(),
-            template_id: templateId || undefined,
+            from_name:    document.getElementById('editCampFromName')?.value.trim(),
+            from_email:   document.getElementById('editCampFromEmail')?.value.trim(),
+            template_id:  templateId || undefined,
+            list_ids:     listIds,
         };
         if (!payload.name)    { showToast('O nome é obrigatório.', 'error'); return; }
         if (!payload.subject) { showToast('O assunto é obrigatório.', 'error'); return; }
-        if (!templateId)      { showToast('Selecciona um template.', 'error'); return; }
         const btn = document.getElementById('editCampBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
         try {
             await apiFetch(`/api/campaigns/${_currentCampaign.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-            Object.assign(_currentCampaign, payload);
-            showCampaign(null, _currentCampaign);
             closeEditCampaignModal();
             showToast('Campanha actualizada.');
             _loadCampaigns(_currentBrand.id);
+            // Refresh detail view if open
+            if (document.getElementById('campaignShow')?.classList.contains('hidden') === false) {
+                try { _currentCampaign = await apiFetch(`/api/campaigns/${_currentCampaign.id}`); showCampaign(null, _currentCampaign); } catch {}
+            }
         } catch(e) {
             showToast(e.message, 'error');
         } finally {
@@ -8053,14 +8085,20 @@ ${lines.join('\n')}
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
             <h2 class="text-lg font-semibold text-slate-900">Editar Campanha</h2>
         </div>
-        <div class="px-6 py-5 space-y-4">
+        <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
             <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome *</label><input id="editCampName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
             <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto *</label><input id="editCampSubject" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
-            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Template *</label><select id="editCampTemplate" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"><option value="">A carregar…</option></select></div>
+            <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Template</label><select id="editCampTemplate" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"><option value="">A carregar…</option></select></div>
             <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Texto de pré-visualização</label><input id="editCampPreview" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
             <div class="grid grid-cols-2 gap-3">
-                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome remetente *</label><input id="editCampFromName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
-                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email remetente *</label><input id="editCampFromEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome remetente</label><input id="editCampFromName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+                <div><label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email remetente</label><input id="editCampFromEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" /></div>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-2">Listas de destinatários</label>
+                <div id="editCampLists" class="space-y-2 border border-slate-200 rounded-lg p-3 bg-slate-50 max-h-36 overflow-y-auto">
+                    <p class="text-xs text-slate-400">A carregar…</p>
+                </div>
             </div>
         </div>
         <div class="px-6 pb-6 flex justify-end gap-3">
