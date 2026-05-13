@@ -3144,6 +3144,7 @@ ${body}
         const count  = document.getElementById('wizDirectCount');
         if (notice) notice.classList.toggle('hidden', n === 0);
         if (count)  count.textContent = n.toLocaleString('pt-PT');
+        if (n > 0) document.getElementById('wizListsError')?.classList.add('hidden');
     }
 
     function _wizClearDirect() {
