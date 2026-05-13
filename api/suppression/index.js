@@ -121,6 +121,28 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      // Bulk import from CSV
+      if (req.query.action === 'bulk') {
+        const { emails } = req.body || {};
+        if (!Array.isArray(emails) || !emails.length) return res.status(400).json({ error: 'emails[] obrigatório' });
+        const valid = emails.filter(r => r && typeof r.email === 'string' && r.email.includes('@'))
+          .map(r => ({ email: r.email.toLowerCase().trim(), reason: r.reason || 'manual' }));
+        if (!valid.length) return res.status(400).json({ error: 'Nenhum email válido encontrado' });
+        const vals = valid.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',');
+        await query(
+          `INSERT INTO suppression (email, reason) VALUES ${vals} ON CONFLICT (email) DO NOTHING`,
+          valid.flatMap(r => [r.email, r.reason])
+        );
+        const emailList = valid.map(r => r.email);
+        if (emailList.length) {
+          await query(
+            `UPDATE contacts SET status='suppressed' WHERE email = ANY($1::text[])`,
+            [emailList]
+          );
+        }
+        return res.status(200).json({ ok: true, inserted: valid.length });
+      }
+
       const { email, reason } = req.body || {};
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
       const e = email.toLowerCase().trim();

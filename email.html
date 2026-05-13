@@ -323,6 +323,93 @@
     let _suppPage = 1;
     let _suppTotal = 0;
 
+    // ── Suppression CSV upload ──────────────────────────────────────
+    let _suppParsed = [];
+
+    function _suppUploadToggle() {
+        const body = document.getElementById('suppUploadBody');
+        const chev = document.getElementById('suppUploadChevron');
+        if (!body) return;
+        const hidden = body.classList.toggle('hidden');
+        chev?.classList.toggle('rotate-180', !hidden);
+    }
+    function _suppDragOver() {
+        document.getElementById('suppDropZone')?.classList.add('border-slate-900','bg-slate-100');
+    }
+    function _suppDragLeave() {
+        document.getElementById('suppDropZone')?.classList.remove('border-slate-900','bg-slate-100');
+    }
+    function _suppDropFile(ev) {
+        _suppDragLeave();
+        const file = ev.dataTransfer?.files?.[0];
+        if (file) _suppProcessFile(file);
+    }
+    function _suppPickFile() {
+        document.getElementById('suppFileInput')?.click();
+    }
+    function _suppFileChosen(input) {
+        const file = input.files?.[0];
+        if (file) _suppProcessFile(file);
+        input.value = '';
+    }
+    function _suppClearFile() {
+        _suppParsed = [];
+        document.getElementById('suppDropEmpty').classList.remove('hidden');
+        document.getElementById('suppDropFilled').classList.add('hidden');
+        document.getElementById('suppImportBtn').disabled = true;
+    }
+    function _suppProcessFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            if (!lines.length) { showToast('Ficheiro vazio.', 'error'); return; }
+            // Detect separator
+            const sep = lines[0].includes(';') ? ';' : ',';
+            const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/^"|"$/g,''));
+            const emailIdx  = headers.indexOf('email');
+            const reasonIdx = headers.indexOf('reason');
+            if (emailIdx === -1) { showToast('Coluna "email" não encontrada.', 'error'); return; }
+            _suppParsed = lines.slice(1).map(line => {
+                const cols = line.split(sep).map(c => c.trim().replace(/^"|"$/g,''));
+                return { email: cols[emailIdx] || '', reason: reasonIdx >= 0 ? (cols[reasonIdx] || 'manual') : 'manual' };
+            }).filter(r => r.email && r.email.includes('@'));
+            if (!_suppParsed.length) { showToast('Nenhum email válido encontrado.', 'error'); return; }
+            document.getElementById('suppDropName').textContent  = file.name;
+            document.getElementById('suppDropCount').textContent = `${_suppParsed.length} endereços detectados`;
+            document.getElementById('suppDropEmpty').classList.add('hidden');
+            document.getElementById('suppDropFilled').classList.remove('hidden');
+            document.getElementById('suppDropFilled').classList.add('flex');
+            document.getElementById('suppImportBtn').disabled = false;
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+    async function _suppImport() {
+        if (!_suppParsed.length) return;
+        const btn = document.getElementById('suppImportBtn');
+        btn.disabled = true; btn.textContent = 'A importar…';
+        try {
+            const { inserted } = await apiFetch('/api/suppression?action=bulk', {
+                method: 'POST',
+                body: JSON.stringify({ emails: _suppParsed })
+            });
+            showToast(`${inserted} endereço(s) adicionados à lista de supressão.`);
+            _suppClearFile();
+            _loadSuppression(1);
+        } catch(e) {
+            showToast(e.message || 'Erro ao importar.', 'error');
+        } finally {
+            btn.disabled = false; btn.textContent = 'Importar endereços';
+        }
+    }
+    function _suppDownloadSample() {
+        const csv = 'email,reason\njohn.doe@example.com,bounce\njane.smith@example.com,unsubscribe\ntest@example.com,manual\n';
+        const a = document.createElement('a');
+        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+        a.download = 'suppression_exemplo.csv';
+        a.click();
+    }
+
     async function _loadSuppression(page) {
         page = page || _suppPage;
         _suppPage = page;
@@ -7040,7 +7127,53 @@ ${lines.join('\n')}
             </header>
             <main class="flex-1 px-8 py-6 space-y-5">
                 <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-                    Estes endereços nunca receberão emails desta marca — incluindo bounces, dessubscrições e reclamações de spam.
+                    Lista global — estes endereços nunca receberão emails de nenhuma marca, independentemente de bounces, dessubscrições ou reclamações de spam.
+                </div>
+
+                <!-- Upload CSV -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <button type="button" onclick="_suppUploadToggle()" class="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                            <span class="text-sm font-semibold text-slate-900">Importar via CSV</span>
+                        </div>
+                        <svg id="suppUploadChevron" class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div id="suppUploadBody" class="hidden border-t border-slate-100 p-5 space-y-4">
+                        <!-- Dropzone -->
+                        <div id="suppDropZone"
+                             ondragover="event.preventDefault();_suppDragOver()"
+                             ondragleave="_suppDragLeave()"
+                             ondrop="event.preventDefault();_suppDropFile(event)"
+                             onclick="_suppPickFile()"
+                             class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-all select-none">
+                            <div id="suppDropEmpty" class="flex flex-col items-center justify-center py-8 text-center">
+                                <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro CSV aqui ou clica para escolher</p>
+                                <p class="text-xs text-slate-400">Coluna obrigatória: <code class="bg-slate-200 px-1 rounded">email</code> — coluna opcional: <code class="bg-slate-200 px-1 rounded">reason</code></p>
+                            </div>
+                            <div id="suppDropFilled" class="hidden items-center justify-between px-5 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    </div>
+                                    <div>
+                                        <p id="suppDropName" class="text-sm font-semibold text-slate-900">ficheiro.csv</p>
+                                        <p id="suppDropCount" class="text-xs text-slate-500">0 endereços detectados</p>
+                                    </div>
+                                </div>
+                                <button onclick="event.stopPropagation();_suppClearFile()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="suppFileInput" accept=".csv,text/csv" class="hidden" onchange="_suppFileChosen(this)">
+                        <!-- Acções -->
+                        <div class="flex items-center justify-between gap-3">
+                            <button onclick="_suppDownloadSample()" class="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2">Descarregar ficheiro de exemplo (.csv)</button>
+                            <button id="suppImportBtn" onclick="_suppImport()" disabled class="px-5 py-2.5 text-sm bg-slate-900 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors">Importar endereços</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
