@@ -131,6 +131,62 @@
         }
     }
 
+    let _statsRange = 'all';
+    async function _loadStatistics(range) {
+        if (range) _statsRange = range;
+        // Update range button styles
+        document.querySelectorAll('.stats-range-btn').forEach(btn => {
+            const active = btn.dataset.range === _statsRange;
+            btn.className = `stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
+        });
+        const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        const setW  = (id, p) => { const el = document.getElementById(id); if (el) el.style.width = Math.min(p,100)+'%'; };
+        setEl('statsTotalSent','…'); setEl('statsCampaigns','…');
+        const tbody = document.getElementById('statsBrandsTbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        try {
+            const qs = new URLSearchParams({ action:'global_stats', ...(  _statsRange !== 'all' ? { range: _statsRange } : {}) });
+            const d = await apiFetch(`/api/campaigns?${qs}`);
+            const t = d.totals;
+            setEl('statsTotalSent',   t.sent.toLocaleString('pt-PT'));
+            setEl('statsCampaigns',   t.campaigns.toLocaleString('pt-PT'));
+            setEl('statsOpenRate',    t.openRate + '%');
+            setEl('statsClickRate',   t.clickRate + '%');
+            setEl('statsBounceRate',  t.bounceRate + '%');
+            setEl('statsUnsubRate',   t.unsubRate + '%');
+            setEl('statsOpenRate2',   t.openRate + '%');
+            setEl('statsClickRate2',  t.clickRate + '%');
+            setEl('statsBounceRate2', t.bounceRate + '%');
+            setEl('statsUnsubRate2',  t.unsubRate + '%');
+            setW('statsOpenBar',   t.openRate);
+            setW('statsClickBar',  t.clickRate);
+            setW('statsBounceBar', t.bounceRate);
+            setW('statsUnsubBar',  t.unsubRate);
+            if (!tbody) return;
+            if (!d.brands.length) { tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem dados para o período seleccionado.</td></tr>`; return; }
+            tbody.innerHTML = d.brands.map(b => {
+                const logo = b.logo_url
+                    ? `<img src="${b.logo_url}" class="w-6 h-6 object-contain brightness-0" onerror="this.style.display='none'">`
+                    : `<span class="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style="background:${b.color}">${b.name[0]}</span>`;
+                const bar = (v, max, color) => `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0"><div class="h-1.5 rounded-full ${color}" style="width:${Math.min(v/Math.max(max,1)*100,100).toFixed(0)}%"></div></div><span>${v}%</span></div>`;
+                const maxOpen = Math.max(...d.brands.map(x=>x.openRate), 1);
+                return `<tr class="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                    <td class="px-4 py-3"><div class="flex items-center gap-2">${logo}<span class="font-medium text-slate-900">${b.name}</span></div></td>
+                    <td class="px-4 py-3 text-slate-600 text-right">${b.campaigns}</td>
+                    <td class="px-4 py-3 text-slate-600 text-right font-mono">${b.sent.toLocaleString('pt-PT')}</td>
+                    <td class="px-4 py-3 text-slate-600">${bar(b.openRate,   maxOpen,   'bg-blue-400')}</td>
+                    <td class="px-4 py-3 text-slate-600">${bar(b.clickRate,  maxOpen,   'bg-violet-400')}</td>
+                    <td class="px-4 py-3 text-slate-600">${bar(b.bounceRate, maxOpen,   'bg-amber-400')}</td>
+                    <td class="px-4 py-3 text-slate-600">${bar(b.unsubRate,  maxOpen,   'bg-red-400')}</td>
+                    <td class="px-4 py-3 text-right"><button onclick="selectBrand('${b.id}','${b.name.replace(/'/g,"\\'")}','${b.color}');showScreen('dashboard')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button></td>
+                </tr>`;
+            }).join('');
+        } catch(e) {
+            setEl('statsTotalSent','—');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`;
+        }
+    }
+
     function _goToDefaultBrandOrSelect() {
         const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
         const defId = _u.default_brand_id;
@@ -4019,6 +4075,10 @@ ${lines.join('\n')}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Campanhas
             </a>
+            <a onclick="showScreen('statistics')" data-nav class="nav-item nav-statistics flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                Estatísticas
+            </a>
             <a onclick="showScreen('suppression')" data-nav class="nav-item nav-suppression flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                 Supressão
@@ -4126,6 +4186,8 @@ ${lines.join('\n')}
                 const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                 if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
             }
+            // Statistics — reload on every visit (cross-brand, not cached per brand)
+            if (id === 'statistics') _loadStatistics();
             // User profile screen — always reload (not brand-specific)
             if (id === 'userProfile') _loadUserProfile();
             // SES quota widget — load once per brand session
@@ -7599,6 +7661,97 @@ ${lines.join('\n')}
                             <button onclick="listEditGoPage(_listEditPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
                         </div>
                     </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ECRÃ — ESTATÍSTICAS GLOBAIS
+═══════════════════════════════════════════════════════════════════ -->
+<div id="statistics" class="screen fade-in">
+    <div class="min-h-screen bg-slate-50 flex">
+        <div data-sidebar-slot></div>
+        <div class="flex-1 ml-64 flex flex-col min-h-screen">
+            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
+                <h1 class="text-xl font-semibold text-slate-900">Estatísticas de Envio</h1>
+                <!-- Range picker -->
+                <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                    <button data-range="7d"  onclick="_loadStatistics('7d')"  class="stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">7 dias</button>
+                    <button data-range="30d" onclick="_loadStatistics('30d')" class="stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">30 dias</button>
+                    <button data-range="90d" onclick="_loadStatistics('90d')" class="stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">90 dias</button>
+                    <button data-range="12m" onclick="_loadStatistics('12m')" class="stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-slate-500 hover:text-slate-700">12 meses</button>
+                    <button data-range="all" onclick="_loadStatistics('all')" class="stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-white text-slate-900 shadow-sm">Sempre</button>
+                </div>
+            </header>
+            <main class="flex-1 px-8 py-6 space-y-6">
+
+                <!-- KPI cards — totais Caetano -->
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Grupo Caetano — todos os envios</p>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <p class="text-xs text-slate-400 mb-1">Emails enviados</p>
+                            <p id="statsTotalSent" class="text-2xl font-bold text-slate-900">—</p>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <p class="text-xs text-slate-400 mb-1">Campanhas</p>
+                            <p id="statsCampaigns" class="text-2xl font-bold text-slate-900">—</p>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <p class="text-xs text-slate-400 mb-1">Taxa de abertura</p>
+                            <p id="statsOpenRate" class="text-2xl font-bold text-blue-600">—</p>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <p class="text-xs text-slate-400 mb-1">Taxa de clique</p>
+                            <p id="statsClickRate" class="text-2xl font-bold text-violet-600">—</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Barras globais -->
+                <div class="bg-white border border-slate-200 rounded-xl p-6 grid grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1.5"><span>Abertura</span><span id="statsOpenRate2" class="font-semibold text-blue-600"></span></div>
+                        <div class="w-full bg-slate-100 rounded-full h-2"><div id="statsOpenBar" class="h-2 rounded-full bg-blue-400 transition-all" style="width:0%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1.5"><span>Clique</span><span id="statsClickRate2" class="font-semibold text-violet-600"></span></div>
+                        <div class="w-full bg-slate-100 rounded-full h-2"><div id="statsClickBar" class="h-2 rounded-full bg-violet-400 transition-all" style="width:0%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1.5"><span>Bounce</span><span id="statsBounceRate2" class="font-semibold text-amber-600"></span></div>
+                        <div class="w-full bg-slate-100 rounded-full h-2"><div id="statsBounceBar" class="h-2 rounded-full bg-amber-400 transition-all" style="width:0%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1.5"><span>Dessubscrição</span><span id="statsUnsubRate2" class="font-semibold text-red-500"></span></div>
+                        <div class="w-full bg-slate-100 rounded-full h-2"><div id="statsUnsubBar" class="h-2 rounded-full bg-red-400 transition-all" style="width:0%"></div></div>
+                    </div>
+                </div>
+
+                <!-- Tabela por marca -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100">
+                        <h2 class="text-sm font-semibold text-slate-900">Desempenho por marca</h2>
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Marca</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Campanhas</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Emails</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-blue-500 uppercase tracking-wide">Abertura</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-violet-500 uppercase tracking-wide">Clique</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-amber-500 uppercase tracking-wide">Bounce</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-red-400 uppercase tracking-wide">Unsub</th>
+                                <th class="px-4 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="statsBrandsTbody">
+                            <tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </main>
         </div>

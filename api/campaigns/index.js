@@ -30,6 +30,59 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // Global stats across all brands the user has access to
+  if (action === 'global_stats' && req.method === 'GET') {
+    const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || 'all'] || null;
+    const sinceClause = days ? `AND c.sent_at >= NOW() - ($1 * INTERVAL '1 day')` : '';
+    const params = days ? [days] : [];
+
+    const perBrand = await query(
+      `SELECT
+          b.id, b.name, b.color, b.logo_url,
+          COUNT(DISTINCT c.id) FILTER (WHERE c.status='sent')::int            AS campaigns,
+          COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int           AS sent,
+          COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int        AS bounced,
+          COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int     AS unique_opens,
+          COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int    AS unique_clicks,
+          COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
+       FROM brands b
+       JOIN user_brand_roles ubr ON ubr.brand_id=b.id AND ubr.user_id=$${params.length+1}
+       LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause.replace('$1', `$${params.length+2}`)}
+       LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+       LEFT JOIN email_events ee ON ee.campaign_id=c.id
+       WHERE b.active=TRUE
+       GROUP BY b.id ORDER BY sent DESC`,
+      days ? [days, user.id] : [user.id]
+    );
+
+    const totals = perBrand.reduce((acc, b) => ({
+      campaigns:   acc.campaigns   + b.campaigns,
+      sent:        acc.sent        + b.sent,
+      bounced:     acc.bounced     + b.bounced,
+      unique_opens:  acc.unique_opens  + b.unique_opens,
+      unique_clicks: acc.unique_clicks + b.unique_clicks,
+      unsubscribes:  acc.unsubscribes  + b.unsubscribes,
+    }), { campaigns:0, sent:0, bounced:0, unique_opens:0, unique_clicks:0, unsubscribes:0 });
+
+    const rate = (n, d) => d ? +((n/d)*100).toFixed(1) : 0;
+    return res.status(200).json({
+      totals: {
+        ...totals,
+        openRate:    rate(totals.unique_opens,  totals.sent),
+        clickRate:   rate(totals.unique_clicks, totals.sent),
+        bounceRate:  rate(totals.bounced,       totals.sent),
+        unsubRate:   rate(totals.unsubscribes,  totals.sent),
+      },
+      brands: perBrand.map(b => ({
+        ...b,
+        openRate:   rate(b.unique_opens,  b.sent),
+        clickRate:  rate(b.unique_clicks, b.sent),
+        bounceRate: rate(b.bounced,       b.sent),
+        unsubRate:  rate(b.unsubscribes,  b.sent),
+      })),
+    });
+  }
+
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
   try {
