@@ -2959,6 +2959,7 @@ ${body}
         if (_wizStep === 3) {
             const checked = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
             if (!checked.length) {
+                _wizRecipTab('lists');
                 const err = document.getElementById('wizListsError');
                 if (err) err.classList.remove('hidden');
                 return;
@@ -3049,6 +3050,147 @@ ${body}
         showScreen('campaigns');
         showToast('Campanha guardada como rascunho.');
     }
+    // ── Wizard step 3: recipient tabs + import ──────────────────────
+    function _wizRecipTab(tab) {
+        ['lists','csv','txt'].forEach(t => {
+            const T = t.charAt(0).toUpperCase() + t.slice(1);
+            const btn   = document.getElementById(`wizRecipTab${T}`);
+            const panel = document.getElementById(`wizRecipPanel${T}`);
+            const isActive = t === tab;
+            if (btn) btn.className = isActive
+                ? 'px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px'
+                : 'px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px';
+            if (panel) panel.classList.toggle('hidden', !isActive);
+        });
+    }
+
+    let _wizImportFiles = { csv: null, txt: null };
+
+    function _wizPickFile(type) {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = type === 'csv' ? '.csv' : '.txt';
+        inp.onchange = () => {
+            const f = inp.files?.[0];
+            if (!f) return;
+            _wizImportFiles[type] = f;
+            _wizShowFileFilled(type, f.name);
+            const nameInput = document.getElementById(`wiz${type.charAt(0).toUpperCase()+type.slice(1)}ListName`);
+            if (nameInput && !nameInput.value) nameInput.value = f.name.replace(/\.(csv|txt)$/i, '');
+        };
+        inp.click();
+    }
+
+    function _wizDropFile(e, type) {
+        const file = e.dataTransfer?.files?.[0];
+        if (!file) return;
+        _wizImportFiles[type] = file;
+        _wizShowFileFilled(type, file.name);
+        const nameInput = document.getElementById(`wiz${type.charAt(0).toUpperCase()+type.slice(1)}ListName`);
+        if (nameInput && !nameInput.value) nameInput.value = file.name.replace(/\.(csv|txt)$/i, '');
+    }
+
+    function _wizDragOver(el) {
+        el.classList.remove('border-slate-200','bg-slate-50');
+        el.classList.add('border-slate-900','bg-slate-100','scale-[1.01]');
+    }
+
+    function _wizDragLeave(el, type) {
+        const T = type.charAt(0).toUpperCase() + type.slice(1);
+        if (document.getElementById(`wiz${T}DropFilled`)?.classList.contains('flex')) return;
+        el.classList.remove('border-slate-900','bg-slate-100','scale-[1.01]');
+        el.classList.add('border-slate-200','bg-slate-50');
+    }
+
+    function _wizShowFileFilled(type, name) {
+        const T = type.charAt(0).toUpperCase() + type.slice(1);
+        document.getElementById(`wiz${T}DropEmpty`)?.classList.add('hidden');
+        const filled = document.getElementById(`wiz${T}DropFilled`);
+        if (filled) { filled.classList.remove('hidden'); filled.classList.add('flex'); }
+        const fn = document.getElementById(`wiz${T}DropFileName`);
+        if (fn) fn.textContent = name;
+        const zone = document.getElementById(`wiz${T}DropZone`);
+        if (zone) { zone.classList.remove('border-slate-200','bg-slate-50','border-slate-900','scale-[1.01]'); zone.classList.add('border-green-400','bg-green-50'); }
+        const btn = document.getElementById(`wiz${T}ImportBtn`);
+        if (btn) btn.disabled = false;
+    }
+
+    function _wizClearFile(type) {
+        const T = type.charAt(0).toUpperCase() + type.slice(1);
+        _wizImportFiles[type] = null;
+        document.getElementById(`wiz${T}DropEmpty`)?.classList.remove('hidden');
+        const filled = document.getElementById(`wiz${T}DropFilled`);
+        if (filled) { filled.classList.add('hidden'); filled.classList.remove('flex'); }
+        const zone = document.getElementById(`wiz${T}DropZone`);
+        if (zone) { zone.classList.remove('border-green-400','bg-green-50','border-slate-900','scale-[1.01]'); zone.classList.add('border-slate-200','bg-slate-50'); }
+        const btn = document.getElementById(`wiz${T}ImportBtn`);
+        if (btn) btn.disabled = true;
+    }
+
+    async function _wizStartImport(type) {
+        const T = type.charAt(0).toUpperCase() + type.slice(1);
+        const file = _wizImportFiles[type];
+        const btn = document.getElementById(`wiz${T}ImportBtn`);
+        const nameInput = document.getElementById(`wiz${T}ListName`);
+        if (!file) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
+        const listName = nameInput?.value.trim() || file.name.replace(/\.(csv|txt)$/i, '');
+        if (!listName) { showToast('Introduz um nome para a lista.', 'error'); nameInput?.focus(); return; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
+        try {
+            const text = await file.text();
+            let rows = [];
+            if (type === 'txt') {
+                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && l.includes('@')).map(email => ({ email: email.toLowerCase() }));
+            } else {
+                rows = _parseCsv(text);
+            }
+            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
+
+            // Create new list
+            const newList = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, {
+                method: 'POST', body: JSON.stringify({ name: listName })
+            });
+            const listId = newList.id;
+
+            // Import contacts + add to list
+            let imported = 0, failed = 0;
+            const CHUNK = 5;
+            for (let i = 0; i < rows.length; i += CHUNK) {
+                await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
+                    try {
+                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
+                        imported++;
+                        if (r.id) try { await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch {}
+                    } catch { failed++; }
+                }));
+            }
+
+            // Record import history (best-effort)
+            try {
+                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
+                    method: 'POST',
+                    body: JSON.stringify({ file_name: file.name, list_id: listId, list_name: listName, total_rows: rows.length, imported, skipped: rows.length - imported - failed, failed, status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed') })
+                });
+            } catch {}
+
+            // Reload lists and auto-check the new one
+            await _loadLists(_currentBrand.id);
+            await new Promise(r => setTimeout(r, 80));
+            const cb = document.querySelector(`#wizListsContainer input[data-list-id="${listId}"]`);
+            if (cb) { cb.checked = true; wizUpdateListsTotal(); }
+
+            // Reset and go to lists tab
+            _wizClearFile(type);
+            if (nameInput) nameInput.value = '';
+            _wizRecipTab('lists');
+            showToast(`${imported} contactos importados para "${escHtml(listName)}".${failed ? ` (${failed} falhas)` : ''}`);
+        } catch (e) {
+            showToast('Erro: ' + escHtml(e.message), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar e adicionar à campanha'; }
+        }
+    }
+
     function wizUpdateListsTotal() {
         const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
         const total = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
@@ -5963,21 +6105,104 @@ ${lines.join('\n')}
 
                     <!-- Passo 3: Destinatários -->
                     <div id="wizStep3" class="hidden space-y-4 max-w-2xl">
-                        <div class="bg-white border border-slate-200 rounded-xl p-6">
-                            <h3 class="text-sm font-semibold text-slate-900 mb-3">Listas Destinatárias</h3>
-                            <div id="wizListsContainer" class="space-y-2">
-                                <!-- populated by renderBrandData() -->
+                        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                            <!-- Tab bar -->
+                            <div class="flex border-b border-slate-200 px-2">
+                                <button onclick="_wizRecipTab('lists')" id="wizRecipTabLists" class="px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px">Listas</button>
+                                <button onclick="_wizRecipTab('csv')" id="wizRecipTabCsv" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar CSV</button>
+                                <button onclick="_wizRecipTab('txt')" id="wizRecipTabTxt" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar TXT</button>
                             </div>
-                            <!-- Total contacts summary -->
-                            <div id="wizListsTotal" class="hidden mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-                                <span class="text-xs text-slate-500">Total de contactos selecionados</span>
-                                <span id="wizListsTotalCount" class="text-sm font-semibold text-slate-900">0</span>
+
+                            <!-- Panel: Listas -->
+                            <div id="wizRecipPanelLists" class="p-6 space-y-3">
+                                <div id="wizListsContainer" class="space-y-2">
+                                    <!-- populated by renderBrandData() -->
+                                </div>
+                                <div id="wizListsTotal" class="hidden pt-4 border-t border-slate-100 flex items-center justify-between">
+                                    <span class="text-xs text-slate-500">Total de contactos selecionados</span>
+                                    <span id="wizListsTotalCount" class="text-sm font-semibold text-slate-900">0</span>
+                                </div>
+                                <p id="wizListsError" class="hidden text-xs text-red-500 flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    Seleciona pelo menos uma lista para avançar.
+                                </p>
                             </div>
-                            <!-- Validation message -->
-                            <p id="wizListsError" class="hidden mt-3 text-xs text-red-500 flex items-center gap-1.5">
-                                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Seleciona pelo menos uma lista para avançar.
-                            </p>
+
+                            <!-- Panel: CSV -->
+                            <div id="wizRecipPanelCsv" class="hidden p-6 space-y-4">
+                                <p class="text-xs text-slate-500"><span class="font-medium text-slate-700">CSV:</span> colunas detectadas automaticamente — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais. Separador auto-detectado (vírgula, ponto-e-vírgula ou tab).</p>
+                                <!-- Drop zone CSV -->
+                                <div id="wizCsvDropZone"
+                                     ondragover="event.preventDefault();_wizDragOver(this)"
+                                     ondragleave="_wizDragLeave(this,'csv')"
+                                     ondrop="event.preventDefault();_wizDropFile(event,'csv')"
+                                     class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl transition-all select-none overflow-hidden">
+                                    <div id="wizCsvDropEmpty" onclick="_wizPickFile('csv')"
+                                         class="flex flex-col items-center justify-center min-h-[100px] py-6 px-8 cursor-pointer text-center hover:bg-slate-100 transition-colors">
+                                        <svg class="w-7 h-7 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                        <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro .csv aqui ou clica para escolher</p>
+                                        <p class="text-xs text-slate-400">max. 100 MB</p>
+                                    </div>
+                                    <div id="wizCsvDropFilled" class="hidden items-center justify-between px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                            </div>
+                                            <div><p id="wizCsvDropFileName" class="text-sm font-semibold text-slate-900">ficheiro.csv</p><p class="text-xs text-slate-500">pronto para importar</p></div>
+                                        </div>
+                                        <button onclick="_wizClearFile('csv')" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da nova lista</label>
+                                    <input id="wizCsvListName" type="text" placeholder="Ex: Newsletter Maio 2026" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <button id="wizCsvImportBtn" onclick="_wizStartImport('csv')" disabled
+                                    class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                    Importar e adicionar à campanha
+                                </button>
+                            </div>
+
+                            <!-- Panel: TXT -->
+                            <div id="wizRecipPanelTxt" class="hidden p-6 space-y-4">
+                                <p class="text-xs text-slate-500"><span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco e inválidas são ignoradas automaticamente.</p>
+                                <!-- Drop zone TXT -->
+                                <div id="wizTxtDropZone"
+                                     ondragover="event.preventDefault();_wizDragOver(this)"
+                                     ondragleave="_wizDragLeave(this,'txt')"
+                                     ondrop="event.preventDefault();_wizDropFile(event,'txt')"
+                                     class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl transition-all select-none overflow-hidden">
+                                    <div id="wizTxtDropEmpty" onclick="_wizPickFile('txt')"
+                                         class="flex flex-col items-center justify-center min-h-[100px] py-6 px-8 cursor-pointer text-center hover:bg-slate-100 transition-colors">
+                                        <svg class="w-7 h-7 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                        <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro .txt aqui ou clica para escolher</p>
+                                        <p class="text-xs text-slate-400">max. 100 MB</p>
+                                    </div>
+                                    <div id="wizTxtDropFilled" class="hidden items-center justify-between px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                            </div>
+                                            <div><p id="wizTxtDropFileName" class="text-sm font-semibold text-slate-900">ficheiro.txt</p><p class="text-xs text-slate-500">pronto para importar</p></div>
+                                        </div>
+                                        <button onclick="_wizClearFile('txt')" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da nova lista</label>
+                                    <input id="wizTxtListName" type="text" placeholder="Ex: Leads Evento Maio 2026" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <button id="wizTxtImportBtn" onclick="_wizStartImport('txt')" disabled
+                                    class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                    Importar e adicionar à campanha
+                                </button>
+                            </div>
                         </div>
                     </div>
 
