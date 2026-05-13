@@ -41,6 +41,8 @@
             el.classList.toggle('hidden', isDark ? !isLight : isLight);
         });
     });
+    // ── HTML escape helper ─────────────────────────────
+    function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     // ── Debounce helper ────────────────────────────────
     function _debounce(fn, ms = 250) {
         let t;
@@ -183,7 +185,7 @@
             }).join('');
         } catch(e) {
             setEl('statsTotalSent','—');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -265,7 +267,7 @@
                 </tr>`).join('');
             _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
             _updateContactsPagination();
-        } catch (e) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+        } catch (e) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _updateContactsPagination() {
@@ -334,7 +336,7 @@
             _setBarWidth('dash-click-bar', parseFloat(clickRate));
             _setText('dash-bounce-val', '0%');
             _setBarWidth('dash-bounce-bar', 0);
-        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     async function _loadLists(brandId) {
@@ -372,7 +374,7 @@
                     <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}${badge(l)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
                     <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
                 </label>`).join('');
-        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     const _SUPP_PER_PAGE = 25;
@@ -490,7 +492,7 @@
                     <td class="px-4 py-3 text-right"><button onclick="apiRemoveSuppression(this,'${s.email}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button></td>
                 </tr>`).join('');
             _renderSuppPagination();
-        } catch (e) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`; }
+        } catch (e) { el.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _renderSuppPagination() {
@@ -1827,7 +1829,7 @@ ${body}
                     <td class="px-4 py-3 text-right"><button onclick="apiRemoveContactFromList(this,'${c.id}')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
                 </tr>`).join('');
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -1837,7 +1839,7 @@ ${body}
             await apiFetch(`/api/lists/${_currentListId}?action=remove_contact&contact_id=${contactId}`, { method: 'DELETE' });
             btn.closest('tr').remove();
             const countSpan = document.getElementById('listEditCount');
-            if (countSpan) countSpan.textContent = (parseInt(countSpan.textContent)||1)-1;
+            if (countSpan) countSpan.textContent = Math.max(0, parseInt(countSpan.textContent.replace(/\s/g,''), 10) - 1);
             showToast('Contacto removido da lista.');
         } catch (e) { showToast(e.message, 'error'); }
     }
@@ -1959,7 +1961,7 @@ ${body}
         const info = document.getElementById('listEditPageInfo');
         if (info) info.textContent = `Mostrando ${start}–${end} de ${_listEditTotal.toLocaleString('pt-PT')} contactos`;
         document.querySelectorAll('.list-edit-page-btn').forEach(b => {
-            const pg = parseInt(b.dataset.page);
+            const pg = parseInt(b.dataset.page, 10);
             b.classList.toggle('bg-slate-900', pg === p);
             b.classList.toggle('text-white', pg === p);
             b.classList.toggle('hover:bg-slate-50', pg !== p);
@@ -2915,7 +2917,7 @@ ${body}
                     <div style="text-align:center"><span style="display:inline-block;background:${_currentBrand.color||'#1C69D4'};color:#fff;font-size:11px;font-weight:600;padding:7px 18px;border-radius:5px">Ver mais</span></div></div></div>`;
             }
         } catch (e) {
-            list.innerHTML = `<div class="col-span-2 py-4 text-center text-red-400 text-sm">${e.message}</div>`;
+            list.innerHTML = `<div class="col-span-2 py-4 text-center text-red-400 text-sm">${escHtml(e.message)}</div>`;
         }
     }
 
@@ -3348,7 +3350,7 @@ ${body}
             closeTestEmailModal();
             showToast(`Email de teste enviado para ${email}. messageId: ${r.messageId || 'ok'}`);
         } catch (e) {
-            showToast(`Erro: ${e.message}`, 'error');
+            showToast(`Erro: ${escHtml(e.message)}`, 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = 'Enviar teste'; }
         }
@@ -3438,13 +3440,13 @@ ${body}
             panel.innerHTML = memberObjs.length
                 ? memberObjs.map(l => `
                     <div class="list-item flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 group" data-list-id="${l.id}">
-                        <div class="flex items-center gap-2 text-sm"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span><span class="text-slate-700 font-medium">${l.name}</span></div>
+                        <div class="flex items-center gap-2 text-sm"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0"></span><span class="text-slate-700 font-medium">${escHtml(l.name)}</span></div>
                         <button onclick="apiContactRemoveFromList(this,'${l.id}')" class="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity">Remover</button>
                     </div>`).join('')
                 : `<p class="text-xs text-slate-400 px-3 py-2">Sem listas associadas.</p>`;
             // Populate dropdown with non-member lists
             const available = allLists.filter(l => !memberSet.has(l.id));
-            select.innerHTML = `<option value="">Adicionar a lista…</option>` + available.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+            select.innerHTML = `<option value="">Adicionar a lista…</option>` + available.map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
         } catch (err) { console.error(err); }
     }
 
@@ -4341,7 +4343,7 @@ ${lines.join('\n')}
             _renderReportLog();
         } catch (e) {
             const tb = document.getElementById('repLogBody');
-            if (tb) tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-red-400">Erro ao carregar log: ${e.message}</td></tr>`;
+            if (tb) tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-red-400">Erro ao carregar log: ${escHtml(e.message)}</td></tr>`;
         }
     }
     function _renderReportLog() {
@@ -4508,6 +4510,10 @@ ${lines.join('\n')}
     }
 
     function selectBrand(id, name, color) {
+        window._contactsCache  = [];
+        window._campaignsCache = [];
+        _currentContact = null;
+        _currentListId  = null;
         const b = _allBrands.find(x => x.id === id) || {};
         _currentBrand = { id, name, color, bg: b.bg || '#FFFFFF', logo: b.logo || '', invert: b.invert || false };
         localStorage.setItem('pm_current_brand', JSON.stringify(_currentBrand));

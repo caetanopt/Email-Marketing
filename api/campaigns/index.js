@@ -164,6 +164,12 @@ module.exports = async function handler(req, res) {
               template_id, list_ids, scheduled_at, utm_params } = req.body || {};
       if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
 
+      const brandAccess = await query(
+        'SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2',
+        [user.id, brand_id]
+      );
+      if (!brandAccess[0]) return res.status(403).json({ error: 'Acesso negado a esta marca' });
+
       const utmJson = utm_params && typeof utm_params === 'object' && Object.values(utm_params).some(Boolean)
         ? JSON.stringify(utm_params) : null;
 

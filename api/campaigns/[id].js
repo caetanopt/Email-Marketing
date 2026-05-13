@@ -91,7 +91,7 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'GET') {
       if (action === 'report') {
-        const camp = await query('SELECT * FROM campaigns WHERE id=$1', [id]);
+        const camp = [await authorizeCampaign(user.id, id)];
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
 
         const [counts] = await query(
@@ -241,9 +241,10 @@ module.exports = async function handler(req, res) {
                   b.from_name AS brand_from_name, b.from_email AS brand_from_email,
                   b.reply_to AS brand_reply_to, b.variables
            FROM campaigns c
+           JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
            LEFT JOIN templates t ON t.id=c.template_id
            LEFT JOIN brands b ON b.id=c.brand_id
-           WHERE c.id=$1`, [id]
+           WHERE c.id=$1`, [id, user.id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         if (camp[0].status === 'sending')
@@ -424,9 +425,10 @@ module.exports = async function handler(req, res) {
           `SELECT c.*, t.html_content,
                   b.from_name AS brand_from_name, b.from_email AS brand_from_email, b.reply_to AS brand_reply_to
            FROM campaigns c
+           JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
            LEFT JOIN templates t ON t.id=c.template_id
            LEFT JOIN brands b ON b.id=c.brand_id
-           WHERE c.id=$1`, [id]
+           WHERE c.id=$1`, [id, user.id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
 
