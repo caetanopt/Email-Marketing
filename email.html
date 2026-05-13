@@ -2987,9 +2987,20 @@ ${body}
                     body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params })
                 });
                 if (sendType === 'now' && campaignId) {
-                    showToast('Campanha criada. A enviar…', 'info');
-                    const r = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
-                    showToast(`Campanha enviada: ${r.sent||0}/${r.total||0} sucesso${r.failed?`, ${r.failed} falhas`:''}.`);
+                    showToast('Campanha criada. A iniciar envio…', 'info');
+                    const init = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
+                    if (!init.warning) {
+                        let totalSent = 0, totalFailed = 0;
+                        while (true) {
+                            const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_batch`, { method: 'POST' });
+                            totalSent   += r.sent   || 0;
+                            totalFailed += r.failed || 0;
+                            if (r.done || r.warning) break;
+                        }
+                        showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
+                    } else {
+                        showToast(`Campanha marcada como enviada (${init.warning}).`, 'info');
+                    }
                 } else if (sendType === 'schedule') {
                     showToast('Campanha agendada!');
                 } else {
@@ -3307,22 +3318,63 @@ ${body}
         _setText('snmSender', senderLabel);
         const m=document.getElementById('sendNowModal');  m.classList.remove('hidden'); m.classList.add('flex');
     }
-    function closeSendNowModal() { const m=document.getElementById('sendNowModal');  m.classList.add('hidden');    m.classList.remove('flex'); }
+    function closeSendNowModal() {
+        const m = document.getElementById('sendNowModal');
+        m.classList.add('hidden'); m.classList.remove('flex');
+        const prog = document.getElementById('snmProgress');
+        const bar  = document.getElementById('snmProgressBar');
+        if (prog) prog.classList.add('hidden');
+        if (bar)  bar.style.width = '0%';
+    }
     async function confirmSendNow() {
         if (!_currentCampaign?.id) { showToast('Campanha não identificada.','error'); return; }
-        const btn = document.querySelector('#sendNowModal button[onclick*="confirmSendNow"]');
-        if (btn) { btn.disabled = true; btn.textContent = 'A enviar…'; }
+        const btn    = document.querySelector('#sendNowModal button[onclick*="confirmSendNow"]');
+        const prog   = document.getElementById('snmProgress');
+        const progBar= document.getElementById('snmProgressBar');
+        const progTxt= document.getElementById('snmProgressTxt');
+        const cancelBtn = document.querySelector('#sendNowModal button[onclick*="closeSendNowModal"]');
+
+        if (btn) { btn.disabled = true; btn.textContent = 'A preparar…'; }
+        if (cancelBtn) cancelBtn.disabled = true;
+        if (prog) prog.classList.remove('hidden');
+
+        let totalSent = 0, totalFailed = 0, grandTotal = 0;
         try {
-            const r = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send`, { method: 'POST' });
+            // Fase 1: init — cria destinatários, retorna total
+            const init = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send`, { method: 'POST' });
+            if (init.warning) {
+                closeSendNowModal();
+                showToast(`Campanha marcada como enviada (${init.warning}).`, 'info');
+                _loadCampaigns(_currentBrand.id);
+                return;
+            }
+            grandTotal = init.total || 0;
+            if (progTxt) progTxt.textContent = `0 / ${grandTotal.toLocaleString('pt-PT')} enviados`;
+            if (btn) btn.textContent = 'A enviar…';
+
+            // Fase 2: batches até done=true
+            while (true) {
+                const r = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send_batch`, { method: 'POST' });
+                totalSent   += r.sent   || 0;
+                totalFailed += r.failed || 0;
+                const pct = grandTotal ? Math.round((totalSent + totalFailed) / grandTotal * 100) : 100;
+                if (progBar) progBar.style.width = pct + '%';
+                if (progTxt) progTxt.textContent = `${(totalSent + totalFailed).toLocaleString('pt-PT')} / ${grandTotal.toLocaleString('pt-PT')} enviados`;
+                if (r.done) break;
+                if (r.warning) { showToast(r.warning, 'info'); break; }
+            }
+
             closeSendNowModal();
             showScreen('campaigns');
-            if (r.warning) showToast(`Campanha marcada como enviada (${r.warning}).`, 'info');
-            else showToast(`Campanha enviada: ${r.sent||0}/${r.total||0} sucesso${r.failed?`, ${r.failed} falhas`:''}.`);
+            showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
             _loadCampaigns(_currentBrand.id);
         } catch (e) {
             showToast(e.message, 'error');
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Envio'; }
+            if (btn)    { btn.disabled = false; btn.textContent = 'Confirmar Envio'; }
+            if (cancelBtn) cancelBtn.disabled = false;
+            if (prog)   prog.classList.add('hidden');
+            if (progBar) progBar.style.width = '0%';
         }
     }
     function openScheduleModal()  { const m=document.getElementById('scheduleModal');  m.classList.remove('hidden'); m.classList.add('flex'); }
@@ -8055,6 +8107,13 @@ ${lines.join('\n')}
                 <div class="flex justify-between"><span class="text-slate-500">Listas:</span><span id="snmLists" class="font-semibold text-slate-900">—</span></div>
                 <div class="flex justify-between"><span class="text-slate-500">Remetente:</span><span id="snmSender" class="font-semibold text-slate-900">—</span></div>
             </div>
+        </div>
+        <!-- Barra de progresso (oculta até envio começar) -->
+        <div id="snmProgress" class="hidden px-6 pb-4">
+            <div class="w-full bg-slate-100 rounded-full h-2 mb-1.5">
+                <div id="snmProgressBar" class="bg-slate-900 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+            </div>
+            <p id="snmProgressTxt" class="text-xs text-slate-500 text-center">A preparar…</p>
         </div>
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
             <button onclick="closeSendNowModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>

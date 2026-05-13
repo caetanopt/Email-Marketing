@@ -237,18 +237,16 @@ module.exports = async function handler(req, res) {
       // ── Enviar campanha ──────────────────────────────
       if (action === 'send') {
         const camp = await query(
-          `SELECT c.*, t.html_content,
-                  b.from_name AS brand_from_name, b.from_email AS brand_from_email,
-                  b.reply_to AS brand_reply_to, b.variables
+          `SELECT c.*
            FROM campaigns c
            JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
-           LEFT JOIN templates t ON t.id=c.template_id
-           LEFT JOIN brands b ON b.id=c.brand_id
            WHERE c.id=$1`, [id, user.id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         if (camp[0].status === 'sending')
           return res.status(400).json({ error: 'Campanha já está a ser enviada, aguarda…' });
+        if (camp[0].status === 'sent')
+          return res.status(400).json({ error: 'Campanha já foi enviada.' });
 
         const contacts = await query(
           `SELECT DISTINCT c.id, c.email, c.name
@@ -262,7 +260,15 @@ module.exports = async function handler(req, res) {
         if (!contacts.length) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas com contactos activos.' });
 
         await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
-        // Log campaign start (best-effort; ignore if migration 013 not run)
+
+        if (contacts.length) {
+          const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
+          await query(
+            `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT DO NOTHING`,
+            contacts.flatMap(ct => [id, ct.id, ct.email])
+          );
+        }
+
         try {
           await query(
             `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
@@ -271,32 +277,66 @@ module.exports = async function handler(req, res) {
           );
         } catch (err) { if (err.code !== '42P01') console.error('send log start:', err); }
 
-        if (contacts.length) {
-          const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
-          await query(
-            `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT DO NOTHING`,
-            contacts.flatMap(c => [id, c.id, c.email])
-          );
+        return res.status(200).json({ ok: true, total: contacts.length, queued: true });
+      }
+
+      // ── Enviar batch (chamado repetidamente pelo frontend) ──────
+      if (action === 'send_batch') {
+        const camp = await query(
+          `SELECT c.*, t.html_content,
+                  b.from_name AS brand_from_name, b.from_email AS brand_from_email,
+                  b.reply_to AS brand_reply_to, b.variables
+           FROM campaigns c
+           JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
+           LEFT JOIN templates t ON t.id=c.template_id
+           LEFT JOIN brands b ON b.id=c.brand_id
+           WHERE c.id=$1`, [id, user.id]
+        );
+        if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
+        if (camp[0].status === 'sent')
+          return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
+        if (camp[0].status !== 'sending')
+          return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
+
+        const BATCH = parseInt(process.env.SMTP_BATCH_SIZE || '50', 10);
+        const pending = await query(
+          `SELECT cr.contact_id, cr.email, con.name
+           FROM campaign_recipients cr
+           JOIN contacts con ON con.id = cr.contact_id
+           WHERE cr.campaign_id = $1 AND cr.status = 'pending'
+           LIMIT $2`,
+          [id, BATCH]
+        );
+
+        if (!pending.length) {
+          await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
+          return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
         }
 
         if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+          await query(
+            "UPDATE campaign_recipients SET status='sent', sent_at=NOW() WHERE campaign_id=$1 AND status='pending'",
+            [id]
+          );
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          return res.status(200).json({ ok: true, sent: contacts.length, warning: 'SMTP não configurado — emails não enviados' });
+          return res.status(200).json({ done: true, sent: pending.length, failed: 0, remaining: 0, warning: 'SMTP não configurado' });
         }
 
+        const c = camp[0];
         const port = parseInt(process.env.SMTP_PORT || '587', 10);
         const transporter = nodemailer.createTransport({
           host: process.env.SMTP_HOST,
           port,
-          secure: port === 465, // true para 465 (SSL), false para 587 (STARTTLS)
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          },
+          secure: port === 465,
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
         });
-        const c = camp[0];
 
-        // Build UTM injector from utm_params JSONB
+        const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+        const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+        const fromName   = c.from_name  || c.brand_from_name  || 'PrimeMail';
+        const fromEmail  = c.from_email || c.brand_from_email || `info@${fromDomain}`;
+        const replyTo    = c.reply_to   || c.brand_reply_to   || undefined;
+
         const utmParams = c.utm_params || {};
         const utmStr = Object.entries(utmParams).filter(([, v]) => v)
           .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
@@ -309,17 +349,11 @@ module.exports = async function handler(req, res) {
           });
         }
 
-        const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
-        const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
-        const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
-        const fromEmail = c.from_email || c.brand_from_email || `info@${fromDomain}`;
-        const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
+        const RATE = parseInt(process.env.SMTP_RATE || '14', 10);
         let sent = 0, failed = 0;
 
-        // SES default rate limit is 14/sec for new accounts. Adjust via SMTP_RATE.
-        const RATE = parseInt(process.env.SMTP_RATE || '14', 10);
-        for (let i = 0; i < contacts.length; i += RATE) {
-          await Promise.all(contacts.slice(i, i + RATE).map(async contact => {
+        for (let i = 0; i < pending.length; i += RATE) {
+          await Promise.all(pending.slice(i, i + RATE).map(async contact => {
             try {
               const token = unsubToken(contact.email, c.brand_id);
               const unsubUrl = `${appUrl}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
@@ -331,7 +365,6 @@ module.exports = async function handler(req, res) {
                 .replace(/\{\{name\}\}/g, contact.name||contact.email)
                 .replace(/\{\{email\}\}/g, contact.email)
                 .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
-              // Replace brand variables {{key}}
               for (const [k, v] of Object.entries(vars)) {
                 rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || '');
               }
@@ -348,7 +381,7 @@ module.exports = async function handler(req, res) {
                 html: finalHtml,
                 headers: {
                   'X-Campaign-Id': String(id),
-                  'X-Contact-Id':  String(contact.id),
+                  'X-Contact-Id':  String(contact.contact_id),
                   'List-Unsubscribe': `<${unsubUrl}>`,
                   'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
                 },
@@ -356,13 +389,13 @@ module.exports = async function handler(req, res) {
               try {
                 await query(
                   "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
-                  [info?.messageId||null, id, contact.id]
+                  [info?.messageId||null, id, contact.contact_id]
                 );
               } catch (e1) {
                 if (e1.code === '42703') {
                   await query(
                     "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
-                    [info?.messageId||null, id, contact.id]
+                    [info?.messageId||null, id, contact.contact_id]
                   );
                 } else { throw e1; }
               }
@@ -370,7 +403,7 @@ module.exports = async function handler(req, res) {
                 await query(
                   `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, message_id, created_by)
                    VALUES ($1,$2,$3,$4,'sent',$5,$6)`,
-                  [c.brand_id, id, contact.id, contact.email, info?.messageId||null, user.id]
+                  [c.brand_id, id, contact.contact_id, contact.email, info?.messageId||null, user.id]
                 );
               } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
               sent++;
@@ -380,13 +413,13 @@ module.exports = async function handler(req, res) {
               try {
                 await query(
                   "UPDATE campaign_recipients SET status='failed',attempted_at=NOW(),error_message=$3 WHERE campaign_id=$1 AND contact_id=$2",
-                  [id, contact.id, errMsg]
+                  [id, contact.contact_id, errMsg]
                 );
               } catch (e2) {
                 if (e2.code === '42703') {
                   await query(
                     "UPDATE campaign_recipients SET status='failed' WHERE campaign_id=$1 AND contact_id=$2",
-                    [id, contact.id]
+                    [id, contact.contact_id]
                   );
                 } else { throw e2; }
               }
@@ -394,27 +427,41 @@ module.exports = async function handler(req, res) {
                 await query(
                   `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, error, created_by)
                    VALUES ($1,$2,$3,$4,'failed',$5,$6)`,
-                  [c.brand_id, id, contact.id, contact.email, errMsg, user.id]
+                  [c.brand_id, id, contact.contact_id, contact.email, errMsg, user.id]
                 );
               } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
               failed++;
             }
           }));
-          // Throttle to respect rate limit (1 second per batch)
-          if (i + RATE < contacts.length) await new Promise(r => setTimeout(r, 1000));
+          if (i + RATE < pending.length) await new Promise(r => setTimeout(r, 1000));
         }
 
         transporter.close();
-        await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-        try {
-          await query(
-            `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
-             VALUES ($1,$2,$3,'campaign_completed',$4)`,
-            [camp[0].brand_id, id, `enviados=${sent} falhados=${failed}`, user.id]
-          );
-        } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
-        return res.status(200).json({ ok: true, sent, failed, total: contacts.length });
+
+        const [{ remaining }] = await query(
+          "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status='pending'",
+          [id]
+        );
+
+        if (remaining === 0) {
+          await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
+          try {
+            const [totals] = await query(
+              `SELECT COUNT(*) FILTER (WHERE status='sent')::int AS total_sent,
+                      COUNT(*) FILTER (WHERE status='failed')::int AS total_failed
+               FROM campaign_recipients WHERE campaign_id=$1`, [id]
+            );
+            await query(
+              `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
+               VALUES ($1,$2,$3,'campaign_completed',$4)`,
+              [c.brand_id, id, `enviados=${totals.total_sent} falhados=${totals.total_failed}`, user.id]
+            );
+          } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
+        }
+
+        return res.status(200).json({ ok: true, sent, failed, remaining, done: remaining === 0 });
       }
+
 
       // ── Email de teste ───────────────────────────────
       if (action === 'test') {
