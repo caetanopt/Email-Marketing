@@ -1,16 +1,16 @@
--- Create the two fixed lists (Marketing + Colaboradores) for every brand
--- Uses a unique constraint on (brand_id, name) to avoid duplicates
-ALTER TABLE lists ADD CONSTRAINT IF NOT EXISTS lists_brand_name_unique UNIQUE (brand_id, name);
+-- Unique index to prevent duplicate list names per brand
+CREATE UNIQUE INDEX IF NOT EXISTS lists_brand_name_unique ON lists(brand_id, name);
 
+-- Create the two fixed lists for every brand
 INSERT INTO lists (brand_id, name, description)
 SELECT id, 'Marketing', 'Lista principal de marketing'
 FROM brands
-ON CONFLICT (brand_id, name) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO lists (brand_id, name, description)
 SELECT id, 'Colaboradores', 'Lista de colaboradores internos'
 FROM brands
-ON CONFLICT (brand_id, name) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- Mark contacts already in suppression as suppressed/unsubscribed
 UPDATE contacts c
