@@ -2803,6 +2803,7 @@ ${body}
         if (step === 2) _wizInitPreview();
         const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Confirmar' : 'Seguinte →';
         const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.display = step===1 ? 'none' : '';
+        const sb = document.getElementById('wizSaveDraftBtn'); if (sb) sb.style.display = step===4 ? 'none' : '';
         const navBar = document.getElementById('wizNavBar');
         if (navBar) navBar.className='flex items-center justify-between pt-5 '+(step===1||step===2?'':'max-w-2xl');
 
@@ -6388,6 +6389,7 @@ ${lines.join('\n')}
                     <div id="wizNavBar" class="flex items-center gap-3 pt-5 max-w-2xl">
                         <button id="wizPrevBtn" onclick="mockCampaignPrev()" style="display:none" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">← Anterior</button>
                         <button id="wizNextBtn" onclick="mockCampaignNext()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Seguinte →</button>
+                        <button id="wizSaveDraftBtn" onclick="wizSaveDraft()" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Guardar Rascunho</button>
                         <button onclick="showScreen('campaigns')" class="px-5 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
                     </div>
 
