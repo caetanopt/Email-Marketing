@@ -346,6 +346,7 @@
             _setText('dash-bounce-val', '0%');
             _setBarWidth('dash-bounce-bar', 0);
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+        _updateCampBulkBar();
     }
 
     async function _loadLists(brandId) {
