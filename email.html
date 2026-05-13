@@ -2960,7 +2960,7 @@ ${body}
         }
         if (_wizStep === 3) {
             const checked = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
-            if (!checked.length && !_wizDirectContactIds.length) {
+            if (!checked.length && !_wizDirectContactIds.length && !_wizExistingDirectCount) {
                 _wizRecipTab('lists');
                 const err = document.getElementById('wizListsError');
                 if (err) err.classList.remove('hidden');
@@ -3080,6 +3080,7 @@ ${body}
 
     let _wizImportFiles = { csv: null, txt: null };
     let _wizDirectContactIds = [];
+    let _wizExistingDirectCount = 0;
 
     function _wizPickFile(type) {
         const inp = document.createElement('input');
@@ -3139,16 +3140,17 @@ ${body}
     }
 
     function _wizUpdateDirectNotice() {
-        const n = _wizDirectContactIds.length;
+        const total = _wizExistingDirectCount + _wizDirectContactIds.length;
         const notice = document.getElementById('wizDirectNotice');
         const count  = document.getElementById('wizDirectCount');
-        if (notice) notice.classList.toggle('hidden', n === 0);
-        if (count)  count.textContent = n.toLocaleString('pt-PT');
-        if (n > 0) document.getElementById('wizListsError')?.classList.add('hidden');
+        if (notice) notice.classList.toggle('hidden', total === 0);
+        if (count)  count.textContent = total.toLocaleString('pt-PT');
+        if (total > 0) document.getElementById('wizListsError')?.classList.add('hidden');
     }
 
     function _wizClearDirect() {
         _wizDirectContactIds = [];
+        _wizExistingDirectCount = 0;
         _wizUpdateDirectNotice();
         wizUpdateListsTotal();
     }
@@ -3328,7 +3330,10 @@ ${body}
         _currentCampaign = c;
         _editingCampaignId = c.id;
         _editingTemplateId = c.template_id || null;
+        _wizExistingDirectCount = c.direct_count || 0;
+        _wizDirectContactIds = [];
         showScreen('campaignCreate');
+        _wizUpdateDirectNotice();
         // Pre-fill step 1 fields
         const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
         sv('wizName',        c.name);
@@ -3366,7 +3371,10 @@ ${body}
             _currentCampaign = c;
             _editingCampaignId = c.id;
             _editingTemplateId = c.template_id || null;
+            _wizExistingDirectCount = c.direct_count || 0;
+            _wizDirectContactIds = [];
             showScreen('campaignCreate');
+            _wizUpdateDirectNotice();
             const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
             sv('wizName',        c.name);
             sv('wizSubject',     c.subject);
@@ -4519,6 +4527,7 @@ ${lines.join('\n')}
                 wizShowStep(1);
                 if (!_editingCampaignId) {
                     _wizDirectContactIds = [];
+                    _wizExistingDirectCount = 0;
                     _wizUpdateDirectNotice();
                     _wizImportFiles = { csv: null, txt: null };
                     _wizClearFile('csv');

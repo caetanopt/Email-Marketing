@@ -203,7 +203,11 @@ module.exports = async function handler(req, res) {
          LEFT JOIN list_members lm ON lm.list_id=l.id
          WHERE cl.campaign_id=$1 GROUP BY l.id`, [id]
       );
-      return res.status(200).json({ ...rows[0], lists });
+      const [{ direct_count }] = await query(
+        `SELECT COUNT(*)::int AS direct_count FROM campaign_recipients WHERE campaign_id=$1`,
+        [id]
+      );
+      return res.status(200).json({ ...rows[0], lists, direct_count: direct_count || 0 });
     }
 
     if (req.method === 'PUT') {
