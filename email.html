@@ -3129,6 +3129,7 @@ ${body}
     let _wizImportFiles = { csv: null, txt: null };
     let _wizDirectContactIds = [];
     let _wizDirectContacts = [];
+    let _wizExistingContacts = [];
     let _wizExistingDirectCount = 0;
     let _wizSubmitting = false;
 
@@ -3202,6 +3203,7 @@ ${body}
         _wizDirectContactIds = [];
         _wizExistingDirectCount = 0;
         _wizDirectContacts = [];
+        _wizExistingContacts = [];
         _wizUpdateDirectNotice();
         _wizRenderDirectPanel();
         wizUpdateListsTotal();
@@ -3212,19 +3214,18 @@ ${body}
         const list  = document.getElementById('wizDirectPanelList');
         const countEl = document.getElementById('wizDirectPanelCount');
         if (!panel || !list) return;
-        const hasNew = _wizDirectContacts.length > 0;
-        const hasOld = _wizExistingDirectCount > 0;
-        if (!hasNew && !hasOld) { panel.classList.add('hidden'); return; }
+        const allContacts = [..._wizExistingContacts, ..._wizDirectContacts];
+        if (!allContacts.length && !_wizExistingDirectCount) { panel.classList.add('hidden'); return; }
         panel.classList.remove('hidden');
-        const total = _wizExistingDirectCount + _wizDirectContacts.length;
+        const total = allContacts.length || _wizExistingDirectCount;
         if (countEl) countEl.textContent = total;
-        let html = '';
-        if (hasOld) {
-            html += `<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 italic">${_wizExistingDirectCount} contacto${_wizExistingDirectCount !== 1 ? 's' : ''} já guardado${_wizExistingDirectCount !== 1 ? 's' : ''}</div>`;
+        if (!allContacts.length) {
+            list.innerHTML = `<div class="px-4 py-3 text-xs text-slate-400 italic">A carregar…</div>`;
+            return;
         }
-        html += _wizDirectContacts.map(c => {
+        list.innerHTML = allContacts.map(c => {
             const initial = (c.name || c.email || '?')[0].toUpperCase();
-            return `<div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-slate-50 last:border-0">
+            return `<div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-slate-100 last:border-0">
                 <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
                     <span class="text-xs font-semibold text-indigo-600">${escHtml(initial)}</span>
                 </div>
@@ -3234,7 +3235,6 @@ ${body}
                 </div>
             </div>`;
         }).join('');
-        list.innerHTML = html;
     }
 
     async function _wizStartImport(type) {
@@ -3291,11 +3291,13 @@ ${body}
 
     function wizUpdateListsTotal() {
         const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
-        const total = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
+        const listTotal = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
+        const directTotal = _wizExistingContacts.length + _wizDirectContacts.length + (_wizExistingContacts.length === 0 ? _wizExistingDirectCount : 0);
+        const total = listTotal + directTotal;
         const totalBar = document.getElementById('wizListsTotal');
         const totalCount = document.getElementById('wizListsTotalCount');
         const err = document.getElementById('wizListsError');
-        if (totalBar) totalBar.classList.toggle('hidden', checks.length === 0);
+        if (totalBar) totalBar.classList.toggle('hidden', total === 0);
         if (totalCount) totalCount.textContent = total.toLocaleString('pt-PT') + ' contactos';
         if (err) err.classList.add('hidden');
     }
@@ -3417,9 +3419,18 @@ ${body}
         _wizExistingDirectCount = c.direct_count || 0;
         _wizDirectContactIds = [];
         _wizDirectContacts = [];
+        _wizExistingContacts = [];
         showScreen('campaignCreate');
         _wizUpdateDirectNotice();
         _wizRenderDirectPanel();
+        if (_wizExistingDirectCount > 0) {
+            apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+                _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: [r.first_name, r.last_name].filter(Boolean).join(' ') }));
+                _wizExistingDirectCount = _wizExistingContacts.length;
+                _wizUpdateDirectNotice();
+                _wizRenderDirectPanel();
+            }).catch(() => {});
+        }
         // Pre-fill step 1 fields
         const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
         sv('wizName',        c.name);
@@ -3460,9 +3471,18 @@ ${body}
             _wizExistingDirectCount = c.direct_count || 0;
             _wizDirectContactIds = [];
             _wizDirectContacts = [];
+            _wizExistingContacts = [];
             showScreen('campaignCreate');
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
+            if (_wizExistingDirectCount > 0) {
+                apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+                    _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: [r.first_name, r.last_name].filter(Boolean).join(' ') }));
+                    _wizExistingDirectCount = _wizExistingContacts.length;
+                    _wizUpdateDirectNotice();
+                    _wizRenderDirectPanel();
+                }).catch(() => {});
+            }
             const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
             sv('wizName',        c.name);
             sv('wizSubject',     c.subject);
@@ -4617,6 +4637,7 @@ ${lines.join('\n')}
                     _wizDirectContactIds = [];
                     _wizExistingDirectCount = 0;
                     _wizDirectContacts = [];
+                    _wizExistingContacts = [];
                     _wizUpdateDirectNotice();
                     _wizRenderDirectPanel();
                     _wizImportFiles = { csv: null, txt: null };
