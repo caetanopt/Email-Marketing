@@ -4886,6 +4886,11 @@ ${body}
                     _teCtx = 'te_';
                     teState.blocks = [];
                     teState.selected = null;
+                    // Clear wizard MJML textarea so previous campaign content doesn't bleed in
+                    const _wmc = document.getElementById('wiz_te_mjmlCode');
+                    if (_wmc) _wmc.value = '';
+                    const _wml = document.getElementById('wiz_te_mjmlLines');
+                    if (_wml) _wml.textContent = '';
                     const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                     if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
                 }
