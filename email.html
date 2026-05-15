@@ -1842,9 +1842,10 @@
                     blocks.push(b);
                 } else {
                     const col = cols[0]; if (!col) return;
-                    const el = col.children[0]; if (!el) return;
-                    const b = teParseMjmlEl(el, sectionBg, sectionPad);
-                    if (b) blocks.push(b);
+                    [...col.children].forEach(child => {
+                        const b = teParseMjmlEl(child, sectionBg, sectionPad);
+                        if (b) blocks.push(b);
+                    });
                 }
             });
             return blocks;
