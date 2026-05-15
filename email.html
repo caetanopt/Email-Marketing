@@ -4406,7 +4406,7 @@ ${body}
             const small = /font-size\s*:\s*1[012]px/i.test(attrs) || /<small/i.test(_);
             return tok({ type:'text', text, small });
         });
-        stripAll(src).split(/\n+/).forEach(line => {
+        stripAll(src.replace(/\x00/g, ' ')).split(/\n+/).forEach(line => {
             line = line.trim(); if (line.length > 2) tok({ type:'text', text: xmlEsc(line), small:false });
         });
 
