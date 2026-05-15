@@ -314,6 +314,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'DELETE' && id && action === 'remove_member' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes remover-te a ti próprio' });
+      try { await query('DELETE FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]); } catch (_) {}
       await query('DELETE FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]);
       return res.status(200).json({ ok: true });
     }
