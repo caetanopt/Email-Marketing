@@ -4669,7 +4669,7 @@ ${lines.join('\n')}
             // SES quota widget — load once per brand session
             if (id === 'campaigns' && !_screenLoaded.has('sesQuota')) { _loadSesQuota(); _screenLoaded.add('sesQuota'); }
             // Roles info panel: only visible to owner / admin / administrador
-            if (id === 'team' && !_screenLoaded.has('team')) { _syncRolesPanel(); _loadTeamMembers(); _screenLoaded.add('team'); }
+            if (id === 'team') { _syncRolesPanel(); if (!_screenLoaded.has('team')) { _loadTeamMembers(); _screenLoaded.add('team'); } }
             // Load campaign report when entering report screen (always reload — report is campaign-specific)
             if (id === 'campaignReport') {
                 _loadCampaignReport();
@@ -4972,7 +4972,7 @@ ${lines.join('\n')}
         if (!me?.id) return;
         try {
             const r = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=permissions&member_id=${me.id}`);
-            _currentUserRole = r.role || 'viewer';
+            if (r.role) _currentUserRole = r.role;
             _syncRolesPanel();
             // Roles that cannot access the team screen
             const restrictedRoles = ['editor', 'viewer'];
