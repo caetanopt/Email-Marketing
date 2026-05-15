@@ -242,28 +242,34 @@ module.exports = async function handler(req, res) {
       // Send welcome email (best-effort — never blocks the response)
       if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
-          const brandRows = await query('SELECT name FROM brands WHERE id=$1', [id]);
-          const brandName = brandRows[0]?.name || id;
-          const roleLabel = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
+          const brandRows = await query('SELECT name, from_name, from_email FROM brands WHERE id=$1', [id]);
+          const brandName  = brandRows[0]?.name || id;
+          const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+          const fromName   = brandRows[0]?.from_name  || 'PrimeMail';
+          const fromEmail  = brandRows[0]?.from_email || `info@${fromDomain}`;
+          const appUrl     = process.env.APP_URL || `https://${fromDomain}`;
+          const roleLabel  = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
           const port = parseInt(process.env.SMTP_PORT || '587', 10);
           const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST, port, secure: port === 465,
             auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
           });
-          const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
           await transporter.sendMail({
-            from: `"PrimeMail" <noreply@${fromDomain}>`,
+            from: `"${fromName}" <${fromEmail}>`,
             to: email.toLowerCase().trim(),
             subject: `Foste adicionado à equipa ${brandName} no PrimeMail`,
             html: `<p>Olá ${name},</p>
 <p>Foste adicionado à marca <strong>${brandName}</strong> no PrimeMail com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
-<p>Podes aceder à plataforma em <a href="https://${fromDomain}">PrimeMail</a> com o teu email e a password definida pelo administrador.</p>
+<p>Podes aceder à plataforma em <a href="${appUrl}">${appUrl}</a> com o teu email e a password definida pelo administrador.</p>
 <p>Bem-vindo à equipa!</p>`,
-            text: `Olá ${name},\n\nForam adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nBem-vindo à equipa!`,
+            text: `Olá ${name},\n\nForaste adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`,
           });
+          console.log('invite email sent to', email);
         } catch (mailErr) {
-          console.error('invite email error:', mailErr.message);
+          console.error('invite email error:', mailErr);
         }
+      } else {
+        console.warn('invite email skipped: SMTP not configured');
       }
 
       return res.status(201).json({ ok: true, user_id: userId });
