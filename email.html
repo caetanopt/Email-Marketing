@@ -4364,88 +4364,168 @@ ${body}
     function _convertHtmlToMjml(html) {
         const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         let src = bodyMatch ? bodyMatch[1] : html;
-        src = src.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<script[^>]*>[\s\S]*?<\/script>/gi,'');
+        // Strip styles, scripts, MSO conditionals and HTML comments
+        src = src
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<!--\[if[^\]]*\]>[\s\S]*?<!\[endif\]-->/gi, '')
+            .replace(/<!--[\s\S]*?-->/g, '');
 
-        const getAttr = (s, n) => { const m = s.match(new RegExp(`${n}="([^"]*)"`, 'i')); return m ? m[1] : ''; };
-        const xmlEsc  = s => String(s)
-            .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;')
-            .replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const stripAll = s => s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+        const getAttr  = (s, n) => { const m = s.match(new RegExp(n + '="([^"]*)"', 'i')); return m ? m[1] : ''; };
+        const getStyle = (s, p) => { const m = s.match(new RegExp(p + '\\s*:\\s*([^;>"]+)', 'i')); return m ? m[1].trim() : ''; };
+        const xmlEsc   = s => String(s)
+            .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi, '&amp;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const stripAll = s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         const sanitize = s => s
-            .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;')
-            .replace(/<br\s*\/?>/gi,'<br/>')
-            .replace(/<b>([\s\S]*?)<\/b>/gi,'<strong>$1</strong>')
-            .replace(/<i>([\s\S]*?)<\/i>/gi,'<em>$1</em>')
-            .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_,h,t) => `<a href="${xmlEsc(h)}">${stripAll(t)}</a>`)
-            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])[^>]+>/gi,'')
-            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])/g,'&lt;')
+            .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi, '&amp;')
+            .replace(/<br\s*\/?>/gi, '<br/>')
+            .replace(/<b\b[^>]*>([\s\S]*?)<\/b>/gi, '<strong>$1</strong>')
+            .replace(/<i\b[^>]*>([\s\S]*?)<\/i>/gi, '<em>$1</em>')
+            .replace(/<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, h, t) => `<a href="${xmlEsc(h)}">${stripAll(t)}</a>`)
+            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])[^>]+>/gi, '')
+            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])/g, '&lt;')
             .trim();
 
-        // Pre-process: <a href><img></a> → move href into img
-        src = src.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>\s*(<img[^>]*?>)\s*<\/a>/gi, (_,h,img) => img.replace(/>/,` data-href="${h}">`));
+        // Social network domain → MJML name
+        const SOCIAL_MAP = {
+            'facebook.com':'facebook','fb.com':'facebook',
+            'twitter.com':'twitter','x.com':'twitter',
+            'instagram.com':'instagram',
+            'linkedin.com':'linkedin',
+            'youtube.com':'youtube','youtu.be':'youtube',
+            'pinterest.com':'pinterest',
+            'tiktok.com':'tiktok',
+            'snapchat.com':'snapchat',
+        };
+        const socialNet = url => { for (const [d,n] of Object.entries(SOCIAL_MAP)) if (url.includes(d)) return n; return null; };
+
+        // Pre-process: <a href><img></a> → img with data-href
+        src = src.replace(/<a\s[^>]*href="([^"]*)"[^>]*>\s*(<img[^>]*?)(\s*\/?>)\s*<\/a>/gi,
+            (_, h, img, end) => `${img} data-href="${h}"${end}`);
 
         let i = 0;
         const tokens = [];
-        const tok = t => { tokens.push({...t, _i: i++}); return '\x00'; };
+        const tok = t => { tokens.push({ ...t, _i: i++ }); return '\x00'; };
 
-        src = src.replace(/<img([^>]*?)(?:\s*\/)?>/gi, (_,a) => {
-            const s = getAttr(a,'src'); if (!s) return '';
-            return tok({ type:'image', src:s, alt:getAttr(a,'alt'), href:getAttr(a,'href')||getAttr(a,'data-href') });
+        // Images
+        src = src.replace(/<img([^>]*?)(?:\s*\/)?>/gi, (_, a) => {
+            const s = getAttr(a, 'src'); if (!s) return '\x00';
+            const href = getAttr(a, 'data-href') || getAttr(a, 'href');
+            const alt  = getAttr(a, 'alt') || '';
+            const w    = parseInt(getAttr(a, 'width')) || 0;
+            const net  = (href ? socialNet(href) : null) || socialNet(s) || socialNet(alt.toLowerCase());
+            return tok({ type:'image', src:s, alt, href, net, small: w > 0 && w < 200 });
         });
-        src = src.replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi, (_,l,inner) => {
-            const text = sanitize(inner); if (!text) return '';
-            return tok({ type:'heading', text, fontSize: ({1:'24',2:'20',3:'18',4:'16'})[l]||'16' });
+
+        // Headings h1–h4
+        src = src.replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi, (_, l, inner) => {
+            const text = sanitize(inner); if (!text) return '\x00';
+            return tok({ type:'heading', text, fontSize: ({1:'26',2:'22',3:'18',4:'16'})[l] || '16' });
         });
-        src = src.replace(/<a([^>]*)class="[^"]*btn[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi, (_,a1,a2,inner) => {
-            const text = stripAll(inner); if (!text) return '';
-            return tok({ type:'button', href: getAttr(a1+a2,'href')||'#', text });
+
+        // Buttons — <a> with class btn/button/cta
+        src = src.replace(/<a([^>]*)class="[^"]*(?:btn|button|cta)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, (_, attrs, inner) => {
+            const text = stripAll(inner); if (!text) return '\x00';
+            const bg = getStyle(attrs, 'background(?:-color)?') || '#636a52';
+            return tok({ type:'button', href: getAttr(attrs, 'href') || '#', text, bgColor: bg });
         });
+
+        // HR dividers
         src = src.replace(/<hr[^>]*>/gi, () => tok({ type:'divider' }));
-        src = src.replace(/<(?:p|small)([^>]*)>([\s\S]*?)<\/(?:p|small)>/gi, (_,attrs,inner) => {
-            const text = sanitize(inner); if (!text) return '';
-            const small = /font-size\s*:\s*1[012]px/i.test(attrs) || /<small/i.test(_);
-            return tok({ type:'text', text, small });
-        });
-        stripAll(src.replace(/\x00/g, ' ')).split(/\n+/).forEach(line => {
-            line = line.trim(); if (line.length > 2) tok({ type:'text', text: xmlEsc(line), small:false });
+
+        // Paragraphs — preserve color and alignment
+        src = src.replace(/<(?:p|small)([^>]*)>([\s\S]*?)<\/(?:p|small)>/gi, (_, attrs, inner) => {
+            const text = sanitize(inner);
+            if (!text || !text.replace(/(&nbsp;|\s|<br\/>)+/g, '').length) return '\x00';
+            const small = /font-size\s*:\s*1[012]px/i.test(attrs);
+            const color = getStyle(attrs, 'color');
+            const align = getStyle(attrs, 'text-align') || (attrs.includes('center') ? 'center' : '');
+            return tok({ type:'text', text, small, color, align });
         });
 
+        // Residual text after stripping all remaining HTML
+        stripAll(src.replace(/\x00/g, ' ')).split(/\n+/).forEach(line => {
+            line = line.trim();
+            if (line.length > 2) tok({ type:'text', text: xmlEsc(line), small:false, color:'', align:'' });
+        });
+
+        // Merge consecutive social-icon images into one mj-social block
+        const sorted = tokens.sort((a, b) => a._i - b._i);
+        const merged = [];
+        let socialBuf = [];
+        const flushSocial = () => {
+            if (!socialBuf.length) return;
+            merged.push(socialBuf.length === 1 && !socialBuf[0].net
+                ? socialBuf[0]
+                : { type:'socialGroup', items:[...socialBuf], _i: socialBuf[0]._i });
+            socialBuf = [];
+        };
+        sorted.forEach(t => {
+            (t.type === 'image' && t.net) ? socialBuf.push(t) : (flushSocial(), merged.push(t));
+        });
+        flushSocial();
+
+        // Build MJML sections
         const sections = [];
         let group = [];
         const flush = () => {
             if (!group.length) return;
-            const lines = group.map((t,idx) => {
-                const p = idx > 0 ? ' padding-top="20px"' : '';
+            const lines = group.map((t, idx) => {
+                const p  = idx > 0 ? ' padding-top="16px"' : '';
+                const ca = t.align ? ` align="${t.align}"` : '';
+                const co = t.color ? ` color="${t.color}"` : '';
                 if (t.type === 'heading')
-                    return `        <mj-text${p} font-weight="bold" font-size="${t.fontSize}px">${t.text}</mj-text>`;
+                    return `        <mj-text${p} font-weight="700" font-size="${t.fontSize}px"${ca}>${t.text}</mj-text>`;
                 if (t.small)
-                    return `        <mj-text${p} font-size="12px" font-weight="400" color="#6b7280">${t.text}</mj-text>`;
-                return `        <mj-text${p} font-weight="500">${t.text}</mj-text>`;
+                    return `        <mj-text${p} font-size="12px" color="#6b7280"${ca}>${t.text}</mj-text>`;
+                return `        <mj-text${p}${co}${ca}>${t.text}</mj-text>`;
             });
-            sections.push(`    <mj-section padding="20px">\n        <mj-column>\n${lines.join('\n')}\n        </mj-column>\n    </mj-section>`);
+            sections.push(`    <mj-section padding="20px 0">\n        <mj-column padding="0 20px">\n${lines.join('\n')}\n        </mj-column>\n    </mj-section>`);
             group = [];
         };
 
-        tokens.sort((a,b)=>a._i-b._i).forEach(t => {
+        merged.forEach(t => {
             if (t.type === 'image') {
                 flush();
-                const h = t.href ? ` href="${xmlEsc(t.href)}"` : '';
-                sections.push(`    <mj-section>\n        <mj-column>\n            <mj-image src="${xmlEsc(t.src)}" alt="${xmlEsc(t.alt||'')}"${h} />\n        </mj-column>\n    </mj-section>`);
+                const h   = t.href ? ` href="${xmlEsc(t.href)}" target="_blank"` : '';
+                const pad = t.small ? ' padding="10px 20px"' : ' padding="0"';
+                sections.push(`    <mj-section padding="0">\n        <mj-column>\n            <mj-image src="${xmlEsc(t.src)}" alt="${xmlEsc(t.alt)}"${h}${pad} />\n        </mj-column>\n    </mj-section>`);
+            } else if (t.type === 'socialGroup') {
+                flush();
+                const els = t.items.map(s =>
+                    `            <mj-social-element name="${s.net}" href="${xmlEsc(s.href||'#')}" src="${xmlEsc(s.src)}" target="_blank" padding="0 6px">${xmlEsc(s.alt)}</mj-social-element>`
+                ).join('\n');
+                sections.push(`    <mj-section padding="10px 0">\n        <mj-column>\n            <mj-social icon-size="28px" mode="horizontal" align="center" padding="10px 0" font-size="0">\n${els}\n            </mj-social>\n        </mj-column>\n    </mj-section>`);
             } else if (t.type === 'divider') {
                 flush();
-                sections.push(`    <mj-section>\n        <mj-column>\n            <mj-divider border-color="#e2e8f0" border-width="1px" padding="8px 0"></mj-divider>\n        </mj-column>\n    </mj-section>`);
+                sections.push(`    <mj-section padding="0">\n        <mj-column>\n            <mj-divider border-color="#e2e8f0" border-style="solid" border-width="1px" padding="8px 20px" />\n        </mj-column>\n    </mj-section>`);
             } else if (t.type === 'button') {
                 flush();
-                sections.push(`    <mj-section padding="20px">\n        <mj-column width="20%"></mj-column>\n        <mj-column width="60%">\n            <mj-button align="center" inner-padding="15px 30px" width="100%" color="#ffffff" background-color="#636a52" font-size="16px" font-weight="700" border-radius="0" href="${xmlEsc(t.href)}">${xmlEsc(t.text)}</mj-button>\n        </mj-column>\n        <mj-column width="20%"></mj-column>\n    </mj-section>`);
+                sections.push(`    <mj-section padding="20px 0">\n        <mj-column width="20%"></mj-column>\n        <mj-column width="60%">\n            <mj-button align="center" inner-padding="15px 30px" width="100%" color="#ffffff" background-color="${xmlEsc(t.bgColor)}" font-size="16px" font-weight="700" border-radius="0" href="${xmlEsc(t.href)}" target="_blank">${xmlEsc(t.text)}</mj-button>\n        </mj-column>\n        <mj-column width="20%"></mj-column>\n    </mj-section>`);
             } else {
                 group.push(t);
             }
         });
         flush();
 
-        if (!sections.length) sections.push(`    <mj-section padding="20px">\n        <mj-column>\n            <mj-text font-weight="500">Conteúdo convertido — edita conforme necessário.</mj-text>\n        </mj-column>\n    </mj-section>`);
+        if (!sections.length) sections.push(`    <mj-section padding="20px 0">\n        <mj-column padding="0 20px">\n            <mj-text>Conteúdo convertido — edita conforme necessário.</mj-text>\n        </mj-column>\n    </mj-section>`);
 
-        return `<mjml>\n  <mj-head>\n    <mj-attributes>\n      <mj-all font-family="Montserrat, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14px" color="#334155" />\n    </mj-attributes>\n  </mj-head>\n  <mj-body background-color="#f8fafc">\n${sections.join('\n\n')}\n  </mj-body>\n</mjml>`;
+        const FONT = "Montserrat, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
+        return `<mjml>
+  <mj-head>
+    <mj-font name="Montserrat" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&amp;display=swap" />
+    <mj-attributes>
+      <mj-all font-family="${FONT}" font-size="14px" color="#334155" />
+      <mj-text padding="0" line-height="1.6" />
+      <mj-image padding="0" />
+      <mj-button padding="0" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f8fafc">
+${sections.join('\n\n')}
+  </mj-body>
+</mjml>`;
     }
 
     // ── Settings ──────────────────────────────────────────
