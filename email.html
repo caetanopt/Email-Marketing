@@ -126,6 +126,7 @@
             localStorage.setItem('pm_user', JSON.stringify(data.user));
             localStorage.setItem('pm_brands', JSON.stringify(data.brands));
             _userBrandIds = new Set(data.brands.map(b => b.brand_id));
+            _applySidebarUserAvatar();
             renderBrandSelect();
             _goToDefaultBrandOrSelect();
         } catch (e) {
@@ -232,16 +233,76 @@
         showScreen('brandSelect');
     }
 
+    let _pendingAvatarUrl = undefined; // undefined = not changed; null = removed; string = new data URL
+
+    function _handleAvatarUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                const MAX = 256;
+                const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                _pendingAvatarUrl = dataUrl;
+                _renderProfileAvatar(dataUrl);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+        input.value = '';
+    }
+
+    function _renderProfileAvatar(avatarUrl) {
+        const initial = document.getElementById('upAvatarInitial');
+        const imgEl = document.getElementById('upAvatarImg');
+        if (!initial || !imgEl) return;
+        if (avatarUrl) {
+            initial.classList.add('hidden');
+            imgEl.src = avatarUrl;
+            imgEl.classList.remove('hidden');
+        } else {
+            imgEl.classList.add('hidden');
+            imgEl.src = '';
+            initial.classList.remove('hidden');
+            const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+            initial.textContent = (_u.name || _u.email || '?')[0].toUpperCase();
+        }
+    }
+
+    function _applySidebarUserAvatar() {
+        const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+        const initial = (_u.name || _u.email || '?')[0].toUpperCase();
+        document.querySelectorAll('.sidebar-user-avatar').forEach(el => {
+            if (_u.avatar_url) {
+                el.innerHTML = `<img src="${_u.avatar_url}" class="w-full h-full object-cover" alt="avatar" />`;
+            } else {
+                el.textContent = initial;
+            }
+        });
+        document.querySelectorAll('.sidebar-user-name').forEach(el => { el.textContent = _u.name || 'Utilizador'; });
+        document.querySelectorAll('.sidebar-user-email').forEach(el => { el.textContent = _u.email || ''; });
+    }
+
     async function _saveUserProfile() {
         const sel = document.getElementById('upDefaultBrand');
         if (!sel) return;
         const brandId = sel.value || null;
+        const body = { default_brand_id: brandId };
+        if (_pendingAvatarUrl !== undefined) body.avatar_url = _pendingAvatarUrl;
         try {
-            await apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify({ default_brand_id: brandId }) });
-            // Update cached user
+            await apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify(body) });
             const u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
             u.default_brand_id = brandId;
+            if (_pendingAvatarUrl !== undefined) u.avatar_url = _pendingAvatarUrl;
             localStorage.setItem('pm_user', JSON.stringify(u));
+            _pendingAvatarUrl = undefined;
+            _applySidebarUserAvatar();
             showToast('Perfil guardado.');
         } catch(e) { showToast(e.message || 'Erro ao guardar.', 'error'); }
     }
@@ -250,6 +311,8 @@
         const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
         const nameEl = document.getElementById('upName'); if (nameEl) nameEl.textContent = _u.name || '—';
         const emailEl = document.getElementById('upEmail'); if (emailEl) emailEl.textContent = _u.email || '—';
+        _pendingAvatarUrl = undefined;
+        _renderProfileAvatar(_u.avatar_url || null);
         const sel = document.getElementById('upDefaultBrand');
         if (!sel) return;
         const visible = _userBrandIds.size > 0 ? _allBrands.filter(b => _userBrandIds.has(b.id)) : _allBrands;
@@ -4616,10 +4679,10 @@ ${lines.join('\n')}
         <div class="px-4 py-4 border-t border-white/10">
             <div class="flex items-center gap-3">
                 <button onclick="showScreen('userProfile')" class="flex items-center gap-3 min-w-0 flex-1 text-left hover:opacity-80 transition-opacity">
-                    <div class="w-8 h-8 rounded-full bg-white/15 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0">A</div>
+                    <div class="sidebar-user-avatar w-8 h-8 rounded-full bg-white/15 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0 overflow-hidden"></div>
                     <div class="min-w-0 flex-1">
-                        <p class="text-sm font-medium text-white truncate">Administrador</p>
-                        <p class="text-xs text-white/45 truncate">admin@caetano.pt</p>
+                        <p class="sidebar-user-name text-sm font-medium text-white truncate">Administrador</p>
+                        <p class="sidebar-user-email text-xs text-white/45 truncate">admin@caetano.pt</p>
                     </div>
                 </button>
                 <button onclick="toggleTheme()" id="themeToggleBtn" title="Alternar tema claro/escuro" class="text-white/40 hover:text-white transition-colors">
@@ -4660,6 +4723,7 @@ ${lines.join('\n')}
                     if (tpl) slot.innerHTML = tpl.innerHTML;
                 }
             });
+            _applySidebarUserAvatar();
             // Sync theme toggle icons in the freshly-injected sidebar
             const _isDark = document.documentElement.classList.contains('dark');
             screen.querySelectorAll('.theme-icon-light, .theme-icon-dark').forEach(el => {
@@ -4984,6 +5048,7 @@ ${lines.join('\n')}
         });
         // Re-aplica a marca actualmente seleccionada
         if (_currentBrand) applyBrandToSidebar();
+        _applySidebarUserAvatar();
     }
 
     let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4', bg:'#FFFFFF', logo:`https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png`, invert:false };
@@ -8406,11 +8471,21 @@ ${lines.join('\n')}
                 <!-- Info -->
                 <div class="bg-white border border-slate-200 rounded-xl p-6 mb-6">
                     <h2 class="text-sm font-semibold text-slate-900 mb-4">Informação da conta</h2>
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="w-14 h-14 rounded-full bg-slate-900 text-white text-xl font-bold flex items-center justify-center flex-shrink-0">A</div>
+                    <div class="flex items-center gap-5 mb-4">
+                        <div class="relative flex-shrink-0 group cursor-pointer" onclick="document.getElementById('avatarFileInput').click()">
+                            <div id="upAvatarCircle" class="w-16 h-16 rounded-full bg-slate-900 text-white text-xl font-bold flex items-center justify-center overflow-hidden select-none">
+                                <span id="upAvatarInitial">A</span>
+                                <img id="upAvatarImg" class="hidden w-full h-full object-cover" src="" alt="foto de perfil" />
+                            </div>
+                            <div class="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                            </div>
+                            <input id="avatarFileInput" type="file" accept="image/*" class="hidden" onchange="_handleAvatarUpload(this)" />
+                        </div>
                         <div>
                             <p id="upName" class="text-base font-semibold text-slate-900">—</p>
                             <p id="upEmail" class="text-sm text-slate-500">—</p>
+                            <p class="text-xs text-slate-400 mt-1">Clica na foto para alterar</p>
                         </div>
                     </div>
                 </div>

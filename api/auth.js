@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
 
     try {
       const rows = await query(
-        'SELECT id, name, email, password_hash, active, default_brand_id FROM users WHERE email = $1',
+        'SELECT id, name, email, password_hash, active, default_brand_id, avatar_url FROM users WHERE email = $1',
         [email.toLowerCase().trim()]
       );
       const user = rows[0];
@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
       const token = signToken({ id: user.id, email: user.email, name: user.name });
       return res.status(200).json({
         token,
-        user: { id: user.id, name: user.name, email: user.email, default_brand_id: user.default_brand_id || null },
+        user: { id: user.id, name: user.name, email: user.email, default_brand_id: user.default_brand_id || null, avatar_url: user.avatar_url || null },
         brands,
       });
     } catch (err) {
@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
 
     try {
       const users = await query(
-        'SELECT id, name, email, default_brand_id, created_at, last_login FROM users WHERE id = $1', [user.id]
+        'SELECT id, name, email, default_brand_id, avatar_url, created_at, last_login FROM users WHERE id = $1', [user.id]
       );
       if (!users[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
 
@@ -62,15 +62,22 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // PUT — update user profile (default_brand_id, name)
+  // PUT — update user profile (default_brand_id, avatar_url)
   if (req.method === 'PUT') {
     const user = requireAuth(req, res);
     if (!user) return;
-    const { default_brand_id } = req.body || {};
+    const { default_brand_id, avatar_url } = req.body || {};
+    const sets = ['default_brand_id = $1'];
+    const params = [default_brand_id || null];
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'avatar_url')) {
+      params.push(avatar_url || null);
+      sets.push(`avatar_url = $${params.length}`);
+    }
+    params.push(user.id);
     try {
       await query(
-        'UPDATE users SET default_brand_id = $1 WHERE id = $2',
-        [default_brand_id || null, user.id]
+        `UPDATE users SET ${sets.join(', ')} WHERE id = $${params.length}`,
+        params
       );
       return res.status(200).json({ ok: true });
     } catch (err) {
