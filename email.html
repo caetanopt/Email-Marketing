@@ -681,9 +681,13 @@
         // Render area checkboxes (pre-render before API to avoid flash)
         document.getElementById('permAreasList').innerHTML = _allAreas.map(a => `
             <label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
-                <input type="checkbox" data-area-id="${a.id}" class="rounded" />
+                <input type="checkbox" data-area-id="${a.id}" class="rounded" disabled />
                 <span class="text-sm text-slate-900">${a.name}</span>
             </label>`).join('');
+        // Reset toggle to unchecked and disable areas while loading
+        const restrictElPre = document.getElementById('permRestrictToggle');
+        if (restrictElPre) restrictElPre.checked = false;
+        _togglePermAreasEnabled(false);
         // Hide the brands list (permissions are now per current brand)
         const brandsList = document.getElementById('permBrandsList');
         if (brandsList) brandsList.closest('div')?.classList.add('hidden');
@@ -742,6 +746,8 @@
     }
 
     function permSelectAll(scope, val) {
+        const restricted = document.getElementById('permRestrictToggle')?.checked;
+        if (!restricted) return;
         const sel = scope === 'brands' ? '#permBrandsList input' : '#permAreasList input';
         document.querySelectorAll(sel).forEach(i => i.checked = val);
     }
