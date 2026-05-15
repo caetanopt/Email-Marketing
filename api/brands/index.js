@@ -239,7 +239,9 @@ module.exports = async function handler(req, res) {
         [userId, id, safeRole]
       );
 
-      // Send welcome email (best-effort — never blocks the response)
+      // Send welcome email
+      let emailSent = false;
+      let emailError = null;
       if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
           const brandRows = await query('SELECT name, from_name, from_email FROM brands WHERE id=$1', [id]);
@@ -264,15 +266,18 @@ module.exports = async function handler(req, res) {
 <p>Bem-vindo à equipa!</p>`,
             text: `Olá ${name},\n\nForaste adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`,
           });
+          emailSent = true;
           console.log('invite email sent to', email);
         } catch (mailErr) {
+          emailError = mailErr.message;
           console.error('invite email error:', mailErr);
         }
       } else {
-        console.warn('invite email skipped: SMTP not configured');
+        emailError = 'SMTP não configurado (SMTP_HOST/SMTP_USER/SMTP_PASS em falta nas variáveis de ambiente)';
+        console.warn('invite email skipped:', emailError);
       }
 
-      return res.status(201).json({ ok: true, user_id: userId });
+      return res.status(201).json({ ok: true, user_id: userId, email_sent: emailSent, email_error: emailError });
     }
 
     if (req.method === 'PUT' && id && action === 'update_role' && member_id) {
