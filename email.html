@@ -1844,9 +1844,20 @@
         return null;
     }
     function teParseMjmlToBlocks(xmlStr) {
+        // Normalise HTML-only named entities that are invalid XML
+        const htmlEntities = { '&nbsp;':'&#160;','&hellip;':'&#8230;','&mdash;':'&#8212;','&ndash;':'&#8211;',
+            '&laquo;':'&#171;','&raquo;':'&#187;','&euro;':'&#8364;','&copy;':'&#169;','&reg;':'&#174;',
+            '&trade;':'&#8482;','&bull;':'&#8226;','&middot;':'&#183;','&times;':'&#215;','&divide;':'&#247;',
+            '&acute;':'&#180;','&agrave;':'&#224;','&aacute;':'&#225;','&eacute;':'&#233;','&iacute;':'&#237;',
+            '&oacute;':'&#243;','&uacute;':'&#250;','&ccedil;':'&#231;','&atilde;':'&#227;','&otilde;':'&#245;' };
+        let xml = xmlStr;
+        for (const [e,r] of Object.entries(htmlEntities)) xml = xml.replaceAll(e, r);
         try {
-            const doc = new DOMParser().parseFromString(xmlStr, 'application/xml');
-            if (doc.querySelector('parsererror')) return null;
+            const doc = new DOMParser().parseFromString(xml, 'application/xml');
+            if (doc.querySelector('parsererror')) {
+                console.error('MJML XML parse error:', doc.querySelector('parsererror').textContent);
+                return null;
+            }
             const blocks = [];
             doc.querySelectorAll('mj-body > mj-section').forEach(section => {
                 const cols = [...section.querySelectorAll(':scope > mj-column')];
@@ -4356,15 +4367,19 @@ ${body}
         src = src.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<script[^>]*>[\s\S]*?<\/script>/gi,'');
 
         const getAttr = (s, n) => { const m = s.match(new RegExp(`${n}="([^"]*)"`, 'i')); return m ? m[1] : ''; };
-        const xmlEsc  = s => String(s).replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;');
+        const xmlEsc  = s => String(s)
+            .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;')
+            .replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const stripAll = s => s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
         const sanitize = s => s
             .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;')
             .replace(/<br\s*\/?>/gi,'<br/>')
             .replace(/<b>([\s\S]*?)<\/b>/gi,'<strong>$1</strong>')
             .replace(/<i>([\s\S]*?)<\/i>/gi,'<em>$1</em>')
-            .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_,h,t) => `<a href="${h}">${stripAll(t)}</a>`)
-            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])[^>]+>/gi,'').trim();
+            .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_,h,t) => `<a href="${xmlEsc(h)}">${stripAll(t)}</a>`)
+            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])[^>]+>/gi,'')
+            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])/g,'&lt;')
+            .trim();
 
         // Pre-process: <a href><img></a> → move href into img
         src = src.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>\s*(<img[^>]*?>)\s*<\/a>/gi, (_,h,img) => img.replace(/>/,` data-href="${h}">`));
