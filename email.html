@@ -4321,55 +4321,85 @@ ${body}
     }
     function _convertHtmlToMjml(html) {
         const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        let content = bodyMatch ? bodyMatch[1] : html;
+        let src = bodyMatch ? bodyMatch[1] : html;
+        src = src.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<script[^>]*>[\s\S]*?<\/script>/gi,'');
 
-        const xmlEsc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        const stripTags = s => s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-        const attr = (str, name) => { const m = str.match(new RegExp(`${name}="([^"]*)"`,'i')); return m ? m[1] : ''; };
-        const wrap = inner => `    <mj-section background-color="#ffffff">\n      <mj-column>\n        ${inner}\n      </mj-column>\n    </mj-section>`;
+        const getAttr = (s, n) => { const m = s.match(new RegExp(`${n}="([^"]*)"`, 'i')); return m ? m[1] : ''; };
+        const xmlEsc  = s => String(s).replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;');
+        const stripAll = s => s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+        const sanitize = s => s
+            .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/gi,'&amp;')
+            .replace(/<br\s*\/?>/gi,'<br/>')
+            .replace(/<b>([\s\S]*?)<\/b>/gi,'<strong>$1</strong>')
+            .replace(/<i>([\s\S]*?)<\/i>/gi,'<em>$1</em>')
+            .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_,h,t) => `<a href="${h}">${stripAll(t)}</a>`)
+            .replace(/<(?!\/?(strong|em|a|br)[\s>\/])[^>]+>/gi,'').trim();
+
+        // Pre-process: <a href><img></a> → move href into img
+        src = src.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>\s*(<img[^>]*?>)\s*<\/a>/gi, (_,h,img) => img.replace(/>/,` data-href="${h}">`));
+
+        let i = 0;
+        const tokens = [];
+        const tok = t => { tokens.push({...t, _i: i++}); return '\x00'; };
+
+        src = src.replace(/<img([^>]*?)(?:\s*\/)?>/gi, (_,a) => {
+            const s = getAttr(a,'src'); if (!s) return '';
+            return tok({ type:'image', src:s, alt:getAttr(a,'alt'), href:getAttr(a,'href')||getAttr(a,'data-href') });
+        });
+        src = src.replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi, (_,l,inner) => {
+            const text = sanitize(inner); if (!text) return '';
+            return tok({ type:'heading', text, fontSize: ({1:'24',2:'20',3:'18',4:'16'})[l]||'16' });
+        });
+        src = src.replace(/<a([^>]*)class="[^"]*btn[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi, (_,a1,a2,inner) => {
+            const text = stripAll(inner); if (!text) return '';
+            return tok({ type:'button', href: getAttr(a1+a2,'href')||'#', text });
+        });
+        src = src.replace(/<hr[^>]*>/gi, () => tok({ type:'divider' }));
+        src = src.replace(/<(?:p|small)([^>]*)>([\s\S]*?)<\/(?:p|small)>/gi, (_,attrs,inner) => {
+            const text = sanitize(inner); if (!text) return '';
+            const small = /font-size\s*:\s*1[012]px/i.test(attrs) || /<small/i.test(_);
+            return tok({ type:'text', text, small });
+        });
+        stripAll(src).split(/\n+/).forEach(line => {
+            line = line.trim(); if (line.length > 2) tok({ type:'text', text: xmlEsc(line), small:false });
+        });
 
         const sections = [];
+        let group = [];
+        const flush = () => {
+            if (!group.length) return;
+            const lines = group.map((t,idx) => {
+                const p = idx > 0 ? ' padding-top="20px"' : '';
+                if (t.type === 'heading')
+                    return `        <mj-text${p} font-weight="bold" font-size="${t.fontSize}px">${t.text}</mj-text>`;
+                if (t.small)
+                    return `        <mj-text${p} font-size="12px" font-weight="400" color="#6b7280">${t.text}</mj-text>`;
+                return `        <mj-text${p} font-weight="500">${t.text}</mj-text>`;
+            });
+            sections.push(`    <mj-section padding="20px">\n        <mj-column>\n${lines.join('\n')}\n        </mj-column>\n    </mj-section>`);
+            group = [];
+        };
 
-        // Headings
-        content = content.replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi, (_, lvl, inner) => {
-            const sizes = {1:'28',2:'22',3:'18',4:'15'};
-            const text = xmlEsc(stripTags(inner));
-            if (text) sections.push(wrap(`<mj-text font-size="${sizes[lvl]||'16'}px" font-weight="700" color="#1e293b" padding="8px 0">${text}</mj-text>`));
-            return '';
+        tokens.sort((a,b)=>a._i-b._i).forEach(t => {
+            if (t.type === 'image') {
+                flush();
+                const h = t.href ? ` href="${xmlEsc(t.href)}"` : '';
+                sections.push(`    <mj-section>\n        <mj-column>\n            <mj-image src="${xmlEsc(t.src)}" alt="${xmlEsc(t.alt||'')}"${h} />\n        </mj-column>\n    </mj-section>`);
+            } else if (t.type === 'divider') {
+                flush();
+                sections.push(`    <mj-section>\n        <mj-column>\n            <mj-divider border-color="#e2e8f0" border-width="1px" padding="8px 0"></mj-divider>\n        </mj-column>\n    </mj-section>`);
+            } else if (t.type === 'button') {
+                flush();
+                sections.push(`    <mj-section padding="20px">\n        <mj-column width="20%"></mj-column>\n        <mj-column width="60%">\n            <mj-button align="center" inner-padding="15px 30px" width="100%" color="#ffffff" background-color="#636a52" font-size="16px" font-weight="700" border-radius="0" href="${xmlEsc(t.href)}">${xmlEsc(t.text)}</mj-button>\n        </mj-column>\n        <mj-column width="20%"></mj-column>\n    </mj-section>`);
+            } else {
+                group.push(t);
+            }
         });
-        // Images
-        content = content.replace(/<img([^>]*?)(?:\s*\/)?>/gi, (_, attrs) => {
-            const src = attr(attrs,'src'), alt = xmlEsc(attr(attrs,'alt')), w = parseInt(attr(attrs,'width')) || 600;
-            if (src) sections.push(wrap(`<mj-image src="${xmlEsc(src)}" alt="${alt}" width="${w}px" padding="0"></mj-image>`));
-            return '';
-        });
-        // Button links (class contains "btn")
-        content = content.replace(/<a([^>]*)class="[^"]*btn[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi, (_, a1, a2, inner) => {
-            const href = xmlEsc(attr(a1+a2,'href') || '#');
-            const text = xmlEsc(stripTags(inner));
-            if (text) sections.push(wrap(`<mj-button href="${href}" background-color="#1e293b" color="#ffffff" font-size="14px" padding="12px 24px">${text}</mj-button>`));
-            return '';
-        });
-        // Horizontal rules
-        content = content.replace(/<hr[^>]*>/gi, () => {
-            sections.push(wrap(`<mj-divider border-color="#e2e8f0" border-width="1px" padding="8px 0"></mj-divider>`));
-            return '';
-        });
-        // Paragraphs
-        content = content.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, inner) => {
-            const text = xmlEsc(stripTags(inner));
-            if (text) sections.push(wrap(`<mj-text color="#475569" font-size="14px" padding="6px 0">${text}</mj-text>`));
-            return '';
-        });
-        // Remaining plain text lines (after stripping tags)
-        stripTags(content).split(/\n+/).forEach(line => {
-            const text = xmlEsc(line.trim());
-            if (text.length > 2) sections.push(wrap(`<mj-text color="#475569" font-size="14px" padding="6px 0">${text}</mj-text>`));
-        });
+        flush();
 
-        if (!sections.length) sections.push(wrap(`<mj-text color="#475569" font-size="14px" padding="6px 0">Conteúdo convertido — edita conforme necessário.</mj-text>`));
+        if (!sections.length) sections.push(`    <mj-section padding="20px">\n        <mj-column>\n            <mj-text font-weight="500">Conteúdo convertido — edita conforme necessário.</mj-text>\n        </mj-column>\n    </mj-section>`);
 
-        return `<mjml>\n  <mj-head>\n    <mj-attributes>\n      <mj-all font-family="Arial, Helvetica, sans-serif" font-size="14px" color="#334155"></mj-all>\n    </mj-attributes>\n  </mj-head>\n  <mj-body background-color="#f8fafc">\n${sections.join('\n')}\n  </mj-body>\n</mjml>`;
+        return `<mjml>\n  <mj-head>\n    <mj-attributes>\n      <mj-all font-family="Montserrat, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14px" color="#334155" />\n    </mj-attributes>\n  </mj-head>\n  <mj-body background-color="#f8fafc">\n${sections.join('\n\n')}\n  </mj-body>\n</mjml>`;
     }
 
     // ── Settings ──────────────────────────────────────────
