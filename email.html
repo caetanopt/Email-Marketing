@@ -7709,7 +7709,10 @@ ${body}
                 <div class="flex flex-col border-r border-slate-200">
                     <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
                         <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">HTML original</span>
-                        <button onclick="teConvertHtmlToMjml()" class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">Converter →</button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="document.getElementById('te_converterInput').value=''" class="text-xs px-3 py-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300">Apagar</button>
+                            <button onclick="teConvertHtmlToMjml()" class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">Converter →</button>
+                        </div>
                     </div>
                     <textarea id="te_converterInput" spellcheck="false" placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html&gt;...&#10;&#10;Cola aqui o teu HTML" class="flex-1 px-4 py-3 text-sm font-mono text-slate-700 resize-none focus:outline-none" style="overflow-y:auto"></textarea>
                 </div>
