@@ -75,11 +75,11 @@ module.exports = async function handler(req, res) {
             query('SELECT area FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
             query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
           ]);
-          const role = roleRow[0]?.role || 'viewer';
+          const role = roleRow[0]?.role || null;
           // empty areas = full access (no restrictions configured)
           return res.status(200).json({ areas: areas.map(r => r.area), restricted: areas.length > 0, role });
         } catch (e) {
-          if (e.code === '42P01') return res.status(200).json({ areas: [], restricted: false, role: 'viewer', _migration_pending: true });
+          if (e.code === '42P01') return res.status(200).json({ areas: [], restricted: false, role: null, _migration_pending: true });
           throw e;
         }
       }
