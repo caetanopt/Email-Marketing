@@ -4320,64 +4320,56 @@ ${body}
         showToast('MJML importado para o editor. Verifica e ajusta conforme necessário.', 'info');
     }
     function _convertHtmlToMjml(html) {
-        // Extract body content
         const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         let content = bodyMatch ? bodyMatch[1] : html;
 
-        // Extract inline styles from <style> tags for reference
-        const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) || [];
-        const styleComment = styleMatch.length ? `  <!-- Estilos originais (referência):\n${styleMatch.join('\n').replace(/<!--.*?-->/gs,'').slice(0,400)}... -->\n` : '';
-
-        // Helpers
+        const xmlEsc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const stripTags = s => s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
         const attr = (str, name) => { const m = str.match(new RegExp(`${name}="([^"]*)"`,'i')); return m ? m[1] : ''; };
-        const inlineStyle = (str, prop) => { const m = str.match(new RegExp(`${prop}\\s*:\\s*([^;"}]+)`,'i')); return m ? m[1].trim() : ''; };
+        const wrap = inner => `    <mj-section background-color="#ffffff">\n      <mj-column>\n        ${inner}\n      </mj-column>\n    </mj-section>`;
 
-        // Convert images
-        content = content.replace(/<img([^>]*)>/gi, (_, attrs) => {
-            const src = attr(attrs,'src'), alt = attr(attrs,'alt'), w = attr(attrs,'width') || '600';
-            return `        <mj-image src="${src}" alt="${alt}" width="${parseInt(w)||600}px" padding="0"></mj-image>`;
-        });
-        // Convert headings
+        const sections = [];
+
+        // Headings
         content = content.replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi, (_, lvl, inner) => {
             const sizes = {1:'28',2:'22',3:'18',4:'15'};
-            return `        <mj-text font-size="${sizes[lvl]||'16'}px" font-weight="700" padding="8px 0">${inner.replace(/<[^>]+>/g,'').trim()}</mj-text>`;
+            const text = xmlEsc(stripTags(inner));
+            if (text) sections.push(wrap(`<mj-text font-size="${sizes[lvl]||'16'}px" font-weight="700" color="#1e293b" padding="8px 0">${text}</mj-text>`));
+            return '';
         });
-        // Convert paragraphs
-        content = content.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (_, attrs, inner) => {
-            const color = inlineStyle(attrs+inner,'color');
-            const colorAttr = color ? ` color="${color}"` : '';
-            return `        <mj-text${colorAttr} padding="6px 0">${inner.trim()}</mj-text>`;
+        // Images
+        content = content.replace(/<img([^>]*?)(?:\s*\/)?>/gi, (_, attrs) => {
+            const src = attr(attrs,'src'), alt = xmlEsc(attr(attrs,'alt')), w = parseInt(attr(attrs,'width')) || 600;
+            if (src) sections.push(wrap(`<mj-image src="${xmlEsc(src)}" alt="${alt}" width="${w}px" padding="0"></mj-image>`));
+            return '';
         });
-        // Convert buttons/CTA links
+        // Button links (class contains "btn")
         content = content.replace(/<a([^>]*)class="[^"]*btn[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi, (_, a1, a2, inner) => {
-            const href = attr(a1+a2,'href') || '#';
-            return `        <mj-button href="${href}" background-color="#1e293b" color="#ffffff" border-radius="6px" padding="12px 24px">${inner.replace(/<[^>]+>/g,'').trim()}</mj-button>`;
+            const href = xmlEsc(attr(a1+a2,'href') || '#');
+            const text = xmlEsc(stripTags(inner));
+            if (text) sections.push(wrap(`<mj-button href="${href}" background-color="#1e293b" color="#ffffff" font-size="14px" padding="12px 24px">${text}</mj-button>`));
+            return '';
         });
-        // Convert hr dividers
-        content = content.replace(/<hr[^>]*>/gi, '        <mj-divider border-color="#e2e8f0" border-width="1px" padding="8px 0"></mj-divider>');
-        // Strip remaining block tags (div, table, tr, td, tbody, thead) but keep content
-        content = content.replace(/<\/?(div|table|tbody|thead|tr|td|th|ul|ol|li|span)[^>]*>/gi, '');
-        // Collapse excessive whitespace
-        content = content.replace(/\n{3,}/g, '\n\n').trim();
-        // Remove any remaining HTML tags that weren't converted but keep their text
-        const lines = content.split('\n').filter(l => l.trim()).map(l => '        ' + l.trim());
+        // Horizontal rules
+        content = content.replace(/<hr[^>]*>/gi, () => {
+            sections.push(wrap(`<mj-divider border-color="#e2e8f0" border-width="1px" padding="8px 0"></mj-divider>`));
+            return '';
+        });
+        // Paragraphs
+        content = content.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, inner) => {
+            const text = xmlEsc(stripTags(inner));
+            if (text) sections.push(wrap(`<mj-text color="#475569" font-size="14px" padding="6px 0">${text}</mj-text>`));
+            return '';
+        });
+        // Remaining plain text lines (after stripping tags)
+        stripTags(content).split(/\n+/).forEach(line => {
+            const text = xmlEsc(line.trim());
+            if (text.length > 2) sections.push(wrap(`<mj-text color="#475569" font-size="14px" padding="6px 0">${text}</mj-text>`));
+        });
 
-        return `<mjml>
-  <mj-head>
-    <mj-attributes>
-      <mj-all font-family="Arial, Helvetica, sans-serif" font-size="14px" color="#334155"></mj-all>
-      <mj-body background-color="#f8fafc"></mj-body>
-      <mj-section background-color="#ffffff" padding="20px"></mj-section>
-    </mj-attributes>
-${styleComment}  </mj-head>
-  <mj-body>
-    <mj-section>
-      <mj-column>
-${lines.join('\n')}
-      </mj-column>
-    </mj-section>
-  </mj-body>
-</mjml>`;
+        if (!sections.length) sections.push(wrap(`<mj-text color="#475569" font-size="14px" padding="6px 0">Conteúdo convertido — edita conforme necessário.</mj-text>`));
+
+        return `<mjml>\n  <mj-head>\n    <mj-attributes>\n      <mj-all font-family="Arial, Helvetica, sans-serif" font-size="14px" color="#334155"></mj-all>\n    </mj-attributes>\n  </mj-head>\n  <mj-body background-color="#f8fafc">\n${sections.join('\n')}\n  </mj-body>\n</mjml>`;
     }
 
     // ── Settings ──────────────────────────────────────────
