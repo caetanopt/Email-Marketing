@@ -4319,6 +4319,15 @@ ${body}
         if (typeof teSetMode === 'function') teSetMode('code');
         showToast('MJML importado para o editor. Verifica e ajusta conforme necessário.', 'info');
     }
+    function teCopyMjml() {
+        const mjml = document.getElementById('te_converterOutput')?.value || '';
+        if (!mjml.trim()) { showToast('Nada para copiar — converte o HTML primeiro.', 'info'); return; }
+        navigator.clipboard.writeText(mjml).then(() => {
+            const btn = document.getElementById('teCopyBtn');
+            if (btn) { btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = 'Copiar'; }, 2000); }
+            showToast('MJML copiado para a área de transferência.', 'success');
+        }).catch(() => showToast('Não foi possível copiar.', 'error'));
+    }
     function _convertHtmlToMjml(html) {
         const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         let src = bodyMatch ? bodyMatch[1] : html;
@@ -7685,7 +7694,10 @@ ${body}
                 <div class="flex flex-col">
                     <div class="px-4 py-2 bg-[#21252b] border-b border-slate-700 flex items-center justify-between flex-shrink-0">
                         <span class="text-xs font-medium text-slate-400 uppercase tracking-wide font-mono">MJML gerado</span>
-                        <button onclick="teApplyConvertedMjml()" class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700">Usar no editor</button>
+                        <div class="flex items-center gap-2">
+                            <button id="teCopyBtn" onclick="teCopyMjml()" class="text-xs px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-500">Copiar</button>
+                            <button onclick="teApplyConvertedMjml()" class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700">Usar no editor</button>
+                        </div>
                     </div>
                     <textarea id="te_converterOutput" spellcheck="false" readonly placeholder="O MJML gerado aparecerá aqui…" class="flex-1 px-4 py-3 text-sm font-mono text-slate-300 bg-[#282c34] resize-none focus:outline-none" style="overflow-y:auto"></textarea>
                 </div>
