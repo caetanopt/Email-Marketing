@@ -252,7 +252,7 @@ module.exports = async function handler(req, res) {
           const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
           const fromName   = brandRows[0]?.from_name  || 'PrimeMail';
           const fromEmail  = brandRows[0]?.from_email || `info@${fromDomain}`;
-          const appUrl     = process.env.APP_URL || `https://${fromDomain}`;
+          const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
           const roleLabel  = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
           const sesClient  = new SESClient({ region: sesRegion, credentials: { accessKeyId: sesKey, secretAccessKey: sesSecret } });
           await sesClient.send(new SendEmailCommand({
