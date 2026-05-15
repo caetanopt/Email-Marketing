@@ -4972,18 +4972,26 @@ ${lines.join('\n')}
         if (!me?.id) return;
         try {
             const r = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=permissions&member_id=${me.id}`);
-            // No restrictions configured -> show all (default)
+            _currentUserRole = r.role || 'viewer';
+            _syncRolesPanel();
+            // Roles that cannot access the team screen
+            const restrictedRoles = ['editor', 'viewer'];
+            // No restrictions configured -> show all (default), but still apply role-based rules
             if (!r.restricted) {
                 document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('hidden'));
-                return;
+            } else {
+                const allowed = new Set(r.areas || []);
+                document.querySelectorAll('.nav-item').forEach(n => {
+                    const cls = [...n.classList].find(c => c.startsWith('nav-') && c !== 'nav-item');
+                    if (!cls) return;
+                    const area = cls.slice(4); // 'nav-dashboard' -> 'dashboard'
+                    n.classList.toggle('hidden', !allowed.has(area));
+                });
             }
-            const allowed = new Set(r.areas || []);
-            document.querySelectorAll('.nav-item').forEach(n => {
-                const cls = [...n.classList].find(c => c.startsWith('nav-') && c !== 'nav-item');
-                if (!cls) return;
-                const area = cls.slice(4); // 'nav-dashboard' -> 'dashboard'
-                n.classList.toggle('hidden', !allowed.has(area));
-            });
+            // Always hide team for editor and marketing account (viewer)
+            if (restrictedRoles.includes(_currentUserRole)) {
+                document.querySelector('.nav-team')?.classList.add('hidden');
+            }
         } catch (err) {
             // Silent — migration may not have been run yet, fall back to full access
             console.error('permissions fetch:', err);

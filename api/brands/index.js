@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 
@@ -70,14 +71,15 @@ module.exports = async function handler(req, res) {
       }
       if (id && action === 'permissions' && member_id) {
         try {
-          const rows = await query(
-            'SELECT area FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2',
-            [member_id, id]
-          );
-          // empty rows = full access (no restrictions configured)
-          return res.status(200).json({ areas: rows.map(r => r.area), restricted: rows.length > 0 });
+          const [areas, roleRow] = await Promise.all([
+            query('SELECT area FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
+            query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
+          ]);
+          const role = roleRow[0]?.role || 'viewer';
+          // empty areas = full access (no restrictions configured)
+          return res.status(200).json({ areas: areas.map(r => r.area), restricted: areas.length > 0, role });
         } catch (e) {
-          if (e.code === '42P01') return res.status(200).json({ areas: [], restricted: false, _migration_pending: true });
+          if (e.code === '42P01') return res.status(200).json({ areas: [], restricted: false, role: 'viewer', _migration_pending: true });
           throw e;
         }
       }
@@ -236,6 +238,34 @@ module.exports = async function handler(req, res) {
          ON CONFLICT (user_id, brand_id) DO UPDATE SET role=EXCLUDED.role`,
         [userId, id, safeRole]
       );
+
+      // Send welcome email (best-effort — never blocks the response)
+      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        try {
+          const brandRows = await query('SELECT name FROM brands WHERE id=$1', [id]);
+          const brandName = brandRows[0]?.name || id;
+          const roleLabel = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
+          const port = parseInt(process.env.SMTP_PORT || '587', 10);
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST, port, secure: port === 465,
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+          });
+          const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+          await transporter.sendMail({
+            from: `"PrimeMail" <noreply@${fromDomain}>`,
+            to: email.toLowerCase().trim(),
+            subject: `Foste adicionado à equipa ${brandName} no PrimeMail`,
+            html: `<p>Olá ${name},</p>
+<p>Foste adicionado à marca <strong>${brandName}</strong> no PrimeMail com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
+<p>Podes aceder à plataforma em <a href="https://${fromDomain}">PrimeMail</a> com o teu email e a password definida pelo administrador.</p>
+<p>Bem-vindo à equipa!</p>`,
+            text: `Olá ${name},\n\nForam adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nBem-vindo à equipa!`,
+          });
+        } catch (mailErr) {
+          console.error('invite email error:', mailErr.message);
+        }
+      }
+
       return res.status(201).json({ ok: true, user_id: userId });
     }
 
