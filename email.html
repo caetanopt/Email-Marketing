@@ -136,6 +136,65 @@
     }
 
     let _statsRange = 'all';
+    let _statsBrandsData = null;
+    let _statsBrandFilter = null;
+
+    function _applyStatsFilter() {
+        if (!_statsBrandsData) return;
+        const d = _statsBrandsData;
+        const filteredBrand = _statsBrandFilter ? d.brands.find(b => b.id === _statsBrandFilter) : null;
+        const t = filteredBrand || d.totals;
+        const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        const setW  = (id, p) => { const el = document.getElementById(id); if (el) el.style.width = Math.min(p,100)+'%'; };
+        setEl('statsTotalSent',   t.sent.toLocaleString('pt-PT'));
+        setEl('statsCampaigns',   t.campaigns.toLocaleString('pt-PT'));
+        setEl('statsOpenRate',    t.openRate  + '%');
+        setEl('statsClickRate',   t.clickRate + '%');
+        setEl('statsOpenRate2',   t.openRate  + '%');
+        setEl('statsClickRate2',  t.clickRate + '%');
+        setEl('statsBounceRate2', t.bounceRate + '%');
+        setEl('statsUnsubRate2',  t.unsubRate  + '%');
+        setW('statsOpenBar',   t.openRate);
+        setW('statsClickBar',  t.clickRate);
+        setW('statsBounceBar', t.bounceRate);
+        setW('statsUnsubBar',  t.unsubRate);
+        // Header label + back button
+        const label   = document.getElementById('statsGroupLabel');
+        const backBtn = document.getElementById('statsBackBtn');
+        if (label)   label.textContent = filteredBrand ? `${filteredBrand.name} — Estatísticas` : 'Grupo Caetano — todos os envios';
+        if (backBtn) backBtn.classList.toggle('hidden', !_statsBrandFilter);
+        // Table rows
+        const tbody = document.getElementById('statsBrandsTbody');
+        if (!tbody) return;
+        const brands = filteredBrand ? [filteredBrand] : d.brands;
+        const maxOpen = Math.max(...d.brands.map(x => x.openRate), 1);
+        const bar = (v, max, color) => `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0"><div class="h-1.5 rounded-full ${color}" style="width:${Math.min(v/Math.max(max,1)*100,100).toFixed(0)}%"></div></div><span>${v}%</span></div>`;
+        tbody.innerHTML = brands.map(b => {
+            const brandMeta = _allBrands.find(x => x.id === b.id) || {};
+            const logo = brandMeta.logo
+                ? `<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${brandMeta.bg||'#fff'}"><img src="${brandMeta.logo}" class="w-6 h-6 object-contain${brandMeta.invert?' brightness-0 invert':''}" onerror="this.style.display='none'"></div>`
+                : `<span class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style="background:${b.color||'#64748b'}">${(b.name||'?')[0]}</span>`;
+            const verBtn = _statsBrandFilter
+                ? ''
+                : `<button onclick="_viewBrandStats('${b.id}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button>`;
+            return `<tr class="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                <td class="px-4 py-3"><div class="flex items-center gap-2.5">${logo}<span class="font-medium text-slate-900">${b.name}</span></div></td>
+                <td class="px-4 py-3 text-slate-600 text-right">${b.campaigns}</td>
+                <td class="px-4 py-3 text-slate-600 text-right font-mono">${b.sent.toLocaleString('pt-PT')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.openRate,   maxOpen, 'bg-blue-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.clickRate,  maxOpen, 'bg-violet-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.bounceRate, maxOpen, 'bg-amber-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.unsubRate,  maxOpen, 'bg-red-400')}</td>
+                <td class="px-4 py-3 text-right">${verBtn}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function _viewBrandStats(brandId) {
+        _statsBrandFilter = brandId;
+        _applyStatsFilter();
+    }
+
     async function _loadStatistics(range) {
         if (range) _statsRange = range;
         // Update range button styles
@@ -144,47 +203,16 @@
             btn.className = `stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
         });
         const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        const setW  = (id, p) => { const el = document.getElementById(id); if (el) el.style.width = Math.min(p,100)+'%'; };
         setEl('statsTotalSent','…'); setEl('statsCampaigns','…');
         const tbody = document.getElementById('statsBrandsTbody');
         if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
-            const qs = new URLSearchParams({ action:'global_stats', ...(  _statsRange !== 'all' ? { range: _statsRange } : {}) });
+            const qs = new URLSearchParams({ action:'global_stats', ...(_statsRange !== 'all' ? { range: _statsRange } : {}) });
             const d = await apiFetch(`/api/campaigns?${qs}`);
-            const t = d.totals;
-            setEl('statsTotalSent',   t.sent.toLocaleString('pt-PT'));
-            setEl('statsCampaigns',   t.campaigns.toLocaleString('pt-PT'));
-            setEl('statsOpenRate',    t.openRate + '%');
-            setEl('statsClickRate',   t.clickRate + '%');
-            setEl('statsBounceRate',  t.bounceRate + '%');
-            setEl('statsUnsubRate',   t.unsubRate + '%');
-            setEl('statsOpenRate2',   t.openRate + '%');
-            setEl('statsClickRate2',  t.clickRate + '%');
-            setEl('statsBounceRate2', t.bounceRate + '%');
-            setEl('statsUnsubRate2',  t.unsubRate + '%');
-            setW('statsOpenBar',   t.openRate);
-            setW('statsClickBar',  t.clickRate);
-            setW('statsBounceBar', t.bounceRate);
-            setW('statsUnsubBar',  t.unsubRate);
-            if (!tbody) return;
-            if (!d.brands.length) { tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem dados para o período seleccionado.</td></tr>`; return; }
-            tbody.innerHTML = d.brands.map(b => {
-                const logo = b.logo_url
-                    ? `<img src="${b.logo_url}" class="w-6 h-6 object-contain brightness-0" onerror="this.style.display='none'">`
-                    : `<span class="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style="background:${b.color}">${b.name[0]}</span>`;
-                const bar = (v, max, color) => `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0"><div class="h-1.5 rounded-full ${color}" style="width:${Math.min(v/Math.max(max,1)*100,100).toFixed(0)}%"></div></div><span>${v}%</span></div>`;
-                const maxOpen = Math.max(...d.brands.map(x=>x.openRate), 1);
-                return `<tr class="hover:bg-slate-50 border-b border-slate-100 last:border-0">
-                    <td class="px-4 py-3"><div class="flex items-center gap-2">${logo}<span class="font-medium text-slate-900">${b.name}</span></div></td>
-                    <td class="px-4 py-3 text-slate-600 text-right">${b.campaigns}</td>
-                    <td class="px-4 py-3 text-slate-600 text-right font-mono">${b.sent.toLocaleString('pt-PT')}</td>
-                    <td class="px-4 py-3 text-slate-600">${bar(b.openRate,   maxOpen,   'bg-blue-400')}</td>
-                    <td class="px-4 py-3 text-slate-600">${bar(b.clickRate,  maxOpen,   'bg-violet-400')}</td>
-                    <td class="px-4 py-3 text-slate-600">${bar(b.bounceRate, maxOpen,   'bg-amber-400')}</td>
-                    <td class="px-4 py-3 text-slate-600">${bar(b.unsubRate,  maxOpen,   'bg-red-400')}</td>
-                    <td class="px-4 py-3 text-right"><button onclick="selectBrand('${b.id}','${b.name.replace(/'/g,"\\'")}','${b.color}');showScreen('dashboard')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button></td>
-                </tr>`;
-            }).join('');
+            if (!d.brands?.length) { if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem dados para o período seleccionado.</td></tr>`; return; }
+            _statsBrandsData = d;
+            _statsBrandFilter = null;
+            _applyStatsFilter();
         } catch(e) {
             setEl('statsTotalSent','—');
             if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
@@ -8271,7 +8299,10 @@ ${lines.join('\n')}
 
                 <!-- KPI cards — totais Caetano -->
                 <div>
-                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Grupo Caetano — todos os envios</p>
+                    <div class="flex items-center gap-3 mb-3">
+                        <p id="statsGroupLabel" class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Grupo Caetano — todos os envios</p>
+                        <button id="statsBackBtn" onclick="_statsBrandFilter=null;_applyStatsFilter()" class="hidden text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">← Todas as marcas</button>
+                    </div>
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <p class="text-xs text-slate-400 mb-1">Emails enviados</p>
