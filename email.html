@@ -6677,8 +6677,8 @@ ${sections.join('\n\n')}
                     <!-- Passo 4: Revisão e Envio -->
                     <div id="wizStep4" class="hidden">
                         <div class="flex gap-6 items-start">
-                        <!-- Coluna principal -->
-                        <div class="flex-1 min-w-0 space-y-4">
+                        <!-- Coluna principal 60% -->
+                        <div class="w-[60%] min-w-0 space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
@@ -6739,10 +6739,20 @@ ${sections.join('\n\n')}
                             </h3>
                             <div id="wizPreviewBox" class="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-[480px] overflow-y-auto"></div>
                         </div>
-                        </div><!-- /coluna principal -->
+                        </div><!-- /coluna principal 60% -->
 
-                        <!-- Coluna direita: quando enviar + destinatários -->
-                        <div class="w-72 flex-shrink-0 sticky top-4 space-y-4">
+                        <!-- Coluna direita 40%: destinatários + quando enviar -->
+                        <div class="w-[40%] flex-shrink-0 sticky top-4 space-y-4">
+                            <!-- Destinatários -->
+                            <div class="bg-white border border-slate-200 rounded-xl p-5">
+                                <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                    Destinatários
+                                </h3>
+                                <div id="wizRevRecipients" class="max-h-64 overflow-y-auto">
+                                    <p class="text-xs text-slate-400 py-2 text-center">—</p>
+                                </div>
+                            </div>
                             <!-- Quando enviar -->
                             <div class="bg-white border border-slate-200 rounded-xl p-5">
                                 <h3 class="font-semibold text-slate-900 text-sm mb-3">Quando enviar?</h3>
@@ -6766,16 +6776,6 @@ ${sections.join('\n\n')}
                                         <input type="radio" name="wizSendType" value="draft" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
                                         <div><p class="text-sm font-medium text-slate-900">Guardar Rascunho</p><p class="text-xs text-slate-400">Envia mais tarde a partir do painel</p></div>
                                     </label>
-                                </div>
-                            </div>
-                            <!-- Destinatários -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-5">
-                                <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
-                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                    Destinatários
-                                </h3>
-                                <div id="wizRevRecipients" class="max-h-64 overflow-y-auto">
-                                    <p class="text-xs text-slate-400 py-2 text-center">—</p>
                                 </div>
                             </div>
                         </div>
