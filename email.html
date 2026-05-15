@@ -4333,11 +4333,12 @@ ${body}
     function teApplyConvertedMjml() {
         const mjml = document.getElementById('te_converterOutput')?.value || '';
         if (!mjml.trim()) { showToast('Converte o HTML primeiro.', 'info'); return; }
+        teCloseConverter();
+        // Switch to code mode first (teRenderMjml inside will overwrite textarea from blocks)
+        // then write our converted MJML so it takes precedence
+        if (typeof teSetMode === 'function') teSetMode('code');
         const ta = _teEl('mjmlCode');
         if (ta) { ta.value = mjml; teSyncMjmlLines && teSyncMjmlLines(); }
-        teCloseConverter();
-        // Switch to code mode
-        if (typeof teSetMode === 'function') teSetMode('code');
         showToast('MJML importado para o editor. Verifica e ajusta conforme necessário.', 'info');
     }
     function teCopyMjml() {
