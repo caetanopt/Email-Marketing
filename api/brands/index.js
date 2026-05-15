@@ -318,6 +318,18 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (req.method === 'PUT' && id && action === 'edit_member' && member_id) {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      const { name, email } = req.body || {};
+      if (!name?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
+      if (!email?.trim() || !email.includes('@')) return res.status(400).json({ error: 'Email inválido' });
+      const normalEmail = email.toLowerCase().trim();
+      const conflict = await query('SELECT id FROM users WHERE email=$1 AND id<>$2', [normalEmail, member_id]);
+      if (conflict[0]) return res.status(409).json({ error: 'Esse email já está em uso por outro utilizador' });
+      await query('UPDATE users SET name=$1, email=$2 WHERE id=$3', [name.trim(), normalEmail, member_id]);
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === 'PUT' && id && action === 'set_active' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes desactivar a tua própria conta' });

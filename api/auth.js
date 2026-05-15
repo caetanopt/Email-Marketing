@@ -66,10 +66,15 @@ module.exports = async function handler(req, res) {
   if (req.method === 'PUT') {
     const user = requireAuth(req, res);
     if (!user) return;
-    const { default_brand_id, avatar_url } = req.body || {};
+    const body = req.body || {};
+    const { default_brand_id, avatar_url, name } = body;
     const sets = ['default_brand_id = $1'];
     const params = [default_brand_id || null];
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'avatar_url')) {
+    if (Object.prototype.hasOwnProperty.call(body, 'name') && name?.trim()) {
+      params.push(name.trim());
+      sets.push(`name = $${params.length}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'avatar_url')) {
       params.push(avatar_url || null);
       sets.push(`avatar_url = $${params.length}`);
     }

@@ -293,12 +293,15 @@
         const sel = document.getElementById('upDefaultBrand');
         if (!sel) return;
         const brandId = sel.value || null;
-        const body = { default_brand_id: brandId };
+        const nameVal = (document.getElementById('upNameInput')?.value || '').trim();
+        if (!nameVal) { showToast('O nome não pode ficar vazio.', 'error'); return; }
+        const body = { default_brand_id: brandId, name: nameVal };
         if (_pendingAvatarUrl !== undefined) body.avatar_url = _pendingAvatarUrl;
         try {
             await apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify(body) });
             const u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
             u.default_brand_id = brandId;
+            u.name = nameVal;
             if (_pendingAvatarUrl !== undefined) u.avatar_url = _pendingAvatarUrl;
             localStorage.setItem('pm_user', JSON.stringify(u));
             _pendingAvatarUrl = undefined;
@@ -309,7 +312,7 @@
 
     function _loadUserProfile() {
         const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
-        const nameEl = document.getElementById('upName'); if (nameEl) nameEl.textContent = _u.name || '—';
+        const nameInp = document.getElementById('upNameInput'); if (nameInp) nameInp.value = _u.name || '';
         const emailEl = document.getElementById('upEmail'); if (emailEl) emailEl.textContent = _u.email || '—';
         _pendingAvatarUrl = undefined;
         _renderProfileAvatar(_u.avatar_url || null);
@@ -866,12 +869,15 @@
                 const roleOptions = ['owner','admin','editor','viewer'].map(r =>
                     `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
+                const canManage = _canSeeRolesPanel();
+                const editBtn = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="text-xs text-slate-600 hover:text-slate-900 underline">Editar</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
-                        ? `<span class="text-xs text-slate-400">owner</span>`
+                        ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}</div>` : `<span class="text-xs text-slate-400">owner</span>`)
                         : `<div class="flex items-center justify-end gap-2">
                             <select onchange="doUpdateRole(this,${m.id})" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">${roleOptions}</select>
+                            ${editBtn}
                             <button onclick="openPermissionsModal(this)" class="text-xs text-slate-600 hover:text-slate-900 underline">Permissões</button>
                             <button onclick="doRemoveMember(this,${m.id})" class="text-xs text-red-500 hover:text-red-700">Remover</button>
                           </div>`);
@@ -942,6 +948,44 @@
         } catch(e) {
             showToast(e.message || 'Erro ao actualizar função.', 'error');
             await _loadTeamMembers();
+        }
+    }
+    function openEditMemberModal(memberId, currentName) {
+        const row = document.querySelector(`tr[data-member-id="${memberId}"]`);
+        const currentEmail = row ? row.querySelector('p.text-xs.text-slate-400')?.textContent || '' : '';
+        document.getElementById('editMemberName').value = currentName;
+        document.getElementById('editMemberEmail').value = currentEmail;
+        document.getElementById('editMemberModal').dataset.memberId = memberId;
+        const m = document.getElementById('editMemberModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    }
+    function closeEditMemberModal() {
+        const m = document.getElementById('editMemberModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+    }
+    async function doEditMember() {
+        const modal = document.getElementById('editMemberModal');
+        const memberId = modal.dataset.memberId;
+        const name = document.getElementById('editMemberName').value.trim();
+        const email = document.getElementById('editMemberEmail').value.trim();
+        if (!name) { showToast('Nome obrigatório.', 'error'); return; }
+        if (!email || !email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        const btn = document.getElementById('editMemberSaveBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=edit_member&member_id=${memberId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ name, email })
+            });
+            closeEditMemberModal();
+            showToast('Utilizador actualizado.');
+            await _loadTeamMembers();
+        } catch(e) {
+            showToast(e.message || 'Erro ao actualizar utilizador.', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
     async function doToggleActive(btn, memberId, currentActive) {
@@ -8482,10 +8526,16 @@ ${lines.join('\n')}
                             </div>
                             <input id="avatarFileInput" type="file" accept="image/*" class="hidden" onchange="_handleAvatarUpload(this)" />
                         </div>
-                        <div>
-                            <p id="upName" class="text-base font-semibold text-slate-900">—</p>
-                            <p id="upEmail" class="text-sm text-slate-500">—</p>
-                            <p class="text-xs text-slate-400 mt-1">Clica na foto para alterar</p>
+                        <div class="flex-1 min-w-0 space-y-3">
+                            <div>
+                                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1">Nome</label>
+                                <input id="upNameInput" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="O teu nome" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1">Email</label>
+                                <p id="upEmail" class="text-sm text-slate-400 py-2">—</p>
+                            </div>
+                            <p class="text-xs text-slate-400">Clica na foto para alterar a imagem de perfil</p>
                         </div>
                     </div>
                 </div>
@@ -8689,6 +8739,32 @@ ${lines.join('\n')}
 <!-- ═══════════════════════════════════════════════════════════════════
      MODAL — PERMISSÕES DE UTILIZADOR
 ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — EDITAR MEMBRO DE EQUIPA
+═══════════════════════════════════════════════════════════════════ -->
+<div id="editMemberModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closeEditMemberModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <h2 class="text-lg font-semibold text-slate-900">Editar utilizador</h2>
+            <p class="text-sm text-slate-500 mt-1">Altera o nome e email deste membro da equipa.</p>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome *</label>
+                <input id="editMemberName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email *</label>
+                <input id="editMemberEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+        </div>
+        <div class="px-6 pb-6 flex items-center justify-end gap-3">
+            <button onclick="closeEditMemberModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button id="editMemberSaveBtn" onclick="doEditMember()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar</button>
+        </div>
+    </div>
+</div>
+
 <div id="permissionsModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 items-center justify-center p-6" onclick="closePermissionsModal()">
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
