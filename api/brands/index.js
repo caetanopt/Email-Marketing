@@ -313,6 +313,14 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (req.method === 'PUT' && id && action === 'set_active' && member_id) {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes desactivar a tua própria conta' });
+      const { active } = req.body || {};
+      await query('UPDATE users SET active=$1 WHERE id=$2', [!!active, member_id]);
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'id obrigatório' });
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
