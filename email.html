@@ -6739,40 +6739,42 @@ ${sections.join('\n\n')}
                             </h3>
                             <div id="wizPreviewBox" class="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-[480px] overflow-y-auto"></div>
                         </div>
-                        <div class="bg-white border border-slate-200 rounded-xl p-6">
-                            <h3 class="font-semibold text-slate-900 text-sm mb-4">Quando enviar?</h3>
-                            <div class="space-y-3">
-                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
-                                    <input type="radio" name="wizSendType" value="now" checked class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
-                                    <div><p class="text-sm font-medium text-slate-900">Enviar agora</p><p class="text-xs text-slate-400">A campanha será enviada imediatamente após criação</p></div>
-                                </label>
-                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
-                                    <input type="radio" name="wizSendType" value="schedule" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.remove('hidden')" />
-                                    <div class="flex-1">
-                                        <p class="text-sm font-medium text-slate-900">Agendar para data/hora</p>
-                                        <p class="text-xs text-slate-400">Define quando a campanha será enviada automaticamente</p>
-                                        <div id="wizSchedulePicker" class="hidden mt-3 grid grid-cols-2 gap-3">
-                                            <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" onclick="try{this.showPicker()}catch(e){}" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
-                                            <div><label class="text-xs text-slate-500 block mb-1">Hora</label><input type="time" id="wizScheduleTime" onclick="try{this.showPicker()}catch(e){}" class="w-full px-3 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
-                                        </div>
-                                    </div>
-                                </label>
-                                <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
-                                    <input type="radio" name="wizSendType" value="draft" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
-                                    <div><p class="text-sm font-medium text-slate-900">Guardar como Rascunho</p><p class="text-xs text-slate-400">Podes enviar mais tarde a partir do painel da campanha</p></div>
-                                </label>
-                            </div>
-                        </div>
                         </div><!-- /coluna principal -->
 
-                        <!-- Coluna direita: destinatários -->
-                        <div class="w-64 flex-shrink-0 sticky top-4">
+                        <!-- Coluna direita: quando enviar + destinatários -->
+                        <div class="w-72 flex-shrink-0 sticky top-4 space-y-4">
+                            <!-- Quando enviar -->
+                            <div class="bg-white border border-slate-200 rounded-xl p-5">
+                                <h3 class="font-semibold text-slate-900 text-sm mb-3">Quando enviar?</h3>
+                                <div class="space-y-2">
+                                    <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
+                                        <input type="radio" name="wizSendType" value="now" checked class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
+                                        <div><p class="text-sm font-medium text-slate-900">Enviar agora</p><p class="text-xs text-slate-400">Enviada imediatamente após criação</p></div>
+                                    </label>
+                                    <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
+                                        <input type="radio" name="wizSendType" value="schedule" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.remove('hidden')" />
+                                        <div class="flex-1">
+                                            <p class="text-sm font-medium text-slate-900">Agendar</p>
+                                            <p class="text-xs text-slate-400">Define data e hora de envio</p>
+                                            <div id="wizSchedulePicker" class="hidden mt-3 grid grid-cols-2 gap-2">
+                                                <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" onclick="try{this.showPicker()}catch(e){}" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
+                                                <div><label class="text-xs text-slate-500 block mb-1">Hora</label><input type="time" id="wizScheduleTime" onclick="try{this.showPicker()}catch(e){}" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
+                                            </div>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
+                                        <input type="radio" name="wizSendType" value="draft" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.add('hidden')" />
+                                        <div><p class="text-sm font-medium text-slate-900">Guardar Rascunho</p><p class="text-xs text-slate-400">Envia mais tarde a partir do painel</p></div>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Destinatários -->
                             <div class="bg-white border border-slate-200 rounded-xl p-5">
                                 <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                     Destinatários
                                 </h3>
-                                <div id="wizRevRecipients" class="max-h-96 overflow-y-auto">
+                                <div id="wizRevRecipients" class="max-h-64 overflow-y-auto">
                                     <p class="text-xs text-slate-400 py-2 text-center">—</p>
                                 </div>
                             </div>
