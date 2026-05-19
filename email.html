@@ -89,7 +89,7 @@
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
         'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaignCreate': 'campaigns/new', 'suppression': 'suppression',
-        'team': 'team', 'brandSettings': 'settings', 'unsubscribe': 'unsubscribe',
+        'icons': 'icons', 'team': 'team', 'brandSettings': 'settings', 'unsubscribe': 'unsubscribe',
     };
     // screens handled via dedicated functions (they push their own hash)
     const _SCREENS_CUSTOM_ROUTE = new Set(['campaignShow','campaignReport','contactShow','listEdit','templateEdit']);
@@ -844,6 +844,7 @@
         { id:'lists',         name:'Listas' },
         { id:'imports',       name:'Importações' },
         { id:'media',         name:'Multimédia' },
+        { id:'icons',         name:'Ícones' },
         { id:'blocks',        name:'Cabeçalhos & Rodapés' },
         { id:'campaigns',     name:'Campanhas' },
         { id:'suppression',   name:'Supressão' },
@@ -1764,14 +1765,19 @@
                 d.textContent = b.text;
                 break;
             case 'icon': {
-                const iconColor = b.color || '#334155';
                 const sz = b.size || 48;
-                let svgStr = (b.iconSvg || TE_ICONS['Geral']['star'])
-                    .replace(/stroke="currentColor"/g, `stroke="${iconColor}"`)
-                    .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
-                svgStr = svgStr.replace('<svg ', `<svg width="${sz}" height="${sz}" `);
                 d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
-                const iconHtml = `<span style="display:inline-block;width:${sz}px;height:${sz}px;line-height:0;">${svgStr}</span>`;
+                let iconHtml;
+                if (b.iconKey?.startsWith('custom:')) {
+                    iconHtml = `<span style="display:inline-block;width:${sz}px;height:${sz}px;line-height:0;"><img src="${b.iconSvg}" width="${sz}" height="${sz}" style="width:${sz}px;height:${sz}px;object-fit:contain;display:block;" /></span>`;
+                } else {
+                    const iconColor = b.color || '#334155';
+                    let svgStr = (b.iconSvg || TE_ICONS['Geral']['star'])
+                        .replace(/stroke="currentColor"/g, `stroke="${iconColor}"`)
+                        .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
+                    svgStr = svgStr.replace('<svg ', `<svg width="${sz}" height="${sz}" `);
+                    iconHtml = `<span style="display:inline-block;width:${sz}px;height:${sz}px;line-height:0;">${svgStr}</span>`;
+                }
                 d.innerHTML = b.href ? `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;">${iconHtml}</a>` : iconHtml;
                 break;
             }
@@ -1863,18 +1869,25 @@
             return;
         }
         if (b.type === 'icon') {
-            const iconColor = b.color || '#334155';
-            const svgPrev = (b.iconSvg || TE_ICONS['Geral']['star'])
-                .replace(/stroke="currentColor"/g, `stroke="${iconColor}"`)
-                .replace(/fill="currentColor"/g, `fill="${iconColor}"`)
-                .replace('<svg ', '<svg width="36" height="36" ');
-            const fields = teFieldSchemas.icon || [];
+            const isCustom = b.iconKey?.startsWith('custom:');
+            let previewHtml;
+            if (isCustom) {
+                previewHtml = `<img src="${b.iconSvg}" width="36" height="36" style="width:36px;height:36px;object-fit:contain;display:block;" />`;
+            } else {
+                const iconColor = b.color || '#334155';
+                previewHtml = (b.iconSvg || TE_ICONS['Geral']['star'])
+                    .replace(/stroke="currentColor"/g, `stroke="${iconColor}"`)
+                    .replace(/fill="currentColor"/g, `fill="${iconColor}"`)
+                    .replace('<svg ', '<svg width="36" height="36" ');
+            }
+            const allFields = teFieldSchemas.icon || [];
+            const fields = isCustom ? allFields.filter(k => k !== 'color') : allFields;
             const html = fields.map(k => teRenderField(b, k)).join('');
             root.innerHTML = `
                 <p class="text-xs font-semibold text-slate-700 mb-1">Ícone</p>
                 <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
                 <div class="flex items-center gap-3 mb-3 p-2 border border-slate-100 rounded-lg bg-slate-50">
-                    <span class="w-9 h-9 flex-shrink-0 flex items-center justify-center">${svgPrev}</span>
+                    <span class="w-9 h-9 flex-shrink-0 flex items-center justify-center">${previewHtml}</span>
                     <button type="button" onclick="teOpenIconPicker(null,'${b.id}')" class="flex-1 text-xs px-2 py-1.5 border border-slate-200 bg-white rounded hover:bg-slate-50 text-slate-600">Trocar ícone…</button>
                 </div>
                 <div class="space-y-3">${html}</div>
@@ -2083,12 +2096,17 @@ ${body}
             case 'footer':
                 return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${b.text}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'icon': {
-                const ic = b.color || '#334155';
-                const svgExp = (b.iconSvg || TE_ICONS['Geral']['star'])
-                    .replace(/stroke="currentColor"/g, `stroke="${ic}"`)
-                    .replace(/fill="currentColor"/g, `fill="${ic}"`);
-                const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp)));
                 const attrs = b.href ? ` href="${b.href}"` : '';
+                let dataUrl;
+                if (b.iconKey?.startsWith('custom:')) {
+                    dataUrl = b.iconSvg;
+                } else {
+                    const ic = b.color || '#334155';
+                    const svgExp = (b.iconSvg || TE_ICONS['Geral']['star'])
+                        .replace(/stroke="currentColor"/g, `stroke="${ic}"`)
+                        .replace(/fill="currentColor"/g, `fill="${ic}"`);
+                    dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp)));
+                }
                 return wrap(`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
             }
             case 'columns': {
@@ -2116,12 +2134,17 @@ ${body}
             case 'spacer':
                 return `${i}<mj-spacer height="${b.height}px" />`;
             case 'icon': {
-                const ic2 = b.color || '#334155';
-                const svgExp2 = (b.iconSvg || TE_ICONS['Geral']['star'])
-                    .replace(/stroke="currentColor"/g, `stroke="${ic2}"`)
-                    .replace(/fill="currentColor"/g, `fill="${ic2}"`);
-                const dataUrl2 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp2)));
                 const attrs2 = b.href ? ` href="${b.href}"` : '';
+                let dataUrl2;
+                if (b.iconKey?.startsWith('custom:')) {
+                    dataUrl2 = b.iconSvg;
+                } else {
+                    const ic2 = b.color || '#334155';
+                    const svgExp2 = (b.iconSvg || TE_ICONS['Geral']['star'])
+                        .replace(/stroke="currentColor"/g, `stroke="${ic2}"`)
+                        .replace(/fill="currentColor"/g, `fill="${ic2}"`);
+                    dataUrl2 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp2)));
+                }
                 return `${i}<mj-image src="${dataUrl2}" alt="" width="${b.size||48}px" padding="${teMjmlPad(b)}"${attrs2} />`;
             }
         }
@@ -2130,29 +2153,74 @@ ${body}
 
     // ── Icon Picker ───────────────────────────────────────
     let _teIconPickerTarget = null, _teIconPickerBlockId = null;
+    let _teCustomIconsCache = {};
+
     function teOpenIconPicker(target, blockId) {
         _teIconPickerTarget = target ?? null;
         _teIconPickerBlockId = blockId || null;
         const modal = document.getElementById('teIconPickerModal');
         if (!modal) return;
-        const grid = document.getElementById('teIconPickerGrid');
-        if (grid) {
-            let html = '';
-            for (const [cat, icons] of Object.entries(TE_ICONS)) {
-                html += `<div class="te-icon-cat mb-4"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">${cat}</p><div class="grid grid-cols-6 gap-1.5">`;
-                for (const [key, svg] of Object.entries(icons)) {
-                    const lbl = key.replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase());
-                    const svgSized = svg.replace('<svg ', '<svg width="28" height="28" ');
-                    html += `<button type="button" data-icon-key="${key}" onclick="teSelectIconByKey('${key}')" title="${lbl}" class="te-icon-btn flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors group"><span class="w-7 h-7 flex items-center justify-center text-slate-600 group-hover:text-blue-600 flex-shrink-0">${svgSized}</span><span class="text-[9px] text-slate-400 group-hover:text-blue-400 truncate w-full text-center leading-tight">${lbl}</span></button>`;
-                }
-                html += `</div></div>`;
-            }
-            grid.innerHTML = html;
-        }
+        _teRenderIconPickerGrid(null); // loading state
         const si = document.getElementById('teIconPickerSearch');
         if (si) si.value = '';
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+        if (_currentBrand?.id) {
+            apiFetch(`/api/icons?brand_id=${_currentBrand.id}`)
+                .then(d => {
+                    _teCustomIconsCache = {};
+                    (d.data || []).forEach(ic => { _teCustomIconsCache[ic.id] = ic; });
+                    _teRenderIconPickerGrid(d.data || []);
+                })
+                .catch(() => _teRenderIconPickerGrid([]));
+        } else {
+            _teRenderIconPickerGrid([]);
+        }
+    }
+    function _teRenderIconPickerGrid(customIcons) {
+        const grid = document.getElementById('teIconPickerGrid');
+        if (!grid) return;
+        let html = '';
+        // Custom section
+        if (customIcons === null) {
+            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Personalizados</p><p class="text-xs text-slate-400 italic py-1">A carregar…</p></div>`;
+        } else if (customIcons.length > 0) {
+            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-purple-600 uppercase tracking-wide mb-2 flex items-center gap-2">Personalizados <button onclick="teCloseIconPicker();showScreen('icons')" class="text-[9px] text-slate-400 hover:text-slate-700 underline font-normal normal-case tracking-normal">Gerir</button></p><div class="grid grid-cols-6 gap-1.5">`;
+            customIcons.forEach(ic => {
+                const scopeLbl = ic.brand_id ? '· marca' : '· global';
+                html += `<button type="button" data-icon-key="custom:${ic.id}" data-icon-label="${escHtml(ic.name)}" onclick="_tePickCustomIcon(${ic.id})" title="${escHtml(ic.name)} ${scopeLbl}" class="te-icon-btn flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-purple-300 hover:bg-purple-50 active:bg-purple-100 transition-colors group"><span class="w-7 h-7 flex items-center justify-center flex-shrink-0"><img src="${ic.data_url}" alt="" style="width:28px;height:28px;object-fit:contain;" /></span><span class="text-[9px] text-slate-400 group-hover:text-purple-500 truncate w-full text-center leading-tight">${escHtml(ic.name)}</span></button>`;
+            });
+            html += `</div></div>`;
+        } else {
+            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Personalizados</p><div class="flex items-center gap-2 py-1"><p class="text-xs text-slate-400 flex-1">Nenhum ícone carregado.</p><button onclick="teCloseIconPicker();showScreen('icons')" class="text-xs px-3 py-1 border border-dashed border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500">+ Carregar</button></div></div>`;
+        }
+        // Built-in sections
+        for (const [cat, icons] of Object.entries(TE_ICONS)) {
+            html += `<div class="te-icon-cat mb-4"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">${cat}</p><div class="grid grid-cols-6 gap-1.5">`;
+            for (const [key, svg] of Object.entries(icons)) {
+                const lbl = key.replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+                const svgSized = svg.replace('<svg ', '<svg width="28" height="28" ');
+                html += `<button type="button" data-icon-key="${key}" data-icon-label="${lbl}" onclick="teSelectIconByKey('${key}')" title="${lbl}" class="te-icon-btn flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors group"><span class="w-7 h-7 flex items-center justify-center text-slate-600 group-hover:text-blue-600 flex-shrink-0">${svgSized}</span><span class="text-[9px] text-slate-400 group-hover:text-blue-400 truncate w-full text-center leading-tight">${lbl}</span></button>`;
+            }
+            html += `</div></div>`;
+        }
+        grid.innerHTML = html;
+    }
+    function _tePickCustomIcon(id) {
+        const ic = _teCustomIconsCache[id];
+        if (!ic) return;
+        if (_teIconPickerBlockId) {
+            const found = teFind(_teIconPickerBlockId);
+            if (found) { found.block.iconKey = `custom:${id}`; found.block.iconSvg = ic.data_url; teRender(); showToast('Ícone actualizado.'); }
+            teCloseIconPicker(); return;
+        }
+        const b = teMakeBlock('icon');
+        b.iconKey = `custom:${id}`; b.iconSvg = ic.data_url;
+        const arr = teResolveTargetArray(_teIconPickerTarget);
+        if (!arr) { teCloseIconPicker(); return; }
+        arr.splice(_teIconPickerTarget?.idx ?? arr.length, 0, b);
+        teState.selected = b.id; teRender(); teCloseIconPicker();
+        showToast(`Ícone "${ic.name}" adicionado.`);
     }
     function teCloseIconPicker() {
         const modal = document.getElementById('teIconPickerModal');
@@ -2161,7 +2229,8 @@ ${body}
     function teFilterIconPicker(q) {
         q = (q || '').toLowerCase();
         document.querySelectorAll('.te-icon-btn').forEach(btn => {
-            btn.classList.toggle('hidden', !!q && !(btn.dataset.iconKey || '').includes(q));
+            const lbl = (btn.dataset.iconLabel || btn.dataset.iconKey || '').toLowerCase();
+            btn.classList.toggle('hidden', !!q && !lbl.includes(q));
         });
         document.querySelectorAll('.te-icon-cat').forEach(sec => {
             sec.classList.toggle('hidden', !!q && [...sec.querySelectorAll('.te-icon-btn')].every(b => b.classList.contains('hidden')));
@@ -2174,18 +2243,134 @@ ${body}
         if (_teIconPickerBlockId) {
             const found = teFind(_teIconPickerBlockId);
             if (found) { found.block.iconKey = key; found.block.iconSvg = svg; teRender(); showToast('Ícone actualizado.'); }
-            teCloseIconPicker();
-            return;
+            teCloseIconPicker(); return;
         }
         const b = teMakeBlock('icon');
         b.iconKey = key; b.iconSvg = svg;
         const arr = teResolveTargetArray(_teIconPickerTarget);
         if (!arr) { teCloseIconPicker(); return; }
         arr.splice(_teIconPickerTarget?.idx ?? arr.length, 0, b);
-        teState.selected = b.id;
-        teRender();
-        teCloseIconPicker();
+        teState.selected = b.id; teRender(); teCloseIconPicker();
         showToast(`Ícone "${key.replace(/-/g,' ')}" adicionado.`);
+    }
+
+    // ── Custom Icons Management ───────────────────────────
+    let _iconUploadFile = null, _iconUploadDataUrl = null;
+    async function _loadCustomIcons() {
+        if (!_currentBrand?.id) return;
+        const gGrid = document.getElementById('iconsGlobalGrid');
+        const bGrid = document.getElementById('iconsBrandGrid');
+        const gEmpty = document.getElementById('iconsGlobalEmpty');
+        const bEmpty = document.getElementById('iconsBrandEmpty');
+        if (!gGrid || !bGrid) return;
+        const loading = `<div class="col-span-full py-4 text-center text-slate-400 text-sm">A carregar…</div>`;
+        gGrid.innerHTML = loading; bGrid.innerHTML = loading;
+        try {
+            const d = await apiFetch(`/api/icons?brand_id=${_currentBrand.id}`);
+            if (d._migration_pending) {
+                const msg = `<div class="col-span-full py-4 text-center text-amber-700 text-sm">Funcionalidade não activada — corre <code class="bg-amber-50 px-1 rounded">migrations/020_custom_icons.sql</code> no Supabase.</div>`;
+                gGrid.innerHTML = msg; bGrid.innerHTML = ''; return;
+            }
+            const all = d.data || [];
+            _teCustomIconsCache = {};
+            all.forEach(ic => { _teCustomIconsCache[ic.id] = ic; });
+            const global = all.filter(i => !i.brand_id);
+            const brand  = all.filter(i =>  i.brand_id);
+            gGrid.innerHTML = global.length ? global.map(_renderIconCard).join('') : '';
+            bGrid.innerHTML = brand.length  ? brand.map(_renderIconCard).join('')  : '';
+            if (gEmpty) gEmpty.classList.toggle('hidden', global.length > 0);
+            if (bEmpty) bEmpty.classList.toggle('hidden', brand.length  > 0);
+        } catch (e) {
+            gGrid.innerHTML = `<div class="col-span-full py-4 text-center text-red-400 text-sm">${escHtml(e.message)}</div>`;
+            bGrid.innerHTML = '';
+        }
+    }
+    function _renderIconCard(ic) {
+        const scope = ic.brand_id ? ['bg-blue-50 text-blue-600','Marca'] : ['bg-green-50 text-green-600','Global'];
+        return `<div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-col items-center gap-2 group relative hover:border-slate-300 transition-colors">
+            <div class="w-12 h-12 flex items-center justify-center"><img src="${ic.data_url}" alt="${escHtml(ic.name)}" style="max-width:48px;max-height:48px;object-fit:contain;" /></div>
+            <p class="text-xs text-slate-700 font-medium text-center truncate w-full leading-tight">${escHtml(ic.name)}</p>
+            <span class="text-[9px] px-1.5 py-0.5 rounded ${scope[0]} font-medium">${scope[1]}</span>
+            <button onclick="_deleteCustomIcon(${ic.id},'${escHtml(ic.name)}')" class="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600" title="Eliminar">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>`;
+    }
+    async function _deleteCustomIcon(id, name) {
+        if (!confirm(`Eliminar o ícone "${name}" permanentemente?`)) return;
+        try {
+            await apiFetch(`/api/icons/${id}`, { method: 'DELETE' });
+            showToast('Ícone eliminado.');
+            _teCustomIconsCache = {}; _loadCustomIcons();
+        } catch (e) { showToast('Erro ao eliminar: ' + e.message, 'error'); }
+    }
+    function openIconUploadModal(scope) {
+        _iconUploadFile = null; _iconUploadDataUrl = null;
+        scope = scope || 'brand';
+        const nameEl = document.getElementById('iconUploadName');
+        if (nameEl) nameEl.value = '';
+        const scopeEl = document.getElementById('iconUploadScope');
+        if (scopeEl) scopeEl.value = scope;
+        const prev = document.getElementById('iconPreviewBox');
+        if (prev) prev.classList.add('hidden');
+        const fi = document.getElementById('iconFileInput');
+        if (fi) fi.value = '';
+        const titleEl = document.getElementById('iconUploadModalTitle');
+        if (titleEl) titleEl.textContent = scope === 'global' ? 'Adicionar ícone global' : 'Adicionar ícone da marca';
+        const scopeTextEl = document.getElementById('iconScopeText');
+        if (scopeTextEl) scopeTextEl.textContent = scope === 'global'
+            ? 'Este ícone ficará disponível em todas as marcas.'
+            : 'Este ícone ficará disponível apenas para esta marca.';
+        const modal = document.getElementById('iconUploadModal');
+        if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    }
+    function closeIconUploadModal() {
+        const modal = document.getElementById('iconUploadModal');
+        if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    }
+    function _iconPickFile(e) { const f = e.target.files[0]; if (f) _iconHandleFile(f); }
+    function _iconHandleFileDrop(e) {
+        e.preventDefault(); e.stopPropagation();
+        document.getElementById('iconDropZone')?.classList.remove('border-purple-400','bg-purple-50');
+        const f = e.dataTransfer.files[0]; if (f) _iconHandleFile(f);
+    }
+    function _iconHandleFile(file) {
+        const ok = ['image/svg+xml','image/png','image/jpeg','image/webp'];
+        if (!ok.includes(file.type) && !file.name.toLowerCase().endsWith('.svg')) {
+            showToast('Formato não suportado. Usa SVG, PNG, JPG ou WebP.', 'error'); return;
+        }
+        if (file.size > 250 * 1024) { showToast('Ficheiro demasiado grande. Máximo 250 KB.', 'error'); return; }
+        _iconUploadFile = file;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            _iconUploadDataUrl = ev.target.result;
+            const prev = document.getElementById('iconPreviewBox');
+            const img  = document.getElementById('iconPreviewImg');
+            if (prev && img) { img.src = _iconUploadDataUrl; prev.classList.remove('hidden'); }
+            const nameLabel = document.getElementById('iconPreviewName');
+            if (nameLabel) nameLabel.textContent = file.name;
+            const sizeLabel = document.getElementById('iconPreviewSize');
+            if (sizeLabel) sizeLabel.textContent = (file.size / 1024).toFixed(1) + ' KB';
+            const nameEl = document.getElementById('iconUploadName');
+            if (nameEl && !nameEl.value) nameEl.value = file.name.replace(/\.[^.]+$/, '');
+        };
+        reader.readAsDataURL(file);
+    }
+    async function _iconUploadSave() {
+        const name  = document.getElementById('iconUploadName')?.value.trim();
+        const scope = document.getElementById('iconUploadScope')?.value || 'brand';
+        if (!name) { showToast('Dá um nome ao ícone.', 'error'); return; }
+        if (!_iconUploadDataUrl) { showToast('Escolhe um ficheiro.', 'error'); return; }
+        if (!_currentBrand?.id) return;
+        try {
+            await apiFetch(`/api/icons?brand_id=${_currentBrand.id}`, {
+                method: 'POST',
+                body: JSON.stringify({ name, data_url: _iconUploadDataUrl, mime_type: _iconUploadFile?.type || 'image/svg+xml', scope })
+            });
+            showToast('Ícone carregado com sucesso.');
+            closeIconUploadModal();
+            _teCustomIconsCache = {}; _loadCustomIcons();
+        } catch (e) { showToast('Erro ao carregar: ' + e.message, 'error'); }
     }
 
     // ── Lists ─────────────────────────────────────────────
@@ -5074,6 +5259,10 @@ ${sections.join('\n\n')}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                 Multimédia
             </a>
+            <a onclick="showScreen('icons')" data-nav class="nav-item nav-icons flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg>
+                Ícones
+            </a>
             <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Campanhas
@@ -5222,6 +5411,7 @@ ${sections.join('\n\n')}
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
             if (id === 'media' && !_screenLoaded.has('media')) { _loadMedia(); _screenLoaded.add('media'); }
+            if (id === 'icons') { _loadCustomIcons(); const nb = document.getElementById('iconsCurrentBrandName'); if (nb && _currentBrand) nb.textContent = _currentBrand.name || 'esta marca'; }
             // Load lists into import select
             if (id === 'imports' && !_screenLoaded.has('imports')) { _loadImportLists(); _loadImportHistory(); _screenLoaded.add('imports'); }
             // Push history state (skip for screens that manage their own hash and for popstate navigation)
@@ -7773,6 +7963,112 @@ ${sections.join('\n\n')}
         <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50">
             <button onclick="closeMediaPicker();showScreen('media')" class="text-xs text-slate-600 hover:text-slate-900">Gerir biblioteca →</button>
             <button onclick="closeMediaPicker()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ECRÃ — ÍCONES PERSONALIZADOS
+═══════════════════════════════════════════════════════════════════ -->
+<div id="icons" class="screen fade-in">
+    <div class="min-h-screen bg-slate-50 flex">
+        <div data-sidebar-slot></div>
+        <div class="flex-1 ml-64 flex flex-col min-h-screen">
+            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
+                <div>
+                    <h1 class="text-xl font-semibold text-slate-900">Ícones Personalizados</h1>
+                    <p class="text-xs text-slate-400 mt-0.5">Ícones SVG para usar nos emails desta marca</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="openIconUploadModal('brand')" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Adicionar ícone
+                    </button>
+                    <button onclick="openIconUploadModal('global')" class="px-4 py-2 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Adicionar global
+                    </button>
+                </div>
+            </header>
+            <main class="flex-1 px-8 py-6 space-y-8">
+                <!-- Brand icons section -->
+                <section>
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h2 class="text-sm font-semibold text-slate-800">Ícones de <span id="iconsCurrentBrandName">esta marca</span></h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Disponíveis apenas nesta marca</p>
+                        </div>
+                    </div>
+                    <div id="iconsBrandGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                        <div class="col-span-full text-center py-10 text-sm text-slate-400 italic">A carregar…</div>
+                    </div>
+                    <div id="iconsBrandEmpty" class="hidden text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
+                        <svg class="w-10 h-10 mx-auto text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+                        <p class="text-sm text-slate-500">Sem ícones para esta marca.</p>
+                        <button onclick="openIconUploadModal('brand')" class="mt-3 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Adicionar o primeiro</button>
+                    </div>
+                </section>
+                <!-- Global icons section -->
+                <section>
+                    <div class="mb-3">
+                        <h2 class="text-sm font-semibold text-slate-800">Ícones globais</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Disponíveis em todas as marcas</p>
+                    </div>
+                    <div id="iconsGlobalGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                        <div class="col-span-full text-center py-10 text-sm text-slate-400 italic">A carregar…</div>
+                    </div>
+                    <div id="iconsGlobalEmpty" class="hidden text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
+                        <svg class="w-10 h-10 mx-auto text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p class="text-sm text-slate-500">Sem ícones globais.</p>
+                        <button onclick="openIconUploadModal('global')" class="mt-3 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">+ Adicionar o primeiro</button>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: upload de ícone -->
+<div id="iconUploadModal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)closeIconUploadModal()">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 id="iconUploadModalTitle" class="text-base font-semibold text-slate-900">Adicionar ícone</h3>
+            <button onclick="closeIconUploadModal()" class="text-slate-400 hover:text-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-5 space-y-4">
+            <!-- Drop zone -->
+            <div id="iconDropZone" ondrop="_iconHandleFileDrop(event)" ondragover="event.preventDefault();this.classList.add('border-slate-900','bg-slate-50')" ondragleave="this.classList.remove('border-slate-900','bg-slate-50')" onclick="document.getElementById('iconFileInput').click()" class="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
+                <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                <p class="text-sm text-slate-600">Arrasta um SVG ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
+                <p class="text-[11px] text-slate-400 mt-1">SVG, PNG, JPG · até 250 KB</p>
+                <input id="iconFileInput" type="file" accept=".svg,image/svg+xml,image/png,image/jpeg" class="hidden" onchange="_iconPickFile(event)">
+            </div>
+            <!-- Preview -->
+            <div id="iconPreviewBox" class="hidden flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <img id="iconPreviewImg" class="w-12 h-12 object-contain flex-shrink-0" alt="">
+                <div class="flex-1 min-w-0">
+                    <p id="iconPreviewName" class="text-xs font-medium text-slate-700 truncate"></p>
+                    <p id="iconPreviewSize" class="text-[10px] text-slate-400 mt-0.5"></p>
+                </div>
+                <button onclick="document.getElementById('iconFileInput').click()" class="text-xs text-slate-500 hover:text-slate-900 underline flex-shrink-0">Trocar</button>
+            </div>
+            <!-- Name -->
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">Nome *</label>
+                <input id="iconUploadName" type="text" placeholder="Ex.: Seta direita" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+            </div>
+            <!-- Scope indicator -->
+            <div id="iconScopeInfo" class="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+                <svg class="w-4 h-4 flex-shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="iconScopeText">Este ícone ficará disponível apenas para esta marca.</span>
+            </div>
+            <input type="hidden" id="iconUploadScope" value="brand">
+        </div>
+        <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50">
+            <button onclick="closeIconUploadModal()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
+            <button onclick="_iconUploadSave()" class="px-4 py-2 text-sm bg-slate-900 text-white font-medium rounded-lg hover:bg-slate-700">Guardar ícone</button>
         </div>
     </div>
 </div>
