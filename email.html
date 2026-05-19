@@ -1384,7 +1384,8 @@
     const teLabels = {
         header:'Cabeçalho', heading:'Título', text:'Texto', button:'Botão',
         image:'Imagem', divider:'Separador', spacer:'Espaço', footer:'Rodapé',
-        icon:'Ícone', columns2:'2 Colunas', columns3:'3 Colunas'
+        icon:'Ícone', columns2:'2 Colunas', columns3:'3 Colunas',
+        quote:'Citação', linkBlock:'Bloco Link', listItems:'Lista'
     };
     const teDefaults = {
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', paddingTop:24, paddingRight:24, paddingBottom:24, paddingLeft:24 },
@@ -1395,7 +1396,10 @@
         divider: { color:'#e2e8f0', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
         footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
-        icon:    { iconKey:'star', iconSvg:'', color:'#334155', size:48, align:'center', bgColor:'#ffffff', href:'', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 }
+        icon:      { iconKey:'star', iconSvg:'', color:'#334155', size:48, align:'center', bgColor:'#ffffff', href:'', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
+        quote:     { text:'«Excelente serviço. Recomendo vivamente a todos.»', author:'— Cliente Satisfeito', color:'#1e293b', authorColor:'#64748b', bgColor:'#f1f5f9', borderColor:'#6366f1', fontSize:17, align:'center', paddingTop:32, paddingRight:40, paddingBottom:32, paddingLeft:40 },
+        linkBlock: { title:'Saber mais', description:'Clica para ver todos os detalhes', href:'https://', textColor:'#ffffff', bgColor:'#0f172a', fontSize:15, align:'center', paddingTop:20, paddingRight:32, paddingBottom:20, paddingLeft:32 },
+        listItems: { items:[{text:'Primeiro item da lista'},{text:'Segundo item da lista'},{text:'Terceiro item da lista'}], color:'#334155', bgColor:'#ffffff', fontSize:14, paddingTop:16, paddingRight:24, paddingBottom:16, paddingLeft:24 }
     };
     const teFieldSchemas = {
         header:  ['text','bgColor','textColor','fontSize','fontWeight','align','padding'],
@@ -1406,7 +1410,10 @@
         divider: ['color','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
         footer:  ['text','color','bgColor','fontSize','padding'],
-        icon:    ['color','size','align','href','bgColor','padding']
+        icon:      ['color','size','align','href','bgColor','padding'],
+        quote:     ['text','author','color','authorColor','bgColor','borderColor','fontSize','align','padding'],
+        linkBlock: ['title','description','href','textColor','bgColor','fontSize','align','padding'],
+        listItems: ['color','bgColor','fontSize','padding']
     };
     const teFields = {
         text:       { label:'Texto',         type:'textarea' },
@@ -1427,7 +1434,12 @@
         height:       { label:'Altura (px)',     type:'number' },
         thickness:    { label:'Espessura (px)',  type:'number' },
         dividerWidth: { label:'Largura',         type:'text' },
-        borderStyle:  { label:'Formato',         type:'select', options:[['solid','Sólida'],['dashed','Traçado'],['dotted','Pontilhado'],['rounded','Arredondado']] }
+        borderStyle:  { label:'Formato',         type:'select', options:[['solid','Sólida'],['dashed','Traçado'],['dotted','Pontilhado'],['rounded','Arredondado']] },
+        author:       { label:'Autor / Fonte',   type:'text' },
+        authorColor:  { label:'Cor do autor',    type:'color' },
+        borderColor:  { label:'Cor da borda',    type:'color' },
+        title:        { label:'Título',          type:'text' },
+        description:  { label:'Descrição',       type:'text' }
     };
 
     let teNextId = 100;
@@ -1487,6 +1499,12 @@
     function teMakeBlock(type) {
         if (type === 'columns2') return { id: teId(), type:'columns', cols:2, children:[[],[]] };
         if (type === 'columns3') return { id: teId(), type:'columns', cols:3, children:[[],[],[]] };
+        if (type === 'gridItems') {
+            const img = () => ({ id:teId(), type:'image', src:'https://placehold.co/280x160?text=Imagem', alt:'', width:280, align:'center', paddingTop:0, paddingRight:8, paddingBottom:8, paddingLeft:8 });
+            const hd  = (n) => ({ id:teId(), type:'heading', text:`Título ${n}`, color:'#1e293b', bgColor:'#ffffff', fontSize:15, fontWeight:'700', align:'center', paddingTop:4, paddingRight:8, paddingBottom:4, paddingLeft:8 });
+            const tx  = () => ({ id:teId(), type:'text', text:'Descrição do produto ou serviço.', color:'#64748b', bgColor:'#ffffff', fontSize:13, fontWeight:'400', align:'center', lineHeight:1.5, paddingTop:0, paddingRight:8, paddingBottom:8, paddingLeft:8 });
+            return { id:teId(), type:'columns', cols:2, children:[[img(),hd(1),tx()],[img(),hd(2),tx()]] };
+        }
         return { id: teId(), type, ...JSON.parse(JSON.stringify(teDefaults[type] || {})) };
     }
 
@@ -1548,6 +1566,26 @@
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
+    }
+    function teUpdateListItem(id, idx, value) {
+        const f = teFind(id);
+        if (!f) return;
+        if (!f.block.items) return;
+        f.block.items[idx].text = value;
+        teRenderCanvas(); teRenderMjml();
+    }
+    function teRemoveListItem(id, idx) {
+        const f = teFind(id);
+        if (!f || !f.block.items) return;
+        f.block.items.splice(idx, 1);
+        teRender();
+    }
+    function teAddListItem(id) {
+        const f = teFind(id);
+        if (!f) return;
+        if (!f.block.items) f.block.items = [];
+        f.block.items.push({ text:'Novo item' });
+        teRender();
     }
     function teSetViewport(v) {
         teState.viewport = v;
@@ -1781,6 +1819,25 @@
                 d.innerHTML = b.href ? `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;">${iconHtml}</a>` : iconHtml;
                 break;
             }
+            case 'quote': {
+                const qAlign = b.align || 'center';
+                d.style.cssText = `background:${b.bgColor||'#f1f5f9'};padding:${tePadding(b)};text-align:${qAlign};border-left:4px solid ${b.borderColor||'#6366f1'};`;
+                d.innerHTML = `<div style="font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};line-height:1.6;font-style:italic;margin-bottom:10px;">${teEscape(b.text||'')}</div><div style="font-size:12px;color:${b.authorColor||'#64748b'};font-weight:600;">${teEscape(b.author||'')}</div>`;
+                break;
+            }
+            case 'linkBlock': {
+                d.style.cssText = `background:${b.bgColor||'#0f172a'};padding:${tePadding(b)};text-align:${b.align||'center'};cursor:pointer;`;
+                const desc = b.description ? `<div style="font-size:12px;color:${b.textColor||'#ffffff'};opacity:0.75;margin-top:4px;">${teEscape(b.description)}</div>` : '';
+                d.innerHTML = `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:block;text-decoration:none;"><div style="font-size:${b.fontSize||15}px;color:${b.textColor||'#ffffff'};font-weight:700;">${teEscape(b.title||'')}</div>${desc}</a>`;
+                break;
+            }
+            case 'listItems': {
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};`;
+                d.innerHTML = (b.items||[]).map(item =>
+                    `<div style="display:flex;align-items:flex-start;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;"><span style="color:${b.color||'#334155'};flex-shrink:0;font-size:18px;line-height:1.3;">•</span><span style="color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.5;">${teEscape(item.text||'')}</span></div>`
+                ).join('');
+                break;
+            }
             case 'columns':
                 d.style.cssText = `display:flex;gap:8px;background:#ffffff;padding:8px;`;
                 for (let c = 0; c < b.cols; c++) {
@@ -1891,6 +1948,27 @@
                     <button type="button" onclick="teOpenIconPicker(null,'${b.id}')" class="flex-1 text-xs px-2 py-1.5 border border-slate-200 bg-white rounded hover:bg-slate-50 text-slate-600">Trocar ícone…</button>
                 </div>
                 <div class="space-y-3">${html}</div>
+                <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+            `;
+            return;
+        }
+        if (b.type === 'listItems') {
+            const fields = (teFieldSchemas.listItems || []).map(k => teRenderField(b, k)).join('');
+            const itemsHtml = (b.items || []).map((item, i) =>
+                `<div class="flex items-center gap-1 mb-1">
+                  <input type="text" value="${teEscape(item.text||'')}" oninput="teUpdateListItem('${b.id}',${i},this.value)" class="flex-1 px-2 py-1 text-xs border border-slate-200 rounded" placeholder="Texto do item…">
+                  <button onclick="teRemoveListItem('${b.id}',${i})" class="text-red-400 hover:text-red-600 text-base leading-none px-1">×</button>
+                </div>`
+            ).join('');
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Lista de Itens</p>
+                <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                <div class="space-y-3">${fields}</div>
+                <div class="mt-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1.5">Itens da lista</label>
+                    <div id="teListItemsEditor">${itemsHtml}</div>
+                    <button onclick="teAddListItem('${b.id}')" class="mt-1.5 w-full text-xs px-2 py-1 border border-dashed border-slate-300 rounded hover:bg-slate-50 text-slate-500">+ Adicionar item</button>
+                </div>
                 <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
             `;
             return;
@@ -2116,6 +2194,16 @@ ${body}
                 }).join('\n');
                 return `${i}<mj-section>\n${cols}\n${i}</mj-section>`;
             }
+            case 'quote':
+                return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
+            case 'linkBlock': {
+                const lbDesc = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
+                return wrap(`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
+            }
+            case 'listItems': {
+                const liHtml = (b.items||[]).map(item => `<li style="padding:4px 0;color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.6;">${item.text||''}</li>`).join('');
+                return wrap(`${i}    <mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px"><ul style="padding-left:20px;margin:0;">${liHtml}</ul></mj-text>`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
+            }
         }
         return '';
     }
@@ -2146,6 +2234,16 @@ ${body}
                     dataUrl2 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp2)));
                 }
                 return `${i}<mj-image src="${dataUrl2}" alt="" width="${b.size||48}px" padding="${teMjmlPad(b)}"${attrs2} />`;
+            }
+            case 'quote':
+                return `${i}<mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6" padding="${teMjmlPad(b)}">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`;
+            case 'linkBlock': {
+                const lbDesc2 = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
+                return `${i}<mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" padding="${teMjmlPad(b)}">${b.title||''}${lbDesc2}</mj-button>`;
+            }
+            case 'listItems': {
+                const liHtml2 = (b.items||[]).map(item => `<li style="padding:4px 0;color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.6;">${item.text||''}</li>`).join('');
+                return `${i}<mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px" padding="${teMjmlPad(b)}"><ul style="padding-left:20px;margin:0;">${liHtml2}</ul></mj-text>`;
             }
         }
         return '';
@@ -6912,6 +7010,21 @@ ${sections.join('\n\n')}
                                                 <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg>
                                                 <span class="text-[10px] pointer-events-none">Ícone</span>
                                             </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'quote')" ondragend="teDragEnd()" onclick="teInsertBlock('quote')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 8h10M7 12h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Citação</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'linkBlock')" ondragend="teDragEnd()" onclick="teInsertBlock('linkBlock')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Bloco Link</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'listItems')" ondragend="teDragEnd()" onclick="teInsertBlock('listItems')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Lista</span>
+                                            </button>
                                         </div>
                                         <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5 mt-3 border-t border-slate-100 pt-3">Layout</p>
                                         <div class="grid grid-cols-2 gap-1.5">
@@ -6924,6 +7037,11 @@ ${sections.join('\n\n')}
                                                     class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                                 <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4z M10 4h4v16h-4z M16 4h4v16h-4z"/></svg>
                                                 <span class="text-[10px] pointer-events-none">3 Colunas</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'gridItems')" ondragend="teDragEnd()" onclick="teInsertBlock('gridItems')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Grelha</span>
                                             </button>
                                         </div>
                                         <p class="text-[10px] text-slate-400 px-2 py-2 mt-2 border-t border-slate-100">Arrasta um bloco para o canvas (ou clica) para o adicionar.</p>
@@ -8255,6 +8373,21 @@ ${sections.join('\n\n')}
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg>
                                             <span class="text-[10px] pointer-events-none">Ícone</span>
                                         </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'quote')" ondragend="teDragEnd()" onclick="teInsertBlock('quote')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 8h10M7 12h6m-6 4h10M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Citação</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'linkBlock')" ondragend="teDragEnd()" onclick="teInsertBlock('linkBlock')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Bloco Link</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'listItems')" ondragend="teDragEnd()" onclick="teInsertBlock('listItems')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Lista</span>
+                                        </button>
                                     </div>
                                     <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5 mt-3 border-t border-slate-100 pt-3">Layout</p>
                                     <div class="grid grid-cols-2 gap-1.5">
@@ -8267,6 +8400,11 @@ ${sections.join('\n\n')}
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4z M10 4h4v16h-4z M16 4h4v16h-4z"/></svg>
                                             <span class="text-[10px] pointer-events-none">3 Colunas</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'gridItems')" ondragend="teDragEnd()" onclick="teInsertBlock('gridItems')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Grelha</span>
                                         </button>
                                     </div>
                                     <p class="text-[10px] text-slate-400 px-2 py-2 mt-2 border-t border-slate-100">Arrasta um bloco para o canvas (ou clica) para o adicionar.</p>
