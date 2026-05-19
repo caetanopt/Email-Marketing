@@ -5,6 +5,25 @@ const { signToken, requireAuth, cors } = require('../lib/auth');
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
+  // GET ?action=health — unauthenticated diagnostics (DB + JWT connectivity)
+  if (req.method === 'GET' && req.query.action === 'health') {
+    const status = {
+      jwt_secret_set: !!process.env.JWT_SECRET,
+      database_url_set: !!process.env.DATABASE_URL,
+      db_connected: false,
+      db_error: null,
+      ts: new Date().toISOString(),
+    };
+    try {
+      await query('SELECT 1');
+      status.db_connected = true;
+    } catch (e) {
+      status.db_error = e.message;
+    }
+    const ok = status.jwt_secret_set && status.db_connected;
+    return res.status(ok ? 200 : 503).json(status);
+  }
+
   // POST — login
   if (req.method === 'POST') {
     const { email, password } = req.body || {};
