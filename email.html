@@ -6254,7 +6254,7 @@ ${sections.join('\n\n')}
                     _goToDefaultBrandOrSelect();
                 } catch (err) {
                     console.error('DEV_BYPASS_LOGIN falhou:', err);
-                    showToast('Auto-login falhou — verifica DEV_BYPASS_EMAIL/PASSWORD.', 'error');
+                    showToast('Auto-login falhou: ' + err.message, 'error');
                 }
             })();
         }
