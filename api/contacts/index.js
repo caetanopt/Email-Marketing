@@ -130,6 +130,14 @@ module.exports = async function handler(req, res) {
       return res.status(201).json({ id: rows[0].id, email: e });
     }
 
+    if (req.method === 'DELETE') {
+      const { ids } = req.body || {};
+      if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids obrigatório' });
+      const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
+      await query(`DELETE FROM contacts WHERE brand_id=$1 AND id IN (${placeholders})`, [brand_id, ...ids]);
+      return res.status(200).json({ ok: true, deleted: ids.length });
+    }
+
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
     res.status(500).json({ error: 'Erro de servidor', detail: err.message });

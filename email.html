@@ -356,18 +356,76 @@
     }
 
     let _contactsApiTotal = 0;
+    let _contactsSelected = new Set();
+    function _contactsUpdateBulkBar() {
+        const n = _contactsSelected.size;
+        const bar = document.getElementById('contactsBulkBar');
+        const lbl = document.getElementById('contactsBulkCount');
+        if (bar) bar.classList.toggle('hidden', n === 0);
+        if (lbl) lbl.textContent = n;
+    }
+    function _toggleContactCheck(id, cb) {
+        id ? _contactsSelected.add(id) : null;
+        if (cb.checked) _contactsSelected.add(id); else _contactsSelected.delete(id);
+        const allCb = document.getElementById('contactsCheckAll');
+        if (allCb) {
+            const allBoxes = document.querySelectorAll('.contact-row-cb');
+            allCb.checked = allBoxes.length > 0 && [...allBoxes].every(b => b.checked);
+            allCb.indeterminate = _contactsSelected.size > 0 && !allCb.checked;
+        }
+        _contactsUpdateBulkBar();
+    }
+    function _toggleAllContactsCheck(cb) {
+        document.querySelectorAll('.contact-row-cb').forEach(b => {
+            b.checked = cb.checked;
+            const id = parseInt(b.dataset.id);
+            cb.checked ? _contactsSelected.add(id) : _contactsSelected.delete(id);
+        });
+        _contactsUpdateBulkBar();
+    }
+    async function doDeleteContact(id, name) {
+        if (!confirm(`Eliminar "${name || 'este contacto'}" permanentemente?`)) return;
+        try {
+            await apiFetch(`/api/contacts/${id}`, { method: 'DELETE' });
+            showToast('Contacto eliminado.');
+            _contactsSelected.delete(id);
+            _contactsUpdateBulkBar();
+            _loadContacts(_currentBrand.id, _contactsPage);
+        } catch (e) { showToast('Erro ao eliminar: ' + e.message, 'error'); }
+    }
+    function _clearContactsSelection() {
+        _contactsSelected.clear();
+        document.querySelectorAll('.contact-row-cb').forEach(b => b.checked = false);
+        const allCb = document.getElementById('contactsCheckAll');
+        if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
+        _contactsUpdateBulkBar();
+    }
+    async function doBulkDeleteContacts() {
+        const ids = [..._contactsSelected];
+        if (!ids.length) return;
+        if (!confirm(`Eliminar ${ids.length} contacto(s) permanentemente?`)) return;
+        try {
+            await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'DELETE', body: JSON.stringify({ ids }) });
+            showToast(`${ids.length} contacto(s) eliminado(s).`);
+            _contactsSelected.clear();
+            _contactsUpdateBulkBar();
+            _loadContacts(_currentBrand.id, _contactsPage);
+        } catch (e) { showToast('Erro ao eliminar: ' + e.message, 'error'); }
+    }
     async function _loadContacts(brandId, page) {
         page = page || 1;
         _contactsPage = page;
+        _contactsSelected.clear();
+        _contactsUpdateBulkBar();
         const el = document.getElementById('contactsTbody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
             const { data, total } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=${_contactsPerPage}&page=${page}`);
             _contactsApiTotal = total || 0;
             const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>' };
             if (!data.length) {
-                el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
+                el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
                 _setText('contactsPageInfo', 'Sem contactos');
                 const nav = document.getElementById('contactsPagination'); if (nav) nav.innerHTML = '';
                 const footer = document.getElementById('contactsPageFooter'); if (footer) footer.classList.add('hidden');
@@ -375,18 +433,23 @@
                 return;
             }
             window._contactsCache = data;
+            const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
             el.innerHTML = data.map((c, i) => `
                 <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
+                    <td class="px-4 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="contact-row-cb rounded border-slate-300" data-id="${c.id}" onchange="_toggleContactCheck(${c.id},this)" /></td>
                     <td class="px-4 py-3 font-medium text-slate-900">${c.name||'—'}</td>
                     <td class="px-4 py-3 text-slate-600">${c.email}</td>
                     <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.company||'—'}</span></td>
                     <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
-                    <td class="px-4 py-3 text-right"><button onclick="event.stopPropagation();showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button></td>
+                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+                        <button onclick="showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button>
+                        <button onclick="doDeleteContact(${c.id},'${(c.name||c.email).replace(/'/g,"\\'")}')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
+                    </td>
                 </tr>`).join('');
             _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
             _updateContactsPagination();
-        } catch (e) { el.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+        } catch (e) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _updateContactsPagination() {
@@ -7205,13 +7268,20 @@ ${sections.join('\n\n')}
                         <option value="bounced">Bounce</option>
                     </select>
                 </div>
+                <!-- Barra de acções em massa -->
+                <div id="contactsBulkBar" class="hidden mb-3 px-4 py-2.5 bg-slate-900 text-white rounded-lg flex items-center gap-3 text-sm">
+                    <span><span id="contactsBulkCount">0</span> contacto(s) seleccionado(s)</span>
+                    <button onclick="doBulkDeleteContacts()" class="ml-auto px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-medium">Apagar seleccionados</button>
+                    <button onclick="_clearContactsSelection()" class="px-3 py-1 border border-slate-500 hover:bg-slate-700 rounded text-xs">Cancelar</button>
+                </div>
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <table class="w-full text-sm">
                         <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
+                                <th class="px-4 py-3 w-8"><input type="checkbox" id="contactsCheckAll" class="rounded border-slate-300" onchange="_toggleAllContactsCheck(this)" /></th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Nome</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Email</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Listas</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Empresa</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Estado</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Criado em</th>
                                 <th class="px-4 py-3"></th>
