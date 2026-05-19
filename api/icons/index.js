@@ -31,7 +31,7 @@ module.exports = async function handler(req, res) {
       if (!name) return res.status(400).json({ error: 'name obrigatório' });
       if (!data_url) return res.status(400).json({ error: 'data_url obrigatório' });
       if (data_url.length > 400000) return res.status(400).json({ error: 'Ficheiro demasiado grande (máx ~300 KB)' });
-      const targetBrandId = scope === 'global' ? null : parseInt(brand_id, 10);
+      const targetBrandId = scope === 'global' ? null : brand_id;
       const rows = await query(
         `INSERT INTO custom_icons (brand_id, name, mime_type, data_url, created_by)
          VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,

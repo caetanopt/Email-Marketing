@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS custom_icons (
   id          SERIAL PRIMARY KEY,
-  brand_id    INTEGER REFERENCES brands(id) ON DELETE CASCADE,  -- NULL = global
+  brand_id    TEXT REFERENCES brands(id) ON DELETE CASCADE,  -- NULL = global
   name        VARCHAR(255) NOT NULL,
   mime_type   VARCHAR(100) NOT NULL DEFAULT 'image/svg+xml',
   data_url    TEXT        NOT NULL,
