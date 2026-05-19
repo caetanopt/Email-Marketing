@@ -791,7 +791,7 @@
     async function apiDeleteTemplate(btn, tplId) {
         if (!confirm('Apagar este template?')) return;
         try {
-            await apiFetch(`/api/templates/${tplId}`, { method: 'DELETE' });
+            await apiFetch(`/api/templates?id=${tplId}`, { method: 'DELETE' });
             btn.closest('.tmpl-card')?.remove();
             btn.closest('tr')?.remove();
             showToast('Template apagado.');
@@ -1207,7 +1207,7 @@
         try {
             if (teTemplateId && !String(teTemplateId).startsWith('tpl')) {
                 // Existing DB template — update
-                await apiFetch(`/api/templates/${teTemplateId}`, { method: 'PUT', body: JSON.stringify({ name, html_content: html }) });
+                await apiFetch(`/api/templates?id=${teTemplateId}`, { method: 'PUT', body: JSON.stringify({ name, html_content: html }) });
                 const card = document.querySelector(`[data-tpl-id="${teTemplateId}"]`);
                 if (card) { const t = card.querySelector('p.font-semibold'); if (t) t.textContent = name; }
             } else {
@@ -2299,7 +2299,7 @@ ${body}
     async function _deleteCustomIcon(id, name) {
         if (!confirm(`Eliminar o ícone "${name}" permanentemente?`)) return;
         try {
-            await apiFetch(`/api/icons/${id}`, { method: 'DELETE' });
+            await apiFetch(`/api/icons?id=${id}`, { method: 'DELETE' });
             showToast('Ícone eliminado.');
             _teCustomIconsCache = {}; _loadCustomIcons();
         } catch (e) { showToast('Erro ao eliminar: ' + e.message, 'error'); }
