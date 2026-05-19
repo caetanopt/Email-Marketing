@@ -120,7 +120,10 @@
             }
             throw new Error(data.error || 'Sessão expirada');
         }
-        if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+        if (!res.ok) {
+            if (data.detail) console.error('[API error detail]', path, data.detail);
+            throw new Error(data.error || 'Erro desconhecido');
+        }
         return data;
     }
 
