@@ -119,7 +119,7 @@
             }
             throw new Error(data.error || 'Sessão expirada');
         }
-        if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+        if (!res.ok) throw new Error(data.detail ? `${data.error || 'Erro'}: ${data.detail}` : (data.error || 'Erro desconhecido'));
         return data;
     }
 
