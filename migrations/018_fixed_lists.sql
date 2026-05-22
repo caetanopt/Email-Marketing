@@ -5,12 +5,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS lists_brand_name_unique ON lists(brand_id, nam
 INSERT INTO lists (brand_id, name, description)
 SELECT id, 'Marketing', 'Lista principal de marketing'
 FROM brands
-ON CONFLICT DO NOTHING;
+ON CONFLICT (brand_id, name) DO NOTHING;
 
 INSERT INTO lists (brand_id, name, description)
 SELECT id, 'Colaboradores', 'Lista de colaboradores internos'
 FROM brands
-ON CONFLICT DO NOTHING;
+ON CONFLICT (brand_id, name) DO NOTHING;
 
 -- Mark contacts already in suppression as suppressed/unsubscribed
 UPDATE contacts c
