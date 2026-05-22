@@ -5403,6 +5403,10 @@ ${sections.join('\n\n')}
 
     function showScreen(id) {
         const _currentScreen = document.querySelector('.screen.active')?.id;
+        // Leaving campaignCreate without saving — reset editing state so next "Nova Campanha" opens blank
+        if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
+            _editingCampaignId = null;
+        }
         if (_currentScreen === 'templateEdit' && id !== 'templateEdit' && _teDirty) {
             _tePendingScreen = id;
             const m = document.getElementById('teUnsavedModal');
