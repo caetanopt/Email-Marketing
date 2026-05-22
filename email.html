@@ -58,6 +58,8 @@
     const _dbFilterContacts  = _debounce(() => filterContacts(),  220);
     const _dbFilterLists     = _debounce(() => filterLists(),     220);
     const _dbMediaGrid       = _debounce(() => _renderMediaGrid(),220);
+    // ── Helpers ────────────────────────────────────────
+    function _isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')); }
     // ── Toast notification ─────────────────────────────
     function showToast(msg, type) {
         const colors = { success:'bg-green-600', error:'bg-red-600', info:'bg-slate-800' };
@@ -617,7 +619,7 @@
             _suppParsed = lines.slice(1).map(line => {
                 const cols = line.split(sep).map(c => c.trim().replace(/^"|"$/g,''));
                 return { email: cols[emailIdx] || '', reason: reasonIdx >= 0 ? (cols[reasonIdx] || 'manual') : 'manual' };
-            }).filter(r => r.email && r.email.includes('@'));
+            }).filter(r => r.email && _isValidEmail(r.email));
             if (!_suppParsed.length) { showToast('Nenhum email válido encontrado.', 'error'); return; }
             document.getElementById('suppDropName').textContent  = file.name;
             document.getElementById('suppDropCount').textContent = `${_suppParsed.length} endereços detectados`;
@@ -984,7 +986,7 @@
         const password = passInp ? passInp.value.trim() : '';
         const role = roleEl ? roleEl.value : 'editor';
         if (!name) { showToast('Insira o nome.', 'error'); return; }
-        if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
         if (!password || password.length < 6) { showToast('Password deve ter pelo menos 6 caracteres.', 'error'); return; }
         const btn = document.getElementById('inviteBtn');
         if (btn) btn.disabled = true;
@@ -1051,7 +1053,7 @@
         const name = document.getElementById('editMemberName').value.trim();
         const email = document.getElementById('editMemberEmail').value.trim();
         if (!name) { showToast('Nome obrigatório.', 'error'); return; }
-        if (!email || !email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
         const btn = document.getElementById('editMemberSaveBtn');
         if (btn) btn.disabled = true;
         try {
@@ -2595,7 +2597,7 @@ ${body}
     async function confirmAddSuppression() {
         const email = document.getElementById('suppEmailInput')?.value.trim();
         const reason = document.getElementById('suppReasonSelect')?.value || 'manual';
-        if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
         try {
             await apiFetch(`/api/suppression`, { method: 'POST', body: JSON.stringify({ email, reason }) });
             closeAddSuppressionModal();
@@ -2648,7 +2650,7 @@ ${body}
     // ── Forgot Password ──────────────────────────────────
     function confirmForgotPassword() {
         const email = document.getElementById('fpEmailInput')?.value.trim();
-        if (!email || !email.includes('@')) { showToast('Insira um email válido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
         document.getElementById('fpFormPanel').classList.add('hidden');
         document.getElementById('fpSuccessPanel').classList.remove('hidden');
         const sp = document.getElementById('fpSuccessEmail');
@@ -3262,7 +3264,7 @@ ${body}
 
     async function confirmUnsubscribe() {
         const email = document.getElementById('unsubEmail')?.value.trim();
-        if (!email || !email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
         const reason = document.getElementById('unsubReason')?.value || '';
         const { brand_id, token } = _unsubParams();
         const effectiveBrand = brand_id || _currentBrand?.id;
@@ -3481,6 +3483,40 @@ ${body}
     let _currentCampStatus = 'sent';
     const _checkSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`;
 
+    // ── Wizard auto-save (draft persisted to localStorage every 30s) ─────────
+    function _wizDraftKey() { return `wiz_draft_${_currentBrand?.id || 'default'}`; }
+    function _wizSaveDraft() {
+        if (_editingCampaignId) return; // only save new campaign drafts
+        const draft = {
+            name:        document.getElementById('wizName')?.value || '',
+            subject:     document.getElementById('wizSubject')?.value || '',
+            previewText: document.getElementById('wizPreviewText')?.value || '',
+            fromName:    document.getElementById('wizFromName')?.value || '',
+            fromEmail:   document.getElementById('wizFromEmail')?.value || '',
+        };
+        if (draft.name || draft.subject) {
+            localStorage.setItem(_wizDraftKey(), JSON.stringify(draft));
+        }
+    }
+    function _wizRestoreDraft() {
+        try {
+            const raw = localStorage.getItem(_wizDraftKey());
+            if (!raw) return;
+            const d = JSON.parse(raw);
+            ['name','subject','previewText','fromName','fromEmail'].forEach(k => {
+                const el = document.getElementById('wiz' + k.charAt(0).toUpperCase() + k.slice(1));
+                if (el && d[k]) el.value = d[k];
+            });
+        } catch(e) {}
+    }
+    function _wizClearDraft() { localStorage.removeItem(_wizDraftKey()); }
+    let _wizAutoSaveTimer = null;
+    function _wizStartAutoSave() {
+        clearInterval(_wizAutoSaveTimer);
+        _wizAutoSaveTimer = setInterval(_wizSaveDraft, 30000);
+    }
+    function _wizStopAutoSave() { clearInterval(_wizAutoSaveTimer); _wizAutoSaveTimer = null; }
+
     function wizShowStep(step) {
         if (_wizStep === 2 && step !== 2) _teCtx = 'te_';
         _wizStep = step;
@@ -3689,7 +3725,7 @@ ${body}
             if (!name)      { showToast('O nome da campanha é obrigatório.', 'error'); return; }
             if (!subj)      { showToast('O assunto é obrigatório.', 'error'); return; }
             if (!fromName)  { showToast('O nome do remetente é obrigatório.', 'error'); return; }
-            if (!fromEmail || !fromEmail.includes('@')) { showToast('Indica um email de remetente válido.', 'error'); return; }
+            if (!fromEmail || !_isValidEmail(fromEmail)) { showToast('Indica um email de remetente válido.', 'error'); return; }
             wizShowStep(2); return;
         }
         if (_wizStep === 2) {
@@ -3786,6 +3822,7 @@ ${body}
                 } else {
                     showToast(wasEditing ? 'Campanha guardada.' : 'Rascunho guardado.');
                 }
+                _wizClearDraft();
                 showScreen('campaigns');
                 wizShowStep(1);
                 _loadCampaigns(_currentBrand.id);
@@ -3804,6 +3841,7 @@ ${body}
             } else {
                 await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name, subject }) });
             }
+            _wizClearDraft();
             _loadCampaigns(_currentBrand.id);
         } catch (err) { console.error(err); showToast('Não foi possível guardar o rascunho: ' + (err.message||''), 'error'); }
         showScreen('campaigns');
@@ -3947,7 +3985,7 @@ ${body}
             const text = await file.text();
             let rows = [];
             if (type === 'txt') {
-                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && l.includes('@')).map(email => ({ email: email.toLowerCase() }));
+                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
             } else {
                 rows = _parseCsv(text);
             }
@@ -4514,7 +4552,7 @@ ${body}
     function closeTestEmailModal() { const m = document.getElementById('testEmailModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
     async function confirmTestEmail() {
         const email = document.getElementById('testEmailInput')?.value.trim();
-        if (!email || !email.includes('@')) { showToast('Insere um email válido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { showToast('Insere um email válido.', 'error'); return; }
         const btn = document.getElementById('testEmailBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A enviar…'; }
         try {
@@ -4653,7 +4691,7 @@ ${body}
         const company = document.getElementById('ctCompany')?.value.trim();
         const status  = document.getElementById('ctStatus')?.value || 'active';
         if (!email) { showToast('O email é obrigatório.', 'error'); return; }
-        if (!email.includes('@')) { showToast('Email inválido.', 'error'); return; }
+        if (!_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
         try {
             if (_contactMode === 'new' || !_currentContact?.id) {
                 await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ email, name, phone, company }) });
@@ -5491,7 +5529,12 @@ ${sections.join('\n\n')}
                     if (_wml) _wml.textContent = '';
                     const nowRadio = document.querySelector('input[name="wizSendType"][value="now"]');
                     if (nowRadio) { nowRadio.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
+                    // Restore draft fields if one exists
+                    _wizRestoreDraft();
                 }
+                _wizStartAutoSave();
+            } else {
+                _wizStopAutoSave();
             }
             // Statistics — reload on every visit (cross-brand, not cached per brand)
             if (id === 'statistics') _loadStatistics();
@@ -6412,7 +6455,7 @@ ${sections.join('\n\n')}
                 phone:   phoneIdx >= 0 ? cols[phoneIdx] : null,
                 company: companyIdx >= 0 ? cols[companyIdx] : null,
             };
-        }).filter(c => c.email && c.email.includes('@'));
+        }).filter(c => c.email && _isValidEmail(c.email));
     }
 
     async function mockStartImport() {
@@ -6426,7 +6469,7 @@ ${sections.join('\n\n')}
             const isTxt = _importFile.name.toLowerCase().endsWith('.txt');
             let rows = [];
             if (isTxt) {
-                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && l.includes('@')).map(email => ({ email: email.toLowerCase() }));
+                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
             } else {
                 rows = _parseCsv(text);
             }
@@ -6708,7 +6751,7 @@ ${sections.join('\n\n')}
                             </div>
                         </div>
                     </div>
-                    <button onclick="_loadSesQuota()" class="text-xs text-slate-400 hover:text-slate-600 flex-shrink-0" title="Actualizar">
+                    <button onclick="_loadSesQuota()" class="text-xs text-slate-400 hover:text-slate-600 flex-shrink-0" title="Actualizar" aria-label="Actualizar quota SES">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     </button>
                 </div>
