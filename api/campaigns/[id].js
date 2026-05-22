@@ -51,6 +51,18 @@ module.exports = async function handler(req, res) {
     const camp = await authorizeCampaign(user.id, id);
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
 
+    if (req.method === 'GET' && action === 'get_direct_recipients') {
+      const recs = await query(
+        `SELECT cr.email, c.name AS contact_name
+         FROM campaign_recipients cr
+         LEFT JOIN contacts c ON c.id = cr.contact_id
+         WHERE cr.campaign_id = $1
+         ORDER BY cr.id DESC LIMIT 500`,
+        [id]
+      );
+      return res.status(200).json({ recipients: recs });
+    }
+
     if (req.method === 'GET' && action === 'send_log') {
       // Per-recipient status (sent/failed/bounced) for this campaign
       let recipients;
@@ -211,6 +223,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
+      if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível editar uma campanha já enviada.' });
       const { name, subject, preview_text, from_name, from_email,
               template_id, scheduled_at, status, list_ids } = req.body || {};
       await query(
@@ -244,19 +257,6 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-
-      // ── Listar destinatários directos ────────────────────────────
-      if (req.method === 'GET' && action === 'get_direct_recipients') {
-        const recs = await query(
-          `SELECT cr.email, c.first_name, c.last_name
-           FROM campaign_recipients cr
-           LEFT JOIN contacts c ON c.id = cr.contact_id
-           WHERE cr.campaign_id = $1
-           ORDER BY cr.id DESC LIMIT 500`,
-          [id]
-        );
-        return res.status(200).json({ recipients: recs });
-      }
 
       // ── Adicionar destinatários directos (sem lista) ────────────
       if (action === 'add_direct_recipients') {
