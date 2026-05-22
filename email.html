@@ -541,26 +541,21 @@
                 return;
             }
             const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            const badge = l => l.is_own
-                ? ''
-                : `<span class="ml-2 inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 align-middle" title="Lista partilhada de outra marca">${escHtml(l.brand_name||l.brand_id||'')}</span>`;
             el.innerHTML = data.map(l => `
                 <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
-                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(l.name)}${badge(l)}</td>
+                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(l.name)}</td>
                     <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
                     <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
                     <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                        ${l.is_own
-                            ? `<button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                               <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>`
-                            : `<span class="text-xs text-slate-400">só leitura</span>`}
+                        <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                        <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                     </td>
                 </tr>`).join('');
             if (wizLists) wizLists.innerHTML = data.map((l, i) => `
                 <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                     <input type="checkbox" class="rounded" data-contacts="${l.total_contacts||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
-                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}${badge(l)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
+                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
                     <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
                 </label>`).join('');
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
