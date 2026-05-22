@@ -3816,9 +3816,12 @@ ${body}
             const btn   = document.getElementById(`wizRecipTab${T}`);
             const panel = document.getElementById(`wizRecipPanel${T}`);
             const isActive = t === tab;
-            if (btn) btn.className = isActive
-                ? 'px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px'
-                : 'px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px';
+            if (btn) {
+                btn.className = isActive
+                    ? 'px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px'
+                    : 'px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px';
+                btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            }
             if (panel) panel.classList.toggle('hidden', !isActive);
         });
     }
@@ -4122,7 +4125,7 @@ ${body}
         _wizRenderDirectPanel();
         if (_wizExistingDirectCount > 0) {
             apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
-                _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: [r.first_name, r.last_name].filter(Boolean).join(' ') }));
+                _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
                 _wizExistingDirectCount = _wizExistingContacts.length;
                 _wizUpdateDirectNotice();
                 _wizRenderDirectPanel();
@@ -4174,7 +4177,7 @@ ${body}
             _wizRenderDirectPanel();
             if (_wizExistingDirectCount > 0) {
                 apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
-                    _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: [r.first_name, r.last_name].filter(Boolean).join(' ') }));
+                    _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
                     _wizExistingDirectCount = _wizExistingContacts.length;
                     _wizUpdateDirectNotice();
                     _wizRenderDirectPanel();
@@ -7104,10 +7107,10 @@ ${sections.join('\n\n')}
                         <div class="flex-1 min-w-0 space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                             <!-- Tab bar -->
-                            <div class="flex border-b border-slate-200 px-2">
-                                <button onclick="_wizRecipTab('lists')" id="wizRecipTabLists" class="px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px">Listas</button>
-                                <button onclick="_wizRecipTab('csv')" id="wizRecipTabCsv" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar CSV</button>
-                                <button onclick="_wizRecipTab('txt')" id="wizRecipTabTxt" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar TXT</button>
+                            <div class="flex border-b border-slate-200 px-2" role="tablist" aria-label="Destinatários">
+                                <button role="tab" aria-selected="true" aria-controls="wizRecipPanelLists" onclick="_wizRecipTab('lists')" id="wizRecipTabLists" class="px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px">Listas</button>
+                                <button role="tab" aria-selected="false" aria-controls="wizRecipPanelCsv" onclick="_wizRecipTab('csv')" id="wizRecipTabCsv" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar CSV</button>
+                                <button role="tab" aria-selected="false" aria-controls="wizRecipPanelTxt" onclick="_wizRecipTab('txt')" id="wizRecipTabTxt" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar TXT</button>
                             </div>
 
                             <!-- Panel: Listas -->

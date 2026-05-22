@@ -270,7 +270,7 @@ module.exports = async function handler(req, res) {
         if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
         const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3},'pending')`).join(',');
         await query(
-          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status) VALUES ${vals} ON CONFLICT DO NOTHING`,
+          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
           contacts.flatMap(ct => [id, ct.id, ct.email])
         );
         return res.status(200).json({ ok: true, added: contacts.length });
@@ -286,9 +286,9 @@ module.exports = async function handler(req, res) {
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         if (camp[0].status === 'sending')
-          return res.status(400).json({ error: 'Campanha já está a ser enviada, aguarda…' });
+          return res.status(409).json({ error: 'Campanha já está a ser enviada, aguarda…' });
         if (camp[0].status === 'sent')
-          return res.status(400).json({ error: 'Campanha já foi enviada.' });
+          return res.status(409).json({ error: 'Campanha já foi enviada.' });
 
         // Contacts from lists
         const listContacts = await query(
@@ -303,7 +303,7 @@ module.exports = async function handler(req, res) {
         if (listContacts.length) {
           const vals = listContacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
           await query(
-            `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT DO NOTHING`,
+            `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
             listContacts.flatMap(ct => [id, ct.id, ct.email])
           );
         }
