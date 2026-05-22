@@ -173,6 +173,18 @@ module.exports = async function handler(req, res) {
       const utmJson = utm_params && typeof utm_params === 'object' && Object.values(utm_params).some(Boolean)
         ? JSON.stringify(utm_params) : null;
 
+      if (template_id) {
+        const tpl = await query('SELECT 1 FROM templates WHERE id=$1 AND brand_id=$2', [template_id, brand_id]);
+        if (!tpl[0]) return res.status(400).json({ error: 'Template não pertence a esta marca' });
+      }
+      if (list_ids?.length) {
+        const owned = await query(
+          `SELECT id FROM lists WHERE id = ANY($1::int[]) AND brand_id = $2`,
+          [list_ids, brand_id]
+        );
+        if (owned.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não pertencem a esta marca' });
+      }
+
       const rows = await query(
         `INSERT INTO campaigns (brand_id, name, subject, preview_text, from_name, from_email,
          template_id, scheduled_at, status, created_by, utm_params)

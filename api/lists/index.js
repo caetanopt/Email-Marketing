@@ -11,20 +11,14 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      // Lists are global across the user's brands. total_contacts is scoped
-      // to the current brand context (brand_id query param) so each brand
-      // sees how many of its own contacts are in that list.
       const rows = await query(
-        `SELECT l.id, l.name, l.description, l.created_at, l.brand_id,
-                b.name AS brand_name,
-                COUNT(lm.contact_id) FILTER (WHERE c.brand_id = $1)::int AS total_contacts,
-                (l.brand_id = $1) AS is_own
+        `SELECT l.id, l.name, l.description, l.created_at,
+                COUNT(lm.contact_id)::int AS total_contacts
          FROM lists l
          JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-         LEFT JOIN brands b ON b.id = l.brand_id
          LEFT JOIN list_members lm ON lm.list_id = l.id
-         LEFT JOIN contacts c ON c.id = lm.contact_id
-         GROUP BY l.id, b.name ORDER BY l.name`,
+         WHERE l.brand_id = $1
+         GROUP BY l.id ORDER BY l.name`,
         [brand_id, user.id]
       );
       return res.status(200).json({ data: rows });

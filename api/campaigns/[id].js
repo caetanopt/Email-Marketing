@@ -221,6 +221,13 @@ module.exports = async function handler(req, res) {
          template_id||null, scheduled_at||null, status||null, id, camp.brand_id]
       );
       if (list_ids) {
+        if (list_ids.length) {
+          const owned = await query(
+            `SELECT id FROM lists WHERE id = ANY($1::int[]) AND brand_id = $2`,
+            [list_ids, camp.brand_id]
+          );
+          if (owned.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não pertencem a esta marca' });
+        }
         await query('DELETE FROM campaign_lists WHERE campaign_id=$1', [id]);
         if (list_ids.length) {
           const vals = list_ids.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',');
