@@ -3770,8 +3770,8 @@ ${body}
                     showToast('A iniciar envio…', 'info');
                     const init = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
                     if (!init.warning) {
-                        let totalSent = 0, totalFailed = 0;
-                        while (true) {
+                        let totalSent = 0, totalFailed = 0, _batches = 0;
+                        while (_batches++ < 500) {
                             const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_batch`, { method: 'POST' });
                             totalSent   += r.sent   || 0;
                             totalFailed += r.failed || 0;
@@ -4471,8 +4471,9 @@ ${body}
             if (progTxt) progTxt.textContent = `0 / ${grandTotal.toLocaleString('pt-PT')} enviados`;
             if (btn) btn.textContent = 'A enviar…';
 
-            // Fase 2: batches até done=true
-            while (true) {
+            // Fase 2: batches até done=true (max 500 para evitar loop infinito)
+            let _batches = 0;
+            while (_batches++ < 500) {
                 const r = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send_batch`, { method: 'POST' });
                 totalSent   += r.sent   || 0;
                 totalFailed += r.failed || 0;
@@ -6183,7 +6184,7 @@ ${sections.join('\n\n')}
         _screenLoaded.clear();
 
         // Load all sections in parallel
-        await Promise.all([
+        await Promise.allSettled([
             _loadContacts(brandId),
             _loadCampaigns(brandId),
             _loadLists(brandId),

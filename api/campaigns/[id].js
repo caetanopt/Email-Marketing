@@ -223,6 +223,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
+      if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível editar uma campanha já enviada.' });
       const { name, subject, preview_text, from_name, from_email,
               template_id, scheduled_at, status, list_ids } = req.body || {};
       await query(
