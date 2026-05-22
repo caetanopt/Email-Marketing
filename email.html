@@ -116,6 +116,8 @@
                     _goToDefaultBrandOrSelect();
                 } catch { location.reload(); }
             } else {
+                showToast('Sessão expirada. A recarregar…', 'error');
+                setTimeout(() => location.reload(), 1500);
             }
             throw new Error(data.error || 'Sessão expirada');
         }
