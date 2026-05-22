@@ -4762,7 +4762,7 @@ ${body}
             const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             list.innerHTML = data.map(b => `
-                <button onclick="pickBlock(${b.id})" class="w-full flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 text-left transition-colors">
+                <button data-block-id="${escAttr(String(b.id))}" onclick="pickBlock(this.dataset.blockId)" class="w-full flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 text-left transition-colors">
                     <div class="w-24 h-16 bg-slate-50 rounded overflow-hidden flex-shrink-0">
                         <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
                     </div>
