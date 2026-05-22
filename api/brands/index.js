@@ -323,7 +323,7 @@ module.exports = async function handler(req, res) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { name, email } = req.body || {};
       if (!name?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
-      if (!email?.trim() || !email.includes('@')) return res.status(400).json({ error: 'Email inválido' });
+      if (!email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
       const normalEmail = email.toLowerCase().trim();
       const conflict = await query('SELECT id FROM users WHERE email=$1 AND id<>$2', [normalEmail, member_id]);
       if (conflict[0]) return res.status(409).json({ error: 'Esse email já está em uso por outro utilizador' });
