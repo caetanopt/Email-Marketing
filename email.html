@@ -2412,14 +2412,14 @@ ${body}
         if (customIcons === null) {
             html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Personalizados</p><p class="text-xs text-slate-400 italic py-1">A carregar…</p></div>`;
         } else if (customIcons.length > 0) {
-            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-purple-600 uppercase tracking-wide mb-2 flex items-center gap-2">Personalizados <button onclick="teCloseIconPicker();showScreen('icons')" class="text-[9px] text-slate-400 hover:text-slate-700 underline font-normal normal-case tracking-normal">Gerir</button></p><div class="grid grid-cols-6 gap-1.5">`;
+            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-purple-600 uppercase tracking-wide mb-2 flex items-center gap-2">Personalizados <button onclick="openIconUploadModal('brand')" class="text-[9px] px-2 py-0.5 border border-dashed border-slate-200 rounded hover:bg-slate-50 text-slate-500 font-normal normal-case tracking-normal">+ Carregar</button></p><div class="grid grid-cols-6 gap-1.5">`;
             customIcons.forEach(ic => {
                 const scopeLbl = ic.brand_id ? '· marca' : '· global';
                 html += `<button type="button" data-icon-key="custom:${ic.id}" data-icon-label="${escHtml(ic.name)}" onclick="_tePickCustomIcon(${ic.id})" title="${escHtml(ic.name)} ${scopeLbl}" class="te-icon-btn flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-purple-300 hover:bg-purple-50 active:bg-purple-100 transition-colors group"><span class="w-7 h-7 flex items-center justify-center flex-shrink-0"><img src="${ic.data_url}" alt="" style="width:28px;height:28px;object-fit:contain;" /></span><span class="text-[9px] text-slate-400 group-hover:text-purple-500 truncate w-full text-center leading-tight">${escHtml(ic.name)}</span></button>`;
             });
             html += `</div></div>`;
         } else {
-            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Personalizados</p><div class="flex items-center gap-2 py-1"><p class="text-xs text-slate-400 flex-1">Nenhum ícone carregado.</p><button onclick="teCloseIconPicker();showScreen('icons')" class="text-xs px-3 py-1 border border-dashed border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500">+ Carregar</button></div></div>`;
+            html += `<div class="te-icon-cat mb-4 pb-3 border-b border-slate-100"><p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Personalizados</p><div class="flex items-center gap-2 py-1"><p class="text-xs text-slate-400 flex-1">Nenhum ícone carregado.</p><button onclick="openIconUploadModal('brand')" class="text-xs px-3 py-1 border border-dashed border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500">+ Carregar</button></div></div>`;
         }
         // Built-in sections
         for (const [cat, icons] of Object.entries(TE_ICONS)) {
@@ -2597,6 +2597,13 @@ ${body}
             showToast('Ícone carregado com sucesso.');
             closeIconUploadModal();
             _teCustomIconsCache = {}; _loadCustomIcons();
+            // Se o icon picker do template editor estiver aberto, refrescar a lista inline
+            const pickerModal = document.getElementById('teIconPickerModal');
+            if (pickerModal && !pickerModal.classList.contains('hidden')) {
+                apiFetch(`/api/icons?brand_id=${_currentBrand.id}`)
+                    .then(d => { _teCustomIconsCache = {}; (d.data||[]).forEach(ic => { _teCustomIconsCache[ic.id] = ic; }); _teRenderIconPickerGrid(d.data||[]); })
+                    .catch(() => {});
+            }
         } catch (e) { showToast('Erro ao carregar: ' + e.message, 'error'); }
     }
 
@@ -8442,7 +8449,7 @@ ${sections.join('\n\n')}
 </div>
 
 <!-- Modal: upload de ícone -->
-<div id="iconUploadModal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)closeIconUploadModal()">
+<div id="iconUploadModal" class="hidden fixed inset-0 z-[100] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)closeIconUploadModal()">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
         <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
             <h3 id="iconUploadModalTitle" class="text-base font-semibold text-slate-900">Adicionar ícone</h3>
