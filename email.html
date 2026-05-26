@@ -1050,6 +1050,39 @@
         m.classList.add('hidden');
         m.classList.remove('flex');
     }
+    function _openDeleteUserModal() {
+        const modal = document.getElementById('editMemberModal');
+        const memberId = modal.dataset.memberId;
+        const name = document.getElementById('editMemberName').value || 'este utilizador';
+        const del = document.getElementById('deleteUserModal');
+        del.dataset.memberId = memberId;
+        const nameEl = document.getElementById('deleteUserName');
+        if (nameEl) nameEl.textContent = name;
+        closeEditMemberModal();
+        del.classList.remove('hidden');
+        del.classList.add('flex');
+    }
+    function closeDeleteUserModal() {
+        const m = document.getElementById('deleteUserModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+    }
+    async function doDeleteUser() {
+        const modal = document.getElementById('deleteUserModal');
+        const memberId = modal.dataset.memberId;
+        const btn = document.getElementById('deleteUserConfirmBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=delete_user&member_id=${memberId}`, { method: 'DELETE' });
+            closeDeleteUserModal();
+            showToast('Conta eliminada permanentemente.');
+            await _loadTeamMembers();
+        } catch(e) {
+            showToast(e.message || 'Erro ao eliminar conta.', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
     async function doEditMember() {
         const modal = document.getElementById('editMemberModal');
         const memberId = modal.dataset.memberId;
@@ -9793,9 +9826,41 @@ ${sections.join('\n\n')}
                 </select>
             </div>
         </div>
+        <div class="px-6 pb-6 flex items-center justify-between gap-3">
+            <button id="editMemberDeleteBtn" onclick="_openDeleteUserModal()" class="px-3 py-2 text-xs font-medium border border-red-200 rounded-lg text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors">Eliminar conta</button>
+            <div class="flex items-center gap-3">
+                <button onclick="closeEditMemberModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+                <button id="editMemberSaveBtn" onclick="doEditMember()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação de eliminação de conta -->
+<div id="deleteUserModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6" onclick="closeDeleteUserModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div class="px-6 pt-6 pb-4 border-b border-red-100 bg-red-50 rounded-t-2xl">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                </div>
+                <div>
+                    <h2 class="text-base font-semibold text-red-900">Eliminar conta permanentemente</h2>
+                    <p class="text-xs text-red-600 mt-0.5">Esta acção não pode ser desfeita</p>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-5">
+            <p class="text-sm text-slate-700">Vais eliminar a conta de <strong id="deleteUserName" class="text-slate-900"></strong>.</p>
+            <ul class="mt-3 space-y-1.5 text-xs text-slate-500">
+                <li class="flex items-center gap-2"><span class="text-red-400">✗</span> O utilizador perde acesso a todas as marcas</li>
+                <li class="flex items-center gap-2"><span class="text-red-400">✗</span> Os dados pessoais são apagados</li>
+                <li class="flex items-center gap-2"><span class="text-slate-400">✓</span> Campanhas e conteúdo criado é preservado</li>
+            </ul>
+        </div>
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
-            <button onclick="closeEditMemberModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
-            <button id="editMemberSaveBtn" onclick="doEditMember()" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Guardar</button>
+            <button onclick="closeDeleteUserModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button id="deleteUserConfirmBtn" onclick="doDeleteUser()" class="px-5 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">Eliminar conta</button>
         </div>
     </div>
 </div>
