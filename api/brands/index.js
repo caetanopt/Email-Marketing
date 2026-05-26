@@ -101,6 +101,31 @@ module.exports = async function handler(req, res) {
           throw e;
         }
       }
+      // List all brands accessible to the current admin + access status for a given member
+      if (action === 'user_brands' && member_id) {
+        if (!id) return res.status(400).json({ error: 'id (brand_id) obrigatório para verificar permissão' });
+        if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+        // All brands the current admin can access
+        const allBrands = await query(
+          `SELECT b.id, b.name, b.color, b.logo_url FROM brands b
+           JOIN user_brand_roles ubr ON ubr.brand_id = b.id AND ubr.user_id = $1
+           WHERE b.active = TRUE ORDER BY b.name`,
+          [user.id]
+        );
+        // Brands already accessible to the target member
+        const memberRoles = await query(
+          `SELECT brand_id, role FROM user_brand_roles WHERE user_id = $1`,
+          [member_id]
+        );
+        const roleMap = Object.fromEntries(memberRoles.map(r => [r.brand_id, r.role]));
+        const result = allBrands.map(b => ({
+          ...b,
+          has_access: !!roleMap[b.id],
+          role: roleMap[b.id] || null,
+        }));
+        return res.status(200).json({ data: result });
+      }
+
       if (id && action === 'team') {
         const rows = await query(
           `SELECT u.id, u.name, u.email, u.active, u.last_login, ubr.role
@@ -353,6 +378,28 @@ module.exports = async function handler(req, res) {
       }
 
       return res.status(201).json({ ok: true, user_id: userId, email_sent: emailSent, email_error: emailError });
+    }
+
+    // Grant or revoke access to a specific brand for a member
+    if (req.method === 'PUT' && id && action === 'set_brand_access' && member_id) {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes alterar o teu próprio acesso' });
+      const { brand_id: targetBrandId, role: targetRole, granted } = req.body || {};
+      if (!targetBrandId) return res.status(400).json({ error: 'brand_id obrigatório' });
+      // Verify current user has admin access to the target brand too
+      if (!await isAdmin(user.id, targetBrandId)) return res.status(403).json({ error: 'Sem permissão na marca de destino' });
+      const safeRole = ['owner','admin','editor','viewer'].includes(targetRole) ? targetRole : 'editor';
+      if (granted) {
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role = EXCLUDED.role`,
+          [member_id, targetBrandId, safeRole]
+        );
+      } else {
+        try { await query('DELETE FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, targetBrandId]); } catch (_) {}
+        await query('DELETE FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, targetBrandId]);
+      }
+      return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'PUT' && id && action === 'update_role' && member_id) {
