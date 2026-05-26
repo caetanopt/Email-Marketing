@@ -952,13 +952,15 @@
                     `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
                 const canManage = _canSeeRolesPanel();
-                const editBtn = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
+                const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
+                const brandsBtn  = canManage ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
-                        ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}</div>` : `<span class="text-xs text-slate-400">owner</span>`)
+                        ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}${brandsBtn}</div>` : `<span class="text-xs text-slate-400">owner</span>`)
                         : `<div class="flex items-center justify-end gap-2">
                             ${editBtn}
+                            ${brandsBtn}
                             <button onclick="openPermissionsModal(this)" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Permissões</button>
                             <button onclick="doRemoveMember(this,${m.id})" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors">Remover</button>
                           </div>`);
@@ -1107,6 +1109,73 @@
             if (btn) btn.disabled = false;
         }
     }
+    // ── Brand Access Modal ───────────────────────────────
+    let _brandAccessMemberId = null;
+    async function openBrandAccessModal(memberId, memberName) {
+        _brandAccessMemberId = memberId;
+        const title = document.getElementById('brandAccessModalTitle');
+        if (title) title.textContent = `Marcas — ${memberName}`;
+        const list = document.getElementById('brandAccessList');
+        if (list) list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">A carregar…</p>`;
+        const m = document.getElementById('brandAccessModal');
+        m.classList.remove('hidden'); m.classList.add('flex');
+        try {
+            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=user_brands&member_id=${memberId}`);
+            _renderBrandAccessList(data || []);
+        } catch(e) {
+            if (list) list.innerHTML = `<p class="text-sm text-red-400 py-4 text-center">Erro: ${escHtml(e.message)}</p>`;
+        }
+    }
+    function _renderBrandAccessList(brands) {
+        const list = document.getElementById('brandAccessList');
+        if (!list) return;
+        if (!brands.length) { list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">Sem marcas disponíveis.</p>`; return; }
+        const roleLabel = { owner:'Owner', admin:'Admin', editor:'Editor', viewer:'Mkt Account' };
+        const roleOpts = ['owner','admin','editor','viewer'].map(r => `<option value="${r}">${roleLabel[r]}</option>`).join('');
+        list.innerHTML = brands.map(b => `
+            <div class="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0" data-brand-id="${escAttr(b.id)}">
+                <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${escAttr(b.color||'#888')}"></div>
+                <span class="flex-1 text-sm text-slate-800 font-medium">${escHtml(b.name)}</span>
+                ${b.has_access
+                    ? `<select onchange="_updateBrandRole(this,'${escAttr(b.id)}')" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white mr-1">
+                           ${['owner','admin','editor','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
+                       </select>
+                       <button onclick="_toggleBrandAccess('${escAttr(b.id)}',false,this)" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">Revogar</button>`
+                    : `<button onclick="_toggleBrandAccess('${escAttr(b.id)}',true,this)" class="px-2.5 py-1 text-xs font-medium border border-green-200 rounded-md text-green-700 hover:bg-green-50 transition-colors flex-shrink-0">Dar acesso</button>`
+                }
+            </div>`).join('');
+    }
+    async function _updateBrandRole(select, brandId) {
+        const role = select.value;
+        try {
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=set_brand_access&member_id=${_brandAccessMemberId}`, {
+                method: 'PUT', body: JSON.stringify({ brand_id: brandId, role, granted: true })
+            });
+            showToast('Função actualizada.');
+        } catch(e) { showToast(e.message || 'Erro ao actualizar.', 'error'); }
+    }
+    async function _toggleBrandAccess(brandId, grant, btn) {
+        if (btn) btn.disabled = true;
+        try {
+            const role = grant ? 'editor' : undefined;
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=set_brand_access&member_id=${_brandAccessMemberId}`, {
+                method: 'PUT', body: JSON.stringify({ brand_id: brandId, role, granted: grant })
+            });
+            showToast(grant ? 'Acesso concedido.' : 'Acesso revogado.');
+            // Refresh list
+            const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=user_brands&member_id=${_brandAccessMemberId}`);
+            _renderBrandAccessList(data || []);
+        } catch(e) {
+            showToast(e.message || 'Erro.', 'error');
+            if (btn) btn.disabled = false;
+        }
+    }
+    function closeBrandAccessModal() {
+        const m = document.getElementById('brandAccessModal');
+        m.classList.add('hidden'); m.classList.remove('flex');
+        _brandAccessMemberId = null;
+    }
+
     async function doToggleActive(btn, memberId, currentActive) {
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}&action=set_active&member_id=${memberId}`, {
@@ -9861,6 +9930,27 @@ ${sections.join('\n\n')}
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
             <button onclick="closeDeleteUserModal()" class="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button id="deleteUserConfirmBtn" onclick="doDeleteUser()" class="px-5 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700">Eliminar conta</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de acesso a marcas -->
+<div id="brandAccessModal" class="hidden fixed inset-0 z-[75] bg-slate-900/70 items-center justify-center p-6" onclick="closeBrandAccessModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <h2 id="brandAccessModalTitle" class="text-lg font-semibold text-slate-900">Marcas</h2>
+                <p class="text-sm text-slate-400 mt-0.5">Gere o acesso deste utilizador às marcas da plataforma.</p>
+            </div>
+            <button onclick="closeBrandAccessModal()" class="text-slate-400 hover:text-slate-600 ml-4">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div id="brandAccessList" class="px-6 py-4 overflow-y-auto flex-1">
+            <p class="text-sm text-slate-400 py-4 text-center">A carregar…</p>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-100">
+            <button onclick="closeBrandAccessModal()" class="w-full px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Fechar</button>
         </div>
     </div>
 </div>
