@@ -1152,7 +1152,7 @@
         if (!brands.length) { list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">Sem marcas disponíveis.</p>`; return; }
         const _ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const roleLabel = { owner:'Owner', admin:'Admin', editor:'Editor', viewer:'Mkt Account' };
-        list.innerHTML = `<div class="grid grid-cols-2 gap-3">${brands.map(b => `
+        list.innerHTML = `<div class="grid grid-cols-3 gap-3">${brands.map(b => `
             <div class="flex flex-col gap-2 p-3 border border-slate-200 rounded-xl bg-slate-50" data-brand-id="${_ea(b.id)}">
                 <div class="flex items-center gap-2">
                     <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${_ea(b.color||'#888')}"></div>
@@ -9970,7 +9970,7 @@ ${sections.join('\n\n')}
 
 <!-- Modal de acesso a marcas -->
 <div id="brandAccessModal" class="hidden fixed inset-0 z-[75] bg-slate-900/70 items-center justify-center p-6" onclick="closeBrandAccessModal()">
-    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between">
             <div>
                 <h2 id="brandAccessModalTitle" class="text-lg font-semibold text-slate-900">Marcas</h2>
