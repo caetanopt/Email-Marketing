@@ -52,27 +52,63 @@ module.exports = async function handler(req, res) {
     if (eventType === 'bounce') {
       const bounce = sesEvent.bounce || {};
       const recipients = bounce.bouncedRecipients || [];
+      const isPermanent = bounce.bounceType === 'Permanent';
+      const isTransient = bounce.bounceType === 'Transient';
+
       for (const r of recipients) {
         const email = r.emailAddress?.toLowerCase();
         if (!email) continue;
-        // Find campaign_recipient by email and mark as bounced
-        const rows = await query(
-          `UPDATE campaign_recipients SET status='bounced' WHERE email=$1 AND status='sent' RETURNING campaign_id, contact_id`,
-          [email]
-        );
-        for (const row of rows) {
-          await query(
-            `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
-            [row.campaign_id, row.contact_id]
+
+        if (isPermanent) {
+          // Hard bounce — mark bounced, suppress globally
+          const rows = await query(
+            `UPDATE campaign_recipients SET status='bounced', error_message=$2
+             WHERE email=$1 AND status IN ('sent','retry') RETURNING campaign_id, contact_id`,
+            [email, r.diagnosticCode || 'Hard bounce']
           );
-        }
-        // Hard bounces → suppress globally
-        if (bounce.bounceType === 'Permanent') {
+          for (const row of rows) {
+            await query(
+              `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
+              [row.campaign_id, row.contact_id]
+            );
+          }
           await query(
             "INSERT INTO suppression (email, reason) VALUES ($1,'bounce') ON CONFLICT (email) DO NOTHING",
             [email]
           );
           await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
+
+        } else if (isTransient) {
+          // Soft bounce — schedule retry (up to 3 attempts), then fail
+          const rows = await query(
+            `UPDATE campaign_recipients
+             SET retry_count = COALESCE(retry_count, 0) + 1,
+                 error_message = $2,
+                 status = CASE WHEN COALESCE(retry_count, 0) >= 2 THEN 'failed' ELSE 'retry' END
+             WHERE email=$1 AND status IN ('sent','retry')
+             RETURNING campaign_id, contact_id, status, retry_count`,
+            [email, r.diagnosticCode || 'Soft bounce']
+          );
+          for (const row of rows) {
+            await query(
+              `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
+              [row.campaign_id, row.contact_id]
+            );
+          }
+
+        } else {
+          // Unknown bounce type — treat as hard
+          const rows = await query(
+            `UPDATE campaign_recipients SET status='bounced', error_message=$2
+             WHERE email=$1 AND status IN ('sent','retry') RETURNING campaign_id, contact_id`,
+            [email, r.diagnosticCode || 'Bounce']
+          );
+          for (const row of rows) {
+            await query(
+              `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
+              [row.campaign_id, row.contact_id]
+            );
+          }
         }
       }
     } else if (eventType === 'complaint') {

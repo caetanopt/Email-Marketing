@@ -101,6 +101,27 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ recipients, events });
     }
 
+    // ── Error log: only failed/bounced/retry with detail, higher limit ──
+    if (req.method === 'GET' && action === 'error_log') {
+      const errors = await query(
+        `SELECT cr.email, cr.status, cr.error_message, cr.retry_count,
+                cr.attempted_at, ct.name AS contact_name, ct.id AS contact_id
+         FROM campaign_recipients cr
+         LEFT JOIN contacts ct ON ct.id = cr.contact_id
+         WHERE cr.campaign_id = $1
+           AND cr.status IN ('failed','bounced','retry')
+           AND cr.error_message IS NOT NULL
+         ORDER BY cr.attempted_at DESC NULLS LAST
+         LIMIT 2000`,
+        [id]
+      );
+      const [{ total_errors }] = await query(
+        `SELECT COUNT(*)::int AS total_errors FROM campaign_recipients
+         WHERE campaign_id=$1 AND status IN ('failed','bounced','retry')`, [id]
+      );
+      return res.status(200).json({ errors, total_errors });
+    }
+
     if (req.method === 'GET') {
       if (action === 'report') {
         const camp = [await authorizeCampaign(user.id, id)];
@@ -315,6 +336,17 @@ module.exports = async function handler(req, res) {
         );
         if (!total) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas ou contactos importados directamente.' });
 
+        // CAN-SPAM: warn if brand has no physical address configured
+        const [brand] = await query(`SELECT variables FROM brands WHERE id=$1`, [camp[0].brand_id]);
+        const brandVars = brand?.variables || {};
+        if (!brandVars.company_address) {
+          return res.status(400).json({
+            error: 'Endereço físico obrigatório (CAN-SPAM)',
+            detail: 'A marca não tem endereço físico configurado. Adiciona {{company_address}} nas Definições da Marca antes de enviar.',
+            code: 'MISSING_PHYSICAL_ADDRESS'
+          });
+        }
+
         await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
 
         try {
@@ -347,11 +379,13 @@ module.exports = async function handler(req, res) {
           return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
 
         const BATCH = parseInt(process.env.SMTP_BATCH_SIZE || '50', 10);
+        // Pick up both fresh pending contacts and soft-bounce retries
         const pending = await query(
-          `SELECT cr.contact_id, cr.email, con.name
+          `SELECT cr.contact_id, cr.email, con.name, cr.retry_count
            FROM campaign_recipients cr
            JOIN contacts con ON con.id = cr.contact_id
-           WHERE cr.campaign_id = $1 AND cr.status = 'pending'
+           WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
+           ORDER BY cr.status DESC, cr.contact_id ASC
            LIMIT $2`,
           [id, BATCH]
         );
@@ -458,10 +492,17 @@ module.exports = async function handler(req, res) {
             } catch (err) {
               console.error('SMTP send error:', err?.message);
               const errMsg = (err?.message || 'unknown').slice(0, 500);
+              // Classify error: transient SMTP errors get a retry (up to 3 attempts)
+              const isTransient = /ECONNRESET|ETIMEDOUT|421|450|451|452/i.test(errMsg);
+              const currentRetry = contact.retry_count || 0;
+              const newStatus = (isTransient && currentRetry < 2) ? 'retry' : 'failed';
               try {
                 await query(
-                  "UPDATE campaign_recipients SET status='failed',attempted_at=NOW(),error_message=$3 WHERE campaign_id=$1 AND contact_id=$2",
-                  [id, contact.contact_id, errMsg]
+                  `UPDATE campaign_recipients
+                   SET status=$4, attempted_at=NOW(), error_message=$3,
+                       retry_count = COALESCE(retry_count,0) + CASE WHEN $4='retry' THEN 1 ELSE 0 END
+                   WHERE campaign_id=$1 AND contact_id=$2`,
+                  [id, contact.contact_id, errMsg, newStatus]
                 );
               } catch (e2) {
                 if (e2.code === '42703') {
@@ -487,7 +528,7 @@ module.exports = async function handler(req, res) {
         transporter.close();
 
         const [{ remaining }] = await query(
-          "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status='pending'",
+          "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
           [id]
         );
 
