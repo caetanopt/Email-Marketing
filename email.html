@@ -2912,7 +2912,7 @@ ${body}
             // Variables
             const vars = b.variables || {};
             if (_currentBrand) _currentBrand.variables = b.variables || null;
-            _BS_VAR_KEYS.forEach(k => { const el = document.getElementById('bsVar_'+k); if (el) el.value = vars[k] || ''; });
+            _BS_VAR_KEYS.forEach(k => { const el = document.getElementById('bsVar_'+k); if (el) el.value = vars[k] || (k === 'company_address' ? 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia' : ''); });
         } catch (err) { console.error(err); }
         _loadBlocks();
     }
@@ -9402,7 +9402,7 @@ ${sections.join('\n\n')}
                                         <p class="text-[10px] text-red-500 mt-0.5 font-medium">* Obrigatório</p>
                                     </div>
                                     <div>
-                                        <input id="bsVar_company_address" type="text" placeholder="Ex: Rua Exemplo, 123, Lisboa" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                        <input id="bsVar_company_address" type="text" placeholder="Rua do Barreiro, 547 4409-513 Vila Nova de Gaia" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                         <p class="text-[10px] text-slate-400 mt-0.5">Necessário por lei (CAN-SPAM). Aparece no rodapé de todos os emails.</p>
                                     </div>
                                 </div>
