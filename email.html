@@ -1042,10 +1042,26 @@
         document.getElementById('editMemberEmail').value = currentEmail;
         const roleEl = document.getElementById('editMemberRole');
         if (roleEl) roleEl.value = currentRole || 'editor';
+        const pwdEl = document.getElementById('editMemberPassword');
+        if (pwdEl) { pwdEl.value = ''; pwdEl.type = 'password'; }
+        const eyeOpen = document.getElementById('editPwdEyeOpen');
+        const eyeClosed = document.getElementById('editPwdEyeClosed');
+        if (eyeOpen) eyeOpen.classList.remove('hidden');
+        if (eyeClosed) eyeClosed.classList.add('hidden');
         document.getElementById('editMemberModal').dataset.memberId = memberId;
         const m = document.getElementById('editMemberModal');
         m.classList.remove('hidden');
         m.classList.add('flex');
+    }
+    function _toggleEditPwdVisibility() {
+        const inp = document.getElementById('editMemberPassword');
+        const eyeOpen = document.getElementById('editPwdEyeOpen');
+        const eyeClosed = document.getElementById('editPwdEyeClosed');
+        if (!inp) return;
+        const show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        eyeOpen?.classList.toggle('hidden', show);
+        eyeClosed?.classList.toggle('hidden', !show);
     }
     function closeEditMemberModal() {
         const m = document.getElementById('editMemberModal');
@@ -1088,20 +1104,24 @@
     async function doEditMember() {
         const modal = document.getElementById('editMemberModal');
         const memberId = modal.dataset.memberId;
-        const name  = document.getElementById('editMemberName').value.trim();
-        const email = document.getElementById('editMemberEmail').value.trim();
-        const role  = document.getElementById('editMemberRole')?.value || null;
+        const name     = document.getElementById('editMemberName').value.trim();
+        const email    = document.getElementById('editMemberEmail').value.trim();
+        const role     = document.getElementById('editMemberRole')?.value || null;
+        const password = document.getElementById('editMemberPassword')?.value || '';
         if (!name) { showToast('Nome obrigatório.', 'error'); return; }
         if (!email || !_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
+        if (password && password.length < 6) { showToast('A nova password deve ter pelo menos 6 caracteres.', 'error'); return; }
         const btn = document.getElementById('editMemberSaveBtn');
         if (btn) btn.disabled = true;
         try {
+            const body = { name, email, role };
+            if (password) body.password = password;
             await apiFetch(`/api/brands?id=${_currentBrand.id}&action=edit_member&member_id=${memberId}`, {
                 method: 'PUT',
-                body: JSON.stringify({ name, email, role })
+                body: JSON.stringify(body)
             });
             closeEditMemberModal();
-            showToast('Utilizador actualizado.');
+            showToast(password ? 'Utilizador actualizado e password alterada.' : 'Utilizador actualizado.');
             await _loadTeamMembers();
         } catch(e) {
             showToast(e.message || 'Erro ao actualizar utilizador.', 'error');
@@ -9874,7 +9894,7 @@ ${sections.join('\n\n')}
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
             <h2 class="text-lg font-semibold text-slate-900">Editar utilizador</h2>
-            <p class="text-sm text-slate-500 mt-1">Altera o nome e email deste membro da equipa.</p>
+            <p class="text-sm text-slate-500 mt-1">Altera os dados deste membro da equipa.</p>
         </div>
         <div class="px-6 py-5 space-y-4">
             <div>
@@ -9893,6 +9913,18 @@ ${sections.join('\n\n')}
                     <option value="editor">Editor</option>
                     <option value="viewer">Marketing Account</option>
                 </select>
+            </div>
+            <!-- Separador nova password -->
+            <div class="pt-2 border-t border-slate-100">
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nova password <span class="normal-case font-normal text-slate-400">(deixa em branco para não alterar)</span></label>
+                <div class="relative">
+                    <input id="editMemberPassword" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password"
+                        class="w-full px-3 py-2 pr-10 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <button type="button" onclick="_toggleEditPwdVisibility()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabindex="-1" aria-label="Mostrar/ocultar password">
+                        <svg id="editPwdEyeOpen" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        <svg id="editPwdEyeClosed" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
         <div class="px-6 pb-6 flex items-center justify-between gap-3">

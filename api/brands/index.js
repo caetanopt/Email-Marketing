@@ -457,15 +457,22 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'PUT' && id && action === 'edit_member' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
-      const { name, email } = req.body || {};
+      const { name, email, role: newRole, password } = req.body || {};
       if (!name?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
       if (!email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
+      if (password !== undefined && password !== '' && String(password).length < 6)
+        return res.status(400).json({ error: 'Password deve ter pelo menos 6 caracteres' });
       const normalEmail = email.toLowerCase().trim();
       const conflict = await query('SELECT id FROM users WHERE email=$1 AND id<>$2', [normalEmail, member_id]);
       if (conflict[0]) return res.status(409).json({ error: 'Esse email já está em uso por outro utilizador' });
-      await query('UPDATE users SET name=$1, email=$2 WHERE id=$3', [name.trim(), normalEmail, member_id]);
-      // Also update role if provided
-      const { role: newRole } = req.body || {};
+      // Update name + email (+ optional password hash)
+      if (password) {
+        const hash = bcrypt.hashSync(String(password), 10);
+        await query('UPDATE users SET name=$1, email=$2, password_hash=$3 WHERE id=$4', [name.trim(), normalEmail, hash, member_id]);
+      } else {
+        await query('UPDATE users SET name=$1, email=$2 WHERE id=$3', [name.trim(), normalEmail, member_id]);
+      }
+      // Update role if provided
       if (newRole && ['owner','admin','editor','viewer'].includes(newRole)) {
         await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [newRole, member_id, id]);
       }
