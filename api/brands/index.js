@@ -394,6 +394,20 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // Eliminar conta permanentemente (apaga de todas as marcas — CASCADE)
+    if (req.method === 'DELETE' && id && action === 'delete_user' && member_id) {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes eliminar a tua própria conta' });
+      // Only owners can delete other owners
+      const [target] = await query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]);
+      if (target?.role === 'owner') {
+        const [requester] = await query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [user.id, id]);
+        if (requester?.role !== 'owner') return res.status(403).json({ error: 'Apenas um owner pode eliminar outro owner' });
+      }
+      await query('DELETE FROM users WHERE id=$1', [member_id]);
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === 'PUT' && id && action === 'edit_member' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { name, email } = req.body || {};
