@@ -952,16 +952,15 @@
                     `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
                 const canManage = _canSeeRolesPanel();
-                const editBtn = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="text-xs text-slate-600 hover:text-slate-900 underline">Editar</button>` : '';
+                const editBtn = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
                         ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}</div>` : `<span class="text-xs text-slate-400">owner</span>`)
                         : `<div class="flex items-center justify-end gap-2">
-                            <select onchange="doUpdateRole(this,${m.id})" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white">${roleOptions}</select>
                             ${editBtn}
-                            <button onclick="openPermissionsModal(this)" class="text-xs text-slate-600 hover:text-slate-900 underline">Permissões</button>
-                            <button onclick="doRemoveMember(this,${m.id})" class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                            <button onclick="openPermissionsModal(this)" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Permissões</button>
+                            <button onclick="doRemoveMember(this,${m.id})" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors">Remover</button>
                           </div>`);
                 return `<tr class="hover:bg-slate-50" data-member-id="${m.id}" data-member-name="${(m.name||'').replace(/"/g,'&quot;')}">
                     <td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${col} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${m.name||'—'}</p><p class="text-xs text-slate-400">${m.email}</p></div></div></td>
@@ -998,9 +997,11 @@
             if (nameInp) nameInp.value = '';
             inp.value = '';
             if (passInp) passInp.value = '';
-            showToast(`Membro ${email} adicionado com sucesso.`);
-            if (result.email_error) {
-                setTimeout(() => showToast(`Aviso: email não enviado — ${result.email_error}`, 'error'), 1500);
+            if (result.email_sent) {
+                showToast(`Membro adicionado. Email de boas-vindas enviado para ${email}.`);
+            } else {
+                showToast(`Membro ${email} adicionado.`);
+                setTimeout(() => showToast(`Aviso: email não enviado — ${result.email_error || 'erro desconhecido'}`, 'error'), 1200);
             }
             await _loadTeamMembers();
         } catch(e) {
@@ -1032,11 +1033,13 @@
             await _loadTeamMembers();
         }
     }
-    function openEditMemberModal(memberId, currentName) {
+    function openEditMemberModal(memberId, currentName, currentRole) {
         const row = document.querySelector(`tr[data-member-id="${memberId}"]`);
         const currentEmail = row ? row.querySelector('p.text-xs.text-slate-400')?.textContent || '' : '';
         document.getElementById('editMemberName').value = currentName;
         document.getElementById('editMemberEmail').value = currentEmail;
+        const roleEl = document.getElementById('editMemberRole');
+        if (roleEl) roleEl.value = currentRole || 'editor';
         document.getElementById('editMemberModal').dataset.memberId = memberId;
         const m = document.getElementById('editMemberModal');
         m.classList.remove('hidden');
@@ -1050,8 +1053,9 @@
     async function doEditMember() {
         const modal = document.getElementById('editMemberModal');
         const memberId = modal.dataset.memberId;
-        const name = document.getElementById('editMemberName').value.trim();
+        const name  = document.getElementById('editMemberName').value.trim();
         const email = document.getElementById('editMemberEmail').value.trim();
+        const role  = document.getElementById('editMemberRole')?.value || null;
         if (!name) { showToast('Nome obrigatório.', 'error'); return; }
         if (!email || !_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
         const btn = document.getElementById('editMemberSaveBtn');
@@ -1059,7 +1063,7 @@
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}&action=edit_member&member_id=${memberId}`, {
                 method: 'PUT',
-                body: JSON.stringify({ name, email })
+                body: JSON.stringify({ name, email, role })
             });
             closeEditMemberModal();
             showToast('Utilizador actualizado.');
@@ -9778,6 +9782,15 @@ ${sections.join('\n\n')}
             <div>
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email *</label>
                 <input id="editMemberEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+            <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Função</label>
+                <select id="editMemberRole" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    <option value="owner">Owner</option>
+                    <option value="admin">Admin</option>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Marketing Account</option>
+                </select>
             </div>
         </div>
         <div class="px-6 pb-6 flex items-center justify-end gap-3">
