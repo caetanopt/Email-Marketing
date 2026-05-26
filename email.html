@@ -953,7 +953,7 @@
                 ).join('');
                 const canManage = _canSeeRolesPanel();
                 const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
-                const brandsBtn  = canManage ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
+                const brandsBtn  = (canManage && m.role !== 'owner' && m.role !== 'admin') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
