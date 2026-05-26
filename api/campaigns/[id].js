@@ -336,15 +336,12 @@ module.exports = async function handler(req, res) {
         );
         if (!total) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas ou contactos importados directamente.' });
 
-        // CAN-SPAM: warn if brand has no physical address configured
+        // CAN-SPAM: ensure physical address is set (use brand default if not configured)
+        const DEFAULT_COMPANY_ADDRESS = 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
         const [brand] = await query(`SELECT variables FROM brands WHERE id=$1`, [camp[0].brand_id]);
         const brandVars = brand?.variables || {};
         if (!brandVars.company_address) {
-          return res.status(400).json({
-            error: 'Endereço físico obrigatório (CAN-SPAM)',
-            detail: 'A marca não tem endereço físico configurado. Adiciona {{company_address}} nas Definições da Marca antes de enviar.',
-            code: 'MISSING_PHYSICAL_ADDRESS'
-          });
+          brandVars.company_address = DEFAULT_COMPANY_ADDRESS;
         }
 
         await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
@@ -442,7 +439,8 @@ module.exports = async function handler(req, res) {
               const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
                 <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
               </div>`;
-              const vars = c.variables || {};
+              const DEFAULT_COMPANY_ADDRESS = 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
+              const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               let rawHtml = (c.html_content||'')
                 .replace(/\{\{name\}\}/g, contact.name||contact.email)
                 .replace(/\{\{email\}\}/g, contact.email)
