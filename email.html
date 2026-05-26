@@ -938,7 +938,7 @@
         tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
             const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=team`);
-            const roleBadge = { owner:'bg-purple-100 text-purple-700', admin:'bg-blue-100 text-blue-700', editor:'bg-green-100 text-green-700', viewer:'bg-slate-100 text-slate-600' };
+            const roleBadge = { owner:'bg-purple-100 text-purple-700', editor:'bg-green-100 text-green-700', viewer:'bg-slate-100 text-slate-600' };
             const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600','bg-blue-600','bg-green-600'];
             const _currentUserId = JSON.parse(localStorage.getItem('pm_user')||'{}').id;
             tbody.innerHTML = (data||[]).map((m, i) => {
@@ -947,17 +947,17 @@
                 const badge = roleBadge[m.role] || 'bg-slate-100 text-slate-600';
                 const isMe = m.id === _currentUserId;
                 const since = m.last_login ? new Date(m.last_login).toLocaleDateString('pt-PT') : '—';
-                const roleLabel = { owner:'owner', admin:'admin', editor:'editor', viewer:'Marketing Account' };
-                const roleOptions = ['owner','admin','editor','viewer'].map(r =>
+                const roleLabel = { owner:'Administrador', editor:'Editor', viewer:'Marketing Account' };
+                const roleOptions = ['owner','editor','viewer'].map(r =>
                     `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
                 const canManage = _canSeeRolesPanel();
                 const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
-                const brandsBtn  = (canManage && m.role !== 'owner' && m.role !== 'admin') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
+                const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
-                        ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}${brandsBtn}</div>` : `<span class="text-xs text-slate-400">owner</span>`)
+                        ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}${brandsBtn}</div>` : `<span class="text-xs text-slate-400">Administrador</span>`)
                         : `<div class="flex items-center justify-end gap-2">
                             ${editBtn}
                             ${brandsBtn}
@@ -1151,7 +1151,7 @@
         if (!list) return;
         if (!brands.length) { list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">Sem marcas disponíveis.</p>`; return; }
         const _ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const roleLabel = { owner:'Owner', admin:'Admin', editor:'Editor', viewer:'Mkt Account' };
+        const roleLabel = { owner:'Administrador', editor:'Editor', viewer:'Mkt Account' };
         list.innerHTML = `<div class="grid grid-cols-2 gap-x-4">${brands.map((b,i) => `
             <div class="flex items-center gap-3 py-3 ${i % 2 === 0 ? 'border-r border-slate-100 pr-4' : ''} border-b border-slate-100" data-brand-id="${_ea(b.id)}">
                 <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${_ea(b.color||'#94a3b8')}"></div>
@@ -1159,7 +1159,7 @@
                 ${b.has_access
                     ? `<select onchange="_updateBrandRole(this,'${_ea(b.id)}')"
                           class="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[90px]">
-                           ${['owner','admin','editor','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
+                           ${['owner','editor','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
                        </select>`
                     : `<span class="text-xs text-slate-300 select-none w-[90px]">—</span>`
                 }
@@ -6036,7 +6036,7 @@ ${sections.join('\n\n')}
     let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4', bg:'#FFFFFF', logo:`https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png`, invert:false };
     let _currentUserRole = 'admin'; // 'owner' | 'admin' | 'editor' | 'viewer'
     function _canSeeRolesPanel() {
-        return ['owner','admin','administrador'].includes(_currentUserRole.toLowerCase());
+        return ['owner','administrador'].includes(_currentUserRole.toLowerCase());
     }
     function _syncRolesPanel() {
         const panel = document.getElementById('rolesInfoPanel');
@@ -9150,7 +9150,6 @@ ${sections.join('\n\n')}
                         <div>
                             <label class="text-xs text-slate-500 block mb-1">Função</label>
                             <select id="inviteRoleSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
-                                <option value="admin">Admin</option>
                                 <option value="editor" selected>Editor</option>
                                 <option value="viewer">Marketing Account</option>
                             </select>
@@ -9191,7 +9190,7 @@ ${sections.join('\n\n')}
                             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                                 <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
                                     <div class="flex items-center gap-2 mb-1.5">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">Admin</span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">Administrador</span>
                                     </div>
                                     <p class="text-xs text-slate-600 leading-relaxed">Acesso total: criar, editar e eliminar campanhas, templates, contactos e listas. Pode ainda gerir membros da equipa, configurar integrações e editar as definições da conta.</p>
                                 </div>
@@ -9913,8 +9912,7 @@ ${sections.join('\n\n')}
             <div>
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Função</label>
                 <select id="editMemberRole" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
+                    <option value="owner">Administrador</option>
                     <option value="editor">Editor</option>
                     <option value="viewer">Marketing Account</option>
                 </select>

@@ -36,7 +36,7 @@ async function checkDnsRecord(domain) {
 
 async function isAdmin(userId, brandId) {
   const r = await query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [userId, brandId]);
-  return r[0] && ['owner','admin'].includes(r[0].role);
+  return r[0] && r[0].role === 'owner';
 }
 
 module.exports = async function handler(req, res) {
@@ -286,7 +286,7 @@ module.exports = async function handler(req, res) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { name, email, password, role } = req.body || {};
       if (!name || !email || !password) return res.status(400).json({ error: 'name, email e password obrigatórios' });
-      const safeRole = ['owner','admin','editor','viewer'].includes(role) ? role : 'editor';
+      const safeRole = ['owner','editor','viewer'].includes(role) ? role : 'editor';
       const hash = bcrypt.hashSync(password, 10);
       // Get or create user
       let u = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase().trim()]);
@@ -314,7 +314,7 @@ module.exports = async function handler(req, res) {
       const fromName   = brandRows[0]?.from_name  || 'PrimeMail';
       const fromEmail  = brandRows[0]?.from_email || `info@${fromDomain}`;
       const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
-      const roleLabel  = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
+      const roleLabel  = { owner: 'Administrador', editor: 'Editor', viewer: 'Marketing Account' };
       const emailSubject = `Foste adicionado à equipa ${brandName} no PrimeMail`;
       const emailHtml = `<p>Olá ${name},</p>
         <p>Foste adicionado à marca <strong>${brandName}</strong> no PrimeMail com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
@@ -388,7 +388,7 @@ module.exports = async function handler(req, res) {
       if (!targetBrandId) return res.status(400).json({ error: 'brand_id obrigatório' });
       // Verify current user has admin access to the target brand too
       if (!await isAdmin(user.id, targetBrandId)) return res.status(403).json({ error: 'Sem permissão na marca de destino' });
-      const safeRole = ['owner','admin','editor','viewer'].includes(targetRole) ? targetRole : 'editor';
+      const safeRole = ['owner','editor','viewer'].includes(targetRole) ? targetRole : 'editor';
       if (granted) {
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
@@ -405,7 +405,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'PUT' && id && action === 'update_role' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { role } = req.body || {};
-      if (!['owner','admin','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido' });
+      if (!['owner','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido' });
       await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [role, member_id, id]);
       return res.status(200).json({ ok: true });
     }
@@ -473,7 +473,7 @@ module.exports = async function handler(req, res) {
         await query('UPDATE users SET name=$1, email=$2 WHERE id=$3', [name.trim(), normalEmail, member_id]);
       }
       // Update role if provided
-      if (newRole && ['owner','admin','editor','viewer'].includes(newRole)) {
+      if (newRole && ['owner','editor','viewer'].includes(newRole)) {
         await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [newRole, member_id, id]);
       }
       return res.status(200).json({ ok: true });
