@@ -4382,6 +4382,8 @@ ${body}
         // Update button label
         const nb = document.getElementById('wizNextBtn');
         if (nb) nb.textContent = 'Seguinte →';
+        // Render variables panel
+        _wizVarsRender();
     }
 
     async function _editCurrentCampaignInWizard() {
@@ -4428,6 +4430,8 @@ ${body}
                 cb.checked = campaignListIds.has(cb.dataset.listId);
             });
             wizUpdateListsTotal();
+            // Render variables panel
+            _wizVarsRender();
         } catch (e) { showToast(e.message, 'error'); }
     }
 
