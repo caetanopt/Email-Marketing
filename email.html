@@ -1130,18 +1130,18 @@
         const list = document.getElementById('brandAccessList');
         if (!list) return;
         if (!brands.length) { list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">Sem marcas disponíveis.</p>`; return; }
+        const _ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const roleLabel = { owner:'Owner', admin:'Admin', editor:'Editor', viewer:'Mkt Account' };
-        const roleOpts = ['owner','admin','editor','viewer'].map(r => `<option value="${r}">${roleLabel[r]}</option>`).join('');
         list.innerHTML = brands.map(b => `
-            <div class="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0" data-brand-id="${escAttr(b.id)}">
-                <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${escAttr(b.color||'#888')}"></div>
+            <div class="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0" data-brand-id="${_ea(b.id)}">
+                <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${_ea(b.color||'#888')}"></div>
                 <span class="flex-1 text-sm text-slate-800 font-medium">${escHtml(b.name)}</span>
                 ${b.has_access
-                    ? `<select onchange="_updateBrandRole(this,'${escAttr(b.id)}')" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white mr-1">
+                    ? `<select onchange="_updateBrandRole(this,'${_ea(b.id)}')" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs bg-white mr-1">
                            ${['owner','admin','editor','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
                        </select>
-                       <button onclick="_toggleBrandAccess('${escAttr(b.id)}',false,this)" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">Revogar</button>`
-                    : `<button onclick="_toggleBrandAccess('${escAttr(b.id)}',true,this)" class="px-2.5 py-1 text-xs font-medium border border-green-200 rounded-md text-green-700 hover:bg-green-50 transition-colors flex-shrink-0">Dar acesso</button>`
+                       <button onclick="_toggleBrandAccess('${_ea(b.id)}',false,this)" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">Revogar</button>`
+                    : `<button onclick="_toggleBrandAccess('${_ea(b.id)}',true,this)" class="px-2.5 py-1 text-xs font-medium border border-green-200 rounded-md text-green-700 hover:bg-green-50 transition-colors flex-shrink-0">Dar acesso</button>`
                 }
             </div>`).join('');
     }
