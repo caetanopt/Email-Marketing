@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const nodemailer = require('nodemailer');
 const dns = require('dns').promises;
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
@@ -279,42 +280,76 @@ module.exports = async function handler(req, res) {
         [userId, id, safeRole]
       );
 
-      // Send welcome email via AWS SES SDK
+      // Send welcome email — try SES first, fallback to SMTP
       let emailSent = false;
       let emailError = null;
+      const brandRows = await query('SELECT name, from_name, from_email FROM brands WHERE id=$1', [id]);
+      const brandName  = brandRows[0]?.name || id;
+      const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+      const fromName   = brandRows[0]?.from_name  || 'PrimeMail';
+      const fromEmail  = brandRows[0]?.from_email || `info@${fromDomain}`;
+      const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+      const roleLabel  = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
+      const emailSubject = `Foste adicionado à equipa ${brandName} no PrimeMail`;
+      const emailHtml = `<p>Olá ${name},</p>
+        <p>Foste adicionado à marca <strong>${brandName}</strong> no PrimeMail com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
+        <p>Podes aceder à plataforma em <a href="${appUrl}">${appUrl}</a> com o teu email e a password definida pelo administrador.</p>
+        <p>Bem-vindo à equipa!</p>`;
+      const emailText = `Olá ${name},\n\nForaste adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`;
+
       const sesRegion = process.env.AWS_REGION || process.env.AWS_SES_REGION;
       const sesKey    = process.env.AWS_ACCESS_KEY_ID;
       const sesSecret = process.env.AWS_SECRET_ACCESS_KEY;
+
       if (sesKey && sesSecret && sesRegion) {
+        // Primary: AWS SES SDK
         try {
-          const brandRows = await query('SELECT name, from_name, from_email FROM brands WHERE id=$1', [id]);
-          const brandName = brandRows[0]?.name || id;
-          const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
-          const fromName   = brandRows[0]?.from_name  || 'PrimeMail';
-          const fromEmail  = brandRows[0]?.from_email || `info@${fromDomain}`;
-          const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
-          const roleLabel  = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Marketing Account' };
-          const sesClient  = new SESClient({ region: sesRegion, credentials: { accessKeyId: sesKey, secretAccessKey: sesSecret } });
+          const sesClient = new SESClient({ region: sesRegion, credentials: { accessKeyId: sesKey, secretAccessKey: sesSecret } });
           await sesClient.send(new SendEmailCommand({
             Source: `"${fromName}" <${fromEmail}>`,
             Destination: { ToAddresses: [email.toLowerCase().trim()] },
             Message: {
-              Subject: { Data: `Foste adicionado à equipa ${brandName} no PrimeMail`, Charset: 'UTF-8' },
+              Subject: { Data: emailSubject, Charset: 'UTF-8' },
               Body: {
-                Html: { Data: `<p>Olá ${name},</p><p>Foste adicionado à marca <strong>${brandName}</strong> no PrimeMail com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p><p>Podes aceder à plataforma em <a href="${appUrl}">${appUrl}</a> com o teu email e a password definida pelo administrador.</p><p>Bem-vindo à equipa!</p>`, Charset: 'UTF-8' },
-                Text: { Data: `Olá ${name},\n\nForaste adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`, Charset: 'UTF-8' },
+                Html: { Data: emailHtml, Charset: 'UTF-8' },
+                Text: { Data: emailText, Charset: 'UTF-8' },
               },
             },
           }));
           emailSent = true;
-          console.log('invite email sent to', email);
         } catch (sesErr) {
           emailError = sesErr.message;
-          console.error('invite email error:', sesErr);
+          console.error('invite email SES error:', sesErr);
         }
-      } else {
-        emailError = 'AWS SES não configurado (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION em falta)';
-        console.warn('invite email skipped:', emailError);
+      }
+
+      // Fallback: SMTP (nodemailer) — used when SES not configured or SES failed
+      if (!emailSent && process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        try {
+          const port = parseInt(process.env.SMTP_PORT || '587', 10);
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST, port,
+            secure: port === 465,
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+          });
+          await transporter.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: email.toLowerCase().trim(),
+            subject: emailSubject,
+            html: emailHtml,
+            text: emailText,
+          });
+          transporter.close();
+          emailSent = true;
+          emailError = null;
+        } catch (smtpErr) {
+          emailError = smtpErr.message;
+          console.error('invite email SMTP error:', smtpErr);
+        }
+      }
+
+      if (!emailSent && !emailError) {
+        emailError = 'Sem configuração de email disponível (SES ou SMTP não configurados)';
       }
 
       return res.status(201).json({ ok: true, user_id: userId, email_sent: emailSent, email_error: emailError });
@@ -368,6 +403,11 @@ module.exports = async function handler(req, res) {
       const conflict = await query('SELECT id FROM users WHERE email=$1 AND id<>$2', [normalEmail, member_id]);
       if (conflict[0]) return res.status(409).json({ error: 'Esse email já está em uso por outro utilizador' });
       await query('UPDATE users SET name=$1, email=$2 WHERE id=$3', [name.trim(), normalEmail, member_id]);
+      // Also update role if provided
+      const { role: newRole } = req.body || {};
+      if (newRole && ['owner','admin','editor','viewer'].includes(newRole)) {
+        await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [newRole, member_id, id]);
+      }
       return res.status(200).json({ ok: true });
     }
 
