@@ -1,7 +1,37 @@
 const bcrypt = require('bcryptjs');
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const dns = require('dns').promises;
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
+
+// ── DNS health check (SPF / DKIM / DMARC) ──────────────────────
+async function checkDnsRecord(domain) {
+  async function resolveTxt(host) {
+    try { return await dns.resolveTxt(host); } catch { return []; }
+  }
+  // SPF — look for v=spf1 in TXT records of the domain
+  const spfTxt = await resolveTxt(domain);
+  const spfRecord = spfTxt.flat().find(r => r.startsWith('v=spf1'));
+
+  // DKIM — try common SES selectors: mail._domainkey, ses._domainkey, amazonses._domainkey
+  let dkimRecord = null;
+  for (const selector of ['mail', 'ses', 'amazonses']) {
+    const recs = await resolveTxt(`${selector}._domainkey.${domain}`);
+    const found = recs.flat().find(r => r.includes('DKIM1') || r.includes('p='));
+    if (found) { dkimRecord = found; break; }
+  }
+
+  // DMARC — _dmarc.domain TXT
+  const dmarcTxt = await resolveTxt(`_dmarc.${domain}`);
+  const dmarcRecord = dmarcTxt.flat().find(r => r.startsWith('v=DMARC1'));
+
+  return {
+    domain,
+    spf:   { ok: !!spfRecord,   record: spfRecord   || null },
+    dkim:  { ok: !!dkimRecord,  record: dkimRecord  || null },
+    dmarc: { ok: !!dmarcRecord, record: dmarcRecord || null },
+  };
+}
 
 async function isAdmin(userId, brandId) {
   const r = await query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [userId, brandId]);
@@ -17,6 +47,16 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      // DNS health check — SPF / DKIM / DMARC verification for brand's from_email domain
+      if (id && action === 'dns_check') {
+        const rows = await query('SELECT from_email FROM brands WHERE id=$1', [id]);
+        if (!rows[0]?.from_email) return res.status(200).json({ error: 'from_email não configurado' });
+        const domain = rows[0].from_email.split('@')[1]?.toLowerCase();
+        if (!domain) return res.status(200).json({ error: 'Domínio inválido no from_email' });
+        const result = await checkDnsRecord(domain);
+        return res.status(200).json(result);
+      }
+
       if (id && action === 'media') {
         try {
           const rows = await query(
