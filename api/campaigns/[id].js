@@ -9,6 +9,12 @@ function trackToken(campaignId, contactId) {
     .digest('hex').slice(0, 16);
 }
 
+function unsubToken(email, brandId) {
+  return crypto.createHmac('sha256', process.env.JWT_SECRET)
+    .update(`${email}:${brandId}`)
+    .digest('hex');
+}
+
 async function authorizeCampaign(userId, campaignId) {
   const r = await query(
     `SELECT c.*
