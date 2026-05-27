@@ -3,7 +3,13 @@ const { requireAuth, cors } = require('../../lib/auth');
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 
-function unsubToken(email, brandId) {
+function trackToken(campaignId, contactId) {
+  return crypto.createHmac('sha256', process.env.JWT_SECRET)
+    .update(`track:${campaignId}:${contactId}`)
+    .digest('hex').slice(0, 16);
+}
+
+
   return crypto.createHmac('sha256', process.env.JWT_SECRET)
     .update(`${email}:${brandId}`)
     .digest('hex');
@@ -334,14 +340,16 @@ module.exports = async function handler(req, res) {
         if (camp[0].status === 'sent')
           return res.status(409).json({ error: 'Campanha já foi enviada.' });
 
-        // Contacts from lists
+        // Contacts from lists — deduplicate by email (DISTINCT ON) to avoid sending twice
+        // when the same email address appears in multiple selected lists or as duplicate contacts
         const listContacts = await query(
-          `SELECT DISTINCT c.id, c.email, c.name
+          `SELECT DISTINCT ON (lower(c.email)) c.id, c.email, c.name
            FROM contacts c
            JOIN list_members lm ON lm.contact_id=c.id
            JOIN campaign_lists cl ON cl.list_id=lm.list_id AND cl.campaign_id=$1
            WHERE c.brand_id=$2 AND c.status='active'
-             AND c.email NOT IN (SELECT email FROM suppression)`,
+             AND lower(c.email) NOT IN (SELECT lower(email) FROM suppression)
+           ORDER BY lower(c.email), c.id`,
           [id, camp[0].brand_id]
         );
         if (listContacts.length) {
@@ -459,9 +467,11 @@ module.exports = async function handler(req, res) {
             try {
               const token = unsubToken(contact.email, c.brand_id);
               const unsubUrl = `${appUrl}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
+              const trackTok = trackToken(id, contact.contact_id);
+              const pixelUrl = `${appUrl}/api/track?type=open&cid=${id}&uid=${contact.contact_id}&t=${trackTok}`;
               const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
                 <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
-              </div>`;
+              </div><img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
               const DEFAULT_COMPANY_ADDRESS = 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               let rawHtml = (c.html_content||'')
