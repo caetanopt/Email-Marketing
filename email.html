@@ -2754,15 +2754,7 @@ ${body}
         else if (/^#[0-9a-fA-F]{6}$/.test(textEl.value)) colorEl.value = textEl.value;
     }
 
-    function toggleMailerFields() {
-        const mailer = document.getElementById('mailerSelect')?.value || 'mailgun';
-        const smtpFields = document.getElementById('smtpFields');
-        const webhookField = document.getElementById('webhookField');
-        if (smtpFields) smtpFields.classList.toggle('hidden', mailer === 'ses');
-        if (webhookField) webhookField.classList.toggle('hidden', mailer !== 'mailgun');
-    }
-
-    // ── Imports ──────────────────────────────────────────
+// ── Imports ──────────────────────────────────────────
     function mockShowImportDetails(btn) {
         const tr = btn.closest('tr');
         const file = tr?.cells[0]?.querySelector('p.font-medium')?.textContent || 'ficheiro';
@@ -5326,11 +5318,7 @@ ${sections.join('\n\n')}
 
     // ── Settings ──────────────────────────────────────────
     function mockSaveSettings() { showToast('Definições guardadas com sucesso.'); }
-    function mockClearSmtp() {
-        if (!confirm('Limpar configuração SMTP?')) return;
-        document.querySelectorAll('#brandSettings input[type=text], #brandSettings input[type=password]').forEach((el,i) => { if(i>1) el.value=''; });
-        showToast('Configuração SMTP limpa.', 'info');
-    }
+
 </script>
     <style>
         /* ─── Base ─────────────────────────────────────────────────────────── */
@@ -9353,45 +9341,31 @@ ${sections.join('\n\n')}
                         <div id="dnsPanel" class="text-xs text-slate-400">Clica em "Verificar DNS" para consultar os registos do domínio do email remetente.</div>
                     </div>
 
-                    <!-- SMTP / Mailgun -->
+                    <!-- AWS SES -->
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-semibold text-slate-900 text-sm">Configuração SMTP / Mailgun</h3>
-                            <button onclick="mockClearSmtp()" class="text-xs text-red-500 hover:text-red-700">Limpar SMTP</button>
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-semibold text-slate-900 text-sm">Serviço de envio — Amazon SES</h3>
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4"/></svg>
+                                    Activo
+                                </span>
+                            </div>
                         </div>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-xs text-slate-500 mb-1">Mailer</label>
-                                <select id="mailerSelect" onchange="toggleMailerFields()" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
-                                    <option value="mailgun">mailgun</option>
-                                    <option value="smtp">smtp</option>
-                                    <option value="ses">ses</option>
-                                </select>
-                            </div>
-                            <div id="smtpFields" class="space-y-4">
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs text-slate-500 mb-1">Host SMTP</label>
-                                        <input type="text" value="smtp.mailgun.org" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-slate-500 mb-1">Porta</label>
-                                        <input type="text" value="587" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                    </div>
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Região AWS</label>
+                                    <div class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600 font-mono">eu-west-1</div>
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-slate-500 mb-1">Utilizador SMTP</label>
-                                    <input type="text" value="postmaster@caetanoretail.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-slate-500 mb-1">Palavra-passe</label>
-                                    <input type="password" value="••••••••••••••" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                    <label class="block text-xs text-slate-500 mb-1">Credenciais</label>
+                                    <div class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600">Configuradas via variáveis de ambiente</div>
                                 </div>
                             </div>
-                            <div id="webhookField">
-                                <label class="block text-xs text-slate-500 mb-1">Webhook Secret (Mailgun)</label>
-                                <input type="text" placeholder="whsec_…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                <p class="text-xs text-slate-400 mt-1">Utilizado para verificar a autenticidade dos webhooks de evento.</p>
+                            <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                <svg class="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <p class="text-xs text-blue-700">Os emails são enviados através da API Amazon SES. As credenciais AWS (<code class="font-mono bg-blue-100 px-1 rounded">AWS_ACCESS_KEY_ID</code> e <code class="font-mono bg-blue-100 px-1 rounded">AWS_SECRET_ACCESS_KEY</code>) são geridas a nível de servidor e partilhadas por todas as marcas.</p>
                             </div>
                         </div>
                     </div>
