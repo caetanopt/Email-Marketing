@@ -506,6 +506,7 @@
                         <div class="flex items-center justify-end gap-2">
                             ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
                             ${deletable ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
+                            ${c.status === 'sending' || c.status === 'scheduled' ? `<button onclick="event.stopPropagation();_cancelCampaignSend(${i})" class="text-xs px-3 py-1 border border-orange-200 text-orange-600 rounded hover:bg-orange-50">Interromper</button>` : ''}
                             <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
                             <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
                         </div>
@@ -4547,6 +4548,18 @@ ${body}
             bar.style.width = pct + '%';
             bar.className = `h-2 rounded-full transition-all ${barColor}`;
         } catch(e) {}
+    }
+
+    async function _cancelCampaignSend(idx) {
+        const c = window._campaignsCache?.[idx];
+        if (!c) return;
+        const label = c.status === 'scheduled' ? 'agendamento' : 'envio';
+        if (!confirm(`Interromper o ${label} da campanha "${c.name}"?\n\nA campanha voltará ao estado Rascunho e poderá ser reenviada mais tarde.`)) return;
+        try {
+            await apiFetch(`/api/campaigns/${c.id}?action=cancel_send`, { method: 'POST' });
+            showToast(`Envio interrompido — campanha voltou a Rascunho.`);
+            await _loadCampaigns(_currentBrand.id);
+        } catch (e) { showToast(e.message || 'Erro ao interromper.', 'error'); }
     }
 
     async function _deleteCampaignItem(idx) {

@@ -297,6 +297,29 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, added: contacts.length });
       }
 
+      // ── Cancelar/interromper envio ───────────────────────────
+      if (action === 'cancel_send') {
+        const camp = await query(
+          `SELECT c.* FROM campaigns c
+           JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
+           WHERE c.id=$1`, [id, user.id]
+        );
+        if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
+        if (!['sending','scheduled'].includes(camp[0].status))
+          return res.status(409).json({ error: 'Apenas campanhas em envio ou agendadas podem ser canceladas.' });
+        // Reset to draft — pending recipients are left as-is (can resend later)
+        await query(`UPDATE campaigns SET status='draft', sent_at=NULL WHERE id=$1`, [id]);
+        await query(`UPDATE campaign_recipients SET status='pending' WHERE campaign_id=$1 AND status='pending'`, [id]);
+        try {
+          await query(
+            `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
+             VALUES ($1,$2,'—','campaign_cancelled',$3)`,
+            [camp[0].brand_id, id, user.id]
+          );
+        } catch {}
+        return res.status(200).json({ ok: true });
+      }
+
       // ── Enviar campanha ──────────────────────────────
       if (action === 'send') {
         const camp = await query(
