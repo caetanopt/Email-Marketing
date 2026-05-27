@@ -6730,6 +6730,8 @@ ${sections.join('\n\n')}
         _setText('dash-campaigns-label', `Campanhas enviadas (${lbl})`);
         _setText('dash-emails-label', `Emails enviados (${lbl})`);
         _setText('dash-metrics-title', `Métricas globais (${lbl})`);
+        _setText('dash-openrate-sub', `Campanhas enviadas (${lbl})`);
+        _setText('dash-top-title', `Top campanhas (${lbl})`);
         // Loading state
         ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '…'));
         let r;
@@ -6738,6 +6740,8 @@ ${sections.join('\n\n')}
         } catch (e) {
             console.error('dashboard fetch:', e);
             ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '—'));
+            const topElErr = document.getElementById('dashTopCampaigns');
+            if (topElErr) topElErr.innerHTML = `<tr><td colspan="4" class="px-5 py-8 text-center text-slate-400 text-sm">Erro ao carregar.</td></tr>`;
             return;
         }
         // KPI values
@@ -6752,24 +6756,53 @@ ${sections.join('\n\n')}
         _setBarWidth('dash-bounce-bar', r.bounceRate);
         // Recent campaigns
         const rcEl = document.getElementById('dashRecentCampaigns');
-        if (!rcEl) return;
-        const recent = r.recent || [];
-        if (!recent.length) {
-            rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
-            return;
-        }
         const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        window._dashCampaignsCache = recent;
-        rcEl.innerHTML = recent.map((c, i) => {
-            const sent = c.sent || 0;
-            const open  = sent ? ((c.unique_opens  / sent) * 100).toFixed(1) : '0';
-            const click = sent ? ((c.unique_clicks / sent) * 100).toFixed(1) : '0';
-            return `<tr class="${i<recent.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign(null, _dashCampaignsCache[${i}])">
-                <td class="px-5 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-400">${escHtml(c.subject||'—')}</p></td>
-                <td class="px-4 py-3 text-xs text-slate-500">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</td>
-                <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${open}% abertos</span><span class="text-blue-600">${click}% cliques</span></div></td>
-            </tr>`;
-        }).join('');
+        if (rcEl) {
+            const recent = r.recent || [];
+            if (!recent.length) {
+                rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
+            } else {
+                window._dashCampaignsCache = recent;
+                rcEl.innerHTML = recent.map((c, i) => {
+                    const sent = c.sent || 0;
+                    const open  = sent ? ((c.unique_opens  / sent) * 100).toFixed(1) : '0';
+                    const click = sent ? ((c.unique_clicks / sent) * 100).toFixed(1) : '0';
+                    return `<tr class="${i<recent.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign(null, _dashCampaignsCache[${i}])">
+                        <td class="px-5 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-400">${escHtml(c.subject||'—')}</p></td>
+                        <td class="px-4 py-3 text-xs text-slate-500">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</td>
+                        <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${open}% abertos</span><span class="text-blue-600">${click}% cliques</span></div></td>
+                    </tr>`;
+                }).join('');
+            }
+        }
+        // Top campaigns by open rate
+        const topEl = document.getElementById('dashTopCampaigns');
+        if (topEl) {
+            const top = r.top || [];
+            if (!top.length) {
+                topEl.innerHTML = `<tr><td colspan="4" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
+            } else {
+                window._dashTopCampaignsCache = top;
+                topEl.innerHTML = top.map((c, i) => {
+                    const sent = c.sent || 0;
+                    const openPct  = sent ? +((c.unique_opens  / sent) * 100).toFixed(1) : 0;
+                    const clickPct = sent ? +((c.unique_clicks / sent) * 100).toFixed(1) : 0;
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}º`;
+                    return `<tr class="${i<top.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign(null, _dashTopCampaignsCache[${i}])">
+                        <td class="px-4 py-3 text-center text-sm w-8">${medal}</td>
+                        <td class="px-4 py-3"><p class="font-medium text-slate-900 text-sm">${escHtml(c.name)}</p><p class="text-xs text-slate-400">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</p></td>
+                        <td class="px-4 py-3 text-right">
+                            <p class="text-sm font-semibold text-green-700">${openPct}%</p>
+                            <p class="text-xs text-slate-400">abertura</p>
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <p class="text-sm font-medium text-blue-600">${clickPct}%</p>
+                            <p class="text-xs text-slate-400">cliques</p>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+        }
     }
 
     async function renderBrandData(brandId) {
@@ -6780,7 +6813,6 @@ ${sections.join('\n\n')}
         if (fromEmail) fromEmail.value = brandId === 'caetano' ? 'info@caetano.pt' : `info@${brandId}.caetano.pt`;
 
         // Dashboard KPIs — reset while loading
-        _setText('dash-contacts', '…');
         _setText('dash-campaigns', '…');
         _setText('dash-emails', '—');
         _setText('dash-openrate', '—');
@@ -7148,23 +7180,19 @@ ${sections.join('\n\n')}
             </header>
             <main class="flex-1 px-8 py-6">
                 <!-- KPI cards -->
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="grid grid-cols-3 gap-4 mb-6">
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Contactos activos</p>
-                        <p id="dash-contacts" class="text-3xl font-semibold text-slate-900">12 483</p>
-                    </div>
-                    <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <p id="dash-campaigns-label" class="text-xs text-slate-500 uppercase tracking-wide mb-1">Campanhas enviadas (30 d)</p>
+                        <p id="dash-campaigns-label" class="text-xs text-slate-500 uppercase tracking-wide mb-1">Campanhas enviadas (30 dias)</p>
                         <p id="dash-campaigns" class="text-3xl font-semibold text-slate-900">7</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <p id="dash-emails-label" class="text-xs text-slate-500 uppercase tracking-wide mb-1">Emails enviados (30 d)</p>
+                        <p id="dash-emails-label" class="text-xs text-slate-500 uppercase tracking-wide mb-1">Emails enviados (30 dias)</p>
                         <p id="dash-emails" class="text-3xl font-semibold text-slate-900">84 217</p>
                     </div>
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Taxa de abertura média</p>
                         <p id="dash-openrate" class="text-3xl font-semibold text-green-700">27.4%</p>
-                        <p id="dash-openrate-sub" class="text-xs text-slate-400 mt-0.5">Últimas 10 campanhas</p>
+                        <p id="dash-openrate-sub" class="text-xs text-slate-400 mt-0.5">Campanhas enviadas (30 dias)</p>
                     </div>
                 </div>
 
@@ -7278,6 +7306,27 @@ ${sections.join('\n\n')}
                             </a>
                         </div>
                     </div>
+                </div>
+
+                <!-- Top campanhas do período -->
+                <div class="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <h3 id="dash-top-title" class="font-semibold text-slate-900 text-sm">Top campanhas (30 dias)</h3>
+                        <a onclick="showScreen('campaigns')" data-nav class="text-xs text-slate-500 hover:text-slate-900">Ver todas →</a>
+                    </div>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-slate-100 bg-slate-50">
+                                <th class="px-4 py-2 text-xs font-medium text-slate-400 text-center w-8">#</th>
+                                <th class="px-4 py-2 text-xs font-medium text-slate-400 text-left">Campanha</th>
+                                <th class="px-4 py-2 text-xs font-medium text-slate-400 text-right">Abertura</th>
+                                <th class="px-4 py-2 text-xs font-medium text-slate-400 text-right">Cliques</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashTopCampaigns">
+                            <tr><td colspan="4" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </main>
         </div>

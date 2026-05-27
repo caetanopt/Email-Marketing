@@ -116,6 +116,22 @@ module.exports = async function handler(req, res) {
          GROUP BY c.id ORDER BY c.sent_at DESC NULLS LAST LIMIT 5`,
         sinceParams
       );
+      const top = await query(
+        `SELECT c.id, c.name, c.subject, c.sent_at, c.status,
+                COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
+                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+         FROM campaigns c
+         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+         LEFT JOIN email_events ee ON ee.campaign_id=c.id
+         WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
+         GROUP BY c.id
+         HAVING COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent') > 0
+         ORDER BY (COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::float /
+                   NULLIF(COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent'), 0)) DESC NULLS LAST
+         LIMIT 5`,
+        sinceParams
+      );
       const sent = agg?.sent || 0;
       const openRate   = sent ? +((agg.unique_opens  / sent) * 100).toFixed(1) : 0;
       const clickRate  = sent ? +((agg.unique_clicks / sent) * 100).toFixed(1) : 0;
@@ -127,6 +143,7 @@ module.exports = async function handler(req, res) {
         clickRate,
         bounceRate,
         recent,
+        top,
       });
     }
 
