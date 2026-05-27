@@ -450,12 +450,21 @@ module.exports = async function handler(req, res) {
         const utmParams = c.utm_params || {};
         const utmStr = Object.entries(utmParams).filter(([, v]) => v)
           .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-        function injectUtm(html) {
-          if (!utmStr) return html;
+
+        // Wraps every external link with a click-tracking redirect, then appends UTM params
+        function injectTracking(html, campaignId, contactId) {
           return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, url) => {
+            // Never wrap unsubscribe / resubscribe links
             if (url.includes('action=unsubscribe') || url.includes('action=resubscribe')) return match;
-            const sep = url.includes('?') ? '&' : '?';
-            return `href="${url}${sep}${utmStr}"`;
+            // Build final destination URL (with UTM if configured)
+            let dest = url;
+            if (utmStr) {
+              const sep = dest.includes('?') ? '&' : '?';
+              dest = `${dest}${sep}${utmStr}`;
+            }
+            const tok = trackToken(campaignId, contactId);
+            const redirect = `${appUrl}/api/track?type=click&cid=${campaignId}&uid=${contactId}&t=${tok}&url=${encodeURIComponent(dest)}`;
+            return `href="${redirect}"`;
           });
         }
 
@@ -481,7 +490,7 @@ module.exports = async function handler(req, res) {
               for (const [k, v] of Object.entries(vars)) {
                 rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || '');
               }
-              rawHtml = injectUtm(rawHtml);
+              rawHtml = injectTracking(rawHtml, id, contact.contact_id);
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;

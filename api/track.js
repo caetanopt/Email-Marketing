@@ -1,13 +1,16 @@
 /**
- * GET /api/track?type=open&cid=<campaignId>&uid=<contactId>&t=<token>
+ * /api/track
  *
- * Tracking pixel for email open events.
- * Returns a 1×1 transparent GIF and records the open in email_events.
+ * GET ?type=open&cid=<campaignId>&uid=<contactId>&t=<token>
+ *   → Returns a 1×1 transparent GIF and records the open in email_events.
+ *
+ * GET ?type=click&cid=<campaignId>&uid=<contactId>&t=<token>&url=<destination>
+ *   → Redirects to destination URL and records the click in email_events.
  */
 const { query } = require('../lib/db');
 const crypto = require('crypto');
 
-// 1×1 transparent GIF
+// 1×1 transparent GIF (base64)
 const PIXEL = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   'base64'
@@ -20,7 +23,37 @@ function trackToken(campaignId, contactId) {
 }
 
 module.exports = async (req, res) => {
-  // Always return the pixel immediately — don't block on DB
+  const { type, cid, uid, t, url } = req.query;
+
+  // ── Click tracking: redirect immediately, then record ──────────
+  if (type === 'click') {
+    const dest = url && url.startsWith('http') ? url : '/';
+    res.setHeader('Location', dest);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(302).end();
+
+    // Record asynchronously — don't block redirect
+    try {
+      if (!cid || !uid || !t) return;
+      const expected = trackToken(cid, uid);
+      if (t !== expected) return;
+
+      const campaignId = parseInt(cid, 10);
+      const contactId  = parseInt(uid, 10);
+      if (isNaN(campaignId) || isNaN(contactId)) return;
+
+      await query(
+        `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at)
+         VALUES ($1, $2, 'click', $3, NOW())`,
+        [campaignId, contactId, url || null]
+      );
+    } catch (e) {
+      console.error('track click error:', e.message);
+    }
+    return;
+  }
+
+  // ── Open tracking: return pixel immediately, then record ───────
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -28,23 +61,20 @@ module.exports = async (req, res) => {
   res.status(200).end(PIXEL);
 
   try {
-    const { type, cid, uid, t } = req.query;
     if (!cid || !uid || !t) return;
-
-    // Validate HMAC token to prevent fake events
     const expected = trackToken(cid, uid);
     if (t !== expected) return;
 
-    if (type === 'open') {
-      // Insert open event (ignore duplicates — same contact can open multiple times)
-      await query(
-        `INSERT INTO email_events (campaign_id, contact_id, type, created_at)
-         VALUES ($1, $2, 'open', NOW())`,
-        [parseInt(cid, 10), parseInt(uid, 10)]
-      );
-    }
+    const campaignId = parseInt(cid, 10);
+    const contactId  = parseInt(uid, 10);
+    if (isNaN(campaignId) || isNaN(contactId)) return;
+
+    await query(
+      `INSERT INTO email_events (campaign_id, contact_id, type, created_at)
+       VALUES ($1, $2, 'open', NOW())`,
+      [campaignId, contactId]
+    );
   } catch (e) {
-    // Swallow errors — pixel already returned, don't affect user experience
-    console.error('track pixel error:', e.message);
+    console.error('track open error:', e.message);
   }
 };
