@@ -483,7 +483,12 @@ module.exports = async function handler(req, res) {
               </div><img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
               const DEFAULT_COMPANY_ADDRESS = 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
-              let rawHtml = (c.html_content||'')
+              // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
+              const rawContent = c.html_content || '';
+              if (rawContent.trimStart().startsWith('<mjml>')) {
+                console.warn(`Campaign ${id}: template stored as MJML — re-save to convert to HTML.`);
+              }
+              let rawHtml = rawContent
                 .replace(/\{\{name\}\}/g, contact.name||contact.email)
                 .replace(/\{\{email\}\}/g, contact.email)
                 .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);

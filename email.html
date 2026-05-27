@@ -1332,7 +1332,7 @@
         if (typeof _teMode !== 'undefined' && _teMode === 'block') { return _blockSave(); }
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim() || 'Template';
-        const html = teBuildMjml ? teBuildMjml() : '';
+        const html = teBuildEmailHtml ? teBuildEmailHtml() : '';
         teTemplateStates[teTemplateId || '_tmp'] = JSON.parse(JSON.stringify(teState.blocks));
         try {
             if (teTemplateId && !String(teTemplateId).startsWith('tpl')) {
@@ -2282,6 +2282,123 @@ ${body}
   </mj-body>
 </mjml>`;
     }
+
+    // Generates a proper email-client-compatible HTML from blocks (no MJML dependency)
+    function teBuildEmailHtml() {
+        const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const pad = b => {
+            const t = b.paddingTop    ?? b.padding ?? 16;
+            const r = b.paddingRight  ?? b.padding ?? 24;
+            const bo= b.paddingBottom ?? b.padding ?? 16;
+            const l = b.paddingLeft   ?? b.padding ?? 24;
+            return `${t}px ${r}px ${bo}px ${l}px`;
+        };
+        const row = (inner, bg='#ffffff', extraStyle='') =>
+            `<tr><td align="center" style="background:${bg};${extraStyle}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${pad({})}">${inner}</td></tr></table></td></tr>`;
+        const rowPad = (inner, bg='#ffffff', p, extraStyle='') =>
+            `<tr><td align="center" style="background:${bg};${extraStyle}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${p}">${inner}</td></tr></table></td></tr>`;
+
+        const blockToHtml = b => {
+            switch(b.type) {
+                case 'header':
+                    return rowPad(
+                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:1.4">${b.text||''}</p>`,
+                        b.bgColor||'#1e293b', pad(b));
+                case 'heading':
+                    return rowPad(
+                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${b.text||''}</p>`,
+                        b.bgColor||'#ffffff', pad(b));
+                case 'text':
+                    return rowPad(
+                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${b.text||''}</p>`,
+                        b.bgColor||'#ffffff', pad(b));
+                case 'button': {
+                    const btnHref = b.href||'#';
+                    return rowPad(
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td style="border-radius:6px;background:${b.bgColor||'#0f172a'}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:6px">${b.text||''}</a></td></tr></table>`,
+                        b.bgColor2||'#ffffff', pad(b));
+                }
+                case 'image':
+                    return rowPad(
+                        `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}" style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`,
+                        '#ffffff', pad(b));
+                case 'divider':
+                    return rowPad(
+                        `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:0">`,
+                        '#ffffff', pad(b));
+                case 'spacer':
+                    return `<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>`;
+                case 'footer':
+                    return rowPad(
+                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:1.6">${b.text||''}</p>`,
+                        b.bgColor||'#f8fafc', pad(b));
+                case 'icon': {
+                    const ic = b.color||'#334155';
+                    let dataUrl = b.iconSvg || '';
+                    if (b.iconKey?.startsWith('custom:')) {
+                        dataUrl = b.iconSvg||'';
+                    } else if (dataUrl) {
+                        const svgExp = dataUrl
+                            .replace(/stroke="currentColor"/g, `stroke="${ic}"`)
+                            .replace(/fill="currentColor"/g, `fill="${ic}"`);
+                        dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp)));
+                    }
+                    const imgTag = dataUrl ? `<img src="${dataUrl}" alt="" width="${b.size||48}" height="${b.size||48}" style="display:block;margin:0 auto">` : '';
+                    const inner = b.href ? `<a href="${esc(b.href)}">${imgTag}</a>` : imgTag;
+                    return rowPad(inner, b.bgColor||'#ffffff', pad(b));
+                }
+                case 'columns': {
+                    const cols = (b.children||[]).map(children => {
+                        const inner = children.map(c => {
+                            const tmp = blockToHtml(c);
+                            // strip outer <tr><td>...</td></tr> wrapper for inline use
+                            return tmp;
+                        }).join('');
+                        return `<td valign="top" style="width:${Math.floor(100/(b.children.length||1))}%;padding:8px">${inner}</td>`;
+                    }).join('');
+                    return `<tr><td style="background:#ffffff;padding:${pad(b)}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${cols}</tr></table></td></tr>`;
+                }
+                case 'quote':
+                    return rowPad(
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>`,
+                        '#ffffff', pad(b));
+                case 'linkBlock': {
+                    const lbDesc = b.description ? `<br><span style="font-size:12px;opacity:0.8">${b.description}</span>` : '';
+                    return rowPad(
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="background:${b.bgColor||'#0f172a'};border-radius:8px;text-align:${b.align||'center'}"><a href="${esc(b.href||'#')}" style="display:block;padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:700;color:${b.textColor||'#ffffff'};text-decoration:none">${b.title||''}${lbDesc}</a></td></tr></table>`,
+                        '#ffffff', pad(b));
+                }
+                case 'list': {
+                    const liHtml = (b.items||[]).map(it => `<li style="margin-bottom:6px">${it}</li>`).join('');
+                    return rowPad(
+                        `<ul style="margin:0;padding-left:20px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>`,
+                        b.bgColor||'#ffffff', pad(b));
+                }
+                default: return '';
+            }
+        };
+
+        const bodyRows = teState.blocks.map(blockToHtml).join('\n');
+        return `<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<title></title>
+</head>
+<body style="margin:0;padding:0;background:#f5f7fa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f7fa">
+<tr><td align="center" style="padding:20px 0">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%">
+${bodyRows}
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+    }
     function teBlockToMjml(b, i) {
         const wrap = (inner, attrs='') => `${i}<mj-section${attrs}>\n${i}  <mj-column>\n${inner}\n${i}  </mj-column>\n${i}</mj-section>`;
         const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${b.text}</mj-text>`;
@@ -3153,7 +3270,7 @@ ${body}
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim();
         if (!name) { showToast('Indica um nome para o bloco.', 'error'); return; }
-        const html = (typeof teBuildMjml === 'function') ? teBuildMjml() : '';
+        const html = (typeof teBuildEmailHtml === 'function') ? teBuildEmailHtml() : '';
         try {
             if (_editingBlockId) {
                 await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${_editingBlockId}`, {
@@ -3996,7 +4113,7 @@ ${body}
             let templateId = _editingCampaignId ? (_editingTemplateId || null) : null;
             if (teState.blocks.length) {
                 const tplName = `${name} — Template`;
-                const tplMjml = teBuildMjml();
+                const tplMjml = teBuildEmailHtml();
                 const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
                     method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplMjml })
                 });
