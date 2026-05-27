@@ -1332,7 +1332,8 @@
         if (typeof _teMode !== 'undefined' && _teMode === 'block') { return _blockSave(); }
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim() || 'Template';
-        const html = teBuildEmailHtml ? teBuildEmailHtml() : '';
+        const _emailBlocks = (typeof _tePrepareBlocksForEmail === 'function') ? await _tePrepareBlocksForEmail(teState.blocks) : teState.blocks;
+        const html = teBuildEmailHtml ? teBuildEmailHtml(_emailBlocks) : '';
         teTemplateStates[teTemplateId || '_tmp'] = JSON.parse(JSON.stringify(teState.blocks));
         try {
             if (teTemplateId && !String(teTemplateId).startsWith('tpl')) {
@@ -2288,7 +2289,7 @@ ${body}
     }
 
     // Generates a proper email-client-compatible HTML from blocks (no MJML dependency)
-    function teBuildEmailHtml() {
+    function teBuildEmailHtml(overrideBlocks) {
         const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const pad = b => {
             const t = b.paddingTop    ?? b.padding ?? 16;
@@ -2338,30 +2339,38 @@ ${body}
                         `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:1.6">${b.text||''}</p>`,
                         b.bgColor||'#f8fafc', pad(b));
                 case 'icon': {
+                    // Use pre-converted PNG (email-safe) if available, else fall back to SVG data URL
                     const ic = b.color||'#334155';
-                    let dataUrl = b.iconSvg || '';
-                    if (b.iconKey?.startsWith('custom:')) {
-                        dataUrl = b.iconSvg||'';
-                    } else if (dataUrl) {
-                        const svgExp = dataUrl
-                            .replace(/stroke="currentColor"/g, `stroke="${ic}"`)
-                            .replace(/fill="currentColor"/g, `fill="${ic}"`);
-                        dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp)));
-                    }
-                    const imgTag = dataUrl ? `<img src="${dataUrl}" alt="" width="${b.size||48}" height="${b.size||48}" style="display:block;margin:0 auto">` : '';
-                    const inner = b.href ? `<a href="${esc(b.href)}">${imgTag}</a>` : imgTag;
+                    const iconSrc = b._pngUrl || (() => {
+                        let svgSrc = b.iconSvg || '';
+                        if (!b.iconKey?.startsWith('custom:') && svgSrc) {
+                            svgSrc = svgSrc
+                                .replace(/stroke="currentColor"/g, `stroke="${ic}"`)
+                                .replace(/fill="currentColor"/g, `fill="${ic}"`);
+                        }
+                        return svgSrc ? 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgSrc))) : '';
+                    })();
+                    const sz = b.size || 48;
+                    const align = b.align || 'center';
+                    const imgTag = iconSrc
+                        ? `<img src="${iconSrc}" alt="" width="${sz}" height="${sz}" style="display:block;${align==='center'?'margin:0 auto':align==='right'?'margin-left:auto':''}">`
+                        : '';
+                    const inner = b.href ? `<a href="${esc(b.href)}" style="display:block;text-align:${align}">${imgTag}</a>` : `<div style="text-align:${align}">${imgTag}</div>`;
                     return rowPad(inner, b.bgColor||'#ffffff', pad(b));
                 }
                 case 'columns': {
+                    // Each column's blockToHtml returns <tr><td>...</td></tr> rows.
+                    // Wrap them in a nested <table> so the HTML is valid inside a <td>.
                     const cols = (b.children||[]).map(children => {
-                        const inner = children.map(c => {
-                            const tmp = blockToHtml(c);
-                            // strip outer <tr><td>...</td></tr> wrapper for inline use
-                            return tmp;
-                        }).join('');
-                        return `<td valign="top" style="width:${Math.floor(100/(b.children.length||1))}%;padding:8px">${inner}</td>`;
+                        const innerRows = children.map(c => blockToHtml(c)).join('');
+                        const colWidth = Math.floor(100/(b.children.length||1));
+                        return `<td valign="top" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:top">` +
+                            `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
+                            `</td>`;
                     }).join('');
-                    return `<tr><td style="background:#ffffff;padding:${pad(b)}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${cols}</tr></table></td></tr>`;
+                    return `<tr><td style="background:#ffffff;padding:${pad(b)}">` +
+                        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">` +
+                        `<tr>${cols}</tr></table></td></tr>`;
                 }
                 case 'quote':
                     return rowPad(
@@ -2383,18 +2392,21 @@ ${body}
             }
         };
 
-        const bodyRows = teState.blocks.map(blockToHtml).join('\n');
+        const bodyRows = (overrideBlocks || teState.blocks).map(blockToHtml).join('\n');
         return `<!DOCTYPE html>
-<html lang="pt">
+<html lang="pt" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<style>:root{color-scheme:light;supported-color-schemes:light}</style>
 <title></title>
 </head>
-<body style="margin:0;padding:0;background:#f5f7fa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f7fa">
+<body style="margin:0;padding:0;background:#f5f7fa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f7fa;color-scheme:light">
 <tr><td align="center" style="padding:20px 0">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%">
 ${bodyRows}
@@ -3275,7 +3287,8 @@ ${bodyRows}
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim();
         if (!name) { showToast('Indica um nome para o bloco.', 'error'); return; }
-        const html = (typeof teBuildEmailHtml === 'function') ? teBuildEmailHtml() : '';
+        const _blkEmailBlocks = (typeof _tePrepareBlocksForEmail === 'function') ? await _tePrepareBlocksForEmail(teState.blocks) : teState.blocks;
+        const html = (typeof teBuildEmailHtml === 'function') ? teBuildEmailHtml(_blkEmailBlocks) : '';
         try {
             if (_editingBlockId) {
                 await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${_editingBlockId}`, {
@@ -4066,6 +4079,56 @@ ${bodyRows}
         teRenderProperties();
     }
 
+    /**
+     * Pre-processes blocks before building the email HTML for sending/saving.
+     * Converts icon SVGs to PNG data URLs via canvas — email clients block SVG data URLs
+     * but accept PNG ones (or at least degrade gracefully).
+     */
+    async function _tePrepareBlocksForEmail(blocks) {
+        const svgToPng = (svgStr, size) => new Promise(resolve => {
+            try {
+                const img = new Image();
+                const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+                const bUrl = URL.createObjectURL(blob);
+                img.onload = () => {
+                    try {
+                        const px = size * 2; // 2× for retina
+                        const canvas = document.createElement('canvas');
+                        canvas.width = px; canvas.height = px;
+                        canvas.getContext('2d').drawImage(img, 0, 0, px, px);
+                        URL.revokeObjectURL(bUrl);
+                        resolve(canvas.toDataURL('image/png'));
+                    } catch (e) { URL.revokeObjectURL(bUrl); resolve(''); }
+                };
+                img.onerror = () => { URL.revokeObjectURL(bUrl); resolve(''); };
+                img.src = bUrl;
+            } catch (e) { resolve(''); }
+        });
+
+        const processBlock = async (b) => {
+            if (b.type === 'icon' && b.iconSvg) {
+                const ic = b.color || '#334155';
+                let svgSrc = b.iconSvg;
+                if (!b.iconKey?.startsWith('custom:')) {
+                    svgSrc = svgSrc
+                        .replace(/stroke="currentColor"/g, `stroke="${ic}"`)
+                        .replace(/fill="currentColor"/g, `fill="${ic}"`);
+                }
+                const pngUrl = await svgToPng(svgSrc, b.size || 48);
+                return { ...b, _pngUrl: pngUrl || undefined };
+            }
+            if (b.type === 'columns' && Array.isArray(b.children)) {
+                const newChildren = await Promise.all(
+                    b.children.map(col => Promise.all(col.map(processBlock)))
+                );
+                return { ...b, children: newChildren };
+            }
+            return b;
+        };
+
+        return Promise.all(blocks.map(processBlock));
+    }
+
     async function mockCampaignNext() {
         if (_wizSubmitting) return;
         if (_wizStep === 1) {
@@ -4133,9 +4196,10 @@ ${bodyRows}
             let templateId = _editingCampaignId ? (_editingTemplateId || null) : null;
             if (teState.blocks.length) {
                 const tplName = `${name} — Template`;
-                const tplMjml = teBuildEmailHtml();
+                const _emailBlocks2 = await _tePrepareBlocksForEmail(teState.blocks);
+                const tplHtml = teBuildEmailHtml(_emailBlocks2);
                 const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
-                    method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplMjml })
+                    method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplHtml })
                 });
                 templateId = tplRes.id || null;
             }
@@ -4230,9 +4294,10 @@ ${bodyRows}
                                        .map(cb => cb.dataset.listId).filter(Boolean);
                 let templateId = null;
                 if (teState.blocks.length) {
+                    const _testEmailBlocks = await _tePrepareBlocksForEmail(teState.blocks);
                     const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
                         method: 'POST',
-                        body: JSON.stringify({ name: `${name} — Template`, html_content: teBuildEmailHtml() })
+                        body: JSON.stringify({ name: `${name} — Template`, html_content: teBuildEmailHtml(_testEmailBlocks) })
                     });
                     templateId = tplRes.id || null;
                 }
