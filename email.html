@@ -3652,6 +3652,12 @@ ${bodyRows}
     }
 
     // ── UTM helpers ──────────────────────────────────────
+    // System variables — always available, replaced per-contact at send time
+    const _WIZ_SYSTEM_VARS = [
+        { key: 'name',  label: 'Nome do contacto' },
+        { key: 'email', label: 'Email do contacto' },
+    ];
+
     async function _wizVarsRender() {
         let vars = _currentBrand?.variables;
         if (!vars && _currentBrand?.id) {
@@ -3662,29 +3668,32 @@ ${bodyRows}
             } catch(e) {}
         }
 
-        const hasVars = vars && Object.values(vars).some(Boolean);
+        const hasBrandVars = vars && Object.values(vars).some(Boolean);
 
-        // Step 1 panel
+        // Step 1 panel — always visible (system vars always shown)
         const panel = document.getElementById('wizVarsPanel');
         const list  = document.getElementById('wizVarsList');
         if (panel && list) {
-            if (!hasVars) { panel.classList.add('hidden'); }
-            else {
-                panel.classList.remove('hidden');
-                list.innerHTML = _wizVarsChips(vars);
-            }
+            panel.classList.remove('hidden');
+            list.innerHTML = _wizSystemChips() + (hasBrandVars ? _wizVarsChips(vars) : '');
         }
 
-        // Step 2 strip
+        // Step 2 strip — always visible
         const panel2 = document.getElementById('wizVarsPanel2');
         const list2  = document.getElementById('wizVarsList2');
         if (panel2 && list2) {
-            if (!hasVars) { panel2.classList.add('hidden'); }
-            else {
-                panel2.classList.remove('hidden');
-                list2.innerHTML = _wizVarsChips(vars);
-            }
+            panel2.classList.remove('hidden');
+            list2.innerHTML = _wizSystemChips() + (hasBrandVars ? _wizVarsChips(vars) : '');
         }
+    }
+
+    function _wizSystemChips() {
+        return _WIZ_SYSTEM_VARS.map(({ key, label }) =>
+            `<button type="button" onclick="_wizCopyVar('${key}')" title="${label}"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors">
+                <code class="text-xs font-mono text-indigo-700">{{${key}}}</code>
+            </button>`
+        ).join('');
     }
 
     function _wizVarsChips(vars) {
