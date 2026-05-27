@@ -4420,7 +4420,10 @@ ${body}
         _wizUpdateDirectNotice();
         _wizRenderDirectPanel();
         if (_wizExistingDirectCount > 0) {
+            const _fetchForId = c.id;
             apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+                // Discard if the user has already navigated to a different campaign
+                if (_editingCampaignId !== _fetchForId) return;
                 _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
                 _wizExistingDirectCount = _wizExistingContacts.length;
                 _wizUpdateDirectNotice();
@@ -4474,7 +4477,9 @@ ${body}
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
             if (_wizExistingDirectCount > 0) {
+                const _fetchForId = c.id;
                 apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+                    if (_editingCampaignId !== _fetchForId) return;
                     _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
                     _wizExistingDirectCount = _wizExistingContacts.length;
                     _wizUpdateDirectNotice();
@@ -5708,9 +5713,13 @@ ${sections.join('\n\n')}
 
     function showScreen(id) {
         const _currentScreen = document.querySelector('.screen.active')?.id;
-        // Leaving campaignCreate without saving — reset editing state so next "Nova Campanha" opens blank
+        // Leaving campaignCreate — reset all wizard state so it doesn't leak into the next open
         if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
             _editingCampaignId = null;
+            _wizDirectContactIds = [];
+            _wizDirectContacts = [];
+            _wizExistingContacts = [];
+            _wizExistingDirectCount = 0;
         }
         if (_currentScreen === 'templateEdit' && id !== 'templateEdit' && _teDirty) {
             _tePendingScreen = id;
