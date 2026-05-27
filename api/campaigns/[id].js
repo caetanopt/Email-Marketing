@@ -1,6 +1,6 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
-const nodemailer = require('nodemailer');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 
 function unsubToken(email, brandId) {
@@ -398,7 +398,7 @@ module.exports = async function handler(req, res) {
         if (camp[0].status !== 'sending')
           return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
 
-        const BATCH = parseInt(process.env.SMTP_BATCH_SIZE || '50', 10);
+        const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
         // Pick up both fresh pending contacts and soft-bounce retries
         const pending = await query(
           `SELECT cr.contact_id, cr.email, con.name, cr.retry_count
@@ -415,25 +415,25 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
         }
 
-        if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
           await query(
             "UPDATE campaign_recipients SET status='sent', sent_at=NOW() WHERE campaign_id=$1 AND status='pending'",
             [id]
           );
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          return res.status(200).json({ done: true, sent: pending.length, failed: 0, remaining: 0, warning: 'SMTP não configurado' });
+          return res.status(200).json({ done: true, sent: pending.length, failed: 0, remaining: 0, warning: 'AWS SES não configurado' });
         }
 
         const c = camp[0];
-        const port = parseInt(process.env.SMTP_PORT || '587', 10);
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port,
-          secure: port === 465,
-          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        const sesClient = new SESClient({
+          region: process.env.AWS_REGION || 'eu-west-1',
+          credentials: {
+            accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          },
         });
 
-        const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
+        const fromDomain = process.env.FROM_DOMAIN || 'caetano.pt';
         const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName   = c.from_name  || c.brand_from_name  || 'PrimeMail';
         const fromEmail  = c.from_email || c.brand_from_email || `info@${fromDomain}`;
@@ -451,7 +451,7 @@ module.exports = async function handler(req, res) {
           });
         }
 
-        const RATE = parseInt(process.env.SMTP_RATE || '14', 10);
+        const RATE = parseInt(process.env.SES_RATE || '14', 10);
         let sent = 0, failed = 0;
 
         for (let i = 0; i < pending.length; i += RATE) {
@@ -475,30 +475,34 @@ module.exports = async function handler(req, res) {
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
-              const info = await transporter.sendMail({
-                from: `${fromName} <${fromEmail}>`,
-                to: contact.email,
-                subject: c.subject || '(sem assunto)',
-                replyTo,
-                text: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
-                html: finalHtml,
-                headers: {
-                  'X-Campaign-Id': String(id),
-                  'X-Contact-Id':  String(contact.contact_id),
-                  'List-Unsubscribe': `<${unsubUrl}>`,
-                  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              const sesCmd = new SendEmailCommand({
+                Source: `${fromName} <${fromEmail}>`,
+                Destination: { ToAddresses: [contact.email] },
+                Message: {
+                  Subject: { Charset: 'UTF-8', Data: c.subject || '(sem assunto)' },
+                  Body: {
+                    Html: { Charset: 'UTF-8', Data: finalHtml },
+                    Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
+                  },
                 },
+                ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
+                Tags: [
+                  { Name: 'campaign_id', Value: String(id) },
+                  { Name: 'contact_id',  Value: String(contact.contact_id) },
+                ],
               });
+              const info = await sesClient.send(sesCmd);
+              const msgId = info?.MessageId || null;
               try {
                 await query(
                   "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
-                  [info?.messageId||null, id, contact.contact_id]
+                  [msgId, id, contact.contact_id]
                 );
               } catch (e1) {
                 if (e1.code === '42703') {
                   await query(
                     "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
-                    [info?.messageId||null, id, contact.contact_id]
+                    [msgId, id, contact.contact_id]
                   );
                 } else { throw e1; }
               }
@@ -506,15 +510,15 @@ module.exports = async function handler(req, res) {
                 await query(
                   `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, message_id, created_by)
                    VALUES ($1,$2,$3,$4,'sent',$5,$6)`,
-                  [c.brand_id, id, contact.contact_id, contact.email, info?.messageId||null, user.id]
+                  [c.brand_id, id, contact.contact_id, contact.email, msgId, user.id]
                 );
               } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
               sent++;
             } catch (err) {
-              console.error('SMTP send error:', err?.message);
+              console.error('SES send error:', err?.message);
               const errMsg = (err?.message || 'unknown').slice(0, 500);
-              // Classify error: transient SMTP errors get a retry (up to 3 attempts)
-              const isTransient = /ECONNRESET|ETIMEDOUT|421|450|451|452/i.test(errMsg);
+              // Classify error: transient SES/network errors get a retry (up to 3 attempts)
+              const isTransient = /Throttling|ServiceUnavailable|RequestTimeout|ECONNRESET|ETIMEDOUT/i.test(errMsg);
               const currentRetry = contact.retry_count || 0;
               const newStatus = (isTransient && currentRetry < 2) ? 'retry' : 'failed';
               try {
@@ -545,8 +549,6 @@ module.exports = async function handler(req, res) {
           }));
           if (i + RATE < pending.length) await new Promise(r => setTimeout(r, 1000));
         }
-
-        transporter.close();
 
         const [{ remaining }] = await query(
           "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
@@ -589,20 +591,20 @@ module.exports = async function handler(req, res) {
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
 
-        if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)
-          return res.status(400).json({ error: 'SMTP não configurado' });
+        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY)
+          return res.status(400).json({ error: 'AWS SES não configurado' });
 
-        const port = parseInt(process.env.SMTP_PORT || '587', 10);
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST, port,
-          secure: port === 465,
-          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        const sesClientTest = new SESClient({
+          region: process.env.AWS_REGION || 'eu-west-1',
+          credentials: {
+            accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          },
         });
         const c = camp[0];
-        const fromDomain = process.env.SMTP_FROM_DOMAIN || 'caetano.pt';
         const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
-        const fromEmail = c.from_email || c.brand_from_email || `info@${fromDomain}`;
+        const fromEmail = c.from_email || c.brand_from_email || `info@caetano.pt`;
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         const unsubUrl = `${appUrl}#unsubscribe`;
         const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
@@ -617,25 +619,27 @@ module.exports = async function handler(req, res) {
           ? rawHtml.replace('</body>', unsubBlock + '</body>')
           : rawHtml + unsubBlock;
         try {
-          const info = await transporter.sendMail({
-            from: `${fromName} <${fromEmail}>`,
-            to,
-            subject: `[TESTE] ${c.subject || '(sem assunto)'}`,
-            replyTo,
-            text: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml),
-            html: finalHtml,
-          });
-          transporter.close();
+          const info = await sesClientTest.send(new SendEmailCommand({
+            Source: `${fromName} <${fromEmail}>`,
+            Destination: { ToAddresses: [to] },
+            Message: {
+              Subject: { Charset: 'UTF-8', Data: `[TESTE] ${c.subject || '(sem assunto)'}` },
+              Body: {
+                Html: { Charset: 'UTF-8', Data: finalHtml },
+                Text: { Charset: 'UTF-8', Data: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml) },
+              },
+            },
+            ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
+          }));
           try {
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, message_id, created_by)
                VALUES ($1,$2,$3,'test_sent',$4,$5)`,
-              [c.brand_id, id, to, info?.messageId||null, user.id]
+              [c.brand_id, id, to, info?.MessageId||null, user.id]
             );
           } catch (e) { if (e.code !== '42P01') console.error('send log test:', e); }
-          return res.status(200).json({ ok: true, messageId: info?.messageId || null });
+          return res.status(200).json({ ok: true, messageId: info?.MessageId || null });
         } catch (err) {
-          transporter.close();
           try {
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, error, created_by)
@@ -643,7 +647,7 @@ module.exports = async function handler(req, res) {
               [c.brand_id, id, to, (err.message||'').slice(0, 500), user.id]
             );
           } catch (e) { if (e.code !== '42P01') console.error('send log test fail:', e); }
-          return res.status(500).json({ error: 'Falha no envio SMTP', detail: err.message });
+          return res.status(500).json({ error: 'Falha no envio SES', detail: err.message });
         }
       }
 
