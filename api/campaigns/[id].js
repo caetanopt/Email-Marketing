@@ -453,9 +453,16 @@ module.exports = async function handler(req, res) {
 
         // Wraps every external link with a click-tracking redirect, then appends UTM params
         function injectTracking(html, campaignId, contactId) {
-          return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, url) => {
-            // Never wrap unsubscribe / resubscribe links
+          return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, rawUrl) => {
+            // Decode HTML entities that esc() may have introduced (& → &amp;, etc.)
+            const url = rawUrl
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"');
+            // Never wrap unsubscribe / resubscribe links or already-wrapped tracking links
             if (url.includes('action=unsubscribe') || url.includes('action=resubscribe')) return match;
+            if (url.includes('/api/track?')) return match; // already wrapped — skip
             // Build final destination URL (with UTM if configured)
             let dest = url;
             if (utmStr) {
@@ -626,19 +633,35 @@ module.exports = async function handler(req, res) {
           },
         });
         const c = camp[0];
-        const appUrl = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+        const appUrlT = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
         const fromEmail = c.from_email || c.brand_from_email || `info@caetano.pt`;
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
-        const unsubUrl = `${appUrl}#unsubscribe`;
+        const unsubUrl = `${appUrlT}#unsubscribe`;
         const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
           <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo PrimeMail.</p>
           <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
         </div>`;
-        const rawHtml = ('[TESTE] ' + (c.html_content||'<p>Sem conteúdo de template.</p>'))
+        // Apply UTM params + click tracking (same as real sends so test reflects exact behaviour)
+        const utmParamsT = c.utm_params || {};
+        const utmStrT = Object.entries(utmParamsT).filter(([, v]) => v)
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+        function injectTrackingTest(html) {
+          return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, rawUrl) => {
+            const url = rawUrl.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+            if (url.includes('action=unsubscribe') || url.includes('action=resubscribe') || url.includes('/api/track?')) return match;
+            let dest = url;
+            if (utmStrT) { const sep = dest.includes('?') ? '&' : '?'; dest = `${dest}${sep}${utmStrT}`; }
+            // For test emails use contact_id=0 and no HMAC — easy to recognise in logs
+            const redirect = `${appUrlT}/api/track?type=click&cid=${id}&uid=0&t=test&url=${encodeURIComponent(dest)}`;
+            return `href="${redirect}"`;
+          });
+        }
+        let rawHtml = (c.html_content||'<p>Sem conteúdo de template.</p>')
           .replace(/\{\{name\}\}/g, 'Utilizador Teste')
           .replace(/\{\{email\}\}/g, to)
           .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+        rawHtml = injectTrackingTest(rawHtml);
         const finalHtml = rawHtml.includes('</body>')
           ? rawHtml.replace('</body>', unsubBlock + '</body>')
           : rawHtml + unsubBlock;
