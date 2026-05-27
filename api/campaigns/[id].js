@@ -520,8 +520,8 @@ module.exports = async function handler(req, res) {
               try {
                 await query(
                   `UPDATE campaign_recipients
-                   SET status=$4, attempted_at=NOW(), error_message=$3,
-                       retry_count = COALESCE(retry_count,0) + CASE WHEN $4='retry' THEN 1 ELSE 0 END
+                   SET status=$4::recipient_status, attempted_at=NOW(), error_message=$3,
+                       retry_count = COALESCE(retry_count,0) + CASE WHEN $4::text='retry' THEN 1 ELSE 0 END
                    WHERE campaign_id=$1 AND contact_id=$2`,
                   [id, contact.contact_id, errMsg, newStatus]
                 );

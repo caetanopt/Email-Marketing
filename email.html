@@ -3752,6 +3752,7 @@ ${body}
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Contactos</dt><dd class="text-slate-900">${totalContacts.toLocaleString('pt-PT')} contactos</dd></div>
                 <div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Envio</dt><dd class="font-medium text-slate-900">${sendLabel}</dd></div>
             </dl>`;
+            window._wizLastTotalContacts = totalContacts;
 
             // Right panel: recipients breakdown
             const recipPanel = document.getElementById('wizRevRecipients');
@@ -3930,93 +3931,121 @@ ${body}
         }
         if (_wizStep === 4) {
             const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
-            const name    = document.getElementById('wizName')?.value.trim() || 'Campanha';
-            const subject = document.getElementById('wizSubject')?.value.trim();
-            const fromName  = document.getElementById('wizFromName')?.value.trim();
-            const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
-            const listIds = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked')).map(cb => cb.dataset.listId).filter(Boolean);
-            let scheduled_at = null;
-            if (sendType === 'schedule') {
-                const d = document.getElementById('wizScheduleDate')?.value;
-                const t = document.getElementById('wizScheduleTime')?.value;
-                if (!d || !t) { showToast('Escolhe a data e hora de agendamento.', 'error'); return; }
-                scheduled_at = `${d}T${t}:00`;
+            // Confirmation modal before send (only for 'now' and 'schedule')
+            if (sendType === 'now' || sendType === 'schedule') {
+                const total = (window._wizLastTotalContacts ?? '?').toLocaleString('pt-PT');
+                const nameVal = document.getElementById('wizName')?.value.trim() || 'esta campanha';
+                const m = document.getElementById('wizSendConfirmModal');
+                if (m) {
+                    document.getElementById('wizSendConfirmName').textContent    = nameVal;
+                    document.getElementById('wizSendConfirmRecip').textContent   = total;
+                    document.getElementById('wizSendConfirmAction').textContent  = sendType === 'schedule' ? 'Agendar envio' : 'Enviar agora';
+                    m.classList.remove('hidden'); m.classList.add('flex');
+                    return; // wait for user confirmation
+                }
             }
-            try {
-                _wizSubmitting = true;
-                // Auto-save template from wizard step 2 if blocks were added/edited
-                let templateId = _editingCampaignId ? (_editingTemplateId || null) : null;
-                if (teState.blocks.length) {
-                    const tplName = `${name} — Template`;
-                    const tplMjml = teBuildMjml();
-                    const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
-                        method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplMjml })
-                    });
-                    templateId = tplRes.id || null;
-                }
-                const utm_params = _wizGetUtmParams();
+            _wizDoSubmitStep4(); return;
+        }
+    }
+    async function _wizDoSubmitStep4() {
+        const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
+        const name    = document.getElementById('wizName')?.value.trim() || 'Campanha';
+        const subject = document.getElementById('wizSubject')?.value.trim();
+        const fromName  = document.getElementById('wizFromName')?.value.trim();
+        const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
+        const listIds = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked')).map(cb => cb.dataset.listId).filter(Boolean);
+        let scheduled_at = null;
+        if (sendType === 'schedule') {
+            const d = document.getElementById('wizScheduleDate')?.value;
+            const t = document.getElementById('wizScheduleTime')?.value;
+            if (!d || !t) { showToast('Escolhe a data e hora de agendamento.', 'error'); return; }
+            scheduled_at = `${d}T${t}:00`;
+        }
+        const btn = document.getElementById('wizNextBtn');
+        try {
+            _wizSubmitting = true;
+            if (btn) { btn.disabled = true; btn.textContent = 'A processar…'; }
+            // Auto-save template from wizard step 2 if blocks were added/edited
+            let templateId = _editingCampaignId ? (_editingTemplateId || null) : null;
+            if (teState.blocks.length) {
+                const tplName = `${name} — Template`;
+                const tplMjml = teBuildMjml();
+                const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
+                    method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplMjml })
+                });
+                templateId = tplRes.id || null;
+            }
+            const utm_params = _wizGetUtmParams();
 
-                let campaignId;
-                const wasEditing = !!_editingCampaignId;
-                if (_editingCampaignId) {
-                    // Editing existing draft — PUT
-                    await apiFetch(`/api/campaigns/${_editingCampaignId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params })
-                    });
-                    campaignId = _editingCampaignId;
-                    _editingCampaignId = null;
-                    _editingTemplateId = null;
-                } else {
-                    // New campaign — POST
-                    const res = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
-                        method: 'POST',
-                        body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params })
-                    });
-                    campaignId = res.id;
-                }
+            let campaignId;
+            const wasEditing = !!_editingCampaignId;
+            if (_editingCampaignId) {
+                await apiFetch(`/api/campaigns/${_editingCampaignId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params })
+                });
+                campaignId = _editingCampaignId;
+                _editingCampaignId = null;
+                _editingTemplateId = null;
+            } else {
+                const res = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params })
+                });
+                campaignId = res.id;
+            }
 
-                // Add direct imported contacts (if any)
-                if (_wizDirectContactIds.length && campaignId) {
-                    try {
-                        await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
-                            method: 'POST',
-                            body: JSON.stringify({ contact_ids: _wizDirectContactIds })
-                        });
-                        _wizDirectContactIds = [];
-                        _wizUpdateDirectNotice();
-                    } catch (e) { console.error('add_direct_recipients:', e); }
-                }
+            if (_wizDirectContactIds.length && campaignId) {
+                try {
+                    await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
+                        method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds })
+                    });
+                    _wizDirectContactIds = [];
+                    _wizUpdateDirectNotice();
+                } catch (e) { console.error('add_direct_recipients:', e); }
+            }
 
-                if (sendType === 'now' && campaignId) {
-                    showToast('A iniciar envio…', 'info');
-                    const init = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
-                    if (!init.warning) {
-                        let totalSent = 0, totalFailed = 0, _batches = 0;
-                        while (_batches++ < 500) {
-                            const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_batch`, { method: 'POST' });
-                            totalSent   += r.sent   || 0;
-                            totalFailed += r.failed || 0;
-                            if (r.done || r.warning) break;
-                        }
-                        showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
-                    } else {
-                        showToast(`Campanha marcada como enviada (${init.warning}).`, 'info');
+            if (sendType === 'now' && campaignId) {
+                showToast('A iniciar envio…', 'info');
+                const init = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
+                if (!init.warning) {
+                    let totalSent = 0, totalFailed = 0, _batches = 0;
+                    while (_batches++ < 500) {
+                        const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_batch`, { method: 'POST' });
+                        totalSent   += r.sent   || 0;
+                        totalFailed += r.failed || 0;
+                        if (r.done || r.warning) break;
                     }
-                } else if (sendType === 'schedule') {
-                    showToast('Campanha agendada!');
+                    showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
                 } else {
-                    showToast(wasEditing ? 'Campanha guardada.' : 'Rascunho guardado.');
+                    showToast(`Campanha marcada como enviada (${init.warning}).`, 'info');
                 }
-                _wizClearDraft();
-                showScreen('campaigns');
-                wizShowStep(1);
-                _loadCampaigns(_currentBrand.id);
-            } catch (e) { showToast(e.message, 'error'); }
-            finally { _wizSubmitting = false; }
+            } else if (sendType === 'schedule') {
+                showToast('Campanha agendada!');
+            } else {
+                showToast(wasEditing ? 'Campanha guardada.' : 'Rascunho guardado.');
+            }
+            _wizClearDraft();
+            showScreen('campaigns');
+            wizShowStep(1);
+            _loadCampaigns(_currentBrand.id);
+        } catch (e) { showToast(e.message, 'error'); }
+        finally {
+            _wizSubmitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
         }
     }
     function mockCampaignPrev() { if (_wizStep > 1) wizShowStep(_wizStep - 1); }
+    function _wizSendConfirmClose() {
+        const m = document.getElementById('wizSendConfirmModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+    function _wizSendConfirmProceed() {
+        _wizSendConfirmClose();
+        // Proceed with the actual submission — re-invoke mockCampaignNext bypassing the modal
+        _wizDoSubmitStep4();
+    }
+
     let _wizSavingDraft = false;
     async function wizSaveDraft() {
         if (_wizSavingDraft) return;
@@ -10119,6 +10148,30 @@ ${sections.join('\n\n')}
         <div class="px-6 py-3 border-t border-slate-200 flex justify-between items-center">
             <a onclick="closeBlockPicker();showScreen('blocks')" class="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer">Gerir cabeçalhos & rodapés</a>
             <button onclick="closeBlockPicker()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação de envio do wizard -->
+<div id="wizSendConfirmModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)_wizSendConfirmClose()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            </div>
+            <div>
+                <h3 class="text-base font-semibold text-slate-900">Confirmar envio</h3>
+                <p class="text-sm text-slate-400">Revê os detalhes antes de continuar</p>
+            </div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-4 mb-5 space-y-2">
+            <div class="flex justify-between text-sm"><span class="text-slate-500">Campanha</span><span class="font-medium text-slate-800 text-right max-w-[200px] truncate" id="wizSendConfirmName">—</span></div>
+            <div class="flex justify-between text-sm"><span class="text-slate-500">Destinatários</span><span class="font-semibold text-slate-900" id="wizSendConfirmRecip">—</span></div>
+        </div>
+        <p class="text-xs text-slate-400 mb-5">Esta acção irá enviar ou agendar emails reais. Não é possível desfazer após o início do envio.</p>
+        <div class="flex gap-3">
+            <button onclick="_wizSendConfirmClose()" class="flex-1 px-4 py-2.5 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button id="wizSendConfirmBtn" onclick="_wizSendConfirmProceed()" class="flex-1 px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800"><span id="wizSendConfirmAction">Enviar agora</span></button>
         </div>
     </div>
 </div>
