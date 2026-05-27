@@ -2652,34 +2652,87 @@ ${body}
         await _loadListMembers();
     }
 
-    async function _loadListMembers() {
+    let _listEditCurrentPage = 1;
+    let _listEditTotalCount  = 0;
+    const _LIST_EDIT_PER_PAGE = 50;
+
+    async function _loadListMembers(page) {
+        page = page || 1;
+        _listEditCurrentPage = page;
         const tbody = document.getElementById('listEditMembersBody');
         if (!tbody) return;
         tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         if (!_currentListId) { tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Lista não identificada.</td></tr>`; return; }
         try {
-            const { data } = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&list_id=${_currentListId}&limit=100`);
+            const search = (document.getElementById('listEditFilter')?.value || '').trim();
+            const url = `/api/contacts?brand_id=${_currentBrand.id}&list_id=${_currentListId}&limit=${_LIST_EDIT_PER_PAGE}&page=${page}${search ? '&search='+encodeURIComponent(search) : ''}`;
+            const { data, total } = await apiFetch(url);
+            _listEditTotalCount = total || 0;
             const sBadge = { active:'bg-green-100 text-green-700', suppressed:'bg-red-100 text-red-700', unsubscribed:'bg-yellow-100 text-yellow-700' };
-            const sLbl = { active:'Subscrito', suppressed:'Suprimido', unsubscribed:'Dessubscrito' };
+            const sLbl   = { active:'Subscrito', suppressed:'Suprimido', unsubscribed:'Dessubscrito' };
+            // Update count badge
             const countSpan = document.getElementById('listEditCount');
-            if (countSpan) countSpan.textContent = data.length.toString();
+            if (countSpan) countSpan.textContent = _listEditTotalCount.toLocaleString('pt-PT');
+            // Update page info
             const pageInfo = document.getElementById('listEditPageInfo');
-            if (pageInfo) pageInfo.textContent = `${data.length} contactos`;
-            if (!data.length) {
-                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos nesta lista.</td></tr>`;
-                return;
+            if (pageInfo) {
+                if (_listEditTotalCount === 0) {
+                    pageInfo.textContent = 'Sem contactos';
+                } else {
+                    const start = (page - 1) * _LIST_EDIT_PER_PAGE + 1;
+                    const end   = Math.min(page * _LIST_EDIT_PER_PAGE, _listEditTotalCount);
+                    pageInfo.textContent = `Mostrando ${start}–${end} de ${_listEditTotalCount.toLocaleString('pt-PT')} contactos`;
+                }
             }
-            tbody.innerHTML = data.map(c => `
-                <tr class="hover:bg-slate-50" data-email="${c.email}" data-name="${(c.name||'').toLowerCase()}">
-                    <td class="px-4 py-3 text-slate-900 font-medium">${c.email}</td>
-                    <td class="px-4 py-3 text-slate-600">${c.name||'—'}</td>
-                    <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${sBadge[c.status]||'bg-slate-100 text-slate-700'}">${sLbl[c.status]||c.status}</span></td>
-                    <td class="px-4 py-3 text-slate-500 text-xs">${_fmtDate(c.created_at)}</td>
-                    <td class="px-4 py-3 text-right"><button onclick="apiRemoveContactFromList(this,'${c.id}')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
-                </tr>`).join('');
+            // Render rows
+            if (!data || !data.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos nesta lista.</td></tr>`;
+            } else {
+                tbody.innerHTML = data.map(c => `
+                    <tr class="hover:bg-slate-50" data-email="${c.email}" data-name="${escHtml((c.name||'').toLowerCase())}">
+                        <td class="px-4 py-3 text-slate-900 font-medium">${escHtml(c.email)}</td>
+                        <td class="px-4 py-3 text-slate-600">${escHtml(c.name||'—')}</td>
+                        <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${sBadge[c.status]||'bg-slate-100 text-slate-700'}">${sLbl[c.status]||c.status}</span></td>
+                        <td class="px-4 py-3 text-slate-500 text-xs">${_fmtDate(c.created_at)}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="apiRemoveContactFromList(this,'${c.id}')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                    </tr>`).join('');
+            }
+            // Render pagination buttons
+            _renderListEditPagination();
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
         }
+    }
+
+    function _renderListEditPagination() {
+        const div = document.getElementById('listEditPaginationDiv');
+        if (!div) return;
+        const pages = Math.ceil(_listEditTotalCount / _LIST_EDIT_PER_PAGE);
+        if (pages <= 1) { div.innerHTML = ''; return; }
+        const p = _listEditCurrentPage;
+        // Show at most 5 page buttons around current page
+        const range = [];
+        for (let i = Math.max(1, p - 2); i <= Math.min(pages, p + 2); i++) range.push(i);
+        const btn = (pg, label, active, disabled) =>
+            `<button onclick="listEditGoPage(${pg})" ${disabled ? 'disabled' : ''}
+                class="px-3 py-1 border border-slate-200 rounded text-xs ${active ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'} ${disabled ? 'opacity-40 cursor-default' : ''}">
+                ${label}</button>`;
+        div.innerHTML =
+            btn(p - 1, 'Anterior', false, p === 1) +
+            range.map(pg => btn(pg, pg, pg === p, false)).join('') +
+            btn(p + 1, 'Próxima', false, p === pages);
+    }
+
+    function listEditGoPage(p) {
+        const pages = Math.ceil(_listEditTotalCount / _LIST_EDIT_PER_PAGE);
+        if (p < 1 || p > pages) return;
+        _loadListMembers(p);
+    }
+
+    function filterListEditMembers() {
+        // Debounce: reset to page 1 and reload from API
+        clearTimeout(filterListEditMembers._t);
+        filterListEditMembers._t = setTimeout(() => _loadListMembers(1), 300);
     }
 
     async function apiRemoveContactFromList(btn, contactId) {
@@ -2790,24 +2843,6 @@ ${body}
         const s = document.getElementById('fpSubtitle'); if (s) s.classList.add('hidden');
     }
 
-    // ── List-Edit Pagination ─────────────────────────────
-    let _listEditPage = 1;
-    const _listEditTotal = 4231, _listEditPerPage = 5;
-
-    function listEditGoPage(p) {
-        const pages = Math.ceil(_listEditTotal / _listEditPerPage);
-        if (p < 1 || p > pages) return;
-        _listEditPage = p;
-        const start = (p-1)*_listEditPerPage+1, end = Math.min(p*_listEditPerPage, _listEditTotal);
-        const info = document.getElementById('listEditPageInfo');
-        if (info) info.textContent = `Mostrando ${start}–${end} de ${_listEditTotal.toLocaleString('pt-PT')} contactos`;
-        document.querySelectorAll('.list-edit-page-btn').forEach(b => {
-            const pg = parseInt(b.dataset.page, 10);
-            b.classList.toggle('bg-slate-900', pg === p);
-            b.classList.toggle('text-white', pg === p);
-            b.classList.toggle('hover:bg-slate-50', pg !== p);
-        });
-    }
 
     // ── Team ─────────────────────────────────────────────
     function filterTeam() {
@@ -9460,7 +9495,7 @@ ${sections.join('\n\n')}
                 <!-- Contactos da lista -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-                        <h3 class="font-semibold text-slate-900 text-sm">Contactos <span class="text-slate-400 font-normal">(<span id="listEditCount">4 231</span>)</span></h3>
+                        <h3 class="font-semibold text-slate-900 text-sm">Contactos <span class="text-slate-400 font-normal">(<span id="listEditCount">…</span>)</span></h3>
                         <input id="listEditFilter" type="text" placeholder="Filtrar por email ou nome…" oninput="filterListEditMembers()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 w-56" />
                     </div>
                     <table class="w-full text-sm">
@@ -9474,51 +9509,12 @@ ${sections.join('\n\n')}
                             </tr>
                         </thead>
                         <tbody id="listEditMembersBody" class="divide-y divide-slate-100">
-                            <tr class="hover:bg-slate-50" data-email="joao.silva@empresa.pt" data-name="joão silva">
-                                <td class="px-4 py-3 text-slate-900 font-medium">joao.silva@empresa.pt</td>
-                                <td class="px-4 py-3 text-slate-600">João Silva</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Subscrito</span></td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">12/01/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="ana.costa@mail.pt" data-name="ana costa">
-                                <td class="px-4 py-3 text-slate-900 font-medium">ana.costa@mail.pt</td>
-                                <td class="px-4 py-3 text-slate-600">Ana Costa</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Subscrito</span></td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">03/02/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="marta.f@gmail.com" data-name="marta ferreira">
-                                <td class="px-4 py-3 text-slate-900 font-medium">marta.f@gmail.com</td>
-                                <td class="px-4 py-3 text-slate-600">Marta Ferreira</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Subscrito</span></td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">07/03/2026</td>
-                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="rui.oliveira@empresa.pt" data-name="rui oliveira">
-                                <td class="px-4 py-3 text-slate-900 font-medium">rui.oliveira@empresa.pt</td>
-                                <td class="px-4 py-3 text-slate-600">Rui Oliveira</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span></td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">22/12/2025</td>
-                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
-                            </tr>
-                            <tr class="hover:bg-slate-50" data-email="pedro.nunes@hotmail.com" data-name="pedro nunes">
-                                <td class="px-4 py-3 text-slate-900 font-medium">pedro.nunes@hotmail.com</td>
-                                <td class="px-4 py-3 text-slate-600">Pedro Nunes</td>
-                                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span></td>
-                                <td class="px-4 py-3 text-slate-500 text-xs">18/11/2025</td>
-                                <td class="px-4 py-3 text-right"><button onclick="this.closest('tr').remove();showToast('Contacto removido da lista.')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
-                            </tr>
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>
                         </tbody>
                     </table>
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-                        <span id="listEditPageInfo">Mostrando 1–5 de 4 231 contactos</span>
-                        <div class="flex gap-2">
-                            <button onclick="listEditGoPage(_listEditPage-1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Anterior</button>
-                            <button data-page="1" onclick="listEditGoPage(1)" class="list-edit-page-btn px-3 py-1 border border-slate-200 rounded bg-slate-900 text-white">1</button>
-                            <button data-page="2" onclick="listEditGoPage(2)" class="list-edit-page-btn px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">2</button>
-                            <button onclick="listEditGoPage(_listEditPage+1)" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Próxima</button>
-                        </div>
+                        <span id="listEditPageInfo"></span>
+                        <div id="listEditPaginationDiv" class="flex gap-2"></div>
                     </div>
                 </div>
             </main>
