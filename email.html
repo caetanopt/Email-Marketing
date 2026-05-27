@@ -1522,7 +1522,7 @@
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:14, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14 },
-        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'Imagem', width:600, align:'center' },
+        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'Imagem', width:600, align:'center', href:'' },
         divider: { color:'#e2e8f0', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
         footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
@@ -1536,7 +1536,7 @@
         heading: ['text','level','color','bgColor','fontSize','fontWeight','align','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
         button:  ['text','href','bgColor','textColor','fontSize','fontWeight','padding'],
-        image:   ['src','alt','width','align'],
+        image:   ['src','alt','href','width','align'],
         divider: ['color','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
         footer:  ['text','color','bgColor','fontSize','padding'],
@@ -1910,7 +1910,11 @@
                 break;
             case 'image':
                 d.style.cssText = `background:#ffffff;padding:8px;text-align:${b.align};`;
-                d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;" />`;
+                if (b.href) {
+                    d.innerHTML = `<a href="${teEscape(b.href)}" target="_blank" rel="noopener" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;" /></a>`;
+                } else {
+                    d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;" />`;
+                }
                 break;
             case 'divider': {
                 d.style.cssText = `background:#ffffff;padding:${tePadding(b)};`;
@@ -2318,10 +2322,11 @@ ${body}
                         `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td style="border-radius:6px;background:${b.bgColor||'#0f172a'}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:6px">${b.text||''}</a></td></tr></table>`,
                         b.bgColor2||'#ffffff', pad(b));
                 }
-                case 'image':
-                    return rowPad(
-                        `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}" style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`,
-                        '#ffffff', pad(b));
+                case 'image': {
+                    const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}" style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`;
+                    const imgContent = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener" style="display:block">${imgTag}</a>` : imgTag;
+                    return rowPad(imgContent, '#ffffff', pad(b));
+                }
                 case 'divider':
                     return rowPad(
                         `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:0">`,
@@ -2412,7 +2417,7 @@ ${bodyRows}
             case 'button':
                 return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
             case 'image':
-                return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align}" />`);
+                return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align}"${b.href ? ` href="${b.href}"` : ''} />`);
             case 'divider': {
                 const mjDs = b.borderStyle === 'rounded' ? 'solid' : (b.borderStyle || 'solid');
                 return wrap(`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" />`, ` padding="${teMjmlPad(b)}"`);}
@@ -2463,7 +2468,7 @@ ${bodyRows}
             case 'button':
                 return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
             case 'image':
-                return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" />`;
+                return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''} />`;
             case 'divider':
                 return `${i}<mj-divider border-color="${b.color}" padding="${teMjmlPad(b)}" />`;
             case 'spacer':
