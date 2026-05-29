@@ -964,7 +964,7 @@
                 ).join('');
                 const canManage = _canSeeRolesPanel();
                 const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
-                const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
+                const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
@@ -1142,8 +1142,10 @@
     }
     // ── Brand Access Modal ───────────────────────────────
     let _brandAccessMemberId = null;
-    async function openBrandAccessModal(memberId, memberName) {
+    let _brandAccessMemberRole = null;
+    async function openBrandAccessModal(memberId, memberName, memberRole) {
         _brandAccessMemberId = memberId;
+        _brandAccessMemberRole = memberRole || 'viewer';
         const title = document.getElementById('brandAccessModalTitle');
         if (title) title.textContent = `Marcas — ${memberName}`;
         const list = document.getElementById('brandAccessList');
@@ -1162,18 +1164,10 @@
         if (!list) return;
         if (!brands.length) { list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">Sem marcas disponíveis.</p>`; return; }
         const _ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const roleLabel = { owner:'Administrador', viewer:'Mkt Account' };
         list.innerHTML = `<div class="grid grid-cols-2 gap-x-4">${brands.map((b,i) => `
             <div class="flex items-center gap-3 py-3 ${i % 2 === 0 ? 'border-r border-slate-100 pr-4' : ''} border-b border-slate-100" data-brand-id="${_ea(b.id)}">
                 <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${_ea(b.color||'#94a3b8')}"></div>
                 <span class="flex-1 text-sm font-medium text-slate-800 truncate">${escHtml(b.name)}</span>
-                ${b.has_access
-                    ? `<select onchange="_updateBrandRole(this,'${_ea(b.id)}')"
-                          class="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[90px]">
-                           ${['owner','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
-                       </select>`
-                    : `<span class="text-xs text-slate-300 select-none w-[90px]">—</span>`
-                }
                 <button onclick="_toggleBrandAccess('${_ea(b.id)}',${!b.has_access},this)"
                     title="${b.has_access ? 'Revogar acesso' : 'Dar acesso'}"
                     class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${b.has_access ? 'bg-blue-600' : 'bg-slate-200'}">
@@ -1181,24 +1175,14 @@
                 </button>
             </div>`).join('')}</div>`;
     }
-    async function _updateBrandRole(select, brandId) {
-        const role = select.value;
-        try {
-            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=set_brand_access&member_id=${_brandAccessMemberId}`, {
-                method: 'PUT', body: JSON.stringify({ brand_id: brandId, role, granted: true })
-            });
-            showToast('Função actualizada.');
-        } catch(e) { showToast(e.message || 'Erro ao actualizar.', 'error'); }
-    }
     async function _toggleBrandAccess(brandId, grant, btn) {
         if (btn) btn.disabled = true;
         try {
-            const role = grant ? 'viewer' : undefined;
+            const role = grant ? (_brandAccessMemberRole || 'viewer') : undefined;
             await apiFetch(`/api/brands?id=${_currentBrand.id}&action=set_brand_access&member_id=${_brandAccessMemberId}`, {
                 method: 'PUT', body: JSON.stringify({ brand_id: brandId, role, granted: grant })
             });
             showToast(grant ? 'Acesso concedido.' : 'Acesso revogado.');
-            // Refresh list
             const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=user_brands&member_id=${_brandAccessMemberId}`);
             _renderBrandAccessList(data || []);
         } catch(e) {
