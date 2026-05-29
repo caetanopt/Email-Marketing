@@ -426,7 +426,7 @@
         try {
             const { data, total } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=${_contactsPerPage}&page=${page}`);
             _contactsApiTotal = total || 0;
-            const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Activo</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Suprimido</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Dessubscrito</span>' };
+            const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Ativo</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Cancelado</span>', bounced:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Rejeitado</span>', complained:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700">Marcado como spam</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Suprimido</span>' };
             if (!data.length) {
                 el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos para esta marca.</td></tr>`;
                 _setText('contactsPageInfo', 'Sem contactos');
@@ -2995,8 +2995,8 @@ ${bodyRows}
             const url = `/api/contacts?brand_id=${_currentBrand.id}&list_id=${_currentListId}&limit=${_LIST_EDIT_PER_PAGE}&page=${page}${search ? '&search='+encodeURIComponent(search) : ''}`;
             const { data, total } = await apiFetch(url);
             _listEditTotalCount = total || 0;
-            const sBadge = { active:'bg-green-100 text-green-700', suppressed:'bg-red-100 text-red-700', unsubscribed:'bg-yellow-100 text-yellow-700' };
-            const sLbl   = { active:'Subscrito', suppressed:'Suprimido', unsubscribed:'Dessubscrito' };
+            const sBadge = { active:'bg-green-100 text-green-700', unsubscribed:'bg-amber-100 text-amber-700', bounced:'bg-orange-100 text-orange-700', complained:'bg-rose-100 text-rose-700', suppressed:'bg-slate-100 text-slate-600' };
+            const sLbl   = { active:'Ativo', unsubscribed:'Cancelado', bounced:'Rejeitado', complained:'Marcado como spam', suppressed:'Suprimido' };
             // Update count badge
             const countSpan = document.getElementById('listEditCount');
             if (countSpan) countSpan.textContent = _listEditTotalCount.toLocaleString('pt-PT');
@@ -3190,8 +3190,8 @@ ${bodyRows}
             // Update the table row in-place
             const tr = document.querySelector(`#listEditMembersBody tr[data-contact-id="${_listContactEditId}"]`);
             if (tr) {
-                const sBadge = { active:'bg-green-100 text-green-700', suppressed:'bg-red-100 text-red-700', unsubscribed:'bg-yellow-100 text-yellow-700' };
-                const sLbl   = { active:'Subscrito', suppressed:'Suprimido', unsubscribed:'Dessubscrito' };
+                const sBadge = { active:'bg-green-100 text-green-700', unsubscribed:'bg-amber-100 text-amber-700', bounced:'bg-orange-100 text-orange-700', complained:'bg-rose-100 text-rose-700', suppressed:'bg-slate-100 text-slate-600' };
+                const sLbl   = { active:'Ativo', unsubscribed:'Cancelado', bounced:'Rejeitado', complained:'Marcado como spam', suppressed:'Suprimido' };
                 tr.cells[0].textContent = email;
                 tr.cells[1].textContent = name || '—';
                 tr.cells[2].innerHTML   = `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${sBadge[status]||'bg-slate-100 text-slate-700'}">${sLbl[status]||status}</span>`;
@@ -5435,7 +5435,7 @@ function toggleExportMenu() {
             if (editDanger) editDanger.classList.remove('hidden');
             fillContactForm(c);
         } else {
-            const statusCfg = { active:['bg-green-100 text-green-700','Activo'], suppressed:['bg-red-100 text-red-700','Suprimido'], unsubscribed:['bg-yellow-100 text-yellow-700','Dessubscrito'] };
+            const statusCfg = { active:['bg-green-100 text-green-700','Ativo'], unsubscribed:['bg-amber-100 text-amber-700','Cancelado'], bounced:['bg-orange-100 text-orange-700','Rejeitado'], complained:['bg-rose-100 text-rose-700','Marcado como spam'], suppressed:['bg-slate-100 text-slate-600','Suprimido'] };
             const [cls, lbl] = statusCfg[c.status] || statusCfg.active;
             if (hTitle)    hTitle.textContent = c.name || c.email || '—';
             if (hBadge)    { hBadge.className = `px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`; hBadge.textContent = lbl; }
@@ -8638,10 +8638,11 @@ ${sections.join('\n\n')}
                     </select>
                     <select id="contactStatusFilter" onchange="filterContacts()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                         <option value="">Todos os estados</option>
-                        <option value="active">Activo</option>
+                        <option value="active">Ativo</option>
+                        <option value="unsubscribed">Cancelado</option>
+                        <option value="bounced">Rejeitado</option>
+                        <option value="complained">Marcado como spam</option>
                         <option value="suppressed">Suprimido</option>
-                        <option value="unsubscribed">Dessubscrito</option>
-                        <option value="bounced">Bounce</option>
                     </select>
                 </div>
                 <!-- Barra de acções em massa -->
@@ -8822,9 +8823,11 @@ ${sections.join('\n\n')}
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Estado</label>
                                 <select id="ctStatus" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
-                                    <option value="active">Activo</option>
+                                    <option value="active">Ativo</option>
+                                    <option value="unsubscribed">Cancelado</option>
+                                    <option value="bounced">Rejeitado</option>
+                                    <option value="complained">Marcado como spam</option>
                                     <option value="suppressed">Suprimido</option>
-                                    <option value="unsubscribed">Dessubscrito</option>
                                 </select>
                             </div>
                         </div>
@@ -10081,8 +10084,10 @@ ${sections.join('\n\n')}
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Estado</label>
                 <select id="lceStatus" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
-                    <option value="active">Subscrito</option>
-                    <option value="unsubscribed">Dessubscrito</option>
+                    <option value="active">Ativo</option>
+                    <option value="unsubscribed">Cancelado</option>
+                    <option value="bounced">Rejeitado</option>
+                    <option value="complained">Marcado como spam</option>
                     <option value="suppressed">Suprimido</option>
                 </select>
             </div>

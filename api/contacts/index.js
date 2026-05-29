@@ -98,7 +98,7 @@ module.exports = async function handler(req, res) {
     if (action === 'sync_suppression' && req.method === 'POST') {
       await query(
         `UPDATE contacts c
-         SET status = (CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' ELSE 'suppressed' END)::contact_status
+         SET status = (CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' WHEN s.reason='bounce' THEN 'bounced' WHEN s.reason='spam' THEN 'complained' ELSE 'suppressed' END)::contact_status
          FROM suppression s
          WHERE c.email = s.email AND c.brand_id = $1 AND c.status = 'active'`,
         [brand_id]

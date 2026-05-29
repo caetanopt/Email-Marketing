@@ -106,7 +106,7 @@ module.exports = async (req, res) => {
                 `INSERT INTO suppression (email, reason) SELECT unnest($1::text[]), 'bounce' ON CONFLICT (email) DO NOTHING`,
                 [emails]
               );
-              await q(`UPDATE contacts SET status='suppressed' WHERE email = ANY($1::text[])`, [emails]);
+              await q(`UPDATE contacts SET status='bounced' WHERE email = ANY($1::text[])`, [emails]);
             }
           }
         });
@@ -141,7 +141,7 @@ module.exports = async (req, res) => {
               `INSERT INTO suppression (email, reason) SELECT unnest($1::text[]), 'spam' ON CONFLICT (email) DO NOTHING`,
               [emails]
             );
-            await q(`UPDATE contacts SET status='suppressed' WHERE email = ANY($1::text[])`, [emails]);
+            await q(`UPDATE contacts SET status='complained' WHERE email = ANY($1::text[])`, [emails]);
           }
         });
 
