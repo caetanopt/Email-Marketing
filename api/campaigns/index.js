@@ -86,52 +86,55 @@ module.exports = async function handler(req, res) {
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
   try {
-    // Dashboard aggregates for a brand + range (7d/30d/90d/12m).
     if (action === 'dashboard' && req.method === 'GET') {
       const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || '30d'] || 30;
       const sinceParams = [brand_id, days];
-      const [agg] = await query(
-        `SELECT
-            COUNT(DISTINCT c.id)::int AS campaigns,
-            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int  AS sent,
-            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int AS bounced,
-            COUNT(DISTINCT cr.id)::int AS total_recipients,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
-         FROM campaigns c
-         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-         LEFT JOIN email_events ee ON ee.campaign_id=c.id
-         WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')`,
-        sinceParams
-      );
-      const recent = await query(
-        `SELECT c.id, c.name, c.subject, c.sent_at, c.status,
-                COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
-                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
-                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
-         FROM campaigns c
-         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-         LEFT JOIN email_events ee ON ee.campaign_id=c.id
-         WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
-         GROUP BY c.id ORDER BY c.sent_at DESC NULLS LAST LIMIT 5`,
-        sinceParams
-      );
-      const top = await query(
-        `SELECT c.id, c.name, c.subject, c.sent_at, c.status,
-                COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
-                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
-                COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
-         FROM campaigns c
-         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-         LEFT JOIN email_events ee ON ee.campaign_id=c.id
-         WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
-         GROUP BY c.id
-         HAVING COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent') > 0
-         ORDER BY (COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::float /
-                   NULLIF(COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent'), 0)) DESC NULLS LAST
-         LIMIT 5`,
-        sinceParams
-      );
+      const [[agg], recent, top] = await Promise.all([
+        query(
+          `SELECT
+              COUNT(DISTINCT c.id)::int AS campaigns,
+              COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int  AS sent,
+              COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int AS bounced,
+              COUNT(DISTINCT cr.id)::int AS total_recipients,
+              COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+              COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+           FROM campaigns c
+           LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+           LEFT JOIN email_events ee ON ee.campaign_id=c.id
+           WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')`,
+          sinceParams
+        ),
+        query(
+          `SELECT c.id, c.name, c.subject, c.sent_at, c.status,
+                  COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+           FROM campaigns c
+           LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+           LEFT JOIN email_events ee ON ee.campaign_id=c.id
+           WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
+           GROUP BY c.id ORDER BY c.sent_at DESC NULLS LAST LIMIT 5`,
+          sinceParams
+        ),
+        query(
+          `WITH base AS (
+             SELECT c.id, c.name, c.subject, c.sent_at, c.status,
+                    COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
+                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+             FROM campaigns c
+             LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+             LEFT JOIN email_events ee ON ee.campaign_id=c.id
+             WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
+             GROUP BY c.id
+           )
+           SELECT * FROM base
+           WHERE sent > 0
+           ORDER BY unique_opens::float / NULLIF(sent, 0) DESC NULLS LAST
+           LIMIT 5`,
+          sinceParams
+        ),
+      ]);
       const sent = agg?.sent || 0;
       const openRate   = sent ? +((agg.unique_opens  / sent) * 100).toFixed(1) : 0;
       const clickRate  = sent ? +((agg.unique_clicks / sent) * 100).toFixed(1) : 0;

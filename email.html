@@ -6713,10 +6713,27 @@ ${sections.join('\n\n')}
 
     let _dashRange = '30d';
     const _rangeLabels = { '7d':'7 dias', '30d':'30 dias', '90d':'90 dias', '12m':'12 meses' };
+    const _dashCampaignsById = {};
+    const _escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const _pct = (n, d) => d ? ((n / d) * 100).toFixed(1) : '0';
+
+    function _renderDashTable(elId, rows, rowFn, emptyColspan) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        if (!rows.length) {
+            el.innerHTML = `<tr><td colspan="${emptyColspan}" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
+            return;
+        }
+        rows.forEach(c => { _dashCampaignsById[c.id] = c; });
+        el.innerHTML = rows.map((c, i, arr) => rowFn(c, i, arr)).join('');
+        el.onclick = e => {
+            const tr = e.target.closest('tr[data-cid]');
+            if (tr) showCampaign(null, _dashCampaignsById[tr.dataset.cid]);
+        };
+    }
 
     function setDashRange(range) {
         _dashRange = range;
-        // Update button styles
         document.querySelectorAll('.dash-range-btn').forEach(btn => {
             const active = btn.getAttribute('data-range') === range;
             btn.className = `dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
@@ -6726,13 +6743,11 @@ ${sections.join('\n\n')}
 
     async function renderDashboardRange(brandId, range) {
         const lbl = _rangeLabels[range] || range;
-        // Update KPI labels
         _setText('dash-campaigns-label', `Campanhas enviadas (${lbl})`);
         _setText('dash-emails-label', `Emails enviados (${lbl})`);
         _setText('dash-metrics-title', `Métricas globais (${lbl})`);
         _setText('dash-openrate-sub', `Campanhas enviadas (${lbl})`);
         _setText('dash-top-title', `Top campanhas (${lbl})`);
-        // Loading state
         ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '…'));
         let r;
         try {
@@ -6740,11 +6755,9 @@ ${sections.join('\n\n')}
         } catch (e) {
             console.error('dashboard fetch:', e);
             ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '—'));
-            const topElErr = document.getElementById('dashTopCampaigns');
-            if (topElErr) topElErr.innerHTML = `<tr><td colspan="4" class="px-5 py-8 text-center text-slate-400 text-sm">Erro ao carregar.</td></tr>`;
+            _renderDashTable('dashTopCampaigns', [], null, 4);
             return;
         }
-        // KPI values
         _setText('dash-campaigns', (r.campaigns||0).toLocaleString('pt-PT'));
         _setText('dash-emails',    (r.emails||0).toLocaleString('pt-PT'));
         _setText('dash-openrate',  r.openRate + '%');
@@ -6754,65 +6767,32 @@ ${sections.join('\n\n')}
         _setBarWidth('dash-open-bar',   r.openRate);
         _setBarWidth('dash-click-bar',  r.clickRate);
         _setBarWidth('dash-bounce-bar', r.bounceRate);
-        // Recent campaigns
-        const rcEl = document.getElementById('dashRecentCampaigns');
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        if (rcEl) {
-            const recent = r.recent || [];
-            if (!recent.length) {
-                rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
-            } else {
-                window._dashCampaignsCache = recent;
-                rcEl.innerHTML = recent.map((c, i) => {
-                    const sent = c.sent || 0;
-                    const open  = sent ? ((c.unique_opens  / sent) * 100).toFixed(1) : '0';
-                    const click = sent ? ((c.unique_clicks / sent) * 100).toFixed(1) : '0';
-                    return `<tr class="${i<recent.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign(null, _dashCampaignsCache[${i}])">
-                        <td class="px-5 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-400">${escHtml(c.subject||'—')}</p></td>
-                        <td class="px-4 py-3 text-xs text-slate-500">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</td>
-                        <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${open}% abertos</span><span class="text-blue-600">${click}% cliques</span></div></td>
-                    </tr>`;
-                }).join('');
-            }
-        }
-        // Top campaigns by open rate
-        const topEl = document.getElementById('dashTopCampaigns');
-        if (topEl) {
-            const top = r.top || [];
-            if (!top.length) {
-                topEl.innerHTML = `<tr><td colspan="4" class="px-5 py-8 text-center text-slate-400 text-sm">Sem campanhas neste período.</td></tr>`;
-            } else {
-                window._dashTopCampaignsCache = top;
-                topEl.innerHTML = top.map((c, i) => {
-                    const sent = c.sent || 0;
-                    const openPct  = sent ? +((c.unique_opens  / sent) * 100).toFixed(1) : 0;
-                    const clickPct = sent ? +((c.unique_clicks / sent) * 100).toFixed(1) : 0;
-                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}º`;
-                    return `<tr class="${i<top.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer" onclick="showCampaign(null, _dashTopCampaignsCache[${i}])">
-                        <td class="px-4 py-3 text-center text-sm w-8">${medal}</td>
-                        <td class="px-4 py-3"><p class="font-medium text-slate-900 text-sm">${escHtml(c.name)}</p><p class="text-xs text-slate-400">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</p></td>
-                        <td class="px-4 py-3 text-right">
-                            <p class="text-sm font-semibold text-green-700">${openPct}%</p>
-                            <p class="text-xs text-slate-400">abertura</p>
-                        </td>
-                        <td class="px-4 py-3 text-right">
-                            <p class="text-sm font-medium text-blue-600">${clickPct}%</p>
-                            <p class="text-xs text-slate-400">cliques</p>
-                        </td>
-                    </tr>`;
-                }).join('');
-            }
-        }
+        _renderDashTable('dashRecentCampaigns', r.recent || [], (c, i, arr) => {
+            const sent = c.sent || 0;
+            return `<tr data-cid="${c.id}" class="${i<arr.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer">
+                <td class="px-5 py-3"><p class="font-medium text-slate-900">${_escHtml(c.name)}</p><p class="text-xs text-slate-400">${_escHtml(c.subject||'—')}</p></td>
+                <td class="px-4 py-3 text-xs text-slate-500">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</td>
+                <td class="px-4 py-3 text-right"><div class="flex items-center gap-3 justify-end text-xs"><span class="text-slate-500">${_pct(c.unique_opens, sent)}% abertos</span><span class="text-blue-600">${_pct(c.unique_clicks, sent)}% cliques</span></div></td>
+            </tr>`;
+        }, 3);
+        _renderDashTable('dashTopCampaigns', r.top || [], (c, i, arr) => {
+            const sent = c.sent || 0;
+            const medal = ['🥇','🥈','🥉'][i] ?? `${i+1}º`;
+            return `<tr data-cid="${c.id}" class="${i<arr.length-1?'border-b border-slate-50':''} hover:bg-slate-50 cursor-pointer">
+                <td class="px-4 py-3 text-center text-sm w-8">${medal}</td>
+                <td class="px-4 py-3"><p class="font-medium text-slate-900 text-sm">${_escHtml(c.name)}</p><p class="text-xs text-slate-400">${c.sent_at ? _fmtDate(c.sent_at) : '—'}</p></td>
+                <td class="px-4 py-3 text-right"><p class="text-sm font-semibold text-green-700">${_pct(c.unique_opens, sent)}%</p><p class="text-xs text-slate-400">abertura</p></td>
+                <td class="px-4 py-3 text-right"><p class="text-sm font-medium text-blue-600">${_pct(c.unique_clicks, sent)}%</p><p class="text-xs text-slate-400">cliques</p></td>
+            </tr>`;
+        }, 4);
     }
 
     async function renderBrandData(brandId) {
-        // Wizard sender defaults: always "Caetano" as from_name; info@caetano.pt for caetano brand, info@{brandId}.caetano.pt for others
         const fromName = document.getElementById('wizFromName');
         const fromEmail = document.getElementById('wizFromEmail');
         if (fromName) fromName.value = 'Caetano';
         if (fromEmail) fromEmail.value = brandId === 'caetano' ? 'info@caetano.pt' : `info@${brandId}.caetano.pt`;
 
-        // Dashboard KPIs — reset while loading
         _setText('dash-campaigns', '…');
         _setText('dash-emails', '—');
         _setText('dash-openrate', '—');
@@ -6820,25 +6800,20 @@ ${sections.join('\n\n')}
         _setText('dash-click-val', '—');
         _setText('dash-bounce-val', '—');
 
-        // Recent campaigns placeholder
         const rcEl = document.getElementById('dashRecentCampaigns');
         if (rcEl) rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
 
-        // Imports table (kept as empty — not yet backed by API)
         const impEl = document.getElementById('importsTbody');
         if (impEl) impEl.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
 
-        // Reset dashboard range to 30d (button styling) before fetching
         _dashRange = '30d';
         document.querySelectorAll('.dash-range-btn').forEach(btn => {
             const active = btn.getAttribute('data-range') === '30d';
             btn.className = `dash-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
         });
 
-        // Clear screen cache — brand changed, all screens need fresh data
         _screenLoaded.clear();
 
-        // Load all sections in parallel
         await Promise.allSettled([
             _loadContacts(brandId),
             _loadCampaigns(brandId),
