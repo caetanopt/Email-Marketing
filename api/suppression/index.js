@@ -13,7 +13,13 @@ function verifyToken(email, brandId, token) {
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
-  const { brand_id, search, reason, page = 1, limit = 50, action, email: qEmail, token } = req.query;
+  const { brand_id, search, reason, page = 1, limit = 50, action, email: qEmail, token, type } = req.query;
+
+  const DOMAIN_RE = /^@?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+  function normaliseDomain(v) {
+    const d = v.trim().toLowerCase().replace(/^@/, '');
+    return DOMAIN_RE.test(d) ? '@' + d : null;
+  }
 
   // Public brand info for the unsubscribe page header (name + color only).
   if (action === 'brand_info' && brand_id) {
@@ -100,11 +106,20 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      // ?type=domain → return only blocked domains (@domain.com entries)
+      if (type === 'domain') {
+        const rows = await query(
+          `SELECT id, email, reason, created_at FROM suppression
+           WHERE email LIKE '@%' ORDER BY created_at DESC`
+        );
+        return res.status(200).json({ data: rows });
+      }
+
       const filterParams = [];
-      const conditions = [];
+      const conditions = ['email NOT LIKE \'@%\'']; // exclude domain entries from the email list
       if (search) { filterParams.push(`%${search}%`); conditions.push(`email ILIKE $${filterParams.length}`); }
       if (reason) { filterParams.push(reason); conditions.push(`reason=$${filterParams.length}`); }
-      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const where = `WHERE ${conditions.join(' AND ')}`;
       const [countResult] = await query(
         `SELECT COUNT(*) FROM suppression ${where}`, filterParams
       );
@@ -144,8 +159,24 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, inserted: valid.length });
       }
 
-      const { email, reason } = req.body || {};
-      if (!email) return res.status(400).json({ error: 'Email obrigatório' });
+      const { email, reason, type: entryType } = req.body || {};
+      if (!email) return res.status(400).json({ error: 'Email ou domínio obrigatório' });
+
+      if (entryType === 'domain') {
+        const d = normaliseDomain(email);
+        if (!d) return res.status(400).json({ error: 'Domínio inválido. Exemplo: example.com' });
+        await query(
+          "INSERT INTO suppression (email, reason) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING",
+          [d, reason || 'manual']
+        );
+        // Suppress all contacts matching this domain
+        await query(
+          "UPDATE contacts SET status='suppressed' WHERE email ILIKE $1",
+          ['%@' + d.slice(1)]
+        );
+        return res.status(201).json({ ok: true, domain: d });
+      }
+
       const e = email.toLowerCase().trim();
       await query(
         "INSERT INTO suppression (email, reason) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING",

@@ -3224,14 +3224,42 @@ ${bodyRows}
     }
 
     // ── Suppression ──────────────────────────────────────
-    function openAddSuppressionModal() {
-        const e = document.getElementById('suppEmailInput');
+    let _suppEntryType = 'email';
+
+    function _suppSetType(t) {
+        _suppEntryType = t;
+        const btnEmail  = document.getElementById('suppTypeEmail');
+        const btnDomain = document.getElementById('suppTypeDomain');
+        const label     = document.getElementById('suppInputLabel');
+        const hint      = document.getElementById('suppInputHint');
+        const input     = document.getElementById('suppEmailInput');
+        const active    = 'flex-1 px-3 py-1.5 rounded-md bg-white shadow-sm text-slate-900 transition-colors';
+        const inactive  = 'flex-1 px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-700 transition-colors';
+        if (t === 'email') {
+            if (btnEmail)  btnEmail.className  = active;
+            if (btnDomain) btnDomain.className = inactive;
+            if (label) label.textContent = 'Email *';
+            if (input) input.placeholder = 'email@exemplo.pt';
+            if (hint)  hint.classList.add('hidden');
+        } else {
+            if (btnEmail)  btnEmail.className  = inactive;
+            if (btnDomain) btnDomain.className = active;
+            if (label) label.textContent = 'Domínio *';
+            if (input) input.placeholder = 'exemplo.pt';
+            if (hint)  hint.classList.remove('hidden');
+        }
+        if (input) { input.value = ''; input.focus(); }
+    }
+
+    function openAddSuppressionModal(type) {
         const r = document.getElementById('suppReasonSelect');
-        if (e) e.value = '';
         if (r) r.value = 'manual';
+        _suppSetType(type || 'email');
         const m = document.getElementById('addSuppressionModal');
         if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
     }
+
+    function _suppAddDomain() { openAddSuppressionModal('domain'); }
 
     function closeAddSuppressionModal() {
         const m = document.getElementById('addSuppressionModal');
@@ -3239,14 +3267,60 @@ ${bodyRows}
     }
 
     async function confirmAddSuppression() {
-        const email = document.getElementById('suppEmailInput')?.value.trim();
+        const val    = document.getElementById('suppEmailInput')?.value.trim();
         const reason = document.getElementById('suppReasonSelect')?.value || 'manual';
-        if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
+        if (!val) { showToast('Preenche o campo obrigatório.', 'error'); return; }
+
+        if (_suppEntryType === 'domain') {
+            const domain = val.replace(/^@/, '').toLowerCase();
+            if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
+                showToast('Domínio inválido. Exemplo: exemplo.pt', 'error'); return;
+            }
+            try {
+                await apiFetch('/api/suppression', { method: 'POST', body: JSON.stringify({ email: domain, reason, type: 'domain' }) });
+                closeAddSuppressionModal();
+                showToast(`Domínio @${domain} bloqueado.`);
+                _loadBlockedDomains();
+            } catch (e) { showToast(e.message, 'error'); }
+            return;
+        }
+
+        if (!_isValidEmail(val)) { showToast('Insira um email válido.', 'error'); return; }
         try {
-            await apiFetch(`/api/suppression`, { method: 'POST', body: JSON.stringify({ email, reason }) });
+            await apiFetch('/api/suppression', { method: 'POST', body: JSON.stringify({ email: val, reason }) });
             closeAddSuppressionModal();
-            showToast(`${email} adicionado à supressão.`);
+            showToast(`${val} adicionado à supressão.`);
             _loadSuppression();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function _loadBlockedDomains() {
+        const el = document.getElementById('suppDomainList');
+        if (!el) return;
+        try {
+            const { data } = await apiFetch('/api/suppression?type=domain');
+            if (!data.length) {
+                el.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">Nenhum domínio bloqueado.</p>';
+                return;
+            }
+            const fmt = d => new Date(d).toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
+            el.innerHTML = data.map(r => `
+                <div class="flex items-center justify-between px-5 py-3 hover:bg-slate-50">
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-xs font-mono font-medium border border-red-100">${escHtml(r.email)}</span>
+                        <span class="text-xs text-slate-400">${fmt(r.created_at)}</span>
+                    </div>
+                    <button onclick="removeBlockedDomain('${escHtml(r.email)}')" class="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 transition-colors">Remover</button>
+                </div>`).join('');
+        } catch (e) { el.innerHTML = `<p class="px-5 py-6 text-sm text-red-400 text-center">${escHtml(e.message)}</p>`; }
+    }
+
+    async function removeBlockedDomain(domain) {
+        if (!confirm(`Remover bloqueio do domínio ${domain}?`)) return;
+        try {
+            await apiFetch('/api/suppression', { method: 'DELETE', body: JSON.stringify({ email: domain }) });
+            showToast(`Domínio ${domain} removido da supressão.`);
+            _loadBlockedDomains();
         } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -6440,6 +6514,7 @@ ${sections.join('\n\n')}
                     if (location.hash !== hash) history.pushState({ screen: 'campaignReport', id: _currentCampaign.id }, '', hash);
                 }
             }
+            if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -7172,6 +7247,7 @@ ${sections.join('\n\n')}
             _loadCampaigns(brandId),
             _loadLists(brandId),
             _loadSuppression(),
+            _loadBlockedDomains(),
             _loadTemplates(brandId),
             renderDashboardRange(brandId, '30d'),
         ]);
@@ -9766,6 +9842,24 @@ ${sections.join('\n\n')}
                         </div>
                     </div>
                 </div>
+                <!-- Domínios bloqueados -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Domínios bloqueados</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Todos os emails com estes domínios são automaticamente bloqueados.</p>
+                        </div>
+                        <button onclick="_suppAddDomain()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Adicionar domínio
+                        </button>
+                    </div>
+                    <div id="suppDomainList" class="divide-y divide-slate-100">
+                        <p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>
+                    </div>
+                </div>
+
+                <!-- Emails individuais -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
                         <h3 id="suppCount" class="font-semibold text-slate-900 text-sm">312 endereços suprimidos</h3>
@@ -10646,12 +10740,18 @@ ${sections.join('\n\n')}
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div class="px-6 pt-6 pb-4 border-b border-slate-100">
             <h2 class="text-lg font-semibold text-slate-900">Adicionar à Supressão</h2>
-            <p class="text-sm text-slate-500 mt-1">Este endereço deixará de receber emails desta marca imediatamente.</p>
+            <p class="text-sm text-slate-500 mt-1">O endereço ou domínio deixará de receber emails imediatamente.</p>
         </div>
         <div class="px-6 py-5 space-y-4">
+            <!-- Type toggle -->
+            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium w-full">
+                <button id="suppTypeEmail" type="button" onclick="_suppSetType('email')" class="flex-1 px-3 py-1.5 rounded-md bg-white shadow-sm text-slate-900 transition-colors">Email individual</button>
+                <button id="suppTypeDomain" type="button" onclick="_suppSetType('domain')" class="flex-1 px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-700 transition-colors">Domínio</button>
+            </div>
             <div>
-                <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email *</label>
-                <input id="suppEmailInput" type="email" placeholder="email@exemplo.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                <label id="suppInputLabel" class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email *</label>
+                <input id="suppEmailInput" type="text" placeholder="email@exemplo.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                <p id="suppInputHint" class="hidden text-xs text-slate-400 mt-1">Todos os emails com este domínio serão bloqueados. Ex: <code class="bg-slate-100 px-1 rounded">exemplo.pt</code></p>
             </div>
             <div>
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Motivo</label>
