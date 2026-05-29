@@ -120,16 +120,28 @@ module.exports = async function handler(req, res) {
            WHERE b.active = TRUE ORDER BY b.name`,
           [user.id]
         );
+        // Member's account-level role (their role in the current brand)
+        const accountRoleRow = await query(
+          'SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2',
+          [member_id, id]
+        );
+        const accountRole = accountRoleRow[0]?.role || 'viewer';
         // Brands already accessible to the target member
         const memberRoles = await query(
-          `SELECT brand_id, role FROM user_brand_roles WHERE user_id = $1`,
+          `SELECT brand_id FROM user_brand_roles WHERE user_id = $1`,
           [member_id]
         );
-        const roleMap = Object.fromEntries(memberRoles.map(r => [r.brand_id, r.role]));
+        const accessSet = new Set(memberRoles.map(r => r.brand_id));
+        // Normalise any existing per-brand roles that differ from the account role
+        await query(
+          `UPDATE user_brand_roles SET role=$1
+           WHERE user_id=$2 AND role<>$1`,
+          [accountRole, member_id]
+        );
         const result = allBrands.map(b => ({
           ...b,
-          has_access: !!roleMap[b.id],
-          role: roleMap[b.id] || null,
+          has_access: accessSet.has(b.id),
+          role: accessSet.has(b.id) ? accountRole : null,
         }));
         return res.status(200).json({ data: result });
       }
@@ -366,11 +378,16 @@ module.exports = async function handler(req, res) {
     if (req.method === 'PUT' && id && action === 'set_brand_access' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes alterar o teu próprio acesso' });
-      const { brand_id: targetBrandId, role: targetRole, granted } = req.body || {};
+      const { brand_id: targetBrandId, granted } = req.body || {};
       if (!targetBrandId) return res.status(400).json({ error: 'brand_id obrigatório' });
       // Verify current user has admin access to the target brand too
       if (!await isAdmin(user.id, targetBrandId)) return res.status(403).json({ error: 'Sem permissão na marca de destino' });
-      const safeRole = ['owner','editor','viewer'].includes(targetRole) ? targetRole : 'editor';
+      // Always use the member's account-level role (role in the current brand `id`)
+      const accountRoleRow = await query(
+        'SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2',
+        [member_id, id]
+      );
+      const safeRole = accountRoleRow[0]?.role === 'owner' ? 'owner' : 'viewer';
       if (granted) {
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
