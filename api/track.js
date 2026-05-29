@@ -54,12 +54,13 @@ module.exports = async (req, res) => {
         try { body = JSON.parse(raw); } catch { return res.status(400).end(); }
       }
 
-      // SNS subscription confirmation — auto-confirm
       if (msgType === 'SubscriptionConfirmation' || body.Type === 'SubscriptionConfirmation') {
-        const url = body.SubscribeURL;
-        if (url && url.startsWith('https://sns.')) {
-          await fetch(url);
-        }
+        try {
+          const parsed = new URL(body.SubscribeURL || '');
+          if (parsed.protocol === 'https:' && parsed.hostname.endsWith('.amazonaws.com')) {
+            await fetch(parsed.href);
+          }
+        } catch {}
         return res.status(200).json({ ok: true, confirmed: true });
       }
 

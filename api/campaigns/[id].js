@@ -6,7 +6,11 @@ const crypto = require('crypto');
 function trackToken(campaignId, contactId) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET)
     .update(`track:${campaignId}:${contactId}`)
-    .digest('hex').slice(0, 16);
+    .digest('hex');
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function unsubToken(email, brandId) {
@@ -496,11 +500,11 @@ module.exports = async function handler(req, res) {
                 console.warn(`Campaign ${id}: template stored as MJML — re-save to convert to HTML.`);
               }
               let rawHtml = rawContent
-                .replace(/\{\{name\}\}/g, contact.name||contact.email)
-                .replace(/\{\{email\}\}/g, contact.email)
+                .replace(/\{\{name\}\}/g, escHtml(contact.name || contact.email))
+                .replace(/\{\{email\}\}/g, escHtml(contact.email))
                 .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
               for (const [k, v] of Object.entries(vars)) {
-                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || '');
+                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), escHtml(v || ''));
               }
               rawHtml = injectTracking(rawHtml, id, contact.contact_id);
               const finalHtml = rawHtml.includes('</body>')
@@ -659,7 +663,7 @@ module.exports = async function handler(req, res) {
         }
         let rawHtml = (c.html_content||'<p>Sem conteúdo de template.</p>')
           .replace(/\{\{name\}\}/g, 'Utilizador Teste')
-          .replace(/\{\{email\}\}/g, to)
+          .replace(/\{\{email\}\}/g, escHtml(to))
           .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
         rawHtml = injectTrackingTest(rawHtml);
         const finalHtml = rawHtml.includes('</body>')
