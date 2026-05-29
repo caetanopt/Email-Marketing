@@ -1,19 +1,6 @@
-/**
- * /api/track
- *
- * GET ?type=open&cid=<campaignId>&uid=<contactId>&t=<token>
- *   → Returns a 1×1 transparent GIF and records the open in email_events.
- *
- * GET ?type=click&cid=<campaignId>&uid=<contactId>&t=<token>&url=<destination>
- *   → Redirects to destination URL and records the click in email_events.
- *
- * POST (also routed from /api/webhooks via vercel.json rewrite)
- *   → Handles AWS SES notifications via SNS (bounce, complaint, open, click).
- */
-const { query } = require('../lib/db');
+const { query, transaction } = require('../lib/db');
 const crypto = require('crypto');
 
-// 1×1 transparent GIF (base64)
 const PIXEL = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   'base64'
@@ -35,7 +22,6 @@ function rawBody(req) {
 }
 
 module.exports = async (req, res) => {
-  // ── POST: AWS SNS / SES webhook ────────────────────────────────
   if (req.method === 'POST') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -64,7 +50,6 @@ module.exports = async (req, res) => {
         return res.status(200).json({ ok: true, confirmed: true });
       }
 
-      // SNS notification wrapping SES event
       let sesEvent = body;
       if (body.Type === 'Notification' && body.Message) {
         try { sesEvent = JSON.parse(body.Message); } catch { return res.status(400).end(); }
@@ -78,81 +63,87 @@ module.exports = async (req, res) => {
         const isPermanent = bounce.bounceType === 'Permanent';
         const isTransient = bounce.bounceType === 'Transient';
 
-        for (const r of recipients) {
-          const email = r.emailAddress?.toLowerCase();
-          if (!email) continue;
+        await transaction(async (q) => {
+          const eventRows = [];
 
-          if (isPermanent) {
-            const rows = await query(
-              `UPDATE campaign_recipients SET status='bounced', error_message=$2
-               WHERE email=$1 AND status IN ('sent','retry') RETURNING campaign_id, contact_id`,
-              [email, r.diagnosticCode || 'Hard bounce']
-            );
-            for (const row of rows) {
-              await query(
-                `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
-                [row.campaign_id, row.contact_id]
-              );
-            }
-            await query(
-              "INSERT INTO suppression (email, reason) VALUES ($1,'bounce') ON CONFLICT (email) DO NOTHING",
-              [email]
-            );
-            await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
+          for (const r of recipients) {
+            const email = r.emailAddress?.toLowerCase();
+            if (!email) continue;
 
-          } else if (isTransient) {
-            const rows = await query(
-              `UPDATE campaign_recipients
-               SET retry_count = COALESCE(retry_count, 0) + 1,
-                   error_message = $2,
-                   status = CASE WHEN COALESCE(retry_count, 0) >= 2 THEN 'failed' ELSE 'retry' END
-               WHERE email=$1 AND status IN ('sent','retry')
-               RETURNING campaign_id, contact_id, status, retry_count`,
-              [email, r.diagnosticCode || 'Soft bounce']
-            );
-            for (const row of rows) {
-              await query(
-                `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
-                [row.campaign_id, row.contact_id]
+            if (isTransient) {
+              const rows = await q(
+                `UPDATE campaign_recipients
+                 SET retry_count = COALESCE(retry_count, 0) + 1,
+                     error_message = $2,
+                     status = CASE WHEN COALESCE(retry_count, 0) >= 2 THEN 'failed' ELSE 'retry' END
+                 WHERE email=$1 AND status IN ('sent','retry')
+                 RETURNING campaign_id, contact_id`,
+                [email, r.diagnosticCode || 'Soft bounce']
               );
-            }
-          } else {
-            const rows = await query(
-              `UPDATE campaign_recipients SET status='bounced', error_message=$2
-               WHERE email=$1 AND status IN ('sent','retry') RETURNING campaign_id, contact_id`,
-              [email, r.diagnosticCode || 'Bounce']
-            );
-            for (const row of rows) {
-              await query(
-                `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'bounce',NOW())`,
-                [row.campaign_id, row.contact_id]
+              eventRows.push(...rows);
+            } else {
+              const rows = await q(
+                `UPDATE campaign_recipients SET status='bounced', error_message=$2
+                 WHERE email=$1 AND status IN ('sent','retry') RETURNING campaign_id, contact_id`,
+                [email, r.diagnosticCode || (isPermanent ? 'Hard bounce' : 'Bounce')]
               );
+              eventRows.push(...rows);
             }
           }
-        }
+
+          if (eventRows.length) {
+            const vals = eventRows.map((_, i) => `($${i*2+1},$${i*2+2},'bounce',NOW())`).join(',');
+            await q(
+              `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ${vals}`,
+              eventRows.flatMap(r => [r.campaign_id, r.contact_id])
+            );
+          }
+
+          if (isPermanent) {
+            const emails = recipients.map(r => r.emailAddress?.toLowerCase()).filter(Boolean);
+            if (emails.length) {
+              await q(
+                `INSERT INTO suppression (email, reason) SELECT unnest($1::text[]), 'bounce' ON CONFLICT (email) DO NOTHING`,
+                [emails]
+              );
+              await q(`UPDATE contacts SET status='suppressed' WHERE email = ANY($1::text[])`, [emails]);
+            }
+          }
+        });
 
       } else if (eventType === 'complaint') {
         const complaint = sesEvent.complaint || {};
         const recipients = complaint.complainedRecipients || [];
-        for (const r of recipients) {
-          const email = r.emailAddress?.toLowerCase();
-          if (!email) continue;
-          const rows = await query(
-            `UPDATE campaign_recipients SET status='failed' WHERE email=$1 AND status='sent' RETURNING campaign_id, contact_id`,
-            [email]
-          );
-          for (const row of rows) {
-            await query(
-              `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1,$2,'spam',NOW()) ON CONFLICT DO NOTHING`,
-              [row.campaign_id, row.contact_id]
+
+        await transaction(async (q) => {
+          const eventRows = [];
+          for (const r of recipients) {
+            const email = r.emailAddress?.toLowerCase();
+            if (!email) continue;
+            const rows = await q(
+              `UPDATE campaign_recipients SET status='failed' WHERE email=$1 AND status='sent' RETURNING campaign_id, contact_id`,
+              [email]
+            );
+            eventRows.push(...rows);
+          }
+
+          if (eventRows.length) {
+            const vals = eventRows.map((_, i) => `($${i*2+1},$${i*2+2},'spam',NOW())`).join(',');
+            await q(
+              `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ${vals} ON CONFLICT DO NOTHING`,
+              eventRows.flatMap(r => [r.campaign_id, r.contact_id])
             );
           }
-          await query(
-            "INSERT INTO suppression (email, reason) VALUES ($1,'spam') ON CONFLICT (email) DO NOTHING",
-            [email]
-          );
-          await query("UPDATE contacts SET status='suppressed' WHERE email=$1", [email]);
-        }
+
+          const emails = recipients.map(r => r.emailAddress?.toLowerCase()).filter(Boolean);
+          if (emails.length) {
+            await q(
+              `INSERT INTO suppression (email, reason) SELECT unnest($1::text[]), 'spam' ON CONFLICT (email) DO NOTHING`,
+              [emails]
+            );
+            await q(`UPDATE contacts SET status='suppressed' WHERE email = ANY($1::text[])`, [emails]);
+          }
+        });
 
       } else if (eventType === 'open') {
         const mail = sesEvent.mail || {};
@@ -185,7 +176,6 @@ module.exports = async (req, res) => {
     }
   }
 
-  // ── GET: pixel/click tracking ──────────────────────────────────
   const { type, cid, uid, t, url } = req.query;
 
   if (type === 'click') {
@@ -204,8 +194,7 @@ module.exports = async (req, res) => {
       if (isNaN(campaignId) || isNaN(contactId)) return;
 
       await query(
-        `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at)
-         VALUES ($1, $2, 'click', $3, NOW())`,
+        `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
         [campaignId, contactId, url || null]
       );
     } catch (e) {
@@ -214,7 +203,6 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // Default: open pixel
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -231,8 +219,7 @@ module.exports = async (req, res) => {
     if (isNaN(campaignId) || isNaN(contactId)) return;
 
     await query(
-      `INSERT INTO email_events (campaign_id, contact_id, type, created_at)
-       VALUES ($1, $2, 'open', NOW())`,
+      `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1, $2, 'open', NOW())`,
       [campaignId, contactId]
     );
   } catch (e) {

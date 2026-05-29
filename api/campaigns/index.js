@@ -1,5 +1,6 @@
-const { SESClient, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
+const { GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../../lib/db');
+const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -11,13 +12,9 @@ module.exports = async function handler(req, res) {
 
   // SES quota — does not require brand_id
   if (action === 'ses-quota' && req.method === 'GET') {
-    const region = process.env.AWS_REGION || process.env.AWS_SES_REGION;
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-    if (!accessKeyId || !secretAccessKey || !region) return res.status(200).json({ configured: false });
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) return res.status(200).json({ configured: false });
     try {
-      const client = new SESClient({ region, credentials: { accessKeyId, secretAccessKey } });
-      const { Max24HourSend, SentLast24Hours, MaxSendRate } = await client.send(new GetSendQuotaCommand({}));
+      const { Max24HourSend, SentLast24Hours, MaxSendRate } = await getSESClient().send(new GetSendQuotaCommand({}));
       return res.status(200).json({
         configured: true,
         max24h: Math.floor(Max24HourSend),
@@ -226,6 +223,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
 };

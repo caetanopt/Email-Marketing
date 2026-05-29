@@ -1,6 +1,7 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const { getSESClient } = require('../../lib/ses');
+const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 
 function trackToken(campaignId, contactId) {
@@ -173,16 +174,30 @@ module.exports = async function handler(req, res) {
            GROUP BY bucket ORDER BY bucket LIMIT 168`, [id]
         );
         const segments = await query(
-          `SELECT l.id, l.name,
-                  COUNT(DISTINCT cr.contact_id)::int AS sent,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS opens,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS clicks
-           FROM campaign_lists cl
-           JOIN lists l ON l.id = cl.list_id
-           JOIN list_members lm ON lm.list_id = l.id
-           JOIN campaign_recipients cr ON cr.campaign_id = cl.campaign_id AND cr.contact_id = lm.contact_id AND cr.status='sent'
-           LEFT JOIN email_events ee ON ee.campaign_id = cl.campaign_id AND ee.contact_id = lm.contact_id
-           WHERE cl.campaign_id = $1
+          `WITH cr_list AS (
+             SELECT DISTINCT lm.list_id, cr.contact_id
+             FROM campaign_recipients cr
+             JOIN list_members lm ON lm.contact_id = cr.contact_id
+             JOIN campaign_lists cl ON cl.list_id = lm.list_id AND cl.campaign_id = cr.campaign_id
+             WHERE cr.campaign_id = $1 AND cr.status = 'sent'
+           ),
+           ee_agg AS (
+             SELECT contact_id,
+                    bool_or(type = 'open')  AS opened,
+                    bool_or(type = 'click') AS clicked
+             FROM email_events
+             WHERE campaign_id = $1 AND type IN ('open', 'click')
+             GROUP BY contact_id
+           )
+           SELECT l.id, l.name,
+                  COUNT(DISTINCT cl2.contact_id)::int AS sent,
+                  COUNT(DISTINCT CASE WHEN ea.opened  THEN cl2.contact_id END)::int AS opens,
+                  COUNT(DISTINCT CASE WHEN ea.clicked THEN cl2.contact_id END)::int AS clicks
+           FROM campaign_lists cl_base
+           JOIN lists l ON l.id = cl_base.list_id
+           LEFT JOIN cr_list cl2 ON cl2.list_id = cl_base.list_id
+           LEFT JOIN ee_agg ea ON ea.contact_id = cl2.contact_id
+           WHERE cl_base.campaign_id = $1
            GROUP BY l.id, l.name
            ORDER BY sent DESC`, [id]
         );
@@ -437,13 +452,7 @@ module.exports = async function handler(req, res) {
         }
 
         const c = camp[0];
-        const sesClient = new SESClient({
-          region: process.env.AWS_REGION || 'eu-west-1',
-          credentials: {
-            accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-          },
-        });
+        const sesClient = getSESClient();
 
         const fromDomain = process.env.FROM_DOMAIN || 'caetano.pt';
         const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
@@ -629,13 +638,7 @@ module.exports = async function handler(req, res) {
         if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY)
           return res.status(400).json({ error: 'AWS SES não configurado' });
 
-        const sesClientTest = new SESClient({
-          region: process.env.AWS_REGION || 'eu-west-1',
-          credentials: {
-            accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-          },
-        });
+        const sesClientTest = getSESClient();
         const c = camp[0];
         const appUrlT = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
@@ -698,7 +701,7 @@ module.exports = async function handler(req, res) {
               [c.brand_id, id, to, (err.message||'').slice(0, 500), user.id]
             );
           } catch (e) { if (e.code !== '42P01') console.error('send log test fail:', e); }
-          return res.status(500).json({ error: 'Falha no envio SES', detail: err.message });
+          return res.status(500).json({ error: 'Falha no envio SES' });
         }
       }
 
@@ -706,6 +709,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
 };

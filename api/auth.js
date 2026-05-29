@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
         brands,
       });
     } catch (err) {
-      return res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+      return res.status(500).json({ error: 'Erro de servidor' });
     }
   }
 
@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
       );
       return res.status(200).json({ user: users[0], brands });
     } catch (err) {
-      return res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+      return res.status(500).json({ error: 'Erro de servidor' });
     }
   }
 
@@ -86,7 +86,7 @@ module.exports = async function handler(req, res) {
       );
       return res.status(200).json({ ok: true });
     } catch (err) {
-      return res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+      return res.status(500).json({ error: 'Erro de servidor' });
     }
   }
 

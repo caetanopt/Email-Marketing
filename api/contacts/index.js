@@ -140,6 +140,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
 };

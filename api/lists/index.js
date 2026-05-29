@@ -1,11 +1,7 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { withAuth } = require('../../lib/auth');
 
-module.exports = async function handler(req, res) {
-  if (cors(req, res)) return;
-  const user = requireAuth(req, res);
-  if (!user) return;
-
+module.exports = withAuth(async (req, res, user) => {
   const { brand_id } = req.query;
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
@@ -36,6 +32,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
-};
+});

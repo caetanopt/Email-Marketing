@@ -1,10 +1,7 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { withAuth } = require('../../lib/auth');
 
-module.exports = async function handler(req, res) {
-  if (cors(req, res)) return;
-  const user = requireAuth(req, res);
-  if (!user) return;
+module.exports = withAuth(async (req, res, user) => {
 
   const { brand_id, id } = req.query;
 
@@ -25,7 +22,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     } catch (e) {
       if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 020_custom_icons.sql' });
-      return res.status(500).json({ error: 'Erro de servidor', detail: e.message });
+      return res.status(500).json({ error: 'Erro de servidor' });
     }
   }
 
@@ -64,6 +61,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
-};
+});

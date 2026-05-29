@@ -1,7 +1,8 @@
 const bcrypt = require('bcryptjs');
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const dns = require('dns').promises;
 const { query } = require('../../lib/db');
+const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
 
 // ── DNS health check (SPF / DKIM / DMARC) ──────────────────────
@@ -322,11 +323,7 @@ module.exports = async function handler(req, res) {
 
       if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
         try {
-          const sesClient = new SESClient({
-            region: process.env.AWS_REGION || 'eu-west-1',
-            credentials: { accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY },
-          });
-          await sesClient.send(new SendEmailCommand({
+          await getSESClient().send(new SendEmailCommand({
             Source: `"${fromName}" <${fromEmail}>`,
             Destination: { ToAddresses: [email.toLowerCase().trim()] },
             Message: {
@@ -481,6 +478,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
 };

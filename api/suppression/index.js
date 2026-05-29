@@ -125,7 +125,8 @@ module.exports = async function handler(req, res) {
       if (req.query.action === 'bulk') {
         const { emails } = req.body || {};
         if (!Array.isArray(emails) || !emails.length) return res.status(400).json({ error: 'emails[] obrigatório' });
-        const valid = emails.filter(r => r && typeof r.email === 'string' && r.email.includes('@'))
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const valid = emails.filter(r => r && typeof r.email === 'string' && emailRe.test(r.email.trim()))
           .map(r => ({ email: r.email.toLowerCase().trim(), reason: r.reason || 'manual' }));
         if (!valid.length) return res.status(400).json({ error: 'Nenhum email válido encontrado' });
         const vals = valid.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',');
@@ -163,6 +164,6 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor', detail: err.message });
+    res.status(500).json({ error: 'Erro de servidor' });
   }
 };
