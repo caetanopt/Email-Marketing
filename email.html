@@ -2809,12 +2809,15 @@ ${bodyRows}
                 tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos nesta lista.</td></tr>`;
             } else {
                 tbody.innerHTML = data.map(c => `
-                    <tr class="hover:bg-slate-50" data-email="${c.email}" data-name="${escHtml((c.name||'').toLowerCase())}">
+                    <tr class="hover:bg-slate-50" data-contact-id="${c.id}" data-email="${escHtml(c.email)}" data-name="${escHtml((c.name||'').toLowerCase())}">
                         <td class="px-4 py-3 text-slate-900 font-medium">${escHtml(c.email)}</td>
                         <td class="px-4 py-3 text-slate-600">${escHtml(c.name||'—')}</td>
                         <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${sBadge[c.status]||'bg-slate-100 text-slate-700'}">${sLbl[c.status]||c.status}</span></td>
                         <td class="px-4 py-3 text-slate-500 text-xs">${_fmtDate(c.created_at)}</td>
-                        <td class="px-4 py-3 text-right"><button onclick="apiRemoveContactFromList(this,'${c.id}')" class="text-xs text-red-500 hover:text-red-700">Remover</button></td>
+                        <td class="px-4 py-3 text-right flex items-center justify-end gap-3">
+                            <button onclick="openListContactEdit('${c.id}')" class="text-xs text-slate-500 hover:text-slate-900">Editar</button>
+                            <button onclick="apiRemoveContactFromList(this,'${c.id}')" class="text-xs text-red-500 hover:text-red-700">Remover</button>
+                        </td>
                     </tr>`).join('');
             }
             // Render pagination buttons
@@ -2883,12 +2886,74 @@ ${bodyRows}
         _loadLists(_currentBrand.id);
     }
 
-    function filterListEditMembers() {
-        const q = (document.getElementById('listEditFilter')?.value || '').toLowerCase();
-        document.querySelectorAll('#listEditMembersBody tr').forEach(tr => {
-            const m = !q || (tr.dataset.email||'').toLowerCase().includes(q) || (tr.dataset.name||'').toLowerCase().includes(q);
-            tr.style.display = m ? '' : 'none';
-        });
+    // ── List Contact Edit Modal ──────────────────────────
+    let _listContactEditId = null;
+
+    async function openListContactEdit(contactId) {
+        _listContactEditId = contactId;
+        const modal = document.getElementById('listContactEditModal');
+        if (!modal) return;
+        // Clear form and show loading state
+        ['lceEmail','lceName','lcePhone','lceCompany'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        const st = document.getElementById('lceStatus'); if (st) st.value = 'active';
+        const saveBtn = document.getElementById('lceSubmitBtn');
+        if (saveBtn) saveBtn.disabled = true;
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+        try {
+            const c = await apiFetch(`/api/contacts/${contactId}`);
+            document.getElementById('lceEmail').value   = c.email   || '';
+            document.getElementById('lceName').value    = c.name    || '';
+            document.getElementById('lcePhone').value   = c.phone   || '';
+            document.getElementById('lceCompany').value = c.company || '';
+            document.getElementById('lceStatus').value  = c.status  || 'active';
+        } catch (e) {
+            closeListContactEditModal();
+            showToast('Erro ao carregar contacto: ' + e.message, 'error');
+            return;
+        }
+        if (saveBtn) saveBtn.disabled = false;
+    }
+
+    function closeListContactEditModal() {
+        const modal = document.getElementById('listContactEditModal');
+        if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+        _listContactEditId = null;
+    }
+
+    async function saveListContactEdit() {
+        if (!_listContactEditId) return;
+        const email   = document.getElementById('lceEmail')?.value.trim();
+        const name    = document.getElementById('lceName')?.value.trim();
+        const phone   = document.getElementById('lcePhone')?.value.trim();
+        const company = document.getElementById('lceCompany')?.value.trim();
+        const status  = document.getElementById('lceStatus')?.value || 'active';
+        if (!email) { showToast('O email é obrigatório.', 'error'); return; }
+        if (!_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
+        const saveBtn = document.getElementById('lceSubmitBtn');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'A guardar…'; }
+        try {
+            await apiFetch(`/api/contacts/${_listContactEditId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ name, email, phone, company, status })
+            });
+            // Update the table row in-place
+            const tr = document.querySelector(`#listEditMembersBody tr[data-contact-id="${_listContactEditId}"]`);
+            if (tr) {
+                const sBadge = { active:'bg-green-100 text-green-700', suppressed:'bg-red-100 text-red-700', unsubscribed:'bg-yellow-100 text-yellow-700' };
+                const sLbl   = { active:'Subscrito', suppressed:'Suprimido', unsubscribed:'Dessubscrito' };
+                tr.cells[0].textContent = email;
+                tr.cells[1].textContent = name || '—';
+                tr.cells[2].innerHTML   = `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${sBadge[status]||'bg-slate-100 text-slate-700'}">${sLbl[status]||status}</span>`;
+                tr.dataset.email = email;
+                tr.dataset.name  = (name||'').toLowerCase();
+            }
+            closeListContactEditModal();
+            showToast('Contacto actualizado.');
+        } catch (e) {
+            showToast(e.message, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+        }
     }
 
     // ── Suppression ──────────────────────────────────────
@@ -9732,6 +9797,52 @@ ${sections.join('\n\n')}
 <!-- ═══════════════════════════════════════════════════════════════════
      ECRÃ — EDITAR LISTA
 ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL — EDITAR CONTACTO (da lista)
+═══════════════════════════════════════════════════════════════════ -->
+<div id="listContactEditModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4" onclick="if(event.target===this)closeListContactEditModal()">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+            <h2 class="text-base font-semibold text-slate-900">Editar Contacto</h2>
+            <button onclick="closeListContactEditModal()" class="text-slate-400 hover:text-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Email <span class="text-red-500">*</span></label>
+                <input id="lceEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="email@exemplo.com" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Nome</label>
+                <input id="lceName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Nome do contacto" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Telefone</label>
+                    <input id="lcePhone" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="+351 900 000 000" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Empresa</label>
+                    <input id="lceCompany" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Empresa" />
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Estado</label>
+                <select id="lceStatus" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    <option value="active">Subscrito</option>
+                    <option value="unsubscribed">Dessubscrito</option>
+                    <option value="suppressed">Suprimido</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200">
+            <button onclick="closeListContactEditModal()" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
+            <button id="lceSubmitBtn" onclick="saveListContactEdit()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">Guardar</button>
+        </div>
+    </div>
+</div>
+
 <div id="listEdit" class="screen fade-in">
     <div class="min-h-screen bg-slate-50 flex">
         <div data-sidebar-slot></div>
