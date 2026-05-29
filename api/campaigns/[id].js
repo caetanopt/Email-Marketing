@@ -4,6 +4,10 @@ const { getSESClient } = require('../../lib/ses');
 const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 
+const APP_URL = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+const FROM_DOMAIN = process.env.FROM_DOMAIN || 'caetano.pt';
+const DEFAULT_COMPANY_ADDRESS = process.env.COMPANY_ADDRESS || 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
+
 function trackToken(campaignId, contactId) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET)
     .update(`track:${campaignId}:${contactId}`)
@@ -387,7 +391,6 @@ module.exports = async function handler(req, res) {
         if (!total) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas ou contactos importados directamente.' });
 
         // CAN-SPAM: ensure physical address is set (use brand default if not configured)
-        const DEFAULT_COMPANY_ADDRESS = 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
         const [brand] = await query(`SELECT variables FROM brands WHERE id=$1`, [camp[0].brand_id]);
         const brandVars = brand?.variables || {};
         if (!brandVars.company_address) {
@@ -454,10 +457,8 @@ module.exports = async function handler(req, res) {
         const c = camp[0];
         const sesClient = getSESClient();
 
-        const fromDomain = process.env.FROM_DOMAIN || 'caetano.pt';
-        const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName   = c.from_name  || c.brand_from_name  || 'PrimeMail';
-        const fromEmail  = c.from_email || c.brand_from_email || `info@${fromDomain}`;
+        const fromEmail  = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo    = c.reply_to   || c.brand_reply_to   || undefined;
 
         const utmParams = c.utm_params || {};
@@ -483,7 +484,7 @@ module.exports = async function handler(req, res) {
               dest = `${dest}${sep}${utmStr}`;
             }
             const tok = trackToken(campaignId, contactId);
-            const redirect = `${appUrl}/api/track?type=click&cid=${campaignId}&uid=${contactId}&t=${tok}&url=${encodeURIComponent(dest)}`;
+            const redirect = `${APP_URL}/api/track?type=click&cid=${campaignId}&uid=${contactId}&t=${tok}&url=${encodeURIComponent(dest)}`;
             return `href="${redirect}"`;
           });
         }
@@ -495,13 +496,12 @@ module.exports = async function handler(req, res) {
           await Promise.all(pending.slice(i, i + RATE).map(async contact => {
             try {
               const token = unsubToken(contact.email, c.brand_id);
-              const unsubUrl = `${appUrl}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
+              const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
               const trackTok = trackToken(id, contact.contact_id);
-              const pixelUrl = `${appUrl}/api/track?type=open&cid=${id}&uid=${contact.contact_id}&t=${trackTok}`;
+              const pixelUrl = `${APP_URL}/api/track?type=open&cid=${id}&uid=${contact.contact_id}&t=${trackTok}`;
               const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
                 <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
               </div><img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
-              const DEFAULT_COMPANY_ADDRESS = 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
               const rawContent = c.html_content || '';
@@ -640,11 +640,10 @@ module.exports = async function handler(req, res) {
 
         const sesClientTest = getSESClient();
         const c = camp[0];
-        const appUrlT = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
         const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
-        const fromEmail = c.from_email || c.brand_from_email || `info@caetano.pt`;
+        const fromEmail = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
-        const unsubUrl = `${appUrlT}#unsubscribe`;
+        const unsubUrl = `${APP_URL}#unsubscribe`;
         const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
           <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo PrimeMail.</p>
           <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
@@ -660,7 +659,7 @@ module.exports = async function handler(req, res) {
             let dest = url;
             if (utmStrT) { const sep = dest.includes('?') ? '&' : '?'; dest = `${dest}${sep}${utmStrT}`; }
             // For test emails use contact_id=0 and no HMAC — easy to recognise in logs
-            const redirect = `${appUrlT}/api/track?type=click&cid=${id}&uid=0&t=test&url=${encodeURIComponent(dest)}`;
+            const redirect = `${APP_URL}/api/track?type=click&cid=${id}&uid=0&t=test&url=${encodeURIComponent(dest)}`;
             return `href="${redirect}"`;
           });
         }

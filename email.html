@@ -545,8 +545,7 @@
                 if (wizLists) wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis.</p>`;
                 return;
             }
-            const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            el.innerHTML = data.map(l => `
+                el.innerHTML = data.map(l => `
                 <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
                     <td class="px-4 py-3 font-medium text-slate-900">${escHtml(l.name)}</td>
                     <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
@@ -3193,7 +3192,6 @@ ${bodyRows}
         if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
         empty.classList.add('hidden');
         const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         list.innerHTML = items.map(b => `
             <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                 <div class="h-32 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer relative" onclick="_blockEdit(${b.id})">
@@ -3218,7 +3216,6 @@ ${bodyRows}
         if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
         empty.classList.add('hidden');
         const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         list.innerHTML = items.map(b => `
             <div class="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-sm transition-shadow flex flex-col">
                 <div class="h-24 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
@@ -3364,7 +3361,6 @@ ${bodyRows}
         }
         empty.classList.add('hidden');
         const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         grid.innerHTML = items.map(m => `
             <div class="group relative bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
                 <div class="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
@@ -3524,7 +3520,6 @@ ${bodyRows}
             return;
         }
         const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         list.innerHTML = filtered.map(m => `
             <button onclick="_mediaPickerSelect('${escAttr(m.url)}')" class="text-left bg-white border border-slate-200 rounded-lg overflow-hidden hover:border-slate-900 hover:shadow-md transition-all">
                 <div class="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
@@ -5335,8 +5330,7 @@ function toggleExportMenu() {
                 return;
             }
             const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            list.innerHTML = data.map(b => `
+                list.innerHTML = data.map(b => `
                 <button data-block-id="${escAttr(String(b.id))}" onclick="pickBlock(this.dataset.blockId)" class="w-full flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 text-left transition-colors">
                     <div class="w-24 h-16 bg-slate-50 rounded overflow-hidden flex-shrink-0">
                         <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
@@ -6116,8 +6110,7 @@ ${sections.join('\n\n')}
                 tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
                 return;
             }
-            const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            const stCfg = {
+                const stCfg = {
                 completed: ['bg-green-100 text-green-700', 'Concluído'],
                 partial:   ['bg-amber-100 text-amber-700', 'Parcial'],
                 failed:    ['bg-red-100 text-red-700',     'Falhou'],
@@ -6297,7 +6290,6 @@ ${sections.join('\n\n')}
             suppressed: ['bg-slate-100 text-slate-600',   'Suprimido'],
             pending:    ['bg-slate-100 text-slate-500',   'Pendente'],
         };
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         tb.innerHTML = rows.slice(0, 500).map(r => {
             const [bg, lbl] = stCfg[r.status] || ['bg-slate-100 text-slate-600', r.status||'—'];
             const when = r.sent_at || r.attempted_at;
@@ -6320,7 +6312,6 @@ ${sections.join('\n\n')}
             if (hl) hl.classList.add('hidden');
             return;
         }
-        const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         body.innerHTML = rows.map(s => {
             const sent = s.sent || 0;
             const openPct  = sent ? ((s.opens  / sent) * 100).toFixed(1) : '0';
