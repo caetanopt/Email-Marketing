@@ -3413,7 +3413,9 @@ ${bodyRows}
                         <span class="mt-0.5 text-${ok ? 'green' : 'red'}-500">${ok ? '✓' : '✗'}</span>
                         <div class="flex-1 min-w-0">
                             <p class="text-xs font-semibold text-slate-900">${c.label} <span class="font-normal text-slate-400">— ${c.desc}</span></p>
-                            ${rec ? `<p class="text-[10px] font-mono text-slate-400 truncate mt-0.5" title="${escHtml(rec)}">${escHtml(rec.slice(0,120))}${rec.length>120?'…':''}</p>` : `<p class="text-[10px] text-red-500 mt-0.5">Não encontrado${c.key==='dkim' ? ' (verifica selector no AWS SES)' : ''}</p>`}
+                            ${rec
+                                ? `<p class="text-[10px] font-mono ${ok ? 'text-slate-400' : 'text-amber-600'} truncate mt-0.5" title="${escHtml(rec)}">${escHtml(rec.slice(0,140))}${rec.length>140?'…':''}</p>`
+                                : `<p class="text-[10px] text-red-500 mt-0.5">Não encontrado${c.key==='dkim' ? ' — adiciona os 3 registos CNAME no teu DNS (obtém-nos no Amazon SES → Identities)' : ''}</p>`}
                         </div>
                     </div>`;
                 }).join('')}`;

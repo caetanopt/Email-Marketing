@@ -11,16 +11,55 @@ async function checkDnsRecord(domain) {
   async function resolveTxt(host) {
     try { return await dns.resolveTxt(host); } catch { return []; }
   }
+  async function resolveCname(host) {
+    try { return await dns.resolveCname(host); } catch { return []; }
+  }
+
   // SPF — look for v=spf1 in TXT records of the domain
   const spfTxt = await resolveTxt(domain);
   const spfRecord = spfTxt.flat().find(r => r.startsWith('v=spf1'));
 
-  // DKIM — try common SES selectors: mail._domainkey, ses._domainkey, amazonses._domainkey
+  // DKIM — AWS SES Easy DKIM uses 3 random-selector CNAME records.
+  // Ask SES for the tokens, then confirm the CNAMEs resolve in DNS.
   let dkimRecord = null;
-  for (const selector of ['mail', 'ses', 'amazonses']) {
-    const recs = await resolveTxt(`${selector}._domainkey.${domain}`);
-    const found = recs.flat().find(r => r.includes('DKIM1') || r.includes('p='));
-    if (found) { dkimRecord = found; break; }
+  let dkimOk = false;
+
+  try {
+    const { GetIdentityDkimAttributesCommand } = require('@aws-sdk/client-ses');
+    const { DkimAttributes } = await getSESClient().send(
+      new GetIdentityDkimAttributesCommand({ Identities: [domain] })
+    );
+    const attrs = DkimAttributes?.[domain];
+    const tokens = attrs?.DkimTokens || [];
+    if (tokens.length) {
+      if (attrs.DkimVerificationStatus === 'Success') {
+        // Confirm first CNAME is live in DNS
+        const cnameHost = `${tokens[0]}._domainkey.${domain}`;
+        const cnames = await resolveCname(cnameHost);
+        dkimRecord = cnames[0] || `${tokens[0]}.dkim.amazonses.com`;
+        dkimOk = true;
+      } else {
+        // SES issued tokens but CNAMEs not yet created/propagated
+        dkimRecord = `${tokens[0]}._domainkey.${domain} → ${tokens[0]}.dkim.amazonses.com`;
+        dkimOk = false;
+      }
+    }
+  } catch (_) {}
+
+  // Fallback: TXT-based DKIM (non-SES or missing AWS credentials)
+  if (!dkimOk && !dkimRecord) {
+    for (const selector of ['mail', 'ses', 'amazonses', 'default']) {
+      const recs = await resolveTxt(`${selector}._domainkey.${domain}`);
+      const found = recs.flat().find(r => r.includes('DKIM1') || r.includes('p='));
+      if (found) { dkimRecord = found; dkimOk = true; break; }
+    }
+  }
+  // Fallback: CNAME-based DKIM with common selectors
+  if (!dkimOk && !dkimRecord) {
+    for (const selector of ['mail', 'ses', 'amazonses']) {
+      const cnames = await resolveCname(`${selector}._domainkey.${domain}`);
+      if (cnames.length) { dkimRecord = cnames[0]; dkimOk = true; break; }
+    }
   }
 
   // DMARC — _dmarc.domain TXT
@@ -30,7 +69,7 @@ async function checkDnsRecord(domain) {
   return {
     domain,
     spf:   { ok: !!spfRecord,   record: spfRecord   || null },
-    dkim:  { ok: !!dkimRecord,  record: dkimRecord  || null },
+    dkim:  { ok: dkimOk,        record: dkimRecord  || null },
     dmarc: { ok: !!dmarcRecord, record: dmarcRecord || null },
   };
 }
