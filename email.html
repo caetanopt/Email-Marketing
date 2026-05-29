@@ -3235,18 +3235,21 @@ ${bodyRows}
         const input     = document.getElementById('suppEmailInput');
         const active    = 'flex-1 px-3 py-1.5 rounded-md bg-white shadow-sm text-slate-900 transition-colors';
         const inactive  = 'flex-1 px-3 py-1.5 rounded-md text-slate-500 hover:text-slate-700 transition-colors';
+        const reasonWrap = document.getElementById('suppReasonWrap');
         if (t === 'email') {
             if (btnEmail)  btnEmail.className  = active;
             if (btnDomain) btnDomain.className = inactive;
             if (label) label.textContent = 'Email *';
             if (input) input.placeholder = 'email@exemplo.pt';
             if (hint)  hint.classList.add('hidden');
+            if (reasonWrap) reasonWrap.classList.remove('hidden');
         } else {
             if (btnEmail)  btnEmail.className  = inactive;
             if (btnDomain) btnDomain.className = active;
             if (label) label.textContent = 'Domínio *';
             if (input) input.placeholder = 'exemplo.pt';
             if (hint)  hint.classList.remove('hidden');
+            if (reasonWrap) reasonWrap.classList.add('hidden');
         }
         if (input) { input.value = ''; input.focus(); }
     }
@@ -10795,7 +10798,7 @@ ${sections.join('\n\n')}
                 <input id="suppEmailInput" type="text" placeholder="email@exemplo.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                 <p id="suppInputHint" class="hidden text-xs text-slate-400 mt-1">Todos os emails com este domínio serão bloqueados. Ex: <code class="bg-slate-100 px-1 rounded">exemplo.pt</code></p>
             </div>
-            <div>
+            <div id="suppReasonWrap">
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Motivo</label>
                 <select id="suppReasonSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                     <option value="manual">Manual</option>
