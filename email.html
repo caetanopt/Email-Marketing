@@ -2818,6 +2818,165 @@ ${bodyRows}
         _renderListExtraFieldsDef();
     }
 
+    // ── List Import Modal ──────────────────────────────────────────
+    let _liFile = null;
+    let _liTab  = 'csv';
+
+    function openListImportModal() {
+        _liFile = null;
+        _liTab  = 'csv';
+        const m = document.getElementById('listImportModal');
+        if (!m) return;
+        // Reset UI
+        document.getElementById('liDropEmpty').classList.remove('hidden');
+        const filled = document.getElementById('liDropFilled');
+        filled.classList.add('hidden'); filled.classList.remove('flex');
+        const zone = document.getElementById('liDropZone');
+        zone.classList.remove('border-green-400','bg-green-50','border-slate-900','scale-[1.01]');
+        zone.classList.add('border-slate-200','bg-slate-50');
+        const btn = document.getElementById('liSubmitBtn');
+        if (btn) btn.disabled = true;
+        _liSetTab('csv');
+        m.classList.remove('hidden'); m.classList.add('flex');
+    }
+
+    function closeListImportModal() {
+        const m = document.getElementById('listImportModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+
+    function _liSetTab(tab) {
+        _liTab = tab;
+        const isTxt = tab === 'txt';
+        const csvBtn = document.getElementById('liTabCsv');
+        const txtBtn = document.getElementById('liTabTxt');
+        const active = 'px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-900 shadow-sm transition-colors';
+        const inactive = 'px-3 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors';
+        if (csvBtn) csvBtn.className = isTxt ? inactive : active;
+        if (txtBtn) txtBtn.className = isTxt ? active : inactive;
+        const hint = document.getElementById('liDropHint');
+        if (hint) hint.textContent = isTxt ? 'Ficheiro .txt — um email por linha' : 'Ficheiro .csv — separador auto-detectado';
+        const infoCsv = document.getElementById('liInfoCsv');
+        const infoTxt = document.getElementById('liInfoTxt');
+        if (infoCsv) infoCsv.classList.toggle('hidden', isTxt);
+        if (infoTxt) infoTxt.classList.toggle('hidden', !isTxt);
+    }
+
+    function _liPickFile() {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.csv,.txt';
+        inp.onchange = () => {
+            const f = inp.files?.[0];
+            if (!f) return;
+            _liFile = f;
+            if (f.name.toLowerCase().endsWith('.txt')) _liSetTab('txt'); else _liSetTab('csv');
+            _liShowFilled(f.name);
+        };
+        inp.click();
+    }
+
+    function _liDragOver(el) {
+        el.classList.remove('border-slate-200','bg-slate-50');
+        el.classList.add('border-slate-900','bg-slate-100','scale-[1.01]');
+    }
+
+    function _liDragLeave(el) {
+        if (document.getElementById('liDropFilled')?.classList.contains('flex')) return;
+        el.classList.remove('border-slate-900','bg-slate-100','scale-[1.01]');
+        el.classList.add('border-slate-200','bg-slate-50');
+    }
+
+    function _liDropFile(e) {
+        const file = e.dataTransfer?.files?.[0];
+        if (!file) return;
+        _liFile = file;
+        if (file.name.toLowerCase().endsWith('.txt')) _liSetTab('txt'); else _liSetTab('csv');
+        _liShowFilled(file.name);
+    }
+
+    function _liShowFilled(name) {
+        document.getElementById('liDropEmpty').classList.add('hidden');
+        const filled = document.getElementById('liDropFilled');
+        filled.classList.remove('hidden'); filled.classList.add('flex');
+        document.getElementById('liDropFileName').textContent = name;
+        const zone = document.getElementById('liDropZone');
+        zone.classList.remove('border-slate-200','bg-slate-50','border-slate-900','scale-[1.01]');
+        zone.classList.add('border-green-400','bg-green-50');
+        const btn = document.getElementById('liSubmitBtn');
+        if (btn) btn.disabled = false;
+    }
+
+    function _liClearFile() {
+        _liFile = null;
+        document.getElementById('liDropEmpty').classList.remove('hidden');
+        const filled = document.getElementById('liDropFilled');
+        filled.classList.add('hidden'); filled.classList.remove('flex');
+        const zone = document.getElementById('liDropZone');
+        zone.classList.remove('border-green-400','bg-green-50','border-slate-900','scale-[1.01]');
+        zone.classList.add('border-slate-200','bg-slate-50');
+        const btn = document.getElementById('liSubmitBtn');
+        if (btn) btn.disabled = true;
+    }
+
+    async function _liStartImport() {
+        const btn = document.getElementById('liSubmitBtn');
+        if (!btn || btn.disabled) return;
+        if (!_liFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…';
+        try {
+            const text = await _liFile.text();
+            const isTxt = _liTab === 'txt';
+            let rows = [];
+            if (isTxt) {
+                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
+            } else {
+                rows = _parseCsv(text);
+            }
+            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); btn.disabled = false; btn.innerHTML = 'Importar'; return; }
+
+            let imported = 0, failed = 0;
+            const CHUNK = 5;
+            for (let i = 0; i < rows.length; i += CHUNK) {
+                const chunk = rows.slice(i, i + CHUNK);
+                await Promise.all(chunk.map(async c => {
+                    try {
+                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
+                        imported++;
+                        if (_currentListId && r.id) {
+                            try { await apiFetch(`/api/lists/${_currentListId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch (err) { console.error(err); }
+                        }
+                    } catch (err) { failed++; console.error('import contact failed:', err); }
+                }));
+            }
+            // Record import history
+            try {
+                const listName = document.getElementById('listEditTitle')?.textContent?.replace('Editar — ','') || null;
+                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        file_name: _liFile.name,
+                        list_id: _currentListId,
+                        list_name: listName,
+                        total_rows: rows.length,
+                        imported, skipped: rows.length - imported - failed, failed,
+                        status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed'),
+                    })
+                });
+            } catch (err) { console.error('record import:', err); }
+            // Sync suppression
+            try { await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=sync_suppression`, { method: 'POST' }); } catch(e) { console.error(e); }
+
+            closeListImportModal();
+            showToast(`${imported} contacto${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''}${failed ? `, ${failed} falha${failed !== 1 ? 's' : ''}` : ''}.`);
+            _loadListMembers(1);
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = 'Importar';
+            showToast('Erro: ' + e.message, 'error');
+        }
+    }
+
     let _listEditCurrentPage = 1;
     let _listEditTotalCount  = 0;
     const _LIST_EDIT_PER_PAGE = 50;
@@ -9936,6 +10095,70 @@ ${sections.join('\n\n')}
     </div>
 </div>
 
+<!-- ── List Import Modal ─────────────────────────────────────────── -->
+<div id="listImportModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4" onclick="if(event.target===this)closeListImportModal()">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+            <div class="flex items-center gap-3">
+                <h2 class="text-base font-semibold text-slate-900">Importar contactos</h2>
+                <div class="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                    <button onclick="_liSetTab('csv')" id="liTabCsv" class="px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-900 shadow-sm transition-colors">CSV</button>
+                    <button onclick="_liSetTab('txt')" id="liTabTxt" class="px-3 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">TXT (só emails)</button>
+                </div>
+            </div>
+            <button onclick="closeListImportModal()" class="text-slate-400 hover:text-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <!-- Zona de drop -->
+            <div id="liDropZone"
+                 ondragover="event.preventDefault();_liDragOver(this)"
+                 ondragleave="_liDragLeave(this)"
+                 ondrop="event.preventDefault();_liDropFile(event)"
+                 class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl transition-all select-none overflow-hidden">
+                <div id="liDropEmpty" onclick="_liPickFile()"
+                     class="flex flex-col items-center justify-center min-h-[100px] py-6 px-6 cursor-pointer text-center hover:bg-slate-100 transition-colors">
+                    <svg class="w-7 h-7 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro aqui ou clica para escolher</p>
+                    <p id="liDropHint" class="text-xs text-slate-400">Ficheiro .csv — separador auto-detectado</p>
+                </div>
+                <div id="liDropFilled" class="hidden items-center justify-between px-5 py-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <div>
+                            <p id="liDropFileName" class="text-sm font-semibold text-slate-900">ficheiro.csv</p>
+                            <p class="text-xs text-slate-500">pronto para importar</p>
+                        </div>
+                    </div>
+                    <button onclick="_liClearFile()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+            <!-- Info CSV/TXT -->
+            <div id="liInfoCsv" class="text-xs text-slate-500">
+                <span class="font-medium text-slate-700">CSV:</span> colunas detectadas automaticamente — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais.
+            </div>
+            <div id="liInfoTxt" class="hidden text-xs text-slate-500">
+                <span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco são ignoradas.
+            </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200">
+            <button onclick="closeListImportModal()" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
+            <button id="liSubmitBtn" onclick="_liStartImport()" disabled
+                class="px-5 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                Importar
+            </button>
+        </div>
+    </div>
+</div>
+
 <div id="listEdit" class="screen fade-in">
     <div class="min-h-screen bg-slate-50 flex">
         <div data-sidebar-slot></div>
@@ -9947,7 +10170,13 @@ ${sections.join('\n\n')}
                     </button>
                     <h1 id="listEditTitle" class="text-xl font-semibold text-slate-900">Editar Lista</h1>
                 </div>
-                <button onclick="mockSaveListEdit()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
+                <div class="flex items-center gap-2">
+                    <button onclick="openListImportModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        Importar contactos
+                    </button>
+                    <button onclick="mockSaveListEdit()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
+                </div>
             </header>
             <main class="flex-1 px-8 py-6 space-y-6">
                 <!-- Formulário + Campos adicionais lado a lado -->
