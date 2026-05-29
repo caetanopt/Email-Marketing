@@ -83,9 +83,10 @@ module.exports = async function handler(req, res) {
       params.push(parseInt(limit));
       params.push((parseInt(page) - 1) * parseInt(limit));
 
+      const extraDataCol = list_id ? ', lm.extra_data' : '';
       const rows = await query(
         `SELECT c.id, c.email, c.name, c.phone, c.company, c.status, c.source,
-                c.custom_attributes, c.created_at
+                c.custom_attributes, c.created_at${extraDataCol}
          FROM contacts c ${join} ${where}
          ORDER BY c.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params

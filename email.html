@@ -2762,6 +2762,7 @@ ${bodyRows}
         const count = tr?.cells[1]?.textContent.trim() || '0';
         _currentListId = tr?.dataset.listId || null;
         _editingListName = name;
+        _listExtraFields = [];
         const title = document.getElementById('listEditTitle');
         if (title) title.textContent = `Editar — ${name}`;
         const nameInp = document.getElementById('listEditName');
@@ -2769,12 +2770,56 @@ ${bodyRows}
         const countSpan = document.getElementById('listEditCount');
         if (countSpan) countSpan.textContent = count;
         showScreen('listEdit');
+        // Load list details (extra_fields + description)
+        if (_currentListId) {
+            try {
+                const detail = await apiFetch(`/api/lists/${_currentListId}`);
+                _listExtraFields = Array.isArray(detail.extra_fields) ? detail.extra_fields : [];
+                const descInp = document.getElementById('listEditDesc');
+                if (descInp) descInp.value = detail.description || '';
+            } catch (e) { _listExtraFields = []; }
+        }
+        _renderListExtraFieldsDef();
         await _loadListMembers();
+    }
+
+    function _renderListExtraFieldsDef() {
+        const el = document.getElementById('listExtraFieldsDef');
+        if (!el) return;
+        if (!_listExtraFields.length) {
+            el.innerHTML = '<p class="text-xs text-slate-400 py-1">Sem campos definidos.</p>';
+            return;
+        }
+        el.innerHTML = _listExtraFields.map((f, i) => `
+            <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                <span class="flex-1 text-sm text-slate-800">${escHtml(f.name)}</span>
+                <span class="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded capitalize">${escHtml(f.type||'texto')}</span>
+                <button onclick="removeListExtraField(${i})" class="text-red-400 hover:text-red-600 text-xs leading-none px-1">✕</button>
+            </div>`).join('');
+    }
+
+    function addListExtraField() {
+        const inp = document.getElementById('newExtraFieldName');
+        const name = inp?.value?.trim();
+        if (!name) { showToast('Insere o nome do campo.', 'error'); return; }
+        if (_listExtraFields.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+            showToast('Já existe um campo com esse nome.', 'error'); return;
+        }
+        _listExtraFields.push({ name, type: 'text' });
+        if (inp) inp.value = '';
+        _renderListExtraFieldsDef();
+    }
+
+    function removeListExtraField(i) {
+        _listExtraFields.splice(i, 1);
+        _renderListExtraFieldsDef();
     }
 
     let _listEditCurrentPage = 1;
     let _listEditTotalCount  = 0;
     const _LIST_EDIT_PER_PAGE = 50;
+    let _listExtraFields = [];          // field definitions for the current list
+    const _listMembersExtraData = {};   // contactId → extra_data object (cached from last load)
 
     async function _loadListMembers(page) {
         page = page || 1;
@@ -2804,6 +2849,8 @@ ${bodyRows}
                     pageInfo.textContent = `Mostrando ${start}–${end} de ${_listEditTotalCount.toLocaleString('pt-PT')} contactos`;
                 }
             }
+            // Cache extra_data per contact for use in edit modal
+            (data || []).forEach(c => { _listMembersExtraData[c.id] = c.extra_data || {}; });
             // Render rows
             if (!data || !data.length) {
                 tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem contactos nesta lista.</td></tr>`;
@@ -2880,8 +2927,14 @@ ${bodyRows}
     async function mockSaveListEdit() {
         const n = document.getElementById('listEditName')?.value?.trim();
         if (!n) { showToast('O nome é obrigatório.', 'error'); return; }
+        const description = document.getElementById('listEditDesc')?.value?.trim() || null;
         if (_currentListId) {
-            try { await apiFetch(`/api/lists/${_currentListId}`, { method: 'PUT', body: JSON.stringify({ name: n }) }); } catch (e) { showToast(e.message, 'error'); return; }
+            try {
+                await apiFetch(`/api/lists/${_currentListId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name: n, description, extra_fields: _listExtraFields })
+                });
+            } catch (e) { showToast(e.message, 'error'); return; }
         }
         showToast('Lista guardada.');
         showScreen('lists');
@@ -2891,6 +2944,25 @@ ${bodyRows}
     // ── List Contact Edit Modal ──────────────────────────
     let _listContactEditId = null;
 
+    function _renderLceExtraFields(extraData) {
+        const el = document.getElementById('lceExtraFields');
+        if (!el) return;
+        if (!_listExtraFields || !_listExtraFields.length) { el.innerHTML = ''; return; }
+        el.innerHTML = `<div class="border-t border-slate-100 pt-3 space-y-3">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Campos adicionais</p>
+            ${_listExtraFields.map(f => {
+                const fid = `lce_extra_${f.name.replace(/[^a-zA-Z0-9]/g,'_')}`;
+                const val = escHtml((extraData || {})[f.name] || '');
+                return `<div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">${escHtml(f.name)}</label>
+                    <input id="${fid}" type="text" value="${val}"
+                        class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                        placeholder="${escHtml(f.name)}…" />
+                </div>`;
+            }).join('')}
+        </div>`;
+    }
+
     async function openListContactEdit(contactId) {
         _listContactEditId = contactId;
         const modal = document.getElementById('listContactEditModal');
@@ -2898,6 +2970,7 @@ ${bodyRows}
         // Clear form and show loading state
         ['lceEmail','lceName','lcePhone','lceCompany'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         const st = document.getElementById('lceStatus'); if (st) st.value = 'active';
+        _renderLceExtraFields(_listMembersExtraData[contactId] || {});
         const saveBtn = document.getElementById('lceSubmitBtn');
         if (saveBtn) saveBtn.disabled = true;
         modal.classList.remove('hidden'); modal.classList.add('flex');
@@ -2934,10 +3007,24 @@ ${bodyRows}
         const saveBtn = document.getElementById('lceSubmitBtn');
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'A guardar…'; }
         try {
+            // Collect extra field values
+            const extra_data = {};
+            (_listExtraFields || []).forEach(f => {
+                const fid = `lce_extra_${f.name.replace(/[^a-zA-Z0-9]/g,'_')}`;
+                const el = document.getElementById(fid);
+                if (el) extra_data[f.name] = el.value.trim();
+            });
             await apiFetch(`/api/contacts/${_listContactEditId}`, {
                 method: 'PUT',
                 body: JSON.stringify({ name, email, phone, company, status })
             });
+            if (_listExtraFields.length && _currentListId) {
+                await apiFetch(`/api/lists/${_currentListId}?action=update_member_data`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ contact_id: _listContactEditId, extra_data })
+                });
+                _listMembersExtraData[_listContactEditId] = extra_data;
+            }
             // Update the table row in-place
             const tr = document.querySelector(`#listEditMembersBody tr[data-contact-id="${_listContactEditId}"]`);
             if (tr) {
@@ -9837,6 +9924,7 @@ ${sections.join('\n\n')}
                     <option value="suppressed">Suprimido</option>
                 </select>
             </div>
+            <div id="lceExtraFields"></div>
         </div>
         <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200">
             <button onclick="closeListContactEditModal()" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
@@ -9865,12 +9953,28 @@ ${sections.join('\n\n')}
                     <div class="space-y-4">
                         <div>
                             <label class="block text-xs text-slate-500 mb-1">Nome</label>
-                            <input id="listEditName" type="text" value="Clientes Premium" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            <input id="listEditName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                         </div>
                         <div>
                             <label class="block text-xs text-slate-500 mb-1">Descrição (opcional)</label>
-                            <input type="text" placeholder="Descrição da lista…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            <input id="listEditDesc" type="text" placeholder="Descrição da lista…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                         </div>
+                    </div>
+                </div>
+                <!-- Campos adicionais -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5 max-w-xl">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-semibold text-slate-900 text-sm">Campos adicionais</h3>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-4">Campos extra visíveis e editáveis ao editar um contacto nesta lista.</p>
+                    <div id="listExtraFieldsDef" class="mb-3">
+                        <p class="text-xs text-slate-400 py-1">Sem campos definidos.</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <input id="newExtraFieldName" type="text" placeholder="Nome do campo…"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();addListExtraField();}"
+                            class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        <button onclick="addListExtraField()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 whitespace-nowrap">+ Adicionar</button>
                     </div>
                 </div>
                 <!-- Contactos da lista -->

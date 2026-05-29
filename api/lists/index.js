@@ -31,9 +31,22 @@ module.exports = withAuth(async (req, res, user) => {
       }
 
       if (req.method === 'PUT') {
-        const { name, description } = req.body || {};
-        await query('UPDATE lists SET name=COALESCE($1,name), description=$2 WHERE id=$3',
-          [name||null, description||null, id]);
+        if (action === 'update_member_data') {
+          const { contact_id: cid, extra_data } = req.body || {};
+          if (!cid) return res.status(400).json({ error: 'contact_id obrigatório' });
+          await query(
+            'UPDATE list_members SET extra_data=$1::jsonb WHERE list_id=$2 AND contact_id=$3',
+            [JSON.stringify(extra_data || {}), id, cid]
+          );
+          return res.status(200).json({ ok: true });
+        }
+        const { name, description, extra_fields } = req.body || {};
+        await query(
+          `UPDATE lists SET name=COALESCE($1,name), description=$2,
+           extra_fields=COALESCE($3::jsonb,extra_fields) WHERE id=$4`,
+          [name||null, description||null,
+           extra_fields !== undefined ? JSON.stringify(extra_fields) : null, id]
+        );
         return res.status(200).json({ ok: true });
       }
 
