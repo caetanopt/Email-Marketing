@@ -3294,26 +3294,64 @@ ${bodyRows}
         } catch (e) { showToast(e.message, 'error'); }
     }
 
-    async function _loadBlockedDomains() {
+    const _DOMAIN_PER_PAGE = 6;
+    let _domainPage = 1;
+    let _domainAll  = [];
+
+    async function _loadBlockedDomains(page) {
+        if (page) _domainPage = page;
         const el = document.getElementById('suppDomainList');
         if (!el) return;
         try {
             const { data } = await apiFetch('/api/suppression?type=domain');
-            if (!data.length) {
-                el.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">Nenhum domínio bloqueado.</p>';
-                return;
-            }
-            const fmt = d => new Date(d).toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
-            el.innerHTML = data.map(r => `
-                <div class="flex items-center justify-between px-5 py-3 hover:bg-slate-50">
-                    <div class="flex items-center gap-3">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-xs font-mono font-medium border border-red-100">${escHtml(r.email)}</span>
-                        <span class="text-xs text-slate-400">${fmt(r.created_at)}</span>
-                    </div>
-                    <button onclick="removeBlockedDomain('${escHtml(r.email)}')" class="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 transition-colors">Remover</button>
-                </div>`).join('');
+            _domainAll = data || [];
+            _renderDomainPage();
         } catch (e) { el.innerHTML = `<p class="px-5 py-6 text-sm text-red-400 text-center">${escHtml(e.message)}</p>`; }
     }
+
+    function _renderDomainPage() {
+        const el   = document.getElementById('suppDomainList');
+        const info = document.getElementById('suppDomainPageInfo');
+        const nav  = document.getElementById('suppDomainPagination');
+        if (!el) return;
+        const total = _domainAll.length;
+        const pages = Math.ceil(total / _DOMAIN_PER_PAGE) || 1;
+        if (_domainPage > pages) _domainPage = pages;
+        const slice = _domainAll.slice((_domainPage - 1) * _DOMAIN_PER_PAGE, _domainPage * _DOMAIN_PER_PAGE);
+
+        if (!total) {
+            el.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">Nenhum domínio bloqueado.</p>';
+            if (info) info.textContent = '';
+            if (nav)  nav.innerHTML = '';
+            return;
+        }
+
+        const fmt = d => new Date(d).toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
+        el.innerHTML = slice.map(r => `
+            <div class="flex items-center justify-between px-5 py-3 hover:bg-slate-50">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-xs font-mono font-medium border border-red-100">${escHtml(r.email)}</span>
+                    <span class="text-xs text-slate-400">${fmt(r.created_at)}</span>
+                </div>
+                <button onclick="removeBlockedDomain('${escHtml(r.email)}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button>
+            </div>`).join('');
+
+        if (info) {
+            const start = ((_domainPage - 1) * _DOMAIN_PER_PAGE) + 1;
+            const end   = Math.min(_domainPage * _DOMAIN_PER_PAGE, total);
+            info.textContent = `Mostrando ${start}–${end} de ${total}`;
+        }
+        if (nav) {
+            const btn = (label, p, active, disabled) =>
+                `<button onclick="_renderDomainPage_goto(${p})" ${disabled ? 'disabled' : ''} class="px-3 py-1 border border-slate-200 rounded text-xs ${active ? 'bg-slate-900 text-white' : disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-50'}">${label}</button>`;
+            let html = btn('‹', _domainPage - 1, false, _domainPage === 1);
+            for (let i = 1; i <= pages; i++) html += btn(i, i, i === _domainPage, false);
+            html += btn('›', _domainPage + 1, false, _domainPage === pages);
+            nav.innerHTML = html;
+        }
+    }
+
+    function _renderDomainPage_goto(p) { _domainPage = p; _renderDomainPage(); }
 
     async function removeBlockedDomain(domain) {
         if (!confirm(`Remover bloqueio do domínio ${domain}?`)) return;
@@ -9856,6 +9894,10 @@ ${sections.join('\n\n')}
                     </div>
                     <div id="suppDomainList" class="divide-y divide-slate-100">
                         <p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>
+                    </div>
+                    <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                        <span id="suppDomainPageInfo"></span>
+                        <div id="suppDomainPagination" class="flex items-center gap-1"></div>
                     </div>
                 </div>
 
