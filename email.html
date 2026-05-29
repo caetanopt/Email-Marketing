@@ -949,7 +949,7 @@
         tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
             const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=team`);
-            const roleBadge = { owner:'bg-purple-100 text-purple-700', editor:'bg-green-100 text-green-700', viewer:'bg-slate-100 text-slate-600' };
+            const roleBadge = { owner:'bg-purple-100 text-purple-700', viewer:'bg-slate-100 text-slate-600' };
             const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600','bg-blue-600','bg-green-600'];
             const _currentUserId = JSON.parse(localStorage.getItem('pm_user')||'{}').id;
             tbody.innerHTML = (data||[]).map((m, i) => {
@@ -958,8 +958,8 @@
                 const badge = roleBadge[m.role] || 'bg-slate-100 text-slate-600';
                 const isMe = m.id === _currentUserId;
                 const since = m.last_login ? new Date(m.last_login).toLocaleDateString('pt-PT') : '—';
-                const roleLabel = { owner:'Administrador', editor:'Editor', viewer:'Marketing Account' };
-                const roleOptions = ['owner','editor','viewer'].map(r =>
+                const roleLabel = { owner:'Administrador', viewer:'Marketing Account' };
+                const roleOptions = ['owner','viewer'].map(r =>
                     `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
                 const canManage = _canSeeRolesPanel();
@@ -996,7 +996,7 @@
         const name = nameInp ? nameInp.value.trim() : '';
         const email = inp ? inp.value.trim() : '';
         const password = passInp ? passInp.value.trim() : '';
-        const role = roleEl ? roleEl.value : 'editor';
+        const role = roleEl ? roleEl.value : 'viewer';
         if (!name) { showToast('Insira o nome.', 'error'); return; }
         if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
         if (!password || password.length < 6) { showToast('Password deve ter pelo menos 6 caracteres.', 'error'); return; }
@@ -1052,7 +1052,7 @@
         document.getElementById('editMemberName').value = currentName;
         document.getElementById('editMemberEmail').value = currentEmail;
         const roleEl = document.getElementById('editMemberRole');
-        if (roleEl) roleEl.value = currentRole || 'editor';
+        if (roleEl) roleEl.value = currentRole || 'viewer';
         const pwdEl = document.getElementById('editMemberPassword');
         if (pwdEl) { pwdEl.value = ''; pwdEl.type = 'password'; }
         const eyeOpen = document.getElementById('editPwdEyeOpen');
@@ -1162,7 +1162,7 @@
         if (!list) return;
         if (!brands.length) { list.innerHTML = `<p class="text-sm text-slate-400 py-4 text-center">Sem marcas disponíveis.</p>`; return; }
         const _ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const roleLabel = { owner:'Administrador', editor:'Editor', viewer:'Mkt Account' };
+        const roleLabel = { owner:'Administrador', viewer:'Mkt Account' };
         list.innerHTML = `<div class="grid grid-cols-2 gap-x-4">${brands.map((b,i) => `
             <div class="flex items-center gap-3 py-3 ${i % 2 === 0 ? 'border-r border-slate-100 pr-4' : ''} border-b border-slate-100" data-brand-id="${_ea(b.id)}">
                 <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${_ea(b.color||'#94a3b8')}"></div>
@@ -1170,7 +1170,7 @@
                 ${b.has_access
                     ? `<select onchange="_updateBrandRole(this,'${_ea(b.id)}')"
                           class="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[90px]">
-                           ${['owner','editor','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
+                           ${['owner','viewer'].map(r => `<option value="${r}"${r===b.role?' selected':''}>${roleLabel[r]}</option>`).join('')}
                        </select>`
                     : `<span class="text-xs text-slate-300 select-none w-[90px]">—</span>`
                 }
@@ -1193,7 +1193,7 @@
     async function _toggleBrandAccess(brandId, grant, btn) {
         if (btn) btn.disabled = true;
         try {
-            const role = grant ? 'editor' : undefined;
+            const role = grant ? 'viewer' : undefined;
             await apiFetch(`/api/brands?id=${_currentBrand.id}&action=set_brand_access&member_id=${_brandAccessMemberId}`, {
                 method: 'PUT', body: JSON.stringify({ brand_id: brandId, role, granted: grant })
             });
@@ -6897,7 +6897,7 @@ ${sections.join('\n\n')}
             if (r.role) _currentUserRole = r.role;
             _syncRolesPanel();
             // Roles that cannot access the team screen
-            const restrictedRoles = ['editor', 'viewer'];
+            const restrictedRoles = ['viewer'];
             // No restrictions configured -> show all (default), but still apply role-based rules
             if (!r.restricted) {
                 document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('hidden'));
@@ -9972,7 +9972,7 @@ ${sections.join('\n\n')}
                         <div>
                             <label class="text-xs text-slate-500 block mb-1">Função</label>
                             <select id="inviteRoleSelect" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none">
-                                <option value="editor" selected>Editor</option>
+                                <option value="owner">Administrador</option>
                                 <option value="viewer">Marketing Account</option>
                             </select>
                         </div>
@@ -10015,12 +10015,6 @@ ${sections.join('\n\n')}
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">Administrador</span>
                                     </div>
                                     <p class="text-xs text-slate-600 leading-relaxed">Acesso total: criar, editar e eliminar campanhas, templates, contactos e listas. Pode ainda gerir membros da equipa, configurar integrações e editar as definições da conta.</p>
-                                </div>
-                                <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
-                                    <div class="flex items-center gap-2 mb-1.5">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Editor</span>
-                                    </div>
-                                    <p class="text-xs text-slate-600 leading-relaxed">Pode criar e editar campanhas, templates, contactos, listas e importações. Não tem acesso à gestão de equipa, billing nem definições da conta.</p>
                                 </div>
                                 <div class="bg-white rounded-lg px-4 py-3 border border-blue-100">
                                     <div class="flex items-center gap-2 mb-1.5">
@@ -10883,7 +10877,6 @@ ${sections.join('\n\n')}
                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Função</label>
                 <select id="editMemberRole" class="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
                     <option value="owner">Administrador</option>
-                    <option value="editor">Editor</option>
                     <option value="viewer">Marketing Account</option>
                 </select>
             </div>
