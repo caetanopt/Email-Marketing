@@ -1,7 +1,8 @@
 {
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/webhooks", "destination": "/api/track" }
+    { "source": "/api/webhooks", "destination": "/api/track" },
+    { "source": "/api/lists/:id", "destination": "/api/lists?id=:id" }
   ],
   "headers": [
     {

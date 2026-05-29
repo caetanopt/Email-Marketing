@@ -797,11 +797,6 @@
     }
 
     // ── Suppression ─────────────────────────────────────
-    function mockRemoveSuppression(btn) {
-        if (!confirm('Remover este endereço da lista de supressão?')) return;
-        btn.closest('tr').remove();
-        showToast('Endereço removido da supressão.');
-    }
 
     // ── Team ─────────────────────────────────────────────
     const _W = 'https://upload.wikimedia.org/wikipedia/commons/thumb';
@@ -1213,14 +1208,7 @@
             showToast(e.message || 'Erro ao alterar estado.', 'error');
         }
     }
-    function mockRemoveTeamMember(btn) {
-        if (!confirm('Remover este membro da equipa?')) return;
-        btn.closest('tr').remove();
-        showToast('Membro removido.');
-    }
-    function mockUpdateRole(select) {
-        showToast('Função actualizada.');
-    }
+
 
     // ── Templates ────────────────────────────────────────
     const _dupBrands = _allBrands;
@@ -1444,7 +1432,6 @@
         if (btnG) { btnG.classList.toggle('bg-slate-900',v==='grid'); btnG.classList.toggle('text-white',v==='grid'); btnG.classList.toggle('text-slate-500',v!=='grid'); }
         if (btnL) { btnL.classList.toggle('bg-slate-900',v==='list'); btnL.classList.toggle('text-white',v==='list'); btnL.classList.toggle('text-slate-500',v!=='list'); }
     }
-    function mockPreviewTemplate() { showToast('Pré-visualização — funcionalidade disponível na versão final.', 'info'); }
     function filterTemplates() {
         const q = (document.getElementById('tplSearch')?.value || '').toLowerCase();
         document.querySelectorAll('#tplGrid [data-tpl-id], #tplListBody [data-tpl-id]').forEach(el => {
@@ -2941,24 +2928,6 @@ ${bodyRows}
     }
 
 // ── Imports ──────────────────────────────────────────
-    function mockShowImportDetails(btn) {
-        const tr = btn.closest('tr');
-        const file = tr?.cells[0]?.querySelector('p.font-medium')?.textContent || 'ficheiro';
-        const list = tr?.cells[1]?.textContent.trim() || '—';
-        const ok   = tr?.cells[3]?.textContent.trim() || '0';
-        const skip = tr?.cells[4]?.textContent.trim() || '0';
-        const fail = tr?.cells[5]?.textContent.trim() || '0';
-        const date = tr?.cells[6]?.textContent.trim() || '—';
-        document.getElementById('impDetFile').textContent = file;
-        document.getElementById('impDetList').textContent = list;
-        document.getElementById('impDetOk').textContent   = ok;
-        document.getElementById('impDetSkip').textContent = skip;
-        document.getElementById('impDetFail').textContent = fail;
-        document.getElementById('impDetDate').textContent = date;
-        const m = document.getElementById('importDetailsModal');
-        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
-    }
-
     function closeImportDetailsModal() {
         const m = document.getElementById('importDetailsModal');
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
