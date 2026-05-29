@@ -2800,13 +2800,16 @@ ${bodyRows}
 
     function addListExtraField() {
         const inp = document.getElementById('newExtraFieldName');
+        const sel = document.getElementById('newExtraFieldType');
         const name = inp?.value?.trim();
         if (!name) { showToast('Insere o nome do campo.', 'error'); return; }
         if (_listExtraFields.some(f => f.name.toLowerCase() === name.toLowerCase())) {
             showToast('Já existe um campo com esse nome.', 'error'); return;
         }
-        _listExtraFields.push({ name, type: 'text' });
+        const type = sel?.value || 'text';
+        _listExtraFields.push({ name, type });
         if (inp) inp.value = '';
+        if (sel) sel.value = 'text';
         _renderListExtraFieldsDef();
     }
 
@@ -2955,7 +2958,7 @@ ${bodyRows}
                 const val = escHtml((extraData || {})[f.name] || '');
                 return `<div>
                     <label class="block text-xs font-medium text-slate-500 mb-1">${escHtml(f.name)}</label>
-                    <input id="${fid}" type="text" value="${val}"
+                    <input id="${fid}" type="${escHtml(f.type||'text')}" value="${val}"
                         class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                         placeholder="${escHtml(f.name)}…" />
                 </div>`;
@@ -9947,34 +9950,45 @@ ${sections.join('\n\n')}
                 <button onclick="mockSaveListEdit()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
             </header>
             <main class="flex-1 px-8 py-6 space-y-6">
-                <!-- Formulário -->
-                <div class="bg-white border border-slate-200 rounded-xl p-5 max-w-xl">
-                    <h3 class="font-semibold text-slate-900 mb-4 text-sm">Informação da lista</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-xs text-slate-500 mb-1">Nome</label>
-                            <input id="listEditName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                <!-- Formulário + Campos adicionais lado a lado -->
+                <div class="grid grid-cols-2 gap-6">
+                    <!-- Informação da lista -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <h3 class="font-semibold text-slate-900 mb-4 text-sm">Informação da lista</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Nome</label>
+                                <input id="listEditName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Descrição (opcional)</label>
+                                <input id="listEditDesc" type="text" placeholder="Descrição da lista…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-xs text-slate-500 mb-1">Descrição (opcional)</label>
-                            <input id="listEditDesc" type="text" placeholder="Descrição da lista…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    </div>
+                    <!-- Campos adicionais -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-semibold text-slate-900 text-sm">Campos adicionais</h3>
                         </div>
-                    </div>
-                </div>
-                <!-- Campos adicionais -->
-                <div class="bg-white border border-slate-200 rounded-xl p-5 max-w-xl">
-                    <div class="flex items-center justify-between mb-1">
-                        <h3 class="font-semibold text-slate-900 text-sm">Campos adicionais</h3>
-                    </div>
-                    <p class="text-xs text-slate-400 mb-4">Campos extra visíveis e editáveis ao editar um contacto nesta lista.</p>
-                    <div id="listExtraFieldsDef" class="mb-3">
-                        <p class="text-xs text-slate-400 py-1">Sem campos definidos.</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <input id="newExtraFieldName" type="text" placeholder="Nome do campo…"
-                            onkeydown="if(event.key==='Enter'){event.preventDefault();addListExtraField();}"
-                            class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                        <button onclick="addListExtraField()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 whitespace-nowrap">+ Adicionar</button>
+                        <p class="text-xs text-slate-400 mb-4">Campos extra visíveis e editáveis ao editar um contacto nesta lista.</p>
+                        <div id="listExtraFieldsDef" class="mb-3">
+                            <p class="text-xs text-slate-400 py-1">Sem campos definidos.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <input id="newExtraFieldName" type="text" placeholder="Nome do campo…"
+                                onkeydown="if(event.key==='Enter'){event.preventDefault();addListExtraField();}"
+                                class="flex-1 min-w-0 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            <select id="newExtraFieldType" class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-600">
+                                <option value="text">Texto</option>
+                                <option value="email">Email</option>
+                                <option value="number">Número</option>
+                                <option value="tel">Telefone</option>
+                                <option value="url">URL</option>
+                                <option value="date">Data</option>
+                            </select>
+                            <button onclick="addListExtraField()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 whitespace-nowrap">+ Adicionar</button>
+                        </div>
                     </div>
                 </div>
                 <!-- Contactos da lista -->
