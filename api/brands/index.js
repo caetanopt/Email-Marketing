@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const dns = require('dns').promises;
+const crypto = require('crypto');
 const { query } = require('../../lib/db');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
@@ -48,6 +49,13 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      // API key — return current key for the brand (owner only)
+      if (id && action === 'api_key') {
+        if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+        const rows = await query('SELECT api_key FROM brands WHERE id=$1', [id]);
+        return res.status(200).json({ api_key: rows[0]?.api_key || null });
+      }
+
       // DNS health check — SPF / DKIM / DMARC verification for brand's from_email domain
       if (id && action === 'dns_check') {
         const rows = await query('SELECT from_email FROM brands WHERE id=$1', [id]);
@@ -167,6 +175,14 @@ module.exports = async function handler(req, res) {
         [user.id]
       );
       return res.status(200).json({ data: rows });
+    }
+
+    // Generate (or regenerate) API key for the brand
+    if (req.method === 'POST' && id && action === 'generate_api_key') {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      const newKey = 'pm_' + crypto.randomBytes(32).toString('hex');
+      await query('UPDATE brands SET api_key=$1 WHERE id=$2', [newKey, id]);
+      return res.status(200).json({ api_key: newKey });
     }
 
     if (req.method === 'POST' && id && action === 'block') {
