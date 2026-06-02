@@ -4157,14 +4157,12 @@ ${bodyRows}
             } catch(e) {}
         }
 
-        const hasBrandVars = vars && Object.values(vars).some(Boolean);
-
         // Step 1 panel — always visible (system vars always shown)
         const panel = document.getElementById('wizVarsPanel');
         const list  = document.getElementById('wizVarsList');
         if (panel && list) {
             panel.classList.remove('hidden');
-            list.innerHTML = _wizSystemChips() + (hasBrandVars ? _wizVarsChips(vars) : '');
+            list.innerHTML = _wizSystemChips() + _wizVarsChips(vars);
         }
 
         // Step 2 strip — always visible
@@ -4172,7 +4170,7 @@ ${bodyRows}
         const list2  = document.getElementById('wizVarsList2');
         if (panel2 && list2) {
             panel2.classList.remove('hidden');
-            list2.innerHTML = _wizSystemChips() + (hasBrandVars ? _wizVarsChips(vars) : '');
+            list2.innerHTML = _wizSystemChips() + _wizVarsChips(vars);
         }
     }
 
@@ -4186,12 +4184,16 @@ ${bodyRows}
     }
 
     function _wizVarsChips(vars) {
-        return Object.entries(vars).filter(([,v]) => v).map(([k, v]) =>
-            `<button type="button" onclick="_wizCopyVar('${k}')" title="${v.replace(/"/g,'&quot;')}"
-                class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 hover:bg-violet-50 hover:border-violet-300 transition-colors group">
-                <code class="text-xs font-mono text-violet-700">{{${k}}}</code>
-            </button>`
-        ).join('');
+        // Always show disclaimer chip (even if not yet configured)
+        const all = { disclaimer: null, ...(vars || {}) };
+        return Object.entries(all).filter(([k]) => k !== 'disclaimer' ? (all[k]) : true).map(([k, v]) => {
+            const empty = !v;
+            const title = empty ? 'Configura nas Definições da marca' : String(v).replace(/"/g,'&quot;');
+            return `<button type="button" onclick="${empty ? '' : `_wizCopyVar('${k}')`}" title="${title}"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md ${empty ? 'bg-slate-50 border-dashed border-slate-200 opacity-50 cursor-default' : 'bg-slate-50 border-slate-200 hover:bg-violet-50 hover:border-violet-300 cursor-pointer'} border transition-colors">
+                <code class="text-xs font-mono ${empty ? 'text-slate-400' : 'text-violet-700'}">{{${k}}}</code>
+            </button>`;
+        }).join('');
     }
 
     function _wizVarsToggle() {
