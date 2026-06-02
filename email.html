@@ -4617,11 +4617,10 @@ ${bodyRows}
     async function mockCampaignNext() {
         if (_wizSubmitting) return;
         if (_wizStep === 1) {
-            const name      = document.getElementById('wizName')?.value.trim();
             const subj      = document.getElementById('wizSubject')?.value.trim();
+            const name      = document.getElementById('wizName')?.value.trim() || subj;
             const fromName  = document.getElementById('wizFromName')?.value.trim();
             const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
-            if (!name)      { showToast('O nome da campanha é obrigatório.', 'error'); return; }
             if (!subj)      { showToast('O assunto é obrigatório.', 'error'); return; }
             if (!fromName)  { showToast('O nome do remetente é obrigatório.', 'error'); return; }
             if (!fromEmail || !_isValidEmail(fromEmail)) { showToast('Indica um email de remetente válido.', 'error'); return; }
@@ -4661,8 +4660,8 @@ ${bodyRows}
     }
     async function _wizDoSubmitStep4() {
         const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
-        const name    = document.getElementById('wizName')?.value.trim() || 'Campanha';
         const subject = document.getElementById('wizSubject')?.value.trim();
+        const name    = document.getElementById('wizName')?.value.trim() || subject || 'Campanha';
         const fromName  = document.getElementById('wizFromName')?.value.trim();
         const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
         const listIds = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked')).map(cb => cb.dataset.listId).filter(Boolean);
@@ -4771,8 +4770,8 @@ ${bodyRows}
             // Ensure we have a campaign ID — auto-save draft if this is a new campaign
             let campaignId = _editingCampaignId;
             if (!campaignId) {
-                const name      = document.getElementById('wizName')?.value.trim()    || 'Campanha';
                 const subject   = document.getElementById('wizSubject')?.value.trim() || '';
+                const name      = document.getElementById('wizName')?.value.trim()    || subject || 'Campanha';
                 const fromName  = document.getElementById('wizFromName')?.value.trim();
                 const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
                 const listIds   = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'))
@@ -4824,9 +4823,8 @@ ${bodyRows}
     let _wizSavingDraft = false;
     async function wizSaveDraft() {
         if (_wizSavingDraft) return;
-        const name    = document.getElementById('wizName')?.value.trim();
         const subject = document.getElementById('wizSubject')?.value.trim();
-        if (!name) { showToast('O nome da campanha é obrigatório para guardar.', 'error'); return; }
+        const name    = document.getElementById('wizName')?.value.trim() || subject;
         _wizSavingDraft = true;
         const btn = document.getElementById('wizSaveDraftBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
@@ -7971,7 +7969,7 @@ ${sections.join('\n\n')}
                             <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                                 <div>
                                     <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da Campanha *</label>
-                                    <input id="wizName" type="text" placeholder="Ex: Newsletter — Maio 2026" oninput="_wizUtmSyncCampaign()" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                    <input id="wizName" type="text" placeholder="Opcional — usa o assunto se ficar vazio" oninput="_wizUtmSyncCampaign()" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                                 <div>
                                     <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Assunto do Email *</label>
