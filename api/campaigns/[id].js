@@ -511,7 +511,8 @@ module.exports = async function handler(req, res) {
               let rawHtml = rawContent;
               // Use function replacer to avoid $& / $1 interpolation on variable values
               for (const [k, v] of Object.entries(vars)) {
-                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), () => escHtml(v || ''));
+                const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => escHtml(v || ''));
               }
               rawHtml = rawHtml
                 .replace(/\{\{name\}\}/g, () => escHtml(contact.name || contact.email))
@@ -669,7 +670,8 @@ module.exports = async function handler(req, res) {
         let rawHtml = (c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>');
         // Apply brand variables first (use function replacer to avoid $& interpolation issues)
         for (const [k, v] of Object.entries(testVars)) {
-          rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), () => escHtml(v || ''));
+          const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          rawHtml = rawHtml.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => escHtml(v || ''));
         }
         rawHtml = rawHtml
           .replace(/\{\{name\}\}/g, () => 'Utilizador Teste')

@@ -5140,6 +5140,7 @@ ${bodyRows}
         const file = _wizImportFiles[type];
         const btn = document.getElementById(`wiz${T}ImportBtn`);
         if (!file) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
+        if (type === 'excel' && file.size > 5 * 1024 * 1024) { showToast('Ficheiro Excel demasiado grande. Máximo 5 MB.', 'error'); return; }
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
             let rows = [];
@@ -5362,7 +5363,7 @@ ${bodyRows}
         sv('wizFromEmail',   c.from_email);
         // UTM
         const utmParams = c.utm_params || {};
-        const utmHasData = Object.values(utmParams).some(Boolean);
+        const utmHasData = c.utm_params != null && Object.keys(utmParams).length > 0 && Object.values(utmParams).some(Boolean);
         const utmEn = document.getElementById('wizUtmEnabled');
         if (utmEn) { utmEn.checked = utmHasData; _wizUtmToggle(); }
         if (utmHasData) {
@@ -5416,7 +5417,7 @@ ${bodyRows}
             sv('wizFromName',    c.from_name);
             sv('wizFromEmail',   c.from_email);
             const utmParams = c.utm_params || {};
-            const utmHasData = Object.values(utmParams).some(Boolean);
+            const utmHasData = c.utm_params != null && Object.keys(utmParams).length > 0 && Object.values(utmParams).some(Boolean);
             const utmEn = document.getElementById('wizUtmEnabled');
             if (utmEn) { utmEn.checked = utmHasData; _wizUtmToggle(); }
             if (utmHasData) {

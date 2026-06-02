@@ -7,12 +7,20 @@ const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
 
 // ── DNS health check (SPF / DKIM / DMARC) ──────────────────────
+const DNS_TIMEOUT_MS = 3000;
+function withDnsTimeout(promise) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout')), DNS_TIMEOUT_MS)),
+  ]);
+}
+
 async function checkDnsRecord(domain) {
   async function resolveTxt(host) {
-    try { return await dns.resolveTxt(host); } catch { return []; }
+    try { return await withDnsTimeout(dns.resolveTxt(host)); } catch { return []; }
   }
   async function resolveCname(host) {
-    try { return await dns.resolveCname(host); } catch { return []; }
+    try { return await withDnsTimeout(dns.resolveCname(host)); } catch { return []; }
   }
 
   // SPF — look for v=spf1 in TXT records of the domain
@@ -280,10 +288,11 @@ module.exports = async function handler(req, res) {
         const clean = domain.trim().toLowerCase().replace(/^@/, '');
         if (!DOMAIN_RE.test(clean)) return res.status(400).json({ error: 'Domínio inválido. Exemplo: empresa.pt' });
         try {
-          await query(
-            'UPDATE domain_whitelist SET domain=$1, note=$2 WHERE id=$3',
+          const upd = await query(
+            'UPDATE domain_whitelist SET domain=$1, note=$2 WHERE id=$3 RETURNING id',
             [clean, note || null, wlId]
           );
+          if (!upd[0]) return res.status(404).json({ error: 'Registo não encontrado' });
           return res.status(200).json({ ok: true, domain: clean });
         } catch (e) {
           if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 031_domain_whitelist.sql no Supabase.' });
@@ -302,6 +311,7 @@ module.exports = async function handler(req, res) {
           throw e;
         }
       }
+      return res.status(405).json({ error: 'Método não permitido' });
     }
 
     // Generate (or regenerate) API key for the brand
