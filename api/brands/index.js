@@ -261,19 +261,29 @@ module.exports = async function handler(req, res) {
         if (!domain) return res.status(400).json({ error: 'Domínio obrigatório' });
         const clean = domain.trim().toLowerCase().replace(/^@/, '');
         if (!DOMAIN_RE.test(clean)) return res.status(400).json({ error: 'Domínio inválido. Exemplo: empresa.pt' });
-        const rows = await query(
-          `INSERT INTO domain_whitelist (domain, note, created_by) VALUES ($1,$2,$3)
-           ON CONFLICT (domain) DO NOTHING RETURNING id`,
-          [clean, note || null, user.id]
-        );
-        if (!rows[0]) return res.status(409).json({ error: 'Domínio já existe na lista' });
-        return res.status(201).json({ id: rows[0].id, domain: clean });
+        try {
+          const rows = await query(
+            `INSERT INTO domain_whitelist (domain, note, created_by) VALUES ($1,$2,$3)
+             ON CONFLICT (domain) DO NOTHING RETURNING id`,
+            [clean, note || null, user.id]
+          );
+          if (!rows[0]) return res.status(409).json({ error: 'Domínio já existe na lista' });
+          return res.status(201).json({ id: rows[0].id, domain: clean });
+        } catch (e) {
+          if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 031_domain_whitelist.sql no Supabase.' });
+          throw e;
+        }
       }
       if (req.method === 'DELETE') {
         const { id: wlId } = req.body || {};
         if (!wlId) return res.status(400).json({ error: 'id obrigatório' });
-        await query('DELETE FROM domain_whitelist WHERE id=$1', [wlId]);
-        return res.status(200).json({ ok: true });
+        try {
+          await query('DELETE FROM domain_whitelist WHERE id=$1', [wlId]);
+          return res.status(200).json({ ok: true });
+        } catch (e) {
+          if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 031_domain_whitelist.sql no Supabase.' });
+          throw e;
+        }
       }
     }
 
