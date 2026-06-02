@@ -373,6 +373,13 @@
         const d = new Date(iso);
         return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
     }
+    function _fmtDateTime(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        const date = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+        const time = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+        return `${date} ${time}`;
+    }
 
     let _contactsApiTotal = 0;
     let _contactsSelected = new Set();
@@ -517,7 +524,7 @@
                     <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
                     <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
-                    <td class="px-4 py-3 text-xs text-slate-500">${_fmtDate(c.sent_at||c.scheduled_at||c.created_at)}</td>
+                    <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
                     <td class="px-4 py-3 text-right">
                         <div class="flex items-center justify-end gap-2">
                             ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
