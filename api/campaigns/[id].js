@@ -508,13 +508,15 @@ module.exports = async function handler(req, res) {
               if (rawContent.trimStart().startsWith('<mjml>')) {
                 console.warn(`Campaign ${id}: template stored as MJML — re-save to convert to HTML.`);
               }
-              let rawHtml = rawContent
-                .replace(/\{\{name\}\}/g, escHtml(contact.name || contact.email))
-                .replace(/\{\{email\}\}/g, escHtml(contact.email))
-                .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+              let rawHtml = rawContent;
+              // Use function replacer to avoid $& / $1 interpolation on variable values
               for (const [k, v] of Object.entries(vars)) {
-                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), escHtml(v || ''));
+                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), () => escHtml(v || ''));
               }
+              rawHtml = rawHtml
+                .replace(/\{\{name\}\}/g, () => escHtml(contact.name || contact.email))
+                .replace(/\{\{email\}\}/g, () => escHtml(contact.email))
+                .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
               rawHtml = injectTracking(rawHtml, id, contact.contact_id);
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
@@ -626,7 +628,8 @@ module.exports = async function handler(req, res) {
 
         const camp = await query(
           `SELECT c.*, t.html_content,
-                  b.from_name AS brand_from_name, b.from_email AS brand_from_email, b.reply_to AS brand_reply_to
+                  b.from_name AS brand_from_name, b.from_email AS brand_from_email,
+                  b.reply_to AS brand_reply_to, b.variables
            FROM campaigns c
            JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
            LEFT JOIN templates t ON t.id=c.template_id
@@ -658,15 +661,20 @@ module.exports = async function handler(req, res) {
             if (url.includes('action=unsubscribe') || url.includes('action=resubscribe') || url.includes('/api/track?')) return match;
             let dest = url;
             if (utmStrT) { const sep = dest.includes('?') ? '&' : '?'; dest = `${dest}${sep}${utmStrT}`; }
-            // For test emails use contact_id=0 and no HMAC — easy to recognise in logs
             const redirect = `${APP_URL}/api/track?type=click&cid=${id}&uid=0&t=test&url=${encodeURIComponent(dest)}`;
             return `href="${redirect}"`;
           });
         }
-        let rawHtml = (c.html_content||'<p>Sem conteúdo de template.</p>')
-          .replace(/\{\{name\}\}/g, 'Utilizador Teste')
-          .replace(/\{\{email\}\}/g, escHtml(to))
-          .replace(/\{\{unsubscribe_url\}\}/g, unsubUrl);
+        const testVars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
+        let rawHtml = (c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>');
+        // Apply brand variables first (use function replacer to avoid $& interpolation issues)
+        for (const [k, v] of Object.entries(testVars)) {
+          rawHtml = rawHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), () => escHtml(v || ''));
+        }
+        rawHtml = rawHtml
+          .replace(/\{\{name\}\}/g, () => 'Utilizador Teste')
+          .replace(/\{\{email\}\}/g, () => escHtml(to))
+          .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
         rawHtml = injectTrackingTest(rawHtml);
         const finalHtml = rawHtml.includes('</body>')
           ? rawHtml.replace('</body>', unsubBlock + '</body>')
