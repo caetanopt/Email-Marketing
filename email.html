@@ -85,14 +85,14 @@
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
         'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaigns/new': 'campaignCreate', 'suppression': 'suppression',
-        'team': 'team', 'settings': 'brandSettings', 'unsubscribe': 'unsubscribe',
+        'team': 'team', 'settings': 'brandSettings', 'global': 'globalSettings', 'unsubscribe': 'unsubscribe',
     };
     const _SCREEN_TO_ROUTE = {
         'login': 'login', 'forgotPassword': 'forgot-password', 'brandSelect': 'brands',
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
         'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaignCreate': 'campaigns/new', 'suppression': 'suppression',
-        'icons': 'icons', 'team': 'team', 'brandSettings': 'settings', 'unsubscribe': 'unsubscribe',
+        'icons': 'icons', 'team': 'team', 'brandSettings': 'settings', 'globalSettings': 'global', 'unsubscribe': 'unsubscribe',
     };
     // screens handled via dedicated functions (they push their own hash)
     const _SCREENS_CUSTOM_ROUTE = new Set(['campaignShow','campaignReport','contactShow','listEdit','templateEdit']);
@@ -3357,6 +3357,87 @@ ${bodyRows}
         } catch (e) { showToast(e.message, 'error'); }
     }
 
+    // ── Global Settings — Domain Whitelist ───────────────
+    let _domainWL = [];
+
+    async function _loadDomainWhitelist() {
+        const el = document.getElementById('gwlList');
+        if (!el) return;
+        el.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>';
+        try {
+            const { data } = await apiFetch('/api/global-settings?action=domain_whitelist');
+            _domainWL = data || [];
+            _renderDomainWhitelist();
+        } catch (e) {
+            el.innerHTML = `<p class="px-5 py-6 text-sm text-red-400 text-center">${escHtml(e.message)}</p>`;
+        }
+    }
+
+    function _renderDomainWhitelist() {
+        const el    = document.getElementById('gwlList');
+        const count = document.getElementById('gwlCount');
+        if (!el) return;
+        if (count) count.textContent = `${_domainWL.length} domínio${_domainWL.length !== 1 ? 's' : ''}`;
+        if (!_domainWL.length) {
+            el.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">Nenhum domínio na lista. Todos os domínios são permitidos.</p>';
+            return;
+        }
+        const fmt = d => new Date(d).toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
+        el.innerHTML = _domainWL.map(r => `
+            <div class="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-mono font-medium border border-green-100">@${escHtml(r.domain)}</span>
+                    ${r.note ? `<span class="text-xs text-slate-500 truncate">${escHtml(r.note)}</span>` : ''}
+                    <span class="text-xs text-slate-400 flex-shrink-0">${fmt(r.created_at)}</span>
+                </div>
+                <button onclick="_removeDomainWhitelist(${r.id},'${escHtml(r.domain)}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50 flex-shrink-0">Remover</button>
+            </div>`).join('');
+    }
+
+    async function _removeDomainWhitelist(id, domain) {
+        if (!confirm(`Remover @${domain} da whitelist?`)) return;
+        try {
+            await apiFetch('/api/global-settings?action=domain_whitelist', { method: 'DELETE', body: JSON.stringify({ id }) });
+            showToast(`@${domain} removido da whitelist.`);
+            _loadDomainWhitelist();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    function _openAddDomainWhitelistModal() {
+        const m = document.getElementById('addDomainWLModal');
+        if (!m) return;
+        document.getElementById('gwlDomainInput').value = '';
+        document.getElementById('gwlNoteInput').value = '';
+        m.classList.remove('hidden'); m.classList.add('flex');
+        document.getElementById('gwlDomainInput').focus();
+    }
+
+    function _closeAddDomainWhitelistModal() {
+        const m = document.getElementById('addDomainWLModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+
+    async function _confirmAddDomainWhitelist() {
+        const domain = document.getElementById('gwlDomainInput')?.value.trim().replace(/^@/, '').toLowerCase();
+        const note   = document.getElementById('gwlNoteInput')?.value.trim();
+        if (!domain) { showToast('Insere um domínio.', 'error'); return; }
+        if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
+            showToast('Domínio inválido. Exemplo: empresa.pt', 'error'); return;
+        }
+        const btn = document.getElementById('gwlConfirmBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await apiFetch('/api/global-settings?action=domain_whitelist', { method: 'POST', body: JSON.stringify({ domain, note: note || null }) });
+            _closeAddDomainWhitelistModal();
+            showToast(`@${domain} adicionado à whitelist.`);
+            _loadDomainWhitelist();
+        } catch (e) {
+            showToast(e.message, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     // ── Brand Settings ───────────────────────────────────
     function syncBrandColor(src) {
         const colorEl = document.getElementById('brandColorPicker');
@@ -6258,6 +6339,7 @@ ${sections.join('\n\n')}
     <option value="statistics">Estatísticas</option>
     <option value="team">Equipa</option>
     <option value="brandSettings">Definições da Marca</option>
+    <option value="globalSettings">Definições Globais</option>
     <option value="userProfile">Perfil</option>
     <option value="unsubscribe">Unsubscribe (público)</option>
 </select>
@@ -6453,6 +6535,10 @@ ${sections.join('\n\n')}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Definições
             </a>
+            <a onclick="showScreen('globalSettings')" data-nav class="nav-item nav-globalSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Global
+            </a>
         </nav>
         <div class="px-4 py-4 border-t border-white/10">
             <div class="flex items-center gap-3">
@@ -6593,6 +6679,7 @@ ${sections.join('\n\n')}
                 }
             }
             if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
+            if (id === 'globalSettings') { _loadDomainWhitelist(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -6950,6 +7037,10 @@ ${sections.join('\n\n')}
             // Always hide team for editor and marketing account (viewer)
             if (restrictedRoles.includes(_currentUserRole)) {
                 document.querySelector('.nav-team')?.classList.add('hidden');
+            }
+            // Only owners see global settings
+            if (_currentUserRole !== 'owner') {
+                document.querySelector('.nav-globalSettings')?.classList.add('hidden');
             }
         } catch (err) {
             // Silent — migration may not have been run yet, fall back to full access
@@ -10008,6 +10099,80 @@ ${sections.join('\n\n')}
                     </div>
                 </div>
             </main>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ECRÃ — DEFINIÇÕES GLOBAIS
+═══════════════════════════════════════════════════════════════════ -->
+<div id="globalSettings" class="screen fade-in">
+    <div class="min-h-screen bg-slate-50 flex">
+        <div data-sidebar-slot></div>
+        <div class="flex-1 ml-64 flex flex-col min-h-screen">
+            <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
+                <div>
+                    <h1 class="text-xl font-semibold text-slate-900">Definições Globais</h1>
+                    <p class="text-sm text-slate-500 mt-0.5">Configurações que se aplicam a todas as marcas</p>
+                </div>
+            </header>
+            <main class="flex-1 px-8 py-6 space-y-5 max-w-3xl">
+
+                <!-- Domain Whitelist -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Whitelist de domínios</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Domínios autorizados para envio de emails. Se a lista estiver vazia, todos os domínios são permitidos.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span id="gwlCount" class="text-xs text-slate-400">0 domínios</span>
+                            <button onclick="_openAddDomainWhitelistModal()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                Adicionar domínio
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-green-50 border-b border-green-100 px-5 py-3 text-xs text-green-800 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        <span>Os domínios aqui listados são os únicos autorizados como remetentes (<code class="bg-green-100 px-1 rounded">from_email</code>) nas campanhas. Domínios fora desta lista serão rejeitados.</span>
+                    </div>
+                    <div id="gwlList" class="divide-y divide-slate-100">
+                        <p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+</div>
+
+<!-- Modal — Adicionar domínio à whitelist -->
+<div id="addDomainWLModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <h2 class="text-base font-semibold text-slate-900">Adicionar domínio à whitelist</h2>
+            <button onclick="_closeAddDomainWhitelistModal()" class="text-slate-400 hover:text-slate-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Domínio <span class="text-red-500">*</span></label>
+                <div class="flex items-center border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-slate-900">
+                    <span class="px-3 py-2.5 bg-slate-50 text-slate-500 text-sm border-r border-slate-200">@</span>
+                    <input id="gwlDomainInput" type="text" placeholder="empresa.pt" class="flex-1 px-3 py-2.5 text-sm focus:outline-none" onkeydown="if(event.key==='Enter')_confirmAddDomainWhitelist()">
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Exemplo: <code class="bg-slate-100 px-1 rounded">caetano.pt</code></p>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nota <span class="text-slate-400 font-normal">(opcional)</span></label>
+                <input id="gwlNoteInput" type="text" placeholder="ex: Domínio principal Caetano" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+            <button onclick="_closeAddDomainWhitelistModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+            <button id="gwlConfirmBtn" onclick="_confirmAddDomainWhitelist()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50">Adicionar</button>
         </div>
     </div>
 </div>
