@@ -6514,7 +6514,7 @@ ${sections.join('\n\n')}
                     // New campaign — clear everything
                     ['wizName','wizSubject','wizPreviewText'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; });
                     _wizVarsRender();
-                    const utmEn = document.getElementById('wizUtmEnabled'); if (utmEn) { utmEn.checked = false; _wizUtmToggle(); }
+                    const utmEn = document.getElementById('wizUtmEnabled'); if (utmEn) { utmEn.checked = true; _wizUtmToggle(); }
                     ['wizUtmCampaign','wizUtmContent'].forEach(uid => { const el = document.getElementById(uid); if (el) { el.value = ''; delete el.dataset.edited; } });
                     const _bVars = _currentBrand?.variables || {};
                     const utmSrc = document.getElementById('wizUtmSource'); if (utmSrc) utmSrc.value = _bVars.utm_source || 'newsletter';
