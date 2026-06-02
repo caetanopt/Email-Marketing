@@ -8404,6 +8404,19 @@ ${sections.join('\n\n')}
                         <div class="flex gap-6 items-start">
                         <!-- Coluna principal 60% -->
                         <div class="w-[60%] min-w-0 space-y-4">
+                        <!-- Enviar teste -->
+                        <div class="bg-white border border-amber-200 rounded-xl p-5">
+                            <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                Enviar Email de Teste
+                            </h3>
+                            <p class="text-xs text-slate-400 mb-3">Verifica o aspecto do email antes de enviar. Podes indicar vários emails separados por vírgula.</p>
+                            <div class="flex gap-2">
+                                <input id="wizTestEmailInput" type="text" placeholder="teste@exemplo.pt, outro@exemplo.pt" class="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                <button id="wizTestEmailBtn" onclick="_wizSendTest()" class="flex-shrink-0 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-50 whitespace-nowrap">Enviar Teste</button>
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-2">O assunto terá o prefixo [TESTE]. Não afecta a campanha original.</p>
+                        </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
                             <div id="wizReviewContent"></div>
@@ -8456,19 +8469,6 @@ ${sections.join('\n\n')}
                                     <button onclick="_wizRevUtmCancel()" class="px-4 py-2 border border-slate-200 text-xs text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
                                 </div>
                             </div>
-                        </div>
-                        <!-- Enviar teste -->
-                        <div class="bg-white border border-amber-200 rounded-xl p-5">
-                            <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
-                                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                                Enviar Email de Teste
-                            </h3>
-                            <p class="text-xs text-slate-400 mb-3">Verifica o aspecto do email antes de enviar. Podes indicar vários emails separados por vírgula.</p>
-                            <div class="flex gap-2">
-                                <input id="wizTestEmailInput" type="text" placeholder="teste@exemplo.pt, outro@exemplo.pt" class="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                                <button id="wizTestEmailBtn" onclick="_wizSendTest()" class="flex-shrink-0 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-50 whitespace-nowrap">Enviar Teste</button>
-                            </div>
-                            <p class="text-[10px] text-slate-400 mt-2">O assunto terá o prefixo [TESTE]. Não afecta a campanha original.</p>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4 flex items-center gap-2">
