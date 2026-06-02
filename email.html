@@ -3373,6 +3373,8 @@ ${bodyRows}
         }
     }
 
+    let _gwlEditingId = null;
+
     function _renderDomainWhitelist() {
         const el    = document.getElementById('gwlList');
         const count = document.getElementById('gwlCount');
@@ -3384,14 +3386,73 @@ ${bodyRows}
         }
         const fmt = d => new Date(d).toLocaleDateString('pt-PT', { day:'2-digit', month:'2-digit', year:'numeric' });
         el.innerHTML = _domainWL.map(r => `
-            <div class="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-mono font-medium border border-green-100">@${escHtml(r.domain)}</span>
-                    ${r.note ? `<span class="text-xs text-slate-500 truncate">${escHtml(r.note)}</span>` : ''}
-                    <span class="text-xs text-slate-400 flex-shrink-0">${fmt(r.created_at)}</span>
+            <div>
+                <!-- View row -->
+                <div id="gwlRow_${r.id}" class="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-mono font-medium border border-green-100">@${escHtml(r.domain)}</span>
+                        ${r.note ? `<span class="text-xs text-slate-500 truncate">${escHtml(r.note)}</span>` : '<span class="text-xs text-slate-300 italic">sem nota</span>'}
+                        <span class="text-xs text-slate-400 flex-shrink-0">${fmt(r.created_at)}</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button onclick="_gwlStartEdit(${r.id})" class="text-xs px-3 py-1 border border-slate-200 text-slate-600 rounded hover:bg-slate-50">Editar</button>
+                        <button onclick="_removeDomainWhitelist(${r.id},'${escHtml(r.domain)}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover</button>
+                    </div>
                 </div>
-                <button onclick="_removeDomainWhitelist(${r.id},'${escHtml(r.domain)}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50 flex-shrink-0">Remover</button>
+                <!-- Edit row (hidden by default) -->
+                <div id="gwlEdit_${r.id}" class="hidden border-t border-slate-100 bg-slate-50 px-5 py-4">
+                    <div class="flex items-end gap-3 flex-wrap">
+                        <div class="flex-1 min-w-48">
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Domínio</label>
+                            <div class="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-slate-900">
+                                <span class="px-3 py-2 bg-slate-50 text-slate-500 text-sm border-r border-slate-200 select-none">@</span>
+                                <input id="gwlEditDomain_${r.id}" type="text" value="${escHtml(r.domain)}" class="flex-1 px-3 py-2 text-sm focus:outline-none bg-white"
+                                    onkeydown="if(event.key==='Enter')_gwlSaveEdit(${r.id});else if(event.key==='Escape')_gwlCancelEdit(${r.id})">
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-48">
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Nota <span class="text-slate-400 font-normal">(opcional)</span></label>
+                            <input id="gwlEditNote_${r.id}" type="text" value="${escHtml(r.note || '')}" placeholder="ex: Domínio principal Caetano"
+                                class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                                onkeydown="if(event.key==='Enter')_gwlSaveEdit(${r.id});else if(event.key==='Escape')_gwlCancelEdit(${r.id})">
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <button onclick="_gwlCancelEdit(${r.id})" class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-white text-slate-600">Cancelar</button>
+                            <button onclick="_gwlSaveEdit(${r.id})" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 font-medium">Guardar</button>
+                        </div>
+                    </div>
+                </div>
             </div>`).join('');
+    }
+
+    function _gwlStartEdit(id) {
+        if (_gwlEditingId !== null && _gwlEditingId !== id) _gwlCancelEdit(_gwlEditingId);
+        _gwlEditingId = id;
+        document.getElementById(`gwlRow_${id}`)?.classList.add('hidden');
+        const editEl = document.getElementById(`gwlEdit_${id}`);
+        editEl?.classList.remove('hidden');
+        document.getElementById(`gwlEditDomain_${id}`)?.focus();
+    }
+
+    function _gwlCancelEdit(id) {
+        document.getElementById(`gwlEdit_${id}`)?.classList.add('hidden');
+        document.getElementById(`gwlRow_${id}`)?.classList.remove('hidden');
+        _gwlEditingId = null;
+    }
+
+    async function _gwlSaveEdit(id) {
+        const domain = document.getElementById(`gwlEditDomain_${id}`)?.value.trim().replace(/^@/, '').toLowerCase();
+        const note   = document.getElementById(`gwlEditNote_${id}`)?.value.trim();
+        if (!domain) { showToast('Domínio obrigatório.', 'error'); return; }
+        if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
+            showToast('Domínio inválido. Exemplo: empresa.pt', 'error'); return;
+        }
+        try {
+            await apiFetch('/api/brands?action=domain_whitelist', { method: 'PUT', body: JSON.stringify({ id, domain, note: note || null }) });
+            showToast(`@${domain} actualizado.`);
+            _gwlEditingId = null;
+            _loadDomainWhitelist();
+        } catch (e) { showToast(e.message, 'error'); }
     }
 
     async function _removeDomainWhitelist(id, domain) {

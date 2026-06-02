@@ -274,6 +274,23 @@ module.exports = async function handler(req, res) {
           throw e;
         }
       }
+      if (req.method === 'PUT') {
+        const { id: wlId, domain, note } = req.body || {};
+        if (!wlId || !domain) return res.status(400).json({ error: 'id e domain obrigatórios' });
+        const clean = domain.trim().toLowerCase().replace(/^@/, '');
+        if (!DOMAIN_RE.test(clean)) return res.status(400).json({ error: 'Domínio inválido. Exemplo: empresa.pt' });
+        try {
+          await query(
+            'UPDATE domain_whitelist SET domain=$1, note=$2 WHERE id=$3',
+            [clean, note || null, wlId]
+          );
+          return res.status(200).json({ ok: true, domain: clean });
+        } catch (e) {
+          if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 031_domain_whitelist.sql no Supabase.' });
+          if (e.code === '23505') return res.status(409).json({ error: 'Domínio já existe na lista' });
+          throw e;
+        }
+      }
       if (req.method === 'DELETE') {
         const { id: wlId } = req.body || {};
         if (!wlId) return res.status(400).json({ error: 'id obrigatório' });
