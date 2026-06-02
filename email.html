@@ -3564,7 +3564,7 @@ ${bodyRows}
         'company_name','company_address','company_phone','company_email','company_nipc',
         'site_url','service_url',
         'disclaimer',
-        'utm_source','utm_medium'
+        'utm_source','utm_medium','utm_campaign','utm_content'
     ];
 
     function _bsGetVariables() {
@@ -4191,7 +4191,7 @@ ${bodyRows}
         ).join('');
     }
 
-    const _UTM_VAR_KEYS = new Set(['utm_source','utm_medium']);
+    const _UTM_VAR_KEYS = new Set(['utm_source','utm_medium','utm_campaign','utm_content']);
     function _wizVarsChips(vars) {
         // Always show disclaimer chip (even if not yet configured); hide utm keys (not template vars)
         const all = { disclaimer: null, ...(vars || {}) };
@@ -4251,16 +4251,24 @@ ${bodyRows}
             : `https://exemplo.pt/pagina<span class="text-slate-400">?utm_source=...&utm_medium=email</span>`;
     }
     function _wizGetUtmParams() {
-        if (!document.getElementById('wizUtmEnabled')?.checked) return null;
-        const src  = document.getElementById('wizUtmSource')?.value.trim();
-        const med  = document.getElementById('wizUtmMedium')?.value.trim() || 'email';
-        const camp = document.getElementById('wizUtmCampaign')?.value.trim();
-        const cont = document.getElementById('wizUtmContent')?.value.trim();
+        // Always start with brand-level defaults
+        const bv = _currentBrand?.variables || {};
         const p = {};
-        if (src)  p.utm_source   = src;
-        if (med)  p.utm_medium   = med;
-        if (camp) p.utm_campaign = camp;
-        if (cont) p.utm_content  = cont;
+        if (bv.utm_source)   p.utm_source   = bv.utm_source;
+        if (bv.utm_medium)   p.utm_medium   = bv.utm_medium;
+        if (bv.utm_campaign) p.utm_campaign = bv.utm_campaign;
+        if (bv.utm_content)  p.utm_content  = bv.utm_content;
+        // Override with campaign-level UTMs if enabled
+        if (document.getElementById('wizUtmEnabled')?.checked) {
+            const src  = document.getElementById('wizUtmSource')?.value.trim();
+            const med  = document.getElementById('wizUtmMedium')?.value.trim();
+            const camp = document.getElementById('wizUtmCampaign')?.value.trim();
+            const cont = document.getElementById('wizUtmContent')?.value.trim();
+            if (src)  p.utm_source   = src;
+            if (med)  p.utm_medium   = med;
+            if (camp) p.utm_campaign = camp;
+            if (cont) p.utm_content  = cont;
+        }
         return Object.keys(p).length ? p : null;
     }
     function _wizRevUtmRender() {
@@ -4274,7 +4282,11 @@ ${bodyRows}
                 `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-50 border border-violet-200 rounded text-xs text-violet-700"><span class="font-medium">${k}</span><span class="text-violet-400">=</span>${v}</span>`
             ).join('')}</div>`;
         } else {
-            summary.innerHTML = `<p class="text-sm text-slate-400">Desactivado — os links não terão parâmetros UTM.</p>`;
+            const bvSummary = _currentBrand?.variables || {};
+            const hasBrandUtm = bvSummary.utm_source || bvSummary.utm_medium || bvSummary.utm_campaign || bvSummary.utm_content;
+            summary.innerHTML = hasBrandUtm
+                ? `<p class="text-sm text-slate-400">Sem substituição — aplicados os UTM das Definições da marca.</p>`
+                : `<p class="text-sm text-slate-400">Desactivado — sem UTM das Definições configurados.</p>`;
         }
     }
     function _wizRevUtmToggleEdit() {
@@ -6514,7 +6526,7 @@ ${sections.join('\n\n')}
                     // New campaign — clear everything
                     ['wizName','wizSubject','wizPreviewText'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; });
                     _wizVarsRender();
-                    const utmEn = document.getElementById('wizUtmEnabled'); if (utmEn) { utmEn.checked = true; _wizUtmToggle(); }
+                    const utmEn = document.getElementById('wizUtmEnabled'); if (utmEn) { utmEn.checked = false; _wizUtmToggle(); }
                     ['wizUtmCampaign','wizUtmContent'].forEach(uid => { const el = document.getElementById(uid); if (el) { el.value = ''; delete el.dataset.edited; } });
                     const _bVars = _currentBrand?.variables || {};
                     const utmSrc = document.getElementById('wizUtmSource'); if (utmSrc) utmSrc.value = _bVars.utm_source || 'newsletter';
@@ -7994,8 +8006,8 @@ ${sections.join('\n\n')}
                             <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                                 <div class="flex items-start justify-between gap-3">
                                     <div>
-                                        <h3 class="text-sm font-semibold text-slate-900">Rastreio UTM</h3>
-                                        <p class="text-xs text-slate-400 mt-0.5">Adiciona parâmetros UTM automaticamente a todas as ligações do email</p>
+                                        <h3 class="text-sm font-semibold text-slate-900">Rastreio UTM por campanha</h3>
+                                        <p class="text-xs text-slate-400 mt-0.5">Os UTM das Definições são sempre aplicados. Ativa para sobrepor valores nesta campanha.</p>
                                     </div>
                                     <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-0.5">
                                         <input type="checkbox" id="wizUtmEnabled" class="sr-only peer" onchange="_wizUtmToggle()">
@@ -8028,7 +8040,7 @@ ${sections.join('\n\n')}
                                 </div>
                                 <div id="wizUtmDisabledMsg" class="flex flex-col items-center justify-center py-8 text-center">
                                     <svg class="w-8 h-8 text-slate-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                                    <p class="text-xs text-slate-400">Activa o rastreio UTM para configurar<br>os parâmetros de tracking</p>
+                                    <p class="text-xs text-slate-400">Os UTM das Definições são aplicados.<br>Ativa para personalizar nesta campanha.</p>
                                 </div>
                             </div>
                         </div>
@@ -10256,6 +10268,14 @@ ${sections.join('\n\n')}
                                 <div class="grid grid-cols-[140px_1fr] items-center gap-3">
                                     <span class="px-2.5 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs font-mono text-slate-500">utm_medium</span>
                                     <input id="bsVar_utm_medium" type="text" placeholder="Ex: email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <span class="px-2.5 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs font-mono text-slate-500">utm_campaign</span>
+                                    <input id="bsVar_utm_campaign" type="text" placeholder="Ex: verao-2026" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="grid grid-cols-[140px_1fr] items-center gap-3">
+                                    <span class="px-2.5 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs font-mono text-slate-500">utm_content</span>
+                                    <input id="bsVar_utm_content" type="text" placeholder="Ex: banner-topo" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                             </div>
                         </div>
