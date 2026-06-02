@@ -548,6 +548,44 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Domain whitelist (global, owner-only) ────────────────────
+    if (action === 'domain_whitelist') {
+      const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+      const ownerRow = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+      );
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+
+      if (req.method === 'GET') {
+        const rows = await query(
+          `SELECT dw.id, dw.domain, dw.note, dw.created_at, u.name AS created_by_name
+           FROM domain_whitelist dw
+           LEFT JOIN users u ON u.id = dw.created_by
+           ORDER BY dw.created_at DESC`
+        );
+        return res.status(200).json({ data: rows });
+      }
+      if (req.method === 'POST') {
+        const { domain, note } = req.body || {};
+        if (!domain) return res.status(400).json({ error: 'Domínio obrigatório' });
+        const clean = domain.trim().toLowerCase().replace(/^@/, '');
+        if (!DOMAIN_RE.test(clean)) return res.status(400).json({ error: 'Domínio inválido. Exemplo: empresa.pt' });
+        const rows = await query(
+          `INSERT INTO domain_whitelist (domain, note, created_by) VALUES ($1,$2,$3)
+           ON CONFLICT (domain) DO NOTHING RETURNING id`,
+          [clean, note || null, user.id]
+        );
+        if (!rows[0]) return res.status(409).json({ error: 'Domínio já existe na lista' });
+        return res.status(201).json({ id: rows[0].id, domain: clean });
+      }
+      if (req.method === 'DELETE') {
+        const { id: wlId } = req.body || {};
+        if (!wlId) return res.status(400).json({ error: 'id obrigatório' });
+        await query('DELETE FROM domain_whitelist WHERE id=$1', [wlId]);
+        return res.status(200).json({ ok: true });
+      }
+    }
+
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
     res.status(500).json({ error: 'Erro de servidor' });

@@ -3365,7 +3365,7 @@ ${bodyRows}
         if (!el) return;
         el.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>';
         try {
-            const { data } = await apiFetch('/api/global-settings?action=domain_whitelist');
+            const { data } = await apiFetch('/api/brands?action=domain_whitelist');
             _domainWL = data || [];
             _renderDomainWhitelist();
         } catch (e) {
@@ -3397,7 +3397,7 @@ ${bodyRows}
     async function _removeDomainWhitelist(id, domain) {
         if (!confirm(`Remover @${domain} da whitelist?`)) return;
         try {
-            await apiFetch('/api/global-settings?action=domain_whitelist', { method: 'DELETE', body: JSON.stringify({ id }) });
+            await apiFetch('/api/brands?action=domain_whitelist', { method: 'DELETE', body: JSON.stringify({ id }) });
             showToast(`@${domain} removido da whitelist.`);
             _loadDomainWhitelist();
         } catch (e) { showToast(e.message, 'error'); }
@@ -3427,7 +3427,7 @@ ${bodyRows}
         const btn = document.getElementById('gwlConfirmBtn');
         if (btn) btn.disabled = true;
         try {
-            await apiFetch('/api/global-settings?action=domain_whitelist', { method: 'POST', body: JSON.stringify({ domain, note: note || null }) });
+            await apiFetch('/api/brands?action=domain_whitelist', { method: 'POST', body: JSON.stringify({ domain, note: note || null }) });
             _closeAddDomainWhitelistModal();
             showToast(`@${domain} adicionado à whitelist.`);
             _loadDomainWhitelist();
