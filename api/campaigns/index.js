@@ -156,6 +156,7 @@ module.exports = async function handler(req, res) {
 
       const rows = await query(
         `SELECT c.id, c.name, c.subject, c.status, c.scheduled_at, c.sent_at, c.created_at,
+                c.from_name, c.from_email, c.preview_text, c.utm_params,
                 b.num AS brand_num,
                 t.name AS template_name, u.name AS created_by_name,
                 COUNT(DISTINCT cr.id)::int AS total_recipients,
