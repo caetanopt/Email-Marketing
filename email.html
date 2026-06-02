@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
     <script>
     // ── DEV BYPASS LOGIN (modo de testes) ───────────────
     // Para desativar: muda DEV_BYPASS_LOGIN para false (e faz commit).
@@ -4866,7 +4867,7 @@ ${bodyRows}
     }
     // ── Wizard step 3: recipient tabs + import ──────────────────────
     function _wizRecipTab(tab) {
-        ['lists','csv','txt'].forEach(t => {
+        ['lists','csv','txt','excel'].forEach(t => {
             const T = t.charAt(0).toUpperCase() + t.slice(1);
             const btn   = document.getElementById(`wizRecipTab${T}`);
             const panel = document.getElementById(`wizRecipPanel${T}`);
@@ -4881,7 +4882,7 @@ ${bodyRows}
         });
     }
 
-    let _wizImportFiles = { csv: null, txt: null };
+    let _wizImportFiles = { csv: null, txt: null, excel: null };
     let _wizDirectContactIds = [];
     let _wizDirectContacts = [];
     let _wizExistingContacts = [];
@@ -4891,7 +4892,7 @@ ${bodyRows}
     function _wizPickFile(type) {
         const inp = document.createElement('input');
         inp.type = 'file';
-        inp.accept = type === 'csv' ? '.csv' : '.txt';
+        inp.accept = type === 'csv' ? '.csv' : type === 'excel' ? '.xlsx,.xls' : '.txt';
         inp.onchange = () => {
             const f = inp.files?.[0];
             if (!f) return;
@@ -4999,11 +5000,33 @@ ${bodyRows}
         if (!file) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
-            const text = await file.text();
             let rows = [];
             if (type === 'txt') {
+                const text = await file.text();
                 rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
+            } else if (type === 'excel') {
+                const ab = await file.arrayBuffer();
+                const wb = XLSX.read(ab, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                if (!raw.length) throw new Error('Folha Excel vazia.');
+                // First row as headers
+                const headers = raw[0].map(h => String(h).trim().toLowerCase());
+                const emailIdx = headers.findIndex(h => h === 'email' || h === 'e-mail' || h === 'email address');
+                if (emailIdx === -1) throw new Error('Coluna "email" não encontrada na primeira linha.');
+                const map = { first_name: headers.findIndex(h => ['first_name','first name','nome','name','firstname'].includes(h)),
+                              last_name:  headers.findIndex(h => ['last_name','last name','apelido','lastname'].includes(h)),
+                              phone:      headers.findIndex(h => ['phone','telefone','telemovel','tel','mobile'].includes(h)),
+                              company:    headers.findIndex(h => ['company','empresa','company name'].includes(h)) };
+                rows = raw.slice(1).map(r => {
+                    const email = String(r[emailIdx] || '').trim().toLowerCase();
+                    if (!_isValidEmail(email)) return null;
+                    const obj = { email };
+                    for (const [k, i] of Object.entries(map)) { if (i !== -1 && r[i]) obj[k] = String(r[i]).trim(); }
+                    return obj;
+                }).filter(Boolean);
             } else {
+                const text = await file.text();
                 rows = _parseCsv(text);
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
@@ -6519,9 +6542,10 @@ ${sections.join('\n\n')}
                     _wizExistingContacts = [];
                     _wizUpdateDirectNotice();
                     _wizRenderDirectPanel();
-                    _wizImportFiles = { csv: null, txt: null };
+                    _wizImportFiles = { csv: null, txt: null, excel: null };
                     _wizClearFile('csv');
                     _wizClearFile('txt');
+                    _wizClearFile('excel');
                     _wizRecipTab('lists');
                     // New campaign — clear everything
                     ['wizName','wizSubject','wizPreviewText'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; });
@@ -8236,6 +8260,7 @@ ${sections.join('\n\n')}
                                 <button role="tab" aria-selected="true" aria-controls="wizRecipPanelLists" onclick="_wizRecipTab('lists')" id="wizRecipTabLists" class="px-4 py-3 text-sm font-medium border-b-2 border-slate-900 text-slate-900 -mb-px">Listas</button>
                                 <button role="tab" aria-selected="false" aria-controls="wizRecipPanelCsv" onclick="_wizRecipTab('csv')" id="wizRecipTabCsv" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar CSV</button>
                                 <button role="tab" aria-selected="false" aria-controls="wizRecipPanelTxt" onclick="_wizRecipTab('txt')" id="wizRecipTabTxt" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar TXT</button>
+                                <button role="tab" aria-selected="false" aria-controls="wizRecipPanelExcel" onclick="_wizRecipTab('excel')" id="wizRecipTabExcel" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 -mb-px">Importar Excel</button>
                             </div>
 
                             <!-- Panel: Listas -->
@@ -8286,6 +8311,40 @@ ${sections.join('\n\n')}
                                     </div>
                                 </div>
                                 <button id="wizCsvImportBtn" onclick="_wizStartImport('csv')" disabled
+                                    class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                    Importar e adicionar à campanha
+                                </button>
+                            </div>
+
+                            <!-- Panel: Excel -->
+                            <div id="wizRecipPanelExcel" class="hidden p-6 space-y-4">
+                                <p class="text-xs text-slate-500"><span class="font-medium text-slate-700">Excel (.xlsx / .xls):</span> a primeira linha deve ter os cabeçalhos — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais. Usa a primeira folha do ficheiro.</p>
+                                <!-- Drop zone Excel -->
+                                <div id="wizExcelDropZone"
+                                     ondragover="event.preventDefault();_wizDragOver(this)"
+                                     ondragleave="_wizDragLeave(this,'excel')"
+                                     ondrop="event.preventDefault();_wizDropFile(event,'excel')"
+                                     class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl transition-all select-none overflow-hidden">
+                                    <div id="wizExcelDropEmpty" onclick="_wizPickFile('excel')"
+                                         class="flex flex-col items-center justify-center min-h-[100px] py-6 px-8 cursor-pointer text-center hover:bg-slate-100 transition-colors">
+                                        <svg class="w-7 h-7 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                        <p class="text-sm font-medium text-slate-600 mb-0.5">Arrasta o ficheiro .xlsx ou .xls aqui ou clica para escolher</p>
+                                        <p class="text-xs text-slate-400">max. 100 MB</p>
+                                    </div>
+                                    <div id="wizExcelDropFilled" class="hidden items-center justify-between px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                            </div>
+                                            <div><p id="wizExcelDropFileName" class="text-sm font-semibold text-slate-900">ficheiro.xlsx</p><p class="text-xs text-slate-500">pronto para importar</p></div>
+                                        </div>
+                                        <button onclick="_wizClearFile('excel')" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button id="wizExcelImportBtn" onclick="_wizStartImport('excel')" disabled
                                     class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                                     Importar e adicionar à campanha
