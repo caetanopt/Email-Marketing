@@ -3079,7 +3079,7 @@ ${bodyRows}
     async function _loadSegments() {
         if (!_currentListId) return;
         try {
-            const { data } = await apiFetch(`/api/segments?list_id=${_currentListId}`);
+            const { data } = await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments`);
             _segments = data || [];
         } catch(_) { _segments = []; }
         _renderSegments();
@@ -3119,7 +3119,7 @@ ${bodyRows}
 
         if (segId) {
             try {
-                const s = await apiFetch(`/api/segments/${segId}`);
+                const s = await apiFetch(`/api/lists?segment_id=${segId}`);
                 document.getElementById('segName').value  = s.name || '';
                 document.getElementById('segMatch').value = s.match || 'all';
                 _segRules = (s.rules || []).map(r => ({ ...r }));
@@ -3241,7 +3241,7 @@ ${bodyRows}
         out.textContent = 'A calcular…';
         try {
             const match = document.getElementById('segMatch').value;
-            const { count } = await apiFetch(`/api/segments?list_id=${_currentListId}&action=preview`, {
+            const { count } = await apiFetch(`/api/lists?list_id=${_currentListId}&action=segment_preview`, {
                 method: 'POST',
                 body: JSON.stringify({ rules: _segRules, match })
             });
@@ -3263,10 +3263,10 @@ ${bodyRows}
         try {
             const body = { name, match, rules: _segRules };
             if (_segEditId) {
-                await apiFetch(`/api/segments/${_segEditId}`, { method: 'PUT', body: JSON.stringify(body) });
+                await apiFetch(`/api/lists?segment_id=${_segEditId}`, { method: 'PUT', body: JSON.stringify(body) });
                 showToast('Segmento actualizado');
             } else {
-                await apiFetch(`/api/segments?list_id=${_currentListId}`, { method: 'POST', body: JSON.stringify(body) });
+                await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments`, { method: 'POST', body: JSON.stringify(body) });
                 showToast('Segmento criado');
             }
             closeSegmentModal();
@@ -3281,7 +3281,7 @@ ${bodyRows}
     async function deleteSegment(segId) {
         if (!confirm('Apagar este segmento?')) return;
         try {
-            await apiFetch(`/api/segments/${segId}`, { method: 'DELETE' });
+            await apiFetch(`/api/lists?segment_id=${segId}`, { method: 'DELETE' });
             showToast('Segmento apagado');
             await _loadSegments();
         } catch(_) { showToast('Erro ao apagar'); }

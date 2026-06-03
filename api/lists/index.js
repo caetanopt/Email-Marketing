@@ -1,10 +1,175 @@
 const { query } = require('../../lib/db');
 const { withAuth } = require('../../lib/auth');
 
-module.exports = withAuth(async (req, res, user) => {
-  const { id, brand_id, action, contact_id } = req.query;
+// ── Segment rule builder ──────────────────────────────────────────────────────
+const CONTACT_FIELDS = new Set(['name','email','phone','company','status']);
 
-  // Item operations when id is present (routed here via Vercel rewrite from /api/lists/:id)
+function buildSegmentWhere(rules, match) {
+  const params = [];
+  // +1 because list_id is always $1 in the outer query
+  const next = (v) => { params.push(v); return `$${params.length + 1}`; };
+
+  const conditions = (rules || []).map(rule => {
+    const { field, field_type, operator, value } = rule;
+    const safeField = (field || '').replace(/[^a-zA-Z0-9_]/g, '');
+    if (!safeField) return null;
+
+    let col;
+    if (field_type === 'contact') {
+      if (!CONTACT_FIELDS.has(field)) return null;
+      col = `c.${field}`;
+    } else {
+      col = `(lm.extra_data->>'${safeField}')`;
+    }
+
+    if (operator === 'is_empty')     return `(${col} IS NULL OR ${col} = '')`;
+    if (operator === 'is_not_empty') return `(${col} IS NOT NULL AND ${col} <> '')`;
+    if (value === undefined || value === null || value === '') return null;
+
+    switch (operator) {
+      case 'equals':       return `${col} = ${next(value)}`;
+      case 'not_equals':   return `${col} <> ${next(value)}`;
+      case 'contains':     return `${col} ILIKE ${next('%'+value+'%')}`;
+      case 'not_contains': return `${col} NOT ILIKE ${next('%'+value+'%')}`;
+      case 'starts_with':  return `${col} ILIKE ${next(value+'%')}`;
+      case 'ends_with':    return `${col} ILIKE ${next('%'+value)}`;
+      case 'gt':           return `${col}::numeric > ${next(value)}`;
+      case 'lt':           return `${col}::numeric < ${next(value)}`;
+      case 'gte':          return `${col}::numeric >= ${next(value)}`;
+      case 'lte':          return `${col}::numeric <= ${next(value)}`;
+      case 'date_before':  return `${col}::date < ${next(value)}::date`;
+      case 'date_after':   return `${col}::date > ${next(value)}::date`;
+      default: return null;
+    }
+  }).filter(Boolean);
+
+  if (!conditions.length) return { sql: 'TRUE', params };
+  const op = match === 'any' ? ' OR ' : ' AND ';
+  return { sql: `(${conditions.join(op)})`, params };
+}
+
+// ── Handler ───────────────────────────────────────────────────────────────────
+module.exports = withAuth(async (req, res, user) => {
+  const { id, brand_id, action, contact_id, segment_id, list_id } = req.query;
+
+  // ── Segment single operations (?segment_id=X) ─────────────────────────────
+  if (segment_id) {
+    const auth = await query(
+      `SELECT s.*, l.brand_id FROM segments s
+       JOIN lists l ON l.id = s.list_id
+       JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
+       WHERE s.id = $1`,
+      [segment_id, user.id]
+    );
+    if (!auth[0]) return res.status(404).json({ error: 'Segmento não encontrado' });
+    const seg = auth[0];
+
+    try {
+      if (req.method === 'GET') {
+        if (action === 'count') {
+          const { sql, params } = buildSegmentWhere(seg.rules, seg.match);
+          const rows = await query(
+            `SELECT COUNT(DISTINCT lm.contact_id)::int AS total
+             FROM list_members lm
+             JOIN contacts c ON c.id = lm.contact_id
+             WHERE lm.list_id = $1 AND c.status NOT IN ('unsubscribed','bounced','complained') AND ${sql}`,
+            [seg.list_id, ...params]
+          );
+          return res.status(200).json({ count: rows[0].total });
+        }
+        return res.status(200).json(seg);
+      }
+
+      if (req.method === 'PUT') {
+        const { name, description, rules, match } = req.body || {};
+        await query(
+          `UPDATE segments SET name=COALESCE($1,name), description=$2,
+           rules=COALESCE($3::jsonb,rules), match=COALESCE($4,match), updated_at=NOW()
+           WHERE id=$5`,
+          [name||null, description||null,
+           rules !== undefined ? JSON.stringify(rules) : null,
+           match||null, segment_id]
+        );
+        return res.status(200).json({ ok: true });
+      }
+
+      if (req.method === 'DELETE') {
+        await query('DELETE FROM segments WHERE id=$1', [segment_id]);
+        return res.status(200).json({ ok: true });
+      }
+
+      return res.status(405).json({ error: 'Método não permitido' });
+    } catch (err) {
+      console.error('segment error:', err?.message);
+      return res.status(500).json({ error: 'Erro de servidor' });
+    }
+  }
+
+  // ── Segment collection operations (?list_id=X&action=segments|segment_preview)
+  if (list_id && action && (action === 'segments' || action === 'segment_preview')) {
+    const listAuth = await query(
+      `SELECT l.* FROM lists l
+       JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
+       WHERE l.id = $1`,
+      [list_id, user.id]
+    );
+    if (!listAuth[0]) return res.status(404).json({ error: 'Lista não encontrada' });
+
+    try {
+      if (action === 'segments' && req.method === 'GET') {
+        const segs = await query(
+          `SELECT s.id, s.name, s.description, s.rules, s.match, s.created_at
+           FROM segments s WHERE s.list_id = $1 ORDER BY s.name`,
+          [list_id]
+        );
+        const withCounts = await Promise.all(segs.map(async s => {
+          try {
+            const { sql, params } = buildSegmentWhere(s.rules, s.match);
+            const r = await query(
+              `SELECT COUNT(DISTINCT lm.contact_id)::int AS total
+               FROM list_members lm
+               JOIN contacts c ON c.id = lm.contact_id
+               WHERE lm.list_id = $1 AND c.status NOT IN ('unsubscribed','bounced','complained') AND ${sql}`,
+              [list_id, ...params]
+            );
+            return { ...s, contact_count: r[0].total };
+          } catch { return { ...s, contact_count: 0 }; }
+        }));
+        return res.status(200).json({ data: withCounts });
+      }
+
+      if (action === 'segments' && req.method === 'POST') {
+        const { name, description, rules, match } = req.body || {};
+        if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
+        const rows = await query(
+          `INSERT INTO segments (list_id, name, description, rules, match)
+           VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING id`,
+          [list_id, name, description||null, JSON.stringify(rules||[]), match||'all']
+        );
+        return res.status(201).json({ id: rows[0].id });
+      }
+
+      if (action === 'segment_preview' && req.method === 'POST') {
+        const { rules, match } = req.body || {};
+        const { sql, params } = buildSegmentWhere(rules, match || 'all');
+        const rows = await query(
+          `SELECT COUNT(DISTINCT lm.contact_id)::int AS total
+           FROM list_members lm
+           JOIN contacts c ON c.id = lm.contact_id
+           WHERE lm.list_id = $1 AND c.status NOT IN ('unsubscribed','bounced','complained') AND ${sql}`,
+          [list_id, ...params]
+        );
+        return res.status(200).json({ count: rows[0].total });
+      }
+
+      return res.status(405).json({ error: 'Método não permitido' });
+    } catch (err) {
+      console.error('segment collection error:', err?.message);
+      return res.status(500).json({ error: 'Erro de servidor' });
+    }
+  }
+
+  // ── List single operations (?id=X) ────────────────────────────────────────
   if (id) {
     const auth = await query(
       `SELECT l.* FROM lists l
@@ -75,7 +240,7 @@ module.exports = withAuth(async (req, res, user) => {
     }
   }
 
-  // Collection operations
+  // ── List collection operations (?brand_id=X) ─────────────────────────────
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
   try {
