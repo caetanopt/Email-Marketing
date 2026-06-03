@@ -180,49 +180,46 @@ module.exports = async (req, res) => {
 
   if (type === 'click') {
     const dest = url && url.startsWith('http') ? url : '/';
-    res.setHeader('Location', dest);
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(302).end();
-
+    // Record click BEFORE redirecting — Vercel terminates the function on res.end()
     try {
-      if (!cid || !uid || !t) return;
-      const expected = trackToken(cid, uid);
-      if (t !== expected) return;
-
-      const campaignId = parseInt(cid, 10);
-      const contactId  = parseInt(uid, 10);
-      if (isNaN(campaignId) || isNaN(contactId)) return;
-
-      await query(
-        `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
-        [campaignId, contactId, url || null]
-      );
+      if (cid && uid && t) {
+        const expected = trackToken(cid, uid);
+        const campaignId = parseInt(cid, 10);
+        const contactId  = parseInt(uid, 10);
+        if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
+          await query(
+            `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
+            [campaignId, contactId, url || null]
+          );
+        }
+      }
     } catch (e) {
       console.error('track click error:', e.message);
     }
-    return;
+    res.setHeader('Location', dest);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(302).end();
   }
 
+  // Open pixel — record BEFORE returning the image
+  try {
+    if (cid && uid && t) {
+      const expected = trackToken(cid, uid);
+      const campaignId = parseInt(cid, 10);
+      const contactId  = parseInt(uid, 10);
+      if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
+        await query(
+          `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1, $2, 'open', NOW())`,
+          [campaignId, contactId]
+        );
+      }
+    }
+  } catch (e) {
+    console.error('track open error:', e.message);
+  }
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.status(200).end(PIXEL);
-
-  try {
-    if (!cid || !uid || !t) return;
-    const expected = trackToken(cid, uid);
-    if (t !== expected) return;
-
-    const campaignId = parseInt(cid, 10);
-    const contactId  = parseInt(uid, 10);
-    if (isNaN(campaignId) || isNaN(contactId)) return;
-
-    await query(
-      `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1, $2, 'open', NOW())`,
-      [campaignId, contactId]
-    );
-  } catch (e) {
-    console.error('track open error:', e.message);
-  }
+  return res.status(200).end(PIXEL);
 };
