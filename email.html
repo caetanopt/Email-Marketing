@@ -11110,8 +11110,8 @@ ${sections.join('\n\n')}
                 </div>
             </header>
             <main class="flex-1 px-8 py-6 space-y-6">
-                <!-- Formulário + Campos adicionais lado a lado -->
-                <div class="grid grid-cols-2 gap-6">
+                <!-- Formulário + Campos adicionais + Segmentos em 3 colunas -->
+                <div class="grid grid-cols-3 gap-6">
                     <!-- Informação da lista -->
                     <div class="bg-white border border-slate-200 rounded-xl p-5">
                         <h3 class="font-semibold text-slate-900 mb-4 text-sm">Informação da lista</h3>
@@ -11150,6 +11150,22 @@ ${sections.join('\n\n')}
                             <button onclick="addListExtraField()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 whitespace-nowrap">+ Adicionar</button>
                         </div>
                     </div>
+                    <!-- Segmentos -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-slate-900 text-sm">Segmentos</h3>
+                                <p class="text-xs text-slate-400 mt-0.5">Grupos de contactos filtrados por regras</p>
+                            </div>
+                            <button onclick="openSegmentModal()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                Novo segmento
+                            </button>
+                        </div>
+                        <div id="segmentsList">
+                            <p class="text-sm text-slate-400 py-2">A carregar…</p>
+                        </div>
+                    </div>
                 </div>
                 <!-- Contactos da lista -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -11174,22 +11190,6 @@ ${sections.join('\n\n')}
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
                         <span id="listEditPageInfo"></span>
                         <div id="listEditPaginationDiv" class="flex gap-2"></div>
-                    </div>
-                </div>
-                <!-- Segmentos da lista -->
-                <div class="bg-white border border-slate-200 rounded-xl p-5">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h3 class="font-semibold text-slate-900 text-sm">Segmentos</h3>
-                            <p class="text-xs text-slate-400 mt-0.5">Grupos de contactos filtrados por regras</p>
-                        </div>
-                        <button onclick="openSegmentModal()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 flex items-center gap-1.5">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            Novo segmento
-                        </button>
-                    </div>
-                    <div id="segmentsList">
-                        <p class="text-sm text-slate-400 py-2">A carregar…</p>
                     </div>
                 </div>
                 <!-- Segment editor modal -->
