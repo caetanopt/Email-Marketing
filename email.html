@@ -2789,6 +2789,7 @@ ${bodyRows}
         }
         _renderListExtraFieldsDef();
         await _loadListMembers();
+        _loadSegments();
     }
 
     function _renderListExtraFieldsDef() {
@@ -3072,6 +3073,218 @@ ${bodyRows}
         const pages = Math.ceil(_listEditTotalCount / _LIST_EDIT_PER_PAGE);
         if (p < 1 || p > pages) return;
         _loadListMembers(p);
+    }
+
+    // ── Segments ─────────────────────────────────────────────
+    async function _loadSegments() {
+        if (!_currentListId) return;
+        try {
+            const { data } = await apiFetch(`/api/segments?list_id=${_currentListId}`);
+            _segments = data || [];
+        } catch(_) { _segments = []; }
+        _renderSegments();
+    }
+
+    function _renderSegments() {
+        const el = document.getElementById('segmentsList');
+        if (!el) return;
+        if (!_segments.length) {
+            el.innerHTML = '<p class="text-sm text-slate-400 py-2">Sem segmentos criados.</p>';
+            return;
+        }
+        el.innerHTML = _segments.map(s => `
+            <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-slate-900">${escHtml(s.name)}</p>
+                    <p class="text-xs text-slate-400">${s.rules?.length||0} regra${s.rules?.length===1?'':'s'} · ${(s.contact_count||0).toLocaleString('pt-PT')} contactos</p>
+                </div>
+                <div class="flex items-center gap-1 ml-2">
+                    <button onclick="openSegmentModal(${s.id})" class="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100" title="Editar">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                    <button onclick="deleteSegment(${s.id})" class="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-red-50" title="Apagar">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </div>
+            </div>`).join('');
+    }
+
+    async function openSegmentModal(segId) {
+        _segEditId = segId || null;
+        _segRules  = [];
+        document.getElementById('segModalTitle').textContent = segId ? 'Editar Segmento' : 'Novo Segmento';
+        document.getElementById('segName').value = '';
+        document.getElementById('segMatch').value = 'all';
+        document.getElementById('segPreviewCount').textContent = '';
+
+        if (segId) {
+            try {
+                const s = await apiFetch(`/api/segments/${segId}`);
+                document.getElementById('segName').value  = s.name || '';
+                document.getElementById('segMatch').value = s.match || 'all';
+                _segRules = (s.rules || []).map(r => ({ ...r }));
+            } catch(_) {}
+        }
+        _renderSegRules();
+        document.getElementById('segModal').classList.remove('hidden');
+    }
+
+    function closeSegmentModal() {
+        document.getElementById('segModal').classList.add('hidden');
+        _segEditId = null;
+        _segRules  = [];
+    }
+
+    function _segFieldOptions() {
+        const contactFields = [
+            { value: 'name|contact|text',    label: 'Nome' },
+            { value: 'email|contact|text',   label: 'Email' },
+            { value: 'phone|contact|text',   label: 'Telefone' },
+            { value: 'company|contact|text', label: 'Empresa' },
+            { value: 'status|contact|text',  label: 'Estado' },
+        ];
+        const extraFields = (_listExtraFields || []).map(f => ({
+            value: `${f.name}|extra|${f.type||'text'}`,
+            label: f.name,
+        }));
+        return [...contactFields, ...extraFields];
+    }
+
+    function _operatorsForType(type) {
+        const text = [
+            { value: 'equals',       label: 'é igual a' },
+            { value: 'not_equals',   label: 'não é igual a' },
+            { value: 'contains',     label: 'contém' },
+            { value: 'not_contains', label: 'não contém' },
+            { value: 'starts_with',  label: 'começa por' },
+            { value: 'ends_with',    label: 'termina em' },
+            { value: 'is_empty',     label: 'está vazio' },
+            { value: 'is_not_empty', label: 'não está vazio' },
+        ];
+        const number = [
+            { value: 'equals',       label: 'é igual a' },
+            { value: 'not_equals',   label: 'não é igual a' },
+            { value: 'gt',           label: 'maior que' },
+            { value: 'lt',           label: 'menor que' },
+            { value: 'gte',          label: 'maior ou igual a' },
+            { value: 'lte',          label: 'menor ou igual a' },
+            { value: 'is_empty',     label: 'está vazio' },
+            { value: 'is_not_empty', label: 'não está vazio' },
+        ];
+        const date = [
+            { value: 'equals',       label: 'é igual a' },
+            { value: 'date_before',  label: 'antes de' },
+            { value: 'date_after',   label: 'depois de' },
+            { value: 'is_empty',     label: 'está vazio' },
+            { value: 'is_not_empty', label: 'não está vazio' },
+        ];
+        if (type === 'number') return number;
+        if (type === 'date')   return date;
+        return text;
+    }
+
+    function _renderSegRules() {
+        const el = document.getElementById('segRulesList');
+        if (!el) return;
+        const fieldOpts = _segFieldOptions();
+        if (!_segRules.length) {
+            el.innerHTML = '<p class="text-sm text-slate-400 py-2">Sem regras. Adiciona uma condição abaixo.</p>';
+            return;
+        }
+        el.innerHTML = _segRules.map((r, i) => {
+            const fieldVal = `${r.field}|${r.field_type}|${r.field_data_type||'text'}`;
+            const type = r.field_data_type || 'text';
+            const ops  = _operatorsForType(type);
+            const noValue = ['is_empty','is_not_empty'].includes(r.operator);
+            return `
+            <div class="flex items-center gap-2 flex-wrap">
+                <select onchange="_segRuleFieldChange(${i},this.value)"
+                    class="flex-1 min-w-[140px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    ${fieldOpts.map(f => `<option value="${f.value}"${f.value===fieldVal?' selected':''}>${escHtml(f.label)}</option>`).join('')}
+                </select>
+                <select onchange="_segRules[${i}].operator=this.value;_renderSegRules()"
+                    class="flex-1 min-w-[150px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                    ${ops.map(o => `<option value="${o.value}"${o.value===r.operator?' selected':''}>${o.label}</option>`).join('')}
+                </select>
+                ${noValue ? '' : `<input type="${type==='date'?'date':type==='number'?'number':'text'}" value="${escHtml(r.value||'')}"
+                    oninput="_segRules[${i}].value=this.value"
+                    placeholder="Valor…"
+                    class="flex-1 min-w-[120px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />`}
+                <button onclick="_segRules.splice(${i},1);_renderSegRules()" class="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 flex-shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>`;
+        }).join('');
+    }
+
+    function _segRuleFieldChange(i, val) {
+        const [field, field_type, field_data_type] = val.split('|');
+        const ops = _operatorsForType(field_data_type);
+        _segRules[i] = { field, field_type, field_data_type, operator: ops[0].value, value: '' };
+        _renderSegRules();
+    }
+
+    function addSegmentRule() {
+        const opts = _segFieldOptions();
+        if (!opts.length) return;
+        const [field, field_type, field_data_type] = opts[0].value.split('|');
+        const ops = _operatorsForType(field_data_type);
+        _segRules.push({ field, field_type, field_data_type, operator: ops[0].value, value: '' });
+        _renderSegRules();
+    }
+
+    async function previewSegment() {
+        if (!_currentListId) return;
+        const btn = document.getElementById('segPreviewBtn');
+        const out = document.getElementById('segPreviewCount');
+        if (btn) btn.disabled = true;
+        out.textContent = 'A calcular…';
+        try {
+            const match = document.getElementById('segMatch').value;
+            const { count } = await apiFetch(`/api/segments?list_id=${_currentListId}&action=preview`, {
+                method: 'POST',
+                body: JSON.stringify({ rules: _segRules, match })
+            });
+            out.textContent = `${count.toLocaleString('pt-PT')} contacto${count===1?'':'s'} corresponde${count===1?'':'m'}`;
+        } catch(e) {
+            out.textContent = 'Erro ao calcular';
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function saveSegment() {
+        const name  = document.getElementById('segName')?.value?.trim();
+        const match = document.getElementById('segMatch')?.value || 'all';
+        if (!name) { showToast('Nome obrigatório'); return; }
+        if (!_currentListId) return;
+        const btn = document.querySelector('#segModal button[onclick="saveSegment()"]');
+        if (btn) btn.disabled = true;
+        try {
+            const body = { name, match, rules: _segRules };
+            if (_segEditId) {
+                await apiFetch(`/api/segments/${_segEditId}`, { method: 'PUT', body: JSON.stringify(body) });
+                showToast('Segmento actualizado');
+            } else {
+                await apiFetch(`/api/segments?list_id=${_currentListId}`, { method: 'POST', body: JSON.stringify(body) });
+                showToast('Segmento criado');
+            }
+            closeSegmentModal();
+            await _loadSegments();
+        } catch(e) {
+            showToast('Erro ao guardar segmento');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function deleteSegment(segId) {
+        if (!confirm('Apagar este segmento?')) return;
+        try {
+            await apiFetch(`/api/segments/${segId}`, { method: 'DELETE' });
+            showToast('Segmento apagado');
+            await _loadSegments();
+        } catch(_) { showToast('Erro ao apagar'); }
     }
 
     function filterListEditMembers() {
@@ -10930,6 +11143,74 @@ ${sections.join('\n\n')}
                     <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
                         <span id="listEditPageInfo"></span>
                         <div id="listEditPaginationDiv" class="flex gap-2"></div>
+                    </div>
+                </div>
+                <!-- Segmentos da lista -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Segmentos</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Grupos de contactos filtrados por regras</p>
+                        </div>
+                        <button onclick="openSegmentModal()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Novo segmento
+                        </button>
+                    </div>
+                    <div id="segmentsList">
+                        <p class="text-sm text-slate-400 py-2">A carregar…</p>
+                    </div>
+                </div>
+                <!-- Segment editor modal -->
+                <div id="segModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                            <h2 id="segModalTitle" class="text-lg font-semibold text-slate-900">Novo Segmento</h2>
+                            <button onclick="closeSegmentModal()" class="text-slate-400 hover:text-slate-700">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Nome do segmento</label>
+                                <input id="segName" type="text" placeholder="Ex: Clientes Premium" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-2">Incluir contactos que satisfaçam:</label>
+                                <div class="flex gap-4">
+                                    <label class="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="radio" name="segMatchRadio" value="all" id="segMatchAll" onchange="document.getElementById('segMatch').value='all'" checked />
+                                        <span class="font-medium">Todas</span> as condições (E)
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="radio" name="segMatchRadio" value="any" id="segMatchAny" onchange="document.getElementById('segMatch').value='any'" />
+                                        <span class="font-medium">Qualquer</span> condição (OU)
+                                    </label>
+                                </div>
+                                <select id="segMatch" class="hidden">
+                                    <option value="all">all</option>
+                                    <option value="any">any</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-2">Condições</label>
+                                <div id="segRulesList" class="space-y-2 mb-3"></div>
+                                <button onclick="addSegmentRule()" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                    Adicionar condição
+                                </button>
+                            </div>
+                        </div>
+                        <div class="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <button id="segPreviewBtn" onclick="previewSegment()" class="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Pré-visualizar</button>
+                                <span id="segPreviewCount" class="text-sm text-slate-500"></span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="closeSegmentModal()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Cancelar</button>
+                                <button onclick="saveSegment()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">Guardar</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>
