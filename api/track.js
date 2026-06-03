@@ -9,7 +9,7 @@ const PIXEL = Buffer.from(
 function trackToken(campaignId, contactId) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET)
     .update(`track:${campaignId}:${contactId}`)
-    .digest('hex').slice(0, 16);
+    .digest('hex');
 }
 
 function rawBody(req) {
