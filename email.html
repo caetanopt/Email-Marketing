@@ -2990,6 +2990,9 @@ ${bodyRows}
     const _LIST_EDIT_PER_PAGE = 50;
     let _listExtraFields = [];          // field definitions for the current list
     const _listMembersExtraData = {};   // contactId → extra_data object (cached from last load)
+    let _segments = [];
+    let _segRules  = [];   // rules being edited in the segment modal
+    let _segEditId = null; // null = create, number = editing
 
     async function _loadListMembers(page) {
         page = page || 1;
