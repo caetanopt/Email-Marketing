@@ -3286,6 +3286,7 @@ ${bodyRows}
         const name  = document.getElementById('segName')?.value?.trim();
         const match = document.getElementById('segMatch')?.value || 'all';
         if (!name) { showToast('Nome obrigatório'); return; }
+        if (!_segRules.length) { showToast('Adiciona pelo menos uma condição'); return; }
         if (!_currentListId) return;
         const btn = document.querySelector('#segModal button[onclick="saveSegment()"]');
         if (btn) btn.disabled = true;
