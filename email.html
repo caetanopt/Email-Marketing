@@ -2771,6 +2771,7 @@ ${bodyRows}
         _currentListId = tr?.dataset.listId || null;
         _editingListName = name;
         _listExtraFields = [];
+        _listExtraFieldsPage = 1;
         const title = document.getElementById('listEditTitle');
         if (title) title.textContent = `Editar — ${name}`;
         const nameInp = document.getElementById('listEditName');
@@ -2795,16 +2796,36 @@ ${bodyRows}
     function _renderListExtraFieldsDef() {
         const el = document.getElementById('listExtraFieldsDef');
         if (!el) return;
-        if (!_listExtraFields.length) {
+        const total = _listExtraFields.length;
+        if (!total) {
             el.innerHTML = '<p class="text-xs text-slate-400 py-1">Sem campos definidos.</p>';
             return;
         }
-        el.innerHTML = _listExtraFields.map((f, i) => `
+        const pages = Math.ceil(total / _EXTRA_FIELDS_PER_PAGE);
+        if (_listExtraFieldsPage > pages) _listExtraFieldsPage = pages;
+        if (_listExtraFieldsPage < 1)     _listExtraFieldsPage = 1;
+        const start = (_listExtraFieldsPage - 1) * _EXTRA_FIELDS_PER_PAGE;
+        const rows = _listExtraFields.slice(start, start + _EXTRA_FIELDS_PER_PAGE).map((f, pi) => {
+            const absI = start + pi;
+            return `
             <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
                 <span class="flex-1 text-sm text-slate-800">${escHtml(f.name)}</span>
                 <span class="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded capitalize">${escHtml(f.type||'texto')}</span>
-                <button onclick="removeListExtraField(${i})" class="text-red-400 hover:text-red-600 text-xs leading-none px-1">✕</button>
-            </div>`).join('');
+                <button onclick="removeListExtraField(${absI})" class="text-red-400 hover:text-red-600 text-xs leading-none px-1">✕</button>
+            </div>`;
+        }).join('');
+        const pagination = pages > 1 ? `
+            <div class="flex items-center justify-between pt-2 mt-1 border-t border-slate-100">
+                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_EXTRA_FIELDS_PER_PAGE,total)} de ${total}</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="_listExtraFieldsPage--;_renderListExtraFieldsDef()" ${_listExtraFieldsPage<=1?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+                    <span class="text-xs text-slate-600 px-1">${_listExtraFieldsPage}/${pages}</span>
+                    <button onclick="_listExtraFieldsPage++;_renderListExtraFieldsDef()" ${_listExtraFieldsPage>=pages?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+                </div>
+            </div>` : '';
+        el.innerHTML = rows + pagination;
     }
 
     function addListExtraField() {
@@ -2819,11 +2840,14 @@ ${bodyRows}
         _listExtraFields.push({ name, type });
         if (inp) inp.value = '';
         if (sel) sel.value = 'text';
+        _listExtraFieldsPage = Math.ceil(_listExtraFields.length / _EXTRA_FIELDS_PER_PAGE);
         _renderListExtraFieldsDef();
     }
 
     function removeListExtraField(i) {
         _listExtraFields.splice(i, 1);
+        const pages = Math.max(1, Math.ceil(_listExtraFields.length / _EXTRA_FIELDS_PER_PAGE));
+        if (_listExtraFieldsPage > pages) _listExtraFieldsPage = pages;
         _renderListExtraFieldsDef();
     }
 
@@ -2990,6 +3014,8 @@ ${bodyRows}
     let _listEditTotalCount  = 0;
     const _LIST_EDIT_PER_PAGE = 50;
     let _listExtraFields = [];          // field definitions for the current list
+    let _listExtraFieldsPage = 1;
+    const _EXTRA_FIELDS_PER_PAGE = 5;
     const _listMembersExtraData = {};   // contactId → extra_data object (cached from last load)
     let _segments = [];
     let _segRules  = [];   // rules being edited in the segment modal
