@@ -73,7 +73,7 @@ module.exports = withAuth(async (req, res, user) => {
             `SELECT COUNT(DISTINCT lm.contact_id)::int AS total
              FROM list_members lm
              JOIN contacts c ON c.id = lm.contact_id
-             WHERE lm.list_id = $1 AND c.status NOT IN ('unsubscribed','bounced','complained') AND ${sql}`,
+             WHERE lm.list_id = $1 AND ${sql}`,
             [seg.list_id, ...params]
           );
           return res.status(200).json({ count: rows[0].total });
@@ -130,7 +130,7 @@ module.exports = withAuth(async (req, res, user) => {
               `SELECT COUNT(DISTINCT lm.contact_id)::int AS total
                FROM list_members lm
                JOIN contacts c ON c.id = lm.contact_id
-               WHERE lm.list_id = $1 AND c.status NOT IN ('unsubscribed','bounced','complained') AND ${sql}`,
+               WHERE lm.list_id = $1 AND ${sql}`,
               [list_id, ...params]
             );
             return { ...s, contact_count: r[0].total };
@@ -157,7 +157,7 @@ module.exports = withAuth(async (req, res, user) => {
           `SELECT COUNT(DISTINCT lm.contact_id)::int AS total
            FROM list_members lm
            JOIN contacts c ON c.id = lm.contact_id
-           WHERE lm.list_id = $1 AND c.status NOT IN ('unsubscribed','bounced','complained') AND ${sql}`,
+           WHERE lm.list_id = $1 AND ${sql}`,
           [list_id, ...params]
         );
         return res.status(200).json({ count: rows[0].total });
