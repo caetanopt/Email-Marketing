@@ -4535,11 +4535,11 @@ ${bodyRows}
                 for (const l of (data || [])) {
                     for (const f of (l.extra_fields || [])) {
                         const k = (f.name || '').trim();
-                        if (k && /^[\w]+$/.test(k) && !seen.has(k)) {
+                        if (k && !seen.has(k)) {
                             seen.add(k);
-                            extraFieldChips += `<button type="button" onclick="_wizCopyVar('${k}')" title="Campo extra da lista"
+                            extraFieldChips += `<button type="button" onclick="_wizCopyVar(${JSON.stringify(k)})" title="Campo extra da lista"
                                 class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
-                                <code class="text-xs font-mono text-emerald-700">{{${k}}}</code>
+                                <code class="text-xs font-mono text-emerald-700">{{${escHtml(k)}}}</code>
                             </button>`;
                         }
                     }

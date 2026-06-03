@@ -11,15 +11,16 @@ function buildSegmentWhere(rules, match) {
 
   const conditions = (rules || []).map(rule => {
     const { field, field_type, operator, value } = rule;
-    const safeField = (field || '').replace(/[^a-zA-Z0-9_]/g, '');
-    if (!safeField) return null;
+    const fieldName = (field || '').trim();
+    if (!fieldName) return null;
 
     let col;
     if (field_type === 'contact') {
-      if (!CONTACT_FIELDS.has(field)) return null;
-      col = `c.${field}`;
+      if (!CONTACT_FIELDS.has(fieldName)) return null;
+      col = `c.${fieldName}`;
     } else {
-      col = `(lm.extra_data->>'${safeField}')`;
+      // Use parameterised jsonb_extract_path_text so any field name (including spaces) is safe
+      col = `jsonb_extract_path_text(lm.extra_data, ${next(fieldName)})`;
     }
 
     if (operator === 'is_empty')     return `(${col} IS NULL OR ${col} = '')`;
