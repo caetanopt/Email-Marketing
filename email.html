@@ -4517,13 +4517,13 @@ ${bodyRows}
     ];
 
     async function _wizVarsRender() {
-        let vars = _currentBrand?.variables;
-        if (!vars && _currentBrand?.id) {
+        let vars = null;
+        if (_currentBrand?.id) {
             try {
                 const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
                 vars = b.variables || null;
                 if (_currentBrand) _currentBrand.variables = vars;
-            } catch(e) {}
+            } catch(e) { vars = _currentBrand?.variables || null; }
         }
 
         // Collect extra_fields from all lists of this brand
@@ -4773,6 +4773,7 @@ ${bodyRows}
             if (lbl) lbl.className='text-xs font-semibold mt-1 whitespace-nowrap '+(s<=step?'text-slate-800':'text-slate-400');
             if (s < 4) { const ln = document.getElementById('wizLine'+s); if (ln) ln.className='w-full h-0.5 '+(s<step?'bg-green-400':'bg-slate-200'); }
         });
+        if (step === 1 || step === 2) _wizVarsRender();
         if (step === 2) _wizInitPreview();
         if (step === 3) _wizRefreshLists();
         const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Confirmar' : 'Seguinte →';
