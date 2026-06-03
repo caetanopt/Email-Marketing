@@ -3287,6 +3287,10 @@ ${bodyRows}
         const match = document.getElementById('segMatch')?.value || 'all';
         if (!name) { showToast('Nome obrigatório', 'warning'); return; }
         if (!_segRules.length) { showToast('Adiciona pelo menos uma condição', 'warning'); return; }
+        const needsValue = r => r.operator !== 'is_empty' && r.operator !== 'is_not_empty';
+        if (_segRules.some(r => needsValue(r) && !(r.value ?? '').toString().trim())) {
+            showToast('Preenche o valor em todas as condições', 'warning'); return;
+        }
         if (!_currentListId) return;
         const btn = document.querySelector('#segModal button[onclick="saveSegment()"]');
         if (btn) btn.disabled = true;
