@@ -81,7 +81,7 @@ module.exports = withAuth(async (req, res, user) => {
   try {
     if (req.method === 'GET') {
       let rows = await query(
-        `SELECT l.id, l.name, l.description, l.created_at,
+        `SELECT l.id, l.name, l.description, l.created_at, l.extra_fields,
                 COUNT(lm.contact_id)::int AS total_contacts
          FROM lists l
          JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
@@ -105,7 +105,7 @@ module.exports = withAuth(async (req, res, user) => {
           } catch (_) {}
         }
         rows = await query(
-          `SELECT l.id, l.name, l.description, l.created_at,
+          `SELECT l.id, l.name, l.description, l.created_at, l.extra_fields,
                   COUNT(lm.contact_id)::int AS total_contacts
            FROM lists l
            JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2

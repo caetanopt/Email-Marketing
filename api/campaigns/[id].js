@@ -431,7 +431,17 @@ module.exports = async function handler(req, res) {
         const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
         // Pick up both fresh pending contacts and soft-bounce retries
         const pending = await query(
-          `SELECT cr.contact_id, cr.email, con.name, cr.retry_count
+          `SELECT cr.contact_id, cr.email, con.name, con.phone, con.company, cr.retry_count,
+                  COALESCE((
+                    SELECT jsonb_object_agg(key, value)
+                    FROM (
+                      SELECT key, value
+                      FROM list_members lm2
+                      JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
+                      CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
+                      WHERE lm2.contact_id = cr.contact_id
+                    ) ed
+                  ), '{}'::jsonb) AS extra_data
            FROM campaign_recipients cr
            JOIN contacts con ON con.id = cr.contact_id
            WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
@@ -517,7 +527,16 @@ module.exports = async function handler(req, res) {
               rawHtml = rawHtml
                 .replace(/\{\{name\}\}/g, () => escHtml(contact.name || contact.email))
                 .replace(/\{\{email\}\}/g, () => escHtml(contact.email))
+                .replace(/\{\{phone\}\}/g, () => escHtml(contact.phone || ''))
+                .replace(/\{\{company\}\}/g, () => escHtml(contact.company || ''))
                 .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
+              // Replace list extra_data fields (e.g. {{cargo}}, {{departamento}})
+              if (contact.extra_data && typeof contact.extra_data === 'object') {
+                for (const [k, v] of Object.entries(contact.extra_data)) {
+                  const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  rawHtml = rawHtml.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => escHtml(v || ''));
+                }
+              }
               rawHtml = injectTracking(rawHtml, id, contact.contact_id);
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
@@ -676,6 +695,8 @@ module.exports = async function handler(req, res) {
         rawHtml = rawHtml
           .replace(/\{\{name\}\}/g, () => 'Utilizador Teste')
           .replace(/\{\{email\}\}/g, () => escHtml(to))
+          .replace(/\{\{phone\}\}/g, () => '')
+          .replace(/\{\{company\}\}/g, () => '')
           .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
         rawHtml = injectTrackingTest(rawHtml);
         const finalHtml = rawHtml.includes('</body>')

@@ -4294,8 +4294,10 @@ ${bodyRows}
     // ── UTM helpers ──────────────────────────────────────
     // System variables — always available, replaced per-contact at send time
     const _WIZ_SYSTEM_VARS = [
-        { key: 'name',  label: 'Nome do contacto' },
-        { key: 'email', label: 'Email do contacto' },
+        { key: 'name',    label: 'Nome do contacto' },
+        { key: 'email',   label: 'Email do contacto' },
+        { key: 'phone',   label: 'Telefone do contacto' },
+        { key: 'company', label: 'Empresa do contacto' },
     ];
 
     async function _wizVarsRender() {
@@ -4308,12 +4310,35 @@ ${bodyRows}
             } catch(e) {}
         }
 
+        // Collect extra_fields from all lists of this brand
+        let extraFieldChips = '';
+        if (_currentBrand?.id) {
+            try {
+                const { data } = await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`);
+                const seen = new Set();
+                for (const l of (data || [])) {
+                    for (const f of (l.extra_fields || [])) {
+                        const k = (f.name || '').trim();
+                        if (k && /^[\w]+$/.test(k) && !seen.has(k)) {
+                            seen.add(k);
+                            extraFieldChips += `<button type="button" onclick="_wizCopyVar('${k}')" title="Campo extra da lista"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
+                                <code class="text-xs font-mono text-emerald-700">{{${k}}}</code>
+                            </button>`;
+                        }
+                    }
+                }
+            } catch(_) {}
+        }
+
+        const chips = _wizSystemChips() + _wizVarsChips(vars) + extraFieldChips;
+
         // Step 1 panel — always visible (system vars always shown)
         const panel = document.getElementById('wizVarsPanel');
         const list  = document.getElementById('wizVarsList');
         if (panel && list) {
             panel.classList.remove('hidden');
-            list.innerHTML = _wizSystemChips() + _wizVarsChips(vars);
+            list.innerHTML = chips;
         }
 
         // Step 2 strip — always visible
@@ -4321,7 +4346,7 @@ ${bodyRows}
         const list2  = document.getElementById('wizVarsList2');
         if (panel2 && list2) {
             panel2.classList.remove('hidden');
-            list2.innerHTML = _wizSystemChips() + _wizVarsChips(vars);
+            list2.innerHTML = chips;
         }
     }
 
