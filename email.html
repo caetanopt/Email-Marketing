@@ -3136,6 +3136,9 @@ ${bodyRows}
     }
 
     async function openSegmentModal(segId) {
+        // Move to <body> so fixed inset-0 covers the full viewport (escapes inner stacking contexts)
+        const _segModalEl = document.getElementById('segModal');
+        if (_segModalEl && _segModalEl.parentElement !== document.body) document.body.appendChild(_segModalEl);
         _segEditId = segId || null;
         _segRules  = [];
         document.getElementById('segModalTitle').textContent = segId ? 'Editar Segmento' : 'Novo Segmento';
