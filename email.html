@@ -63,7 +63,7 @@
     function _isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')); }
     // ── Toast notification ─────────────────────────────
     function showToast(msg, type) {
-        const colors = { success:'bg-green-600', error:'bg-red-600', info:'bg-slate-800' };
+        const colors = { success:'bg-green-600', error:'bg-red-600', warning:'bg-amber-500', info:'bg-slate-800' };
         const bg = colors[type] || colors.success;
         const t = document.createElement('div');
         t.className = `fixed bottom-6 right-6 z-[999] px-4 py-3 rounded-xl text-white text-sm font-medium shadow-lg transition-all ${bg}`;
@@ -3285,8 +3285,8 @@ ${bodyRows}
     async function saveSegment() {
         const name  = document.getElementById('segName')?.value?.trim();
         const match = document.getElementById('segMatch')?.value || 'all';
-        if (!name) { showToast('Nome obrigatório'); return; }
-        if (!_segRules.length) { showToast('Adiciona pelo menos uma condição'); return; }
+        if (!name) { showToast('Nome obrigatório', 'warning'); return; }
+        if (!_segRules.length) { showToast('Adiciona pelo menos uma condição', 'warning'); return; }
         if (!_currentListId) return;
         const btn = document.querySelector('#segModal button[onclick="saveSegment()"]');
         if (btn) btn.disabled = true;
@@ -3302,7 +3302,7 @@ ${bodyRows}
             closeSegmentModal();
             await _loadSegments();
         } catch(e) {
-            showToast('Erro ao guardar segmento');
+            showToast('Erro ao guardar segmento', 'error');
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -3314,7 +3314,7 @@ ${bodyRows}
             await apiFetch(`/api/lists?segment_id=${segId}`, { method: 'DELETE' });
             showToast('Segmento apagado');
             await _loadSegments();
-        } catch(_) { showToast('Erro ao apagar'); }
+        } catch(_) { showToast('Erro ao apagar', 'error'); }
     }
 
     function filterListEditMembers() {
