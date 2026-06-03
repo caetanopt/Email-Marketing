@@ -2808,7 +2808,7 @@ ${bodyRows}
         const rows = _listExtraFields.slice(start, start + _EXTRA_FIELDS_PER_PAGE).map((f, pi) => {
             const absI = start + pi;
             return `
-            <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+            <div class="flex items-center gap-3 py-2">
                 <span class="flex-1 text-sm text-slate-800">${escHtml(f.name)}</span>
                 <span class="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded capitalize">${escHtml(f.type||'texto')}</span>
                 <button onclick="removeListExtraField(${absI})" class="text-red-400 hover:text-red-600 text-xs leading-none px-1">✕</button>
@@ -2825,7 +2825,7 @@ ${bodyRows}
                         class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
                 </div>
             </div>` : '';
-        el.innerHTML = rows + pagination;
+        el.innerHTML = `<div class="divide-y divide-slate-100">${rows}</div>` + pagination;
     }
 
     function addListExtraField() {
@@ -3119,13 +3119,13 @@ ${bodyRows}
             return;
         }
         el.innerHTML = _segments.map(s => `
-            <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
+            <div class="flex items-center justify-between px-3 py-2.5 mb-2 last:mb-0 bg-slate-50 rounded-lg border border-slate-100">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-slate-900">${escHtml(s.name)}</p>
                     <p class="text-xs text-slate-400">${s.rules?.length||0} regra${s.rules?.length===1?'':'s'} · ${(s.contact_count||0).toLocaleString('pt-PT')} contactos</p>
                 </div>
                 <div class="flex items-center gap-1 ml-2">
-                    <button onclick="openSegmentModal(${s.id})" class="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100" title="Editar">
+                    <button onclick="openSegmentModal(${s.id})" class="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-200" title="Editar">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     </button>
                     <button onclick="deleteSegment(${s.id})" class="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-red-50" title="Apagar">
