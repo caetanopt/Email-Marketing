@@ -19,7 +19,7 @@ function buildSegmentWhere(rules, match) {
       if (!CONTACT_FIELDS.has(fieldName)) return null;
       col = `c.${fieldName}`;
     } else {
-      // Use parameterised jsonb_extract_path_text so any field name (including spaces) is safe
+      // Fully parameterised — safe for any field name including spaces
       col = `jsonb_extract_path_text(lm.extra_data, ${next(fieldName)})`;
     }
 

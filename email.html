@@ -4537,7 +4537,8 @@ ${bodyRows}
                         const k = (f.name || '').trim();
                         if (k && !seen.has(k)) {
                             seen.add(k);
-                            extraFieldChips += `<button type="button" onclick="_wizCopyVar(${JSON.stringify(k)})" title="Clica para copiar {{${escHtml(k)}}}"
+                            const ks = k.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); // safe for JS single-quoted string in onclick attr
+                            extraFieldChips += `<button type="button" onclick="_wizCopyVar('${ks}')" title="Clica para copiar {{${escHtml(k)}}}"
                                 class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors">
                                 <span class="text-xs font-medium text-emerald-700">${escHtml(k)}</span><code class="text-[10px] font-mono text-emerald-500 opacity-75">{{${escHtml(k)}}}</code>
                             </button>`;
