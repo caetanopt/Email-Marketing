@@ -5385,8 +5385,8 @@ ${bodyRows}
         sv('wizName',        c.name);
         sv('wizSubject',     c.subject);
         sv('wizPreviewText', c.preview_text);
-        sv('wizFromName',    c.from_name);
-        sv('wizFromEmail',   c.from_email);
+        sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
+        sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
         // UTM
         const utmParams = c.utm_params || {};
         const utmHasData = c.utm_params != null && Object.keys(utmParams).length > 0 && Object.values(utmParams).some(Boolean);
@@ -5440,8 +5440,8 @@ ${bodyRows}
             sv('wizName',        c.name);
             sv('wizSubject',     c.subject);
             sv('wizPreviewText', c.preview_text);
-            sv('wizFromName',    c.from_name);
-            sv('wizFromEmail',   c.from_email);
+            sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
+            sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
             const utmParams = c.utm_params || {};
             const utmHasData = c.utm_params != null && Object.keys(utmParams).length > 0 && Object.values(utmParams).some(Boolean);
             const utmEn = document.getElementById('wizUtmEnabled');
@@ -7473,10 +7473,17 @@ ${sections.join('\n\n')}
     }
 
     async function renderBrandData(brandId) {
-        const fromName = document.getElementById('wizFromName');
-        const fromEmail = document.getElementById('wizFromEmail');
-        if (fromName) fromName.value = 'Caetano';
-        if (fromEmail) fromEmail.value = brandId === 'caetano' ? 'info@caetano.pt' : `info@${brandId}.caetano.pt`;
+        // Fetch real brand defaults and store on _currentBrand for use in campaign editor
+        apiFetch(`/api/brands?id=${brandId}`).then(b => {
+            if (_currentBrand) {
+                _currentBrand.from_name  = b.from_name  || '';
+                _currentBrand.from_email = b.from_email || '';
+            }
+            const fnEl = document.getElementById('wizFromName');
+            const feEl = document.getElementById('wizFromEmail');
+            if (fnEl && !fnEl.value) fnEl.value = b.from_name  || '';
+            if (feEl && !feEl.value) feEl.value = b.from_email || '';
+        }).catch(() => {});
 
         _setText('dash-campaigns', '…');
         _setText('dash-emails', '—');
