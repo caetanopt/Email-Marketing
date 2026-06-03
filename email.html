@@ -4483,28 +4483,29 @@ ${bodyRows}
     // ── Wizard auto-save (draft persisted to localStorage every 30s) ─────────
     function _wizDraftKey() { return `wiz_draft_${_currentBrand?.id || 'default'}`; }
     function _wizSaveDraft() {
-        if (_editingCampaignId) return; // only save new campaign drafts
         const draft = {
+            editingId:   _editingCampaignId || null,
             name:        document.getElementById('wizName')?.value || '',
             subject:     document.getElementById('wizSubject')?.value || '',
             previewText: document.getElementById('wizPreviewText')?.value || '',
             fromName:    document.getElementById('wizFromName')?.value || '',
             fromEmail:   document.getElementById('wizFromEmail')?.value || '',
         };
-        if (draft.name || draft.subject) {
+        if (draft.editingId || draft.name || draft.subject) {
             localStorage.setItem(_wizDraftKey(), JSON.stringify(draft));
         }
     }
     function _wizRestoreDraft() {
         try {
             const raw = localStorage.getItem(_wizDraftKey());
-            if (!raw) return;
+            if (!raw) return false;
             const d = JSON.parse(raw);
             ['name','subject','previewText','fromName','fromEmail'].forEach(k => {
                 const el = document.getElementById('wiz' + k.charAt(0).toUpperCase() + k.slice(1));
                 if (el && d[k]) el.value = d[k];
             });
-        } catch(e) {}
+            return !!d.editingId;
+        } catch(e) { return false; }
     }
     function _wizClearDraft() { localStorage.removeItem(_wizDraftKey()); }
     let _wizAutoSaveTimer = null;
@@ -5366,6 +5367,7 @@ ${bodyRows}
         _wizDirectContactIds = [];
         _wizDirectContacts = [];
         _wizExistingContacts = [];
+        _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
         showScreen('campaignCreate');
         _wizUpdateDirectNotice();
         _wizRenderDirectPanel();
@@ -5423,6 +5425,7 @@ ${bodyRows}
             _wizDirectContactIds = [];
             _wizDirectContacts = [];
             _wizExistingContacts = [];
+            _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
             showScreen('campaignCreate');
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
@@ -6709,6 +6712,32 @@ ${sections.join('\n\n')}
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') {
                 wizShowStep(1);
+                // If no editing context, check draft for a saved editing session (survives page refresh)
+                if (!_editingCampaignId) {
+                    try {
+                        const _dr = JSON.parse(localStorage.getItem(_wizDraftKey()) || 'null');
+                        if (_dr?.editingId) {
+                            _editingCampaignId = _dr.editingId;
+                            apiFetch(`/api/campaigns/${_dr.editingId}`).then(c => {
+                                if (_editingCampaignId !== _dr.editingId || !c) return;
+                                _editingTemplateId = c.template_id || null;
+                                const _sv = (eid, v) => { const el = document.getElementById(eid); if (el) el.value = v || ''; };
+                                _sv('wizName',        c.name);
+                                _sv('wizSubject',     c.subject);
+                                _sv('wizPreviewText', c.preview_text);
+                                _sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
+                                _sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
+                                _wizVarsRender();
+                            }).catch(() => {
+                                // API failed — fall back to the saved draft values
+                                const _sv = (eid, v) => { const el = document.getElementById(eid); if (el && v) el.value = v; };
+                                _sv('wizName', _dr.name); _sv('wizSubject', _dr.subject);
+                                _sv('wizPreviewText', _dr.previewText);
+                                _sv('wizFromName', _dr.fromName); _sv('wizFromEmail', _dr.fromEmail);
+                            });
+                        }
+                    } catch (_) {}
+                }
                 if (!_editingCampaignId) {
                     _wizDirectContactIds = [];
                     _wizExistingDirectCount = 0;
@@ -6729,9 +6758,8 @@ ${sections.join('\n\n')}
                     const _bVars = _currentBrand?.variables || {};
                     const utmSrc = document.getElementById('wizUtmSource'); if (utmSrc) utmSrc.value = _bVars.utm_source || 'newsletter';
                     const utmMed = document.getElementById('wizUtmMedium'); if (utmMed) utmMed.value = _bVars.utm_medium || 'email';
-                    const fromEmail = _currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`;
-                    const fnEl = document.getElementById('wizFromName'); if (fnEl) fnEl.value = 'Caetano';
-                    const feEl = document.getElementById('wizFromEmail'); if (feEl) feEl.value = fromEmail;
+                    const fnEl = document.getElementById('wizFromName'); if (fnEl) fnEl.value = _currentBrand?.from_name  || '';
+                    const feEl = document.getElementById('wizFromEmail'); if (feEl) feEl.value = _currentBrand?.from_email || '';
                     _wizSelectedTemplateId = null;
                     _teCtx = 'te_';
                     teState.blocks = [];
