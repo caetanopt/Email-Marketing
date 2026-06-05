@@ -5596,11 +5596,16 @@ ${bodyRows}
             wizShowStep(3); return;
         }
         if (_wizStep === 3) {
-            const checked = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
-            if (!checked.length && !_wizDirectContactIds.length && !_wizExistingDirectCount) {
-                _wizRecipTab('lists');
+            const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
+            const listTotal = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
+            const directTotal = _wizExistingContacts.length + _wizDirectContacts.length + (_wizExistingContacts.length === 0 ? _wizExistingDirectCount : 0);
+            const total = listTotal + directTotal;
+            if (total === 0) {
                 const err = document.getElementById('wizListsError');
-                if (err) err.classList.remove('hidden');
+                if (err) {
+                    err.textContent = 'É necessário pelo menos 1 contacto para continuar. Selecciona uma lista com contactos ou importa contactos.';
+                    err.classList.remove('hidden');
+                }
                 return;
             }
             wizShowStep(4); return;
