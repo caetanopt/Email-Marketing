@@ -5698,14 +5698,28 @@ ${bodyRows}
             if (btn) { btn.disabled = true; btn.textContent = 'A processar…'; }
             // Auto-save template from wizard step 2 if blocks were added/edited
             let templateId = _editingCampaignId ? (_editingTemplateId || null) : null;
+            // If user was in MJML code mode and didn't click "Aplicar no visual", parse it now
+            if (!teState.blocks.length) {
+                const wizMjml = document.getElementById('wiz_te_mjmlCode')?.value?.trim();
+                if (wizMjml && typeof teParseMjmlToBlocks === 'function') {
+                    const parsed = teParseMjmlToBlocks(wizMjml);
+                    if (parsed?.length) teState.blocks = parsed;
+                }
+            }
             if (teState.blocks.length) {
                 const tplName = `${name} — Template`;
                 const _emailBlocks2 = await _tePrepareBlocksForEmail(teState.blocks);
                 const tplHtml = teBuildEmailHtml(_emailBlocks2);
-                const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
-                    method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplHtml })
-                });
-                templateId = tplRes.id || null;
+                if (templateId) {
+                    await apiFetch(`/api/templates?id=${templateId}`, {
+                        method: 'PUT', body: JSON.stringify({ html_content: tplHtml })
+                    });
+                } else {
+                    const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
+                        method: 'POST', body: JSON.stringify({ name: tplName, html_content: tplHtml })
+                    });
+                    templateId = tplRes.id || null;
+                }
             }
             const utm_params = _wizGetUtmParams();
 
