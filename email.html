@@ -8089,6 +8089,7 @@ ${sections.join('\n\n')}
                 applyBrandToSidebar();
                 renderBrandData(savedBrand.id);
                 showScreen(hashScreen);
+                _loadTeGlobalSettings().catch(() => {});
             } else {
                 _goToDefaultBrandOrSelect();
             }
