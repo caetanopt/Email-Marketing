@@ -5170,6 +5170,39 @@ ${bodyRows}
         if (enabled) _wizUtmPreview();
         _wizRevUtmRender();
     }
+    function _wizInitSchedulePicker() {
+        const dateEl = document.getElementById('wizScheduleDate');
+        if (!dateEl) return;
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+        dateEl.min = todayStr;
+        if (!dateEl.value || dateEl.value < todayStr) dateEl.value = todayStr;
+        _wizUpdateTimeSelect(dateEl.value);
+    }
+    function _wizUpdateTimeSelect(dateStr) {
+        const timeEl = document.getElementById('wizScheduleTime');
+        if (!timeEl) return;
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+        const isToday = dateStr === todayStr;
+        const prevVal = timeEl.value;
+        timeEl.innerHTML = '';
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 15) {
+                const hh = String(h).padStart(2, '0'), mm = String(m).padStart(2, '0');
+                const timeStr = `${hh}:${mm}`;
+                if (isToday) {
+                    const slotMs = new Date(`${dateStr}T${timeStr}:00`).getTime();
+                    if (slotMs <= now.getTime() + 5 * 60000) continue;
+                }
+                const opt = document.createElement('option');
+                opt.value = timeStr; opt.textContent = timeStr;
+                timeEl.appendChild(opt);
+            }
+        }
+        if (prevVal && timeEl.querySelector(`option[value="${prevVal}"]`)) timeEl.value = prevVal;
+        else if (timeEl.options.length) timeEl.selectedIndex = 0;
+    }
     function _wizUtmSyncCampaign() {
         const campEl = document.getElementById('wizUtmCampaign');
         if (!campEl || campEl.dataset.edited) return;
@@ -9592,13 +9625,13 @@ ${sections.join('\n\n')}
                                         <div><p class="text-sm font-medium text-slate-900">Enviar agora</p><p class="text-xs text-slate-400">Enviada imediatamente após criação</p></div>
                                     </label>
                                     <label class="flex items-start gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:bg-slate-50">
-                                        <input type="radio" name="wizSendType" value="schedule" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.remove('hidden')" />
+                                        <input type="radio" name="wizSendType" value="schedule" class="mt-0.5" onchange="document.getElementById('wizSchedulePicker').classList.remove('hidden');_wizInitSchedulePicker()" />
                                         <div class="flex-1">
                                             <p class="text-sm font-medium text-slate-900">Agendar</p>
                                             <p class="text-xs text-slate-400">Define data e hora de envio</p>
                                             <div id="wizSchedulePicker" class="hidden mt-3 grid grid-cols-2 gap-2">
-                                                <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" onclick="try{this.showPicker()}catch(e){}" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
-                                                <div><label class="text-xs text-slate-500 block mb-1">Hora</label><input type="time" id="wizScheduleTime" onclick="try{this.showPicker()}catch(e){}" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
+                                                <div><label class="text-xs text-slate-500 block mb-1">Data</label><input type="date" id="wizScheduleDate" onchange="_wizUpdateTimeSelect(this.value)" onclick="try{this.showPicker()}catch(e){}" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer" /></div>
+                                                <div><label class="text-xs text-slate-500 block mb-1">Hora</label><select id="wizScheduleTime" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer bg-white"></select></div>
                                             </div>
                                         </div>
                                     </label>
