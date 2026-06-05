@@ -5767,12 +5767,15 @@ ${bodyRows}
                 });
                 campaignId = res.id;
                 _editingCampaignId = campaignId;
-            } else if (templateId && !_editingTemplateId) {
-                // Link newly created template to existing campaign
-                await apiFetch(`/api/campaigns/${campaignId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ template_id: templateId })
-                });
+            } else if (templateId) {
+                // Link template to existing campaign (if not already linked)
+                const camp = await apiFetch(`/api/campaigns/${campaignId}`);
+                if (!camp.template_id) {
+                    await apiFetch(`/api/campaigns/${campaignId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ template_id: templateId })
+                    });
+                }
             }
 
             if (btn) btn.textContent = 'A enviar…';
@@ -6235,6 +6238,14 @@ ${bodyRows}
         if (nb) nb.textContent = 'Seguinte →';
         // Render variables panel
         _wizVarsRender();
+        // Load template HTML into editor blocks so step 2 and test email have content
+        if (c.html_content && typeof teParseMjmlToBlocks === 'function') {
+            const parsed = teParseMjmlToBlocks(c.html_content);
+            if (parsed && parsed.length) {
+                teState.blocks = parsed;
+                teState.selected = null;
+            }
+        }
     }
 
     async function _editCurrentCampaignInWizard() {
