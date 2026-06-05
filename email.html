@@ -3326,13 +3326,13 @@ ${bodyRows}
         // Reserve space so the label doesn't overlap the next element
         if (parent) {
             parent.dataset.origPb = parent.style.paddingBottom || '';
-            parent.style.paddingBottom = '20px';
+            parent.style.paddingBottom = '22px';
         }
         el.focus();
         const msg = document.createElement('p');
         msg.setAttribute('data-field-error', '1');
         msg.textContent = message;
-        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;bottom:4px;left:0;white-space:nowrap;z-index:10;pointer-events:none;';
+        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:100%;margin-top:5px;left:0;white-space:nowrap;z-index:10;pointer-events:none;';
         el.insertAdjacentElement('afterend', msg);
         const clear = () => {
             el.style.borderColor = '';
