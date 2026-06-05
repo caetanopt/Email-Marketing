@@ -7228,7 +7228,7 @@ ${sections.join('\n\n')}
                 </div>
                 <div class="min-w-0">
                     <p class="sidebar-brand-name text-white font-semibold text-sm">BMW</p>
-                    <button onclick="showScreen('brandSelect')" class="text-xs text-white/50 hover:text-white/80 transition-colors">Trocar de marca</button>
+                    <button onclick="openBrandSwitchModal()" class="text-xs text-white/50 hover:text-white/80 transition-colors">Trocar de marca</button>
                 </div>
             </div>
         </div>
@@ -7879,6 +7879,86 @@ ${sections.join('\n\n')}
                 </div>
             </button>
         `).join('');
+    }
+
+    // ── Brand switch modal ──────────────────────────────────────────
+    let _switchModalSelected = null;
+
+    function openBrandSwitchModal() {
+        _switchModalSelected = null;
+        const modal = document.getElementById('brandSwitchModal');
+        const btn   = document.getElementById('brandSwitchConfirmBtn');
+        const label = document.getElementById('brandSwitchLabel');
+        if (btn)   { btn.disabled = true; btn.className = 'px-5 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-200 text-slate-400 cursor-not-allowed'; }
+        if (label) { label.textContent = 'Nenhuma marca selecionada'; }
+        _renderBrandSwitchGrid();
+        if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    }
+
+    function closeBrandSwitchModal() {
+        const modal = document.getElementById('brandSwitchModal');
+        if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    }
+
+    function _renderBrandSwitchGrid() {
+        const grid = document.getElementById('brandSwitchGrid');
+        if (!grid) return;
+        let brands;
+        if (_apiBrands.length) {
+            brands = _apiBrands.map(ab => {
+                const hb = _allBrands.find(b => b.id === ab.id) || {};
+                return { ...hb, ...ab, logo: ab.logo_url || hb.logo || '', bg: hb.bg || '#f1f1f1', invert: hb.invert || false };
+            });
+        } else {
+            brands = _userBrandIds.size > 0 ? _allBrands.filter(b => _userBrandIds.has(b.id)) : _allBrands;
+        }
+        grid.innerHTML = brands.map(b => {
+            const isCurrent = _currentBrand?.id === b.id;
+            return `<button id="bsw-${b.id}" onclick="_selectSwitchBrand('${b.id}','${escHtml(b.name.replace(/'/g,"\\'"))}','${b.color}')"
+                    class="brand-switch-card bg-white border-2 ${isCurrent ? 'border-slate-400' : 'border-slate-200'} rounded-xl overflow-hidden transition-all text-center focus:outline-none"
+                    onmouseover="if(document.getElementById('bsw-${b.id}').dataset.sel!=='1')this.style.borderColor='${b.color}'"
+                    onmouseout="if(document.getElementById('bsw-${b.id}').dataset.sel!=='1')this.style.borderColor=''">
+                <div class="h-20 flex items-center justify-center p-3" style="background:${b.bg||'#f1f1f1'}">
+                    ${_brandLogoHtml(b)}
+                </div>
+                <div class="px-3 py-2.5 border-t border-slate-100">
+                    <h3 class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</h3>
+                    ${isCurrent ? '<p class="text-[10px] text-slate-400 mt-0.5">Marca actual</p>' : '<p class="text-[10px] text-transparent mt-0.5">·</p>'}
+                </div>
+            </button>`;
+        }).join('');
+        // Mark current brand as pre-selected
+        if (_currentBrand) _selectSwitchBrand(_currentBrand.id, _currentBrand.name, _currentBrand.color);
+    }
+
+    function _selectSwitchBrand(id, name, color) {
+        _switchModalSelected = { id, name, color };
+        // Reset all cards
+        document.querySelectorAll('.brand-switch-card').forEach(el => {
+            el.dataset.sel = '0';
+            el.style.borderColor = '';
+            el.classList.remove('ring-2', 'ring-offset-1');
+        });
+        // Highlight selected
+        const card = document.getElementById(`bsw-${id}`);
+        if (card) {
+            card.dataset.sel = '1';
+            card.style.borderColor = color || '#0f172a';
+        }
+        const btn   = document.getElementById('brandSwitchConfirmBtn');
+        const label = document.getElementById('brandSwitchLabel');
+        if (label) label.textContent = name;
+        if (btn) {
+            btn.disabled = false;
+            btn.className = 'px-5 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-900 text-white hover:bg-slate-700';
+        }
+    }
+
+    function _confirmBrandSwitch() {
+        if (!_switchModalSelected) return;
+        const { id, name, color } = _switchModalSelected;
+        closeBrandSwitchModal();
+        selectBrand(id, name, color);
     }
 
     // ── Per-brand template state store ──────────────────────────────
@@ -12486,6 +12566,34 @@ ${sections.join('\n\n')}
         <div id="teIconPickerGrid" class="overflow-y-auto flex-1 p-4 text-sm"></div>
         <div class="px-5 py-3 border-t border-slate-100 flex-shrink-0 text-[10px] text-slate-400 text-center">
             35 ícones — Heroicons &amp; Simple Icons (MIT) · Clica para inserir no email
+        </div>
+    </div>
+</div>
+
+<!-- Modal trocar de marca -->
+<div id="brandSwitchModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 backdrop-blur-sm items-center justify-center p-6" onclick="if(event.target===this)closeBrandSwitchModal()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden" style="max-height:85vh">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+            <div>
+                <h2 class="text-base font-semibold text-slate-900">Trocar de marca</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Seleciona a marca para a qual queres ir</p>
+            </div>
+            <button onclick="closeBrandSwitchModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="overflow-y-auto flex-1 p-6">
+            <div id="brandSwitchGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3"></div>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between flex-shrink-0 bg-slate-50 rounded-b-2xl">
+            <span id="brandSwitchLabel" class="text-sm text-slate-400">Nenhuma marca selecionada</span>
+            <div class="flex items-center gap-3">
+                <button onclick="closeBrandSwitchModal()" class="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">Cancelar</button>
+                <button id="brandSwitchConfirmBtn" onclick="_confirmBrandSwitch()" disabled
+                    class="px-5 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-200 text-slate-400 cursor-not-allowed">
+                    Ir para a marca
+                </button>
+            </div>
         </div>
     </div>
 </div>
