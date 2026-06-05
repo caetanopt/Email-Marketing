@@ -1849,6 +1849,107 @@
         const p = document.getElementById('te_converterPanel');
         if (p) { p.classList.add('hidden'); p.classList.remove('flex'); }
     }
+    // ── IA: Imagem → MJML ───────────────────────────────────────────────
+    let _aiImageData = null;
+    let _aiImageType = null;
+    let _aiConfigured = null; // null = unknown, true/false after check
+
+    async function teOpenAiImageModal() {
+        const m = document.getElementById('te_aiImageModal');
+        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+        // Check API key status once per session
+        if (_aiConfigured === null) {
+            try {
+                const d = await apiFetch('/api/ai/image-to-mjml', { method: 'GET' });
+                _aiConfigured = d.configured === true;
+            } catch(e) {
+                _aiConfigured = false;
+            }
+            _teAiRenderConfigState();
+        }
+    }
+    function _teAiRenderConfigState() {
+        const banner = document.getElementById('te_aiNotConfigured');
+        const body   = document.getElementById('te_aiBody');
+        if (!banner || !body) return;
+        if (_aiConfigured === false) {
+            banner.classList.remove('hidden');
+            body.classList.add('opacity-40', 'pointer-events-none');
+        } else {
+            banner.classList.add('hidden');
+            body.classList.remove('opacity-40', 'pointer-events-none');
+        }
+    }
+    function teCloseAiImageModal() {
+        const m = document.getElementById('te_aiImageModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+    function teAiImageSelected(input) {
+        const file = input.files[0];
+        if (!file) return;
+        _teLoadAiImage(file);
+    }
+    function teAiImageDrop(e) {
+        e.preventDefault();
+        const dz = document.getElementById('te_aiDropZone');
+        dz.classList.remove('bg-emerald-50', 'border-emerald-300');
+        const file = e.dataTransfer.files[0];
+        if (!file || !file.type.startsWith('image/')) { showToast('Ficheiro inválido — usa PNG, JPG ou WebP.', 'error'); return; }
+        _teLoadAiImage(file);
+    }
+    function _teLoadAiImage(file) {
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const dataUrl = ev.target.result;
+            const commaIdx = dataUrl.indexOf(',');
+            _aiImageData = dataUrl.substring(commaIdx + 1);
+            _aiImageType = file.type;
+            const prompt = document.getElementById('te_aiDropPrompt');
+            const img    = document.getElementById('te_aiPreviewImg');
+            if (prompt) prompt.classList.add('hidden');
+            if (img) { img.src = dataUrl; img.classList.remove('hidden'); }
+        };
+        reader.readAsDataURL(file);
+    }
+    async function teAiImageConvert() {
+        if (!_aiImageData) { showToast('Carrega uma imagem primeiro.', 'info'); return; }
+        const btn    = document.getElementById('te_aiConvertBtn');
+        const status = document.getElementById('te_aiStatus');
+        const out    = document.getElementById('te_aiMjmlOutput');
+        btn.disabled = true;
+        status.classList.remove('hidden');
+        out.value = '';
+        try {
+            const d = await apiFetch('/api/ai/image-to-mjml', {
+                method: 'POST',
+                body: JSON.stringify({ image_base64: _aiImageData, image_type: _aiImageType })
+            });
+            out.value = d.mjml || '';
+            showToast('MJML gerado com sucesso!', 'success');
+        } catch(err) {
+            showToast(err.message || 'Erro ao gerar MJML.', 'error');
+        } finally {
+            btn.disabled = false;
+            status.classList.add('hidden');
+        }
+    }
+    function teAiCopyMjml() {
+        const out = document.getElementById('te_aiMjmlOutput');
+        if (!out?.value) { showToast('Nada para copiar.', 'info'); return; }
+        navigator.clipboard.writeText(out.value).then(() => showToast('Copiado!'));
+    }
+    function teAiApplyMjml() {
+        const out = document.getElementById('te_aiMjmlOutput');
+        if (!out?.value) { showToast('Gera o MJML primeiro.', 'info'); return; }
+        const code = _teEl('mjmlCode');
+        if (code) {
+            code.value = out.value;
+            teApplyMjml(false);
+        }
+        teCloseAiImageModal();
+        showToast('MJML importado para o editor.');
+    }
+
     function teOpenPreviewModal()  {
         const m = document.getElementById('te_previewModal');
         m.classList.remove('hidden');
@@ -9013,6 +9114,11 @@ ${sections.join('\n\n')}
                                         class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Cabeçalho da marca</button>
                                 <button type="button" onclick="openBlockPicker('footer')"
                                         class="px-3 py-2 rounded-lg text-xs font-medium border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">+ Rodapé da marca</button>
+                                <button type="button" onclick="teOpenAiImageModal()"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1 border bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50 transition-colors">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                    IA → MJML
+                                </button>
                             </div>
                             <div class="flex items-center gap-2 justify-self-center">
                                 <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -10394,6 +10500,12 @@ ${sections.join('\n\n')}
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         Converter HTML
                     </button>
+                    <!-- IA: Imagem → MJML -->
+                    <button type="button" onclick="teOpenAiImageModal()"
+                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                        IA → MJML
+                    </button>
                     <!-- Open preview modal -->
                     <button type="button" onclick="teOpenPreviewModal()"
                             class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
@@ -10602,6 +10714,90 @@ ${sections.join('\n\n')}
             </div>
             <div class="px-6 py-3 border-t border-slate-200 bg-slate-50 flex-shrink-0">
                 <p class="text-xs text-slate-400">⚠️ A conversão é automática e pode requerer ajustes manuais. Verifica sempre o resultado no editor antes de enviar.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── IA: Imagem → MJML modal ──────────────────────────────────────── -->
+    <div id="te_aiImageModal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 flex items-center justify-center p-6" onclick="if(event.target===this)teCloseAiImageModal()">
+        <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style="height:88vh;max-height:88vh;min-height:560px">
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                <div>
+                    <h2 class="text-base font-semibold text-slate-900 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                        IA — Imagem para MJML
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Faz upload de um screenshot de email e a IA converte-o para MJML</p>
+                </div>
+                <button onclick="teCloseAiImageModal()" class="text-slate-400 hover:text-slate-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <!-- Banner: chave não configurada -->
+            <div id="te_aiNotConfigured" class="hidden px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-start gap-3 flex-shrink-0">
+                <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <div>
+                    <p class="text-sm font-semibold text-amber-800">Funcionalidade não activada</p>
+                    <p class="text-xs text-amber-700 mt-0.5">A variável <code class="font-mono bg-amber-100 px-1 rounded">ANTHROPIC_API_KEY</code> não está configurada na Vercel. Para activar:</p>
+                    <ol class="text-xs text-amber-700 mt-1.5 list-decimal list-inside space-y-0.5">
+                        <li>Cria uma conta em <strong>console.anthropic.com</strong> e gera uma API Key</li>
+                        <li>No painel da Vercel, vai a <strong>Settings → Environment Variables</strong></li>
+                        <li>Adiciona <code class="font-mono bg-amber-100 px-1 rounded">ANTHROPIC_API_KEY</code> com o valor <code class="font-mono bg-amber-100 px-1 rounded">sk-ant-...</code></li>
+                        <li>Faz <strong>Redeploy</strong> do projecto</li>
+                    </ol>
+                </div>
+            </div>
+            <div id="te_aiBody" class="flex-1 grid grid-cols-2 gap-0 min-h-0" style="overflow:hidden">
+                <!-- Coluna esquerda: upload -->
+                <div class="flex flex-col border-r border-slate-200">
+                    <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                        <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">Imagem do email</span>
+                        <button onclick="teAiImageConvert()" id="te_aiConvertBtn"
+                                class="text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            Gerar MJML com IA
+                        </button>
+                    </div>
+                    <!-- Drop zone -->
+                    <div id="te_aiDropZone"
+                         class="flex-1 flex flex-col items-center justify-center gap-3 p-6 cursor-pointer relative"
+                         onclick="document.getElementById('te_aiFileInput').click()"
+                         ondragover="event.preventDefault();this.classList.add('bg-emerald-50','border-emerald-300')"
+                         ondragleave="this.classList.remove('bg-emerald-50','border-emerald-300')"
+                         ondrop="teAiImageDrop(event)">
+                        <input type="file" id="te_aiFileInput" accept="image/*" class="hidden" onchange="teAiImageSelected(this)">
+                        <div id="te_aiDropPrompt" class="flex flex-col items-center gap-3 text-center">
+                            <div class="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                                <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-slate-700">Arrasta a imagem aqui</p>
+                                <p class="text-xs text-slate-400 mt-0.5">ou clica para escolher um ficheiro</p>
+                                <p class="text-xs text-slate-300 mt-1">PNG, JPG, WebP</p>
+                            </div>
+                        </div>
+                        <img id="te_aiPreviewImg" class="hidden max-h-full max-w-full object-contain rounded-lg" alt="preview">
+                    </div>
+                    <div id="te_aiStatus" class="hidden px-4 py-2 bg-emerald-50 border-t border-emerald-100 flex items-center gap-2 flex-shrink-0">
+                        <svg class="w-4 h-4 text-emerald-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        <span class="text-xs text-emerald-700">A IA está a analisar a imagem...</span>
+                    </div>
+                </div>
+                <!-- Coluna direita: output MJML -->
+                <div class="flex flex-col">
+                    <div class="px-4 py-2 bg-[#21252b] border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+                        <span class="text-xs font-medium text-slate-400 uppercase tracking-wide font-mono">MJML gerado</span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="teAiCopyMjml()" class="text-xs px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-500">Copiar</button>
+                            <button onclick="teAiApplyMjml()" class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700">Usar no editor</button>
+                        </div>
+                    </div>
+                    <textarea id="te_aiMjmlOutput" spellcheck="false" placeholder="O MJML gerado pela IA aparecerá aqui…" class="flex-1 px-4 py-3 text-sm font-mono text-slate-300 bg-[#282c34] resize-none focus:outline-none" style="overflow-y:auto"></textarea>
+                </div>
+            </div>
+            </div><!-- /te_aiBody -->
+            <div class="px-6 py-3 border-t border-slate-200 bg-slate-50 flex-shrink-0">
+                <p class="text-xs text-slate-400">A conversão usa IA e pode requerer ajustes. Verifica sempre o resultado antes de enviar.</p>
             </div>
         </div>
     </div>
