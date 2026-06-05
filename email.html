@@ -3285,21 +3285,18 @@ ${bodyRows}
         }
     }
 
-    function _setFieldError(el, floatBelow = false, message = 'Campo obrigatório') {
+    function _setFieldError(el, _unused = false, message = 'Campo obrigatório') {
         if (!el) return;
-        el.parentElement?.querySelector('[data-field-error]')?.remove();
+        const parent = el.parentElement;
+        parent?.querySelector('[data-field-error]')?.remove();
         el.style.borderColor = '#f87171';
         el.style.boxShadow = '0 0 0 3px rgba(248,113,113,0.25)';
+        if (parent && getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
         el.focus();
         const msg = document.createElement('p');
         msg.setAttribute('data-field-error', '1');
         msg.textContent = message;
-        if (floatBelow) {
-            // absolute so the flex row height is unaffected
-            msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:calc(100% + 2px);left:0;white-space:nowrap;z-index:1;';
-        } else {
-            msg.style.cssText = 'color:#f87171;font-size:11px;margin-top:3px;';
-        }
+        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:calc(100% + 2px);left:0;white-space:nowrap;z-index:10;pointer-events:none;';
         el.insertAdjacentElement('afterend', msg);
         const clear = () => {
             el.style.borderColor = '';
