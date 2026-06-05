@@ -420,8 +420,8 @@ module.exports = async function handler(req, res) {
       const { data_base64, mime_type, filename } = req.body || {};
       if (!data_base64 || !mime_type) return res.status(400).json({ error: 'data_base64 e mime_type obrigatórios' });
       const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[mime_type] || 'bin';
-      const safeName = (filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const blobName = `media/${id}/${Date.now()}-${safeName}.${ext}`;
+      const shortId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const blobName = `m/${id}/${shortId}.${ext}`;
       try {
         const buffer = Buffer.from(data_base64, 'base64');
         const blob = await put(blobName, buffer, { access: 'public', contentType: mime_type });
