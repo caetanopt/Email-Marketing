@@ -5168,6 +5168,7 @@ ${bodyRows}
         document.getElementById('wizUtmFields')?.classList.toggle('hidden', !enabled);
         document.getElementById('wizUtmDisabledMsg')?.classList.toggle('hidden', !!enabled);
         if (enabled) _wizUtmPreview();
+        _wizRevUtmRender();
     }
     function _wizUtmSyncCampaign() {
         const campEl = document.getElementById('wizUtmCampaign');
@@ -5191,6 +5192,7 @@ ${bodyRows}
         el.innerHTML = qs
             ? `https://exemplo.pt/pagina<span class="text-violet-600">?${qs}</span>`
             : `https://exemplo.pt/pagina<span class="text-slate-400">?utm_source=...&utm_medium=email</span>`;
+        _wizRevUtmRender();
     }
     function _wizGetUtmParams() {
         // Always start with brand-level defaults
