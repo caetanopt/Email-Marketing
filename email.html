@@ -3305,6 +3305,15 @@ ${bodyRows}
         }
     }
 
+    function _clearFieldErrors(container) {
+        const root = container || document;
+        root.querySelectorAll('[data-field-error]').forEach(msg => {
+            const inp = msg.previousElementSibling;
+            if (inp) { inp.style.borderColor = ''; inp.style.boxShadow = ''; }
+            msg.remove();
+        });
+    }
+
     function _setFieldError(el, _unused = false, message = 'Campo obrigatório') {
         if (!el) return;
         const parent = el.parentElement;
@@ -4839,6 +4848,7 @@ ${bodyRows}
     function _wizStopAutoSave() { clearInterval(_wizAutoSaveTimer); _wizAutoSaveTimer = null; }
 
     function wizShowStep(step) {
+        _clearFieldErrors(document.getElementById('campaignCreate'));
         if (_wizStep === 2 && step !== 2) _teCtx = 'te_';
         _wizStep = step;
         const labels = ['Detalhes', 'Template', 'Destinatários', 'Revisão'];
@@ -5792,6 +5802,7 @@ ${bodyRows}
 
     async function openEditCampaignModal() {
         if (!_currentCampaign) return;
+        _clearFieldErrors(document.getElementById('editCampaignModal'));
         const c = _currentCampaign;
         document.getElementById('editCampName').value = c.name || '';
         document.getElementById('editCampSubject').value = c.subject || '';
