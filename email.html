@@ -4939,10 +4939,11 @@ ${bodyRows}
     // ── UTM helpers ──────────────────────────────────────
     // System variables — always available, replaced per-contact at send time
     const _WIZ_SYSTEM_VARS = [
-        { key: 'name',    label: 'Nome do contacto' },
-        { key: 'email',   label: 'Email do contacto' },
-        { key: 'phone',   label: 'Telefone do contacto' },
-        { key: 'company', label: 'Empresa do contacto' },
+        { key: 'name',            label: 'Nome do contacto' },
+        { key: 'email',           label: 'Email do contacto' },
+        { key: 'phone',           label: 'Telefone do contacto' },
+        { key: 'company',         label: 'Empresa do contacto' },
+        { key: 'unsubscribe_url', label: 'Link de cancelamento de subscrição' },
     ];
 
     async function _wizVarsRender() {
@@ -5025,6 +5026,14 @@ ${bodyRows}
     function _wizVarsToggle() {
         const body    = document.getElementById('wizVarsBody');
         const chevron = document.getElementById('wizVarsChevron');
+        if (!body) return;
+        const nowHidden = body.classList.toggle('hidden');
+        chevron?.classList.toggle('rotate-180', !nowHidden);
+    }
+
+    function _wizVarsToggle2() {
+        const body    = document.getElementById('wizVarsBody2');
+        const chevron = document.getElementById('wizVarsChevron2');
         if (!body) return;
         const nowHidden = body.classList.toggle('hidden');
         chevron?.classList.toggle('rotate-180', !nowHidden);
@@ -8898,7 +8907,7 @@ ${sections.join('\n\n')}
                             <!-- Coluna esquerda: detalhes da campanha -->
                             <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                                 <div>
-                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da Campanha *</label>
+                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Nome da Campanha</label>
                                     <input id="wizName" type="text" placeholder="Opcional — usa o assunto se ficar vazio" oninput="_wizUtmSyncCampaign()" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
                                 <div>
@@ -8966,9 +8975,9 @@ ${sections.join('\n\n')}
                         <div id="wizVarsPanel" class="hidden bg-white border border-slate-200 rounded-xl overflow-hidden">
                             <button type="button" onclick="_wizVarsToggle()" class="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors">
                                 <span class="text-sm font-semibold text-slate-900">Variáveis disponíveis</span>
-                                <svg id="wizVarsChevron" class="w-4 h-4 text-slate-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                <svg id="wizVarsChevron" class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                             </button>
-                            <div id="wizVarsBody" class="border-t border-slate-100 px-5 py-4">
+                            <div id="wizVarsBody" class="hidden border-t border-slate-100 px-5 py-4">
                                 <p class="text-xs text-slate-400 mb-3">Clica numa variável para copiar — usa no assunto ou no template.</p>
                                 <div id="wizVarsList" class="flex flex-wrap gap-2"></div>
                             </div>
@@ -8995,10 +9004,16 @@ ${sections.join('\n\n')}
                             </div>
                             <span class="text-xs text-slate-400 justify-self-end hidden md:block text-right">O template é guardado automaticamente ao criar a campanha</span>
                         </div>
-                        <!-- Variáveis disponíveis (strip) -->
-                        <div id="wizVarsPanel2" class="hidden bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-3">
-                            <span class="text-xs font-medium text-slate-400 whitespace-nowrap">Variáveis:</span>
-                            <div id="wizVarsList2" class="flex flex-wrap gap-1.5"></div>
+                        <!-- Variáveis disponíveis -->
+                        <div id="wizVarsPanel2" class="hidden bg-white border border-slate-200 rounded-xl overflow-hidden mb-3">
+                            <button type="button" onclick="_wizVarsToggle2()" class="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-slate-50 transition-colors">
+                                <span class="text-sm font-semibold text-slate-900">Variáveis disponíveis</span>
+                                <svg id="wizVarsChevron2" class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="wizVarsBody2" class="hidden border-t border-slate-100 px-5 py-4">
+                                <p class="text-xs text-slate-400 mb-3">Clica numa variável para copiar — usa no assunto ou no template.</p>
+                                <div id="wizVarsList2" class="flex flex-wrap gap-2"></div>
+                            </div>
                         </div>
                         <!-- Editor area -->
                         <div style="height:calc(100vh - 380px);min-height:520px;">
