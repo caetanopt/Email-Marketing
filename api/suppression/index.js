@@ -187,7 +187,14 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      const { email } = req.body || {};
+      const { email, emails } = req.body || {};
+      if (Array.isArray(emails) && emails.length) {
+        const list = emails.map(e => e.toLowerCase().trim()).filter(Boolean);
+        if (!list.length) return res.status(400).json({ error: 'Nenhum email válido' });
+        const placeholders = list.map((_, i) => `$${i + 1}`).join(',');
+        await query(`DELETE FROM suppression WHERE email IN (${placeholders})`, list);
+        return res.status(200).json({ ok: true, deleted: list.length });
+      }
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
       await query('DELETE FROM suppression WHERE email=$1', [email.toLowerCase().trim()]);
       return res.status(200).json({ ok: true });
