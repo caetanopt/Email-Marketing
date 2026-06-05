@@ -1762,10 +1762,33 @@
     // ── IA: Imagem → MJML ───────────────────────────────────────────────
     let _aiImageData = null;
     let _aiImageType = null;
+    let _aiConfigured = null; // null = unknown, true/false after check
 
-    function teOpenAiImageModal() {
+    async function teOpenAiImageModal() {
         const m = document.getElementById('te_aiImageModal');
         if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+        // Check API key status once per session
+        if (_aiConfigured === null) {
+            try {
+                const d = await apiFetch('/api/ai/image-to-mjml', { method: 'GET' });
+                _aiConfigured = d.configured === true;
+            } catch(e) {
+                _aiConfigured = false;
+            }
+            _teAiRenderConfigState();
+        }
+    }
+    function _teAiRenderConfigState() {
+        const banner = document.getElementById('te_aiNotConfigured');
+        const body   = document.getElementById('te_aiBody');
+        if (!banner || !body) return;
+        if (_aiConfigured === false) {
+            banner.classList.remove('hidden');
+            body.classList.add('opacity-40', 'pointer-events-none');
+        } else {
+            banner.classList.add('hidden');
+            body.classList.remove('opacity-40', 'pointer-events-none');
+        }
     }
     function teCloseAiImageModal() {
         const m = document.getElementById('te_aiImageModal');
@@ -10267,7 +10290,21 @@ ${sections.join('\n\n')}
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
-            <div class="flex-1 grid grid-cols-2 gap-0 min-h-0" style="overflow:hidden">
+            <!-- Banner: chave não configurada -->
+            <div id="te_aiNotConfigured" class="hidden px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-start gap-3 flex-shrink-0">
+                <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <div>
+                    <p class="text-sm font-semibold text-amber-800">Funcionalidade não activada</p>
+                    <p class="text-xs text-amber-700 mt-0.5">A variável <code class="font-mono bg-amber-100 px-1 rounded">ANTHROPIC_API_KEY</code> não está configurada na Vercel. Para activar:</p>
+                    <ol class="text-xs text-amber-700 mt-1.5 list-decimal list-inside space-y-0.5">
+                        <li>Cria uma conta em <strong>console.anthropic.com</strong> e gera uma API Key</li>
+                        <li>No painel da Vercel, vai a <strong>Settings → Environment Variables</strong></li>
+                        <li>Adiciona <code class="font-mono bg-amber-100 px-1 rounded">ANTHROPIC_API_KEY</code> com o valor <code class="font-mono bg-amber-100 px-1 rounded">sk-ant-...</code></li>
+                        <li>Faz <strong>Redeploy</strong> do projecto</li>
+                    </ol>
+                </div>
+            </div>
+            <div id="te_aiBody" class="flex-1 grid grid-cols-2 gap-0 min-h-0" style="overflow:hidden">
                 <!-- Coluna esquerda: upload -->
                 <div class="flex flex-col border-r border-slate-200">
                     <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
@@ -10315,8 +10352,9 @@ ${sections.join('\n\n')}
                     <textarea id="te_aiMjmlOutput" spellcheck="false" placeholder="O MJML gerado pela IA aparecerá aqui…" class="flex-1 px-4 py-3 text-sm font-mono text-slate-300 bg-[#282c34] resize-none focus:outline-none" style="overflow-y:auto"></textarea>
                 </div>
             </div>
+            </div><!-- /te_aiBody -->
             <div class="px-6 py-3 border-t border-slate-200 bg-slate-50 flex-shrink-0">
-                <p class="text-xs text-slate-400">A conversão usa IA e pode requerer ajustes. Verifica sempre o resultado antes de enviar. Requer a variável de ambiente <code class="font-mono bg-slate-100 px-1 rounded">ANTHROPIC_API_KEY</code> configurada.</p>
+                <p class="text-xs text-slate-400">A conversão usa IA e pode requerer ajustes. Verifica sempre o resultado antes de enviar.</p>
             </div>
         </div>
     </div>

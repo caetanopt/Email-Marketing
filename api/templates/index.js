@@ -65,7 +65,13 @@ module.exports = async function handler(req, res) {
 
   // AI: image → MJML
   if (action === 'image-to-mjml') {
+    if (req.method === 'GET') {
+      return res.status(200).json({ configured: !!process.env.ANTHROPIC_API_KEY });
+    }
     if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(503).json({ error: 'ANTHROPIC_API_KEY não configurada. Adiciona-a nas variáveis de ambiente da Vercel.' });
+    }
     try {
       return await handleImageToMjml(req, res);
     } catch (err) {
