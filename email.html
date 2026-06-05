@@ -3332,7 +3332,8 @@ ${bodyRows}
         const msg = document.createElement('p');
         msg.setAttribute('data-field-error', '1');
         msg.textContent = message;
-        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:100%;margin-top:5px;left:0;white-space:nowrap;z-index:10;pointer-events:none;';
+        // top: calc(100% - 17px) = (inputHeight + 22px padding) - 22px + 5px gap = inputHeight + 5px
+        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:calc(100% - 17px);left:0;white-space:nowrap;z-index:10;pointer-events:none;';
         el.insertAdjacentElement('afterend', msg);
         const clear = () => {
             el.style.borderColor = '';
