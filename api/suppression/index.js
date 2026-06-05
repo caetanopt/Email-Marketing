@@ -136,6 +136,23 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      // Bulk domain import
+      if (req.query.action === 'bulk_domains') {
+        const { domains } = req.body || {};
+        if (!Array.isArray(domains) || !domains.length) return res.status(400).json({ error: 'domains[] obrigatório' });
+        const valid = domains.map(d => normaliseDomain(d)).filter(Boolean);
+        if (!valid.length) return res.status(400).json({ error: 'Nenhum domínio válido' });
+        const vals = valid.map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`).join(',');
+        await query(
+          `INSERT INTO suppression (email, reason) VALUES ${vals} ON CONFLICT (email) DO NOTHING`,
+          valid.flatMap(d => [d, 'manual'])
+        );
+        for (const d of valid) {
+          await query("UPDATE contacts SET status='suppressed' WHERE email ILIKE $1", ['%@' + d.slice(1)]);
+        }
+        return res.status(200).json({ ok: true, inserted: valid.length });
+      }
+
       // Bulk import from CSV
       if (req.query.action === 'bulk') {
         const { emails } = req.body || {};
