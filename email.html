@@ -4848,8 +4848,23 @@ ${bodyRows}
         let url, mime_type;
         if (_mediaSource === 'upload') {
             if (!_mediaPendingDataUrl) { showToast('Escolhe um ficheiro primeiro.', 'error'); return; }
-            url = _mediaPendingDataUrl;
-            mime_type = (url.match(/^data:([^;]+)/) || [])[1] || null;
+            mime_type = (_mediaPendingDataUrl.match(/^data:([^;]+)/) || [])[1] || null;
+            const base64 = _mediaPendingDataUrl.split(',')[1];
+            // Upload to Vercel Blob for a real URL (avoids storing base64 in DB)
+            try {
+                const up = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media-upload`, {
+                    method: 'POST',
+                    body: JSON.stringify({ data_base64: base64, mime_type, filename: name })
+                });
+                url = up.url;
+            } catch (e) {
+                // Fallback to base64 if Blob not configured
+                if (e.message && e.message.includes('BLOB_READ_WRITE_TOKEN')) {
+                    showToast('Upload directo não disponível — configura BLOB_READ_WRITE_TOKEN na Vercel ou usa URL externo.', 'error');
+                    return;
+                }
+                url = _mediaPendingDataUrl;
+            }
         } else {
             url = document.getElementById('mediaUrl').value.trim();
             if (!url || !/^https?:\/\//i.test(url)) { _setFieldError(document.getElementById('mediaUrl'), false, 'URL inválido (http/https)'); return; }

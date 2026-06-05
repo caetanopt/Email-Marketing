@@ -3,6 +3,7 @@ const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const dns = require('dns').promises;
 const crypto = require('crypto');
 const { query } = require('../../lib/db');
+const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
 
@@ -409,6 +410,24 @@ module.exports = async function handler(req, res) {
       } catch (e) {
         if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 007_brand_blocks_multi.sql no Supabase.' });
         throw e;
+      }
+    }
+
+    if (req.method === 'POST' && id && action === 'media-upload') {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        return res.status(503).json({ error: 'BLOB_READ_WRITE_TOKEN não configurado na Vercel.' });
+      }
+      const { data_base64, mime_type, filename } = req.body || {};
+      if (!data_base64 || !mime_type) return res.status(400).json({ error: 'data_base64 e mime_type obrigatórios' });
+      const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[mime_type] || 'bin';
+      const safeName = (filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const blobName = `media/${id}/${Date.now()}-${safeName}.${ext}`;
+      try {
+        const buffer = Buffer.from(data_base64, 'base64');
+        const blob = await put(blobName, buffer, { access: 'public', contentType: mime_type });
+        return res.status(200).json({ url: blob.url });
+      } catch (e) {
+        return res.status(500).json({ error: e.message || 'Erro ao fazer upload' });
       }
     }
 
