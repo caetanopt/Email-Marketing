@@ -10719,8 +10719,8 @@ ${sections.join('\n\n')}
     </div>
 
     <!-- ── IA: Imagem → MJML modal ──────────────────────────────────────── -->
-    <div id="te_aiImageModal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 flex items-center justify-center p-4" onclick="if(event.target===this)teCloseAiImageModal()">
-        <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col mx-auto" style="height:90vh;max-height:90vh;min-height:560px">
+    <div id="te_aiImageModal" class="hidden z-[9999] bg-slate-900/70 flex items-center justify-center p-4" style="position:fixed;top:0;left:0;width:100vw;height:100vh" onclick="if(event.target===this)teCloseAiImageModal()">
+        <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl flex flex-col" style="width:min(900px,calc(100vw - 2rem));height:90vh;max-height:90vh;min-height:560px">
             <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
                 <div>
                     <h2 class="text-base font-semibold text-slate-900 flex items-center gap-2">
