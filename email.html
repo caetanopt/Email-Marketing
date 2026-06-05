@@ -5263,7 +5263,7 @@ ${bodyRows}
     function _wizRevUtmSave() {
         // Write back to step-1 inputs
         const en = document.getElementById('wizRevUtmEnabled')?.checked || false;
-        const utmEl = document.getElementById('wizUtmEnabled'); if (utmEl) utmEl.checked = en;
+        const utmEl = document.getElementById('wizUtmEnabled'); if (utmEl) { utmEl.checked = en; _wizUtmToggle(); }
         ['Source','Medium','Campaign','Content'].forEach(f => {
             const src = document.getElementById('wizRevUtm'+f);
             const dst = document.getElementById('wizUtm'+f);
