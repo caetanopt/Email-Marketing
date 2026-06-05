@@ -3235,7 +3235,7 @@ ${bodyRows}
                     class="flex-1 min-w-[150px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
                     ${ops.map(o => `<option value="${o.value}"${o.value===r.operator?' selected':''}>${o.label}</option>`).join('')}
                 </select>
-                ${noValue ? '' : `<div class="flex-1 min-w-[120px]">
+                ${noValue ? '' : `<div class="relative flex-1 min-w-[120px]">
                     <input type="${type==='date'?'date':type==='number'?'number':'text'}" value="${escHtml(r.value||'')}"
                         data-rule-idx="${i}"
                         oninput="_segRules[${i}].value=this.value"
@@ -3285,7 +3285,7 @@ ${bodyRows}
         }
     }
 
-    function _setFieldError(el) {
+    function _setFieldError(el, floatBelow = false) {
         if (!el) return;
         el.parentElement?.querySelector('[data-field-error]')?.remove();
         el.style.borderColor = '#f87171';
@@ -3294,7 +3294,12 @@ ${bodyRows}
         const msg = document.createElement('p');
         msg.setAttribute('data-field-error', '1');
         msg.textContent = 'Campo obrigatório';
-        msg.style.cssText = 'color:#f87171;font-size:11px;margin-top:3px;';
+        if (floatBelow) {
+            // absolute so the flex row height is unaffected
+            msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:calc(100% + 2px);left:0;white-space:nowrap;z-index:1;';
+        } else {
+            msg.style.cssText = 'color:#f87171;font-size:11px;margin-top:3px;';
+        }
         el.insertAdjacentElement('afterend', msg);
         const clear = () => {
             el.style.borderColor = '';
@@ -3313,7 +3318,7 @@ ${bodyRows}
         const needsValue = r => r.operator !== 'is_empty' && r.operator !== 'is_not_empty';
         const emptyRules = _segRules.map((r, i) => ({ r, i })).filter(({ r }) => needsValue(r) && !(r.value ?? '').toString().trim());
         if (emptyRules.length) {
-            emptyRules.forEach(({ i }) => _setFieldError(document.querySelector(`#segRulesList [data-rule-idx="${i}"]`)));
+            emptyRules.forEach(({ i }) => _setFieldError(document.querySelector(`#segRulesList [data-rule-idx="${i}"]`), true));
             return;
         }
         if (!_currentListId) return;
