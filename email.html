@@ -7201,6 +7201,12 @@ ${sections.join('\n\n')}
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') {
+                // Always clear template blocks — stale blocks from a previous campaign must never bleed in.
+                // For edit-resume via draft, blocks are rebuilt interactively in step 2.
+                teState.blocks = [];
+                teState.selected = null;
+                const _wmc2 = document.getElementById('wiz_te_mjmlCode'); if (_wmc2) _wmc2.value = '';
+                const _wml2 = document.getElementById('wiz_te_mjmlLines'); if (_wml2) _wml2.textContent = '';
                 wizShowStep(1);
                 // If no editing context, check draft for a saved editing session (survives page refresh)
                 if (!_editingCampaignId) {
