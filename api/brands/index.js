@@ -671,6 +671,69 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Create brand (POST with no id/action) ──────────────────────
+    if (req.method === 'POST' && !id && !action) {
+      const ownerRow = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+      );
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+      const { name, color, from_name, from_email, id: slugInput } = req.body || {};
+      if (!name?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
+      // Generate slug from provided id or from name (remove accents + non-alphanumeric)
+      const slug = (slugInput?.trim() ||
+        name.trim().toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]+/g, '').slice(0, 30));
+      if (!slug) return res.status(400).json({ error: 'ID de marca inválido' });
+      try {
+        const [brand] = await query(
+          `INSERT INTO brands (id, name, color, from_name, from_email, active)
+           VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id, name`,
+          [slug, name.trim(), color || '#0f172a', from_name?.trim() || null, from_email?.trim() || null]
+        );
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1, $2, 'owner')`,
+          [user.id, brand.id]
+        );
+        return res.status(201).json({ id: brand.id, name: brand.name });
+      } catch (e) {
+        if (e.code === '23505') return res.status(409).json({ error: `ID "${slug}" já existe. Escolhe outro nome ou ID.` });
+        throw e;
+      }
+    }
+
+    // ── Delete brand (DELETE with action=delete_brand) ───────────────
+    if (req.method === 'DELETE' && id && action === 'delete_brand') {
+      if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
+      const ownerRow = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+      );
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+      const { confirm: confirmed } = req.body || {};
+      if (!confirmed) {
+        // Return counts for the confirmation dialog
+        const [[contacts], [campaigns], [lists]] = await Promise.all([
+          query(`SELECT COUNT(*)::int AS n FROM contacts WHERE brand_id=$1`, [id]),
+          query(`SELECT COUNT(*)::int AS n FROM campaigns WHERE brand_id=$1`, [id]),
+          query(`SELECT COUNT(*)::int AS n FROM contact_lists WHERE brand_id=$1`, [id]),
+        ]);
+        const [brand] = await query(`SELECT name FROM brands WHERE id=$1`, [id]);
+        return res.status(200).json({
+          requires_confirm: true,
+          brand_name: brand?.name,
+          counts: { contacts: contacts.n, campaigns: campaigns.n, lists: lists.n },
+        });
+      }
+      // Delete brand — cascades to team roles, blocks, media; manually clean contacts+campaigns
+      await query(`DELETE FROM campaign_recipients WHERE campaign_id IN (SELECT id FROM campaigns WHERE brand_id=$1)`, [id]);
+      await query(`DELETE FROM email_events WHERE campaign_id IN (SELECT id FROM campaigns WHERE brand_id=$1)`, [id]);
+      await query(`DELETE FROM campaigns WHERE brand_id=$1`, [id]);
+      await query(`DELETE FROM contacts WHERE brand_id=$1`, [id]);
+      await query(`DELETE FROM contact_lists WHERE brand_id=$1`, [id]).catch(() => {});
+      await query(`DELETE FROM brands WHERE id=$1`, [id]);
+      return res.status(200).json({ ok: true });
+    }
+
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
     res.status(500).json({ error: 'Erro de servidor' });
