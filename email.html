@@ -6685,6 +6685,13 @@ function toggleExportMenu() {
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
     }
     // ── Block picker (insert brand header/footer in editor) ─
+    let _blockPickerContext = 'editor'; // 'editor' | 'wizTpl'
+
+    function wizTplInsertBlock(type) {
+        _blockPickerContext = 'wizTpl';
+        openBlockPicker(type);
+    }
+
     async function openBlockPicker(type) {
         if (!_currentBrand?.id) return;
         const titleEl = document.getElementById('blockPickerTitle');
@@ -6728,10 +6735,23 @@ function toggleExportMenu() {
     function closeBlockPicker() {
         const modal = document.getElementById('blockPickerModal');
         modal.classList.add('hidden'); modal.classList.remove('flex');
+        _blockPickerContext = 'editor';
     }
     async function pickBlock(blockId) {
         try {
             const b = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${blockId}`);
+            if (_blockPickerContext === 'wizTpl') {
+                _blockPickerContext = 'editor';
+                const ta = document.getElementById('wizTplHtml');
+                if (ta) {
+                    const html = b.html_content || '';
+                    ta.value = b.type === 'header' ? html + '\n' + ta.value : ta.value + '\n' + html;
+                    wizTplLivePreview();
+                }
+                closeBlockPicker();
+                showToast(`Bloco "${b.name}" inserido.`);
+                return;
+            }
             const parsed = (typeof teParseMjmlToBlocks === 'function') ? teParseMjmlToBlocks(b.html_content || '') : null;
             if (!parsed || !parsed.length) { showToast('Bloco vazio ou em formato não reconhecido.', 'error'); return; }
             // Insert at top for header, bottom for footer
