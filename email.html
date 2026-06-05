@@ -2772,6 +2772,7 @@ ${bodyRows}
         _editingListName = name;
         _listExtraFields = [];
         _listExtraFieldsPage = 1;
+        _segmentsPage = 1;
         const title = document.getElementById('listEditTitle');
         if (title) title.textContent = `Editar — ${name}`;
         const nameInp = document.getElementById('listEditName');
@@ -3016,9 +3017,11 @@ ${bodyRows}
     let _listExtraFields = [];          // field definitions for the current list
     let _listExtraFieldsPage = 1;
     const _EXTRA_FIELDS_PER_PAGE = 5;
-    const _listMembersExtraData = {};   // contactId → extra_data object (cached from last load)
+    const _listMembersExtraData = {};
     let _segments = [];
-    let _segRules  = [];   // rules being edited in the segment modal
+    let _segmentsPage = 1;
+    const _SEGMENTS_PER_PAGE = 5;
+    let _segRules  = [];
     let _segEditId = null; // null = create, number = editing
 
     async function _loadListMembers(page) {
@@ -3114,12 +3117,17 @@ ${bodyRows}
     function _renderSegments() {
         const el = document.getElementById('segmentsList');
         if (!el) return;
-        if (!_segments.length) {
+        const total = _segments.length;
+        if (!total) {
             el.innerHTML = '<p class="text-sm text-slate-400 py-2">Sem segmentos criados.</p>';
             return;
         }
-        el.innerHTML = _segments.map(s => `
-            <div class="flex items-center justify-between px-3 py-2.5 mb-2 last:mb-0 bg-slate-50 rounded-lg border border-slate-100">
+        const pages = Math.ceil(total / _SEGMENTS_PER_PAGE);
+        if (_segmentsPage > pages) _segmentsPage = pages;
+        if (_segmentsPage < 1)     _segmentsPage = 1;
+        const start = (_segmentsPage - 1) * _SEGMENTS_PER_PAGE;
+        const rows = _segments.slice(start, start + _SEGMENTS_PER_PAGE).map(s => `
+            <div class="flex items-center justify-between px-3 py-2">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-slate-900">${escHtml(s.name)}</p>
                     <p class="text-xs text-slate-400">${s.rules?.length||0} regra${s.rules?.length===1?'':'s'} · ${(s.contact_count||0).toLocaleString('pt-PT')} contactos</p>
@@ -3133,6 +3141,18 @@ ${bodyRows}
                     </button>
                 </div>
             </div>`).join('');
+        const pagination = pages > 1 ? `
+            <div class="flex items-center justify-between pt-2 mt-1 border-t border-slate-100">
+                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_SEGMENTS_PER_PAGE,total)} de ${total}</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="_segmentsPage--;_renderSegments()" ${_segmentsPage<=1?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+                    <span class="text-xs text-slate-600 px-1">${_segmentsPage}/${pages}</span>
+                    <button onclick="_segmentsPage++;_renderSegments()" ${_segmentsPage>=pages?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+                </div>
+            </div>` : '';
+        el.innerHTML = `<div class="divide-y divide-slate-100">${rows}</div>` + pagination;
     }
 
     async function openSegmentModal(segId) {
