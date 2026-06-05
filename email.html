@@ -3776,8 +3776,10 @@ ${bodyRows}
             <div>
                 <!-- View row -->
                 <div id="gwlRow_${r.id}" class="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50">
-                    <div class="flex items-center gap-3 min-w-0">
+                    <div class="flex items-center gap-3 min-w-0 flex-wrap">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-mono font-medium border border-green-100">@${escHtml(r.domain)}</span>
+                        ${r.use_sender ? '<span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">Remetente</span>' : ''}
+                        ${r.use_utm    ? '<span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 text-xs font-medium border border-violet-100">UTM</span>' : ''}
                         ${r.note ? `<span class="text-xs text-slate-500 truncate">${escHtml(r.note)}</span>` : '<span class="text-xs text-slate-300 italic">sem nota</span>'}
                         <span class="text-xs text-slate-400 flex-shrink-0">${fmt(r.created_at)}</span>
                     </div>
@@ -3802,6 +3804,17 @@ ${bodyRows}
                             <input id="gwlEditNote_${r.id}" type="text" value="${escHtml(r.note || '')}" placeholder="ex: Domínio principal Caetano"
                                 class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                                 onkeydown="if(event.key==='Enter')_gwlSaveEdit(${r.id});else if(event.key==='Escape')_gwlCancelEdit(${r.id})">
+                        </div>
+                        <div class="flex-shrink-0">
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Finalidade</label>
+                            <div class="flex items-center gap-3 py-2">
+                                <label class="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer whitespace-nowrap">
+                                    <input type="checkbox" id="gwlEditSender_${r.id}" ${r.use_sender ? 'checked' : ''} class="rounded border-slate-300 text-slate-900 focus:ring-slate-900"> Remetente
+                                </label>
+                                <label class="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer whitespace-nowrap">
+                                    <input type="checkbox" id="gwlEditUtm_${r.id}" ${r.use_utm ? 'checked' : ''} class="rounded border-slate-300 text-slate-900 focus:ring-slate-900"> URLs com UTM
+                                </label>
+                            </div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
                             <button onclick="_gwlCancelEdit(${r.id})" class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-white text-slate-600">Cancelar</button>
@@ -3828,14 +3841,16 @@ ${bodyRows}
     }
 
     async function _gwlSaveEdit(id) {
-        const domain = document.getElementById(`gwlEditDomain_${id}`)?.value.trim().replace(/^@/, '').toLowerCase();
-        const note   = document.getElementById(`gwlEditNote_${id}`)?.value.trim();
+        const domain     = document.getElementById(`gwlEditDomain_${id}`)?.value.trim().replace(/^@/, '').toLowerCase();
+        const note       = document.getElementById(`gwlEditNote_${id}`)?.value.trim();
+        const use_sender = document.getElementById(`gwlEditSender_${id}`)?.checked ?? true;
+        const use_utm    = document.getElementById(`gwlEditUtm_${id}`)?.checked ?? false;
         if (!domain) { _setFieldError(document.getElementById(`gwlEditDomain_${id}`), true, 'Campo obrigatório'); return; }
         if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
             _setFieldError(document.getElementById(`gwlEditDomain_${id}`), true, 'Domínio inválido. Ex: empresa.pt'); return;
         }
         try {
-            await apiFetch('/api/brands?action=domain_whitelist', { method: 'PUT', body: JSON.stringify({ id, domain, note: note || null }) });
+            await apiFetch('/api/brands?action=domain_whitelist', { method: 'PUT', body: JSON.stringify({ id, domain, note: note || null, use_sender, use_utm }) });
             showToast(`@${domain} actualizado.`);
             _gwlEditingId = null;
             _loadDomainWhitelist();
@@ -3866,8 +3881,10 @@ ${bodyRows}
     }
 
     async function _confirmAddDomainWhitelist() {
-        const domain = document.getElementById('gwlDomainInput')?.value.trim().replace(/^@/, '').toLowerCase();
-        const note   = document.getElementById('gwlNoteInput')?.value.trim();
+        const domain     = document.getElementById('gwlDomainInput')?.value.trim().replace(/^@/, '').toLowerCase();
+        const note       = document.getElementById('gwlNoteInput')?.value.trim();
+        const use_sender = document.getElementById('gwlSenderChk')?.checked ?? true;
+        const use_utm    = document.getElementById('gwlUtmChk')?.checked ?? false;
         if (!domain) { _setFieldError(document.getElementById('gwlDomainInput'), true, 'Campo obrigatório'); return; }
         if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
             _setFieldError(document.getElementById('gwlDomainInput'), true, 'Domínio inválido. Ex: empresa.pt'); return;
@@ -3875,7 +3892,7 @@ ${bodyRows}
         const btn = document.getElementById('gwlConfirmBtn');
         if (btn) btn.disabled = true;
         try {
-            await apiFetch('/api/brands?action=domain_whitelist', { method: 'POST', body: JSON.stringify({ domain, note: note || null }) });
+            await apiFetch('/api/brands?action=domain_whitelist', { method: 'POST', body: JSON.stringify({ domain, note: note || null, use_sender, use_utm }) });
             document.getElementById('gwlFormPanel')?.classList.add('hidden');
             showToast(`@${domain} adicionado à whitelist.`);
             _loadDomainWhitelist();
@@ -10713,6 +10730,17 @@ ${sections.join('\n\n')}
                                 <label class="block text-xs font-medium text-slate-700 mb-1.5">Nota <span class="text-slate-400 font-normal">(opcional)</span></label>
                                 <input id="gwlNoteInput" type="text" placeholder="ex: Domínio principal Caetano" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white" onkeydown="if(event.key==='Enter')_confirmAddDomainWhitelist();else if(event.key==='Escape')_toggleGwlForm()">
                             </div>
+                            <div class="flex-shrink-0">
+                                <label class="block text-xs font-medium text-slate-700 mb-1.5">Finalidade</label>
+                                <div class="flex items-center gap-3 py-2">
+                                    <label class="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer whitespace-nowrap">
+                                        <input type="checkbox" id="gwlSenderChk" checked class="rounded border-slate-300 text-slate-900 focus:ring-slate-900"> Remetente
+                                    </label>
+                                    <label class="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer whitespace-nowrap">
+                                        <input type="checkbox" id="gwlUtmChk" class="rounded border-slate-300 text-slate-900 focus:ring-slate-900"> URLs com UTM
+                                    </label>
+                                </div>
+                            </div>
                             <div class="flex items-center gap-2 flex-shrink-0">
                                 <button onclick="_toggleGwlForm()" class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-white text-slate-600">Cancelar</button>
                                 <button id="gwlConfirmBtn" onclick="_confirmAddDomainWhitelist()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50 font-medium">Adicionar</button>
@@ -10721,9 +10749,9 @@ ${sections.join('\n\n')}
                     </div>
 
                     <!-- Info banner -->
-                    <div class="bg-green-50 border-b border-green-100 px-5 py-3 text-xs text-green-800 flex items-start gap-2">
-                        <svg class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                        <span>Os domínios aqui listados são os únicos autorizados como remetentes (<code class="bg-green-100 px-1 rounded">from_email</code>) nas campanhas. Domínios fora desta lista serão rejeitados.</span>
+                    <div class="bg-slate-50 border-b border-slate-100 px-5 py-3 text-xs text-slate-600 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span><strong class="text-slate-700">Remetente</strong> — domínios autorizados como <code class="bg-slate-200 px-1 rounded">from_email</code> nas campanhas. &nbsp;|&nbsp; <strong class="text-slate-700">URLs com UTM</strong> — links com estes domínios recebem parâmetros UTM automaticamente ao enviar.</span>
                     </div>
 
                     <!-- List -->

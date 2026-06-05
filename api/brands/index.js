@@ -224,7 +224,7 @@ module.exports = async function handler(req, res) {
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
         try {
           const rows = await query(
-            `SELECT dw.id, dw.domain, dw.note, dw.created_at, u.name AS created_by_name
+            `SELECT dw.id, dw.domain, dw.note, dw.use_sender, dw.use_utm, dw.created_at, u.name AS created_by_name
              FROM domain_whitelist dw
              LEFT JOIN users u ON u.id = dw.created_by
              ORDER BY dw.created_at DESC`
@@ -265,15 +265,15 @@ module.exports = async function handler(req, res) {
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
 
       if (req.method === 'POST') {
-        const { domain, note } = req.body || {};
+        const { domain, note, use_sender, use_utm } = req.body || {};
         if (!domain) return res.status(400).json({ error: 'Domínio obrigatório' });
         const clean = domain.trim().toLowerCase().replace(/^@/, '');
         if (!DOMAIN_RE.test(clean)) return res.status(400).json({ error: 'Domínio inválido. Exemplo: empresa.pt' });
         try {
           const rows = await query(
-            `INSERT INTO domain_whitelist (domain, note, created_by) VALUES ($1,$2,$3)
+            `INSERT INTO domain_whitelist (domain, note, use_sender, use_utm, created_by) VALUES ($1,$2,$3,$4,$5)
              ON CONFLICT (domain) DO NOTHING RETURNING id`,
-            [clean, note || null, user.id]
+            [clean, note || null, use_sender !== false, !!use_utm, user.id]
           );
           if (!rows[0]) return res.status(409).json({ error: 'Domínio já existe na lista' });
           return res.status(201).json({ id: rows[0].id, domain: clean });
@@ -283,14 +283,14 @@ module.exports = async function handler(req, res) {
         }
       }
       if (req.method === 'PUT') {
-        const { id: wlId, domain, note } = req.body || {};
+        const { id: wlId, domain, note, use_sender, use_utm } = req.body || {};
         if (!wlId || !domain) return res.status(400).json({ error: 'id e domain obrigatórios' });
         const clean = domain.trim().toLowerCase().replace(/^@/, '');
         if (!DOMAIN_RE.test(clean)) return res.status(400).json({ error: 'Domínio inválido. Exemplo: empresa.pt' });
         try {
           const upd = await query(
-            'UPDATE domain_whitelist SET domain=$1, note=$2 WHERE id=$3 RETURNING id',
-            [clean, note || null, wlId]
+            'UPDATE domain_whitelist SET domain=$1, note=$2, use_sender=$3, use_utm=$4 WHERE id=$5 RETURNING id',
+            [clean, note || null, use_sender !== false, !!use_utm, wlId]
           );
           if (!upd[0]) return res.status(404).json({ error: 'Registo não encontrado' });
           return res.status(200).json({ ok: true, domain: clean });
