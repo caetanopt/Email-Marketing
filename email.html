@@ -3911,6 +3911,8 @@ ${bodyRows}
                     font_family: ff || 'Arial, sans-serif'
                 })
             });
+            // Refresh cached font-size so new blocks in the editor use the updated value immediately
+            if (fs) { const px = parseInt(fs); if (px > 0) _teGlobalFontSize = px; }
             showToast('Definições de tipografia guardadas.');
         } catch (e) { showToast(e.message, 'error'); }
         finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
