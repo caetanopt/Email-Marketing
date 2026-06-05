@@ -3288,7 +3288,16 @@ ${bodyRows}
         el.style.borderColor = '#f87171';
         el.style.boxShadow = '0 0 0 3px rgba(248,113,113,0.25)';
         el.focus();
-        const clear = () => { el.style.borderColor = ''; el.style.boxShadow = ''; el.removeEventListener('input', clear); };
+        const msg = document.createElement('p');
+        msg.textContent = 'Campo obrigatório';
+        msg.style.cssText = 'color:#f87171;font-size:11px;margin-top:3px;';
+        el.insertAdjacentElement('afterend', msg);
+        const clear = () => {
+            el.style.borderColor = '';
+            el.style.boxShadow = '';
+            msg.remove();
+            el.removeEventListener('input', clear);
+        };
         el.addEventListener('input', clear);
     }
 
