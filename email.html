@@ -5170,33 +5170,43 @@ ${bodyRows}
         if (enabled) _wizUtmPreview();
         _wizRevUtmRender();
     }
+    function _lisbonNow() {
+        const fmt = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        });
+        const p = Object.fromEntries(fmt.formatToParts(new Date()).map(x => [x.type, x.value]));
+        return { dateStr: `${p.year}-${p.month}-${p.day}`, h: +p.hour, m: +p.minute };
+    }
+    function _lisbonOffset(dateStr) {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Europe/Lisbon', timeZoneName: 'shortOffset'
+        }).formatToParts(new Date(dateStr + 'T12:00:00Z'));
+        const tz = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
+        const m = tz.match(/GMT([+-])(\d+)/);
+        return m ? `${m[1]}${String(+m[2]).padStart(2,'0')}:00` : '+00:00';
+    }
     function _wizInitSchedulePicker() {
         const dateEl = document.getElementById('wizScheduleDate');
         if (!dateEl) return;
-        const now = new Date();
-        const todayStr = now.toISOString().slice(0, 10);
-        dateEl.min = todayStr;
-        if (!dateEl.value || dateEl.value < todayStr) dateEl.value = todayStr;
+        const ln = _lisbonNow();
+        dateEl.min = ln.dateStr;
+        if (!dateEl.value || dateEl.value < ln.dateStr) dateEl.value = ln.dateStr;
         _wizUpdateTimeSelect(dateEl.value);
     }
     function _wizUpdateTimeSelect(dateStr) {
         const timeEl = document.getElementById('wizScheduleTime');
         if (!timeEl) return;
-        const now = new Date();
-        const todayStr = now.toISOString().slice(0, 10);
-        const isToday = dateStr === todayStr;
+        const ln = _lisbonNow();
+        const isToday = dateStr === ln.dateStr;
         const prevVal = timeEl.value;
         timeEl.innerHTML = '';
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 15) {
+                if (isToday && (h < ln.h || (h === ln.h && m <= ln.m + 5))) continue;
                 const hh = String(h).padStart(2, '0'), mm = String(m).padStart(2, '0');
-                const timeStr = `${hh}:${mm}`;
-                if (isToday) {
-                    const slotMs = new Date(`${dateStr}T${timeStr}:00`).getTime();
-                    if (slotMs <= now.getTime() + 5 * 60000) continue;
-                }
                 const opt = document.createElement('option');
-                opt.value = timeStr; opt.textContent = timeStr;
+                opt.value = `${hh}:${mm}`; opt.textContent = `${hh}:${mm}`;
                 timeEl.appendChild(opt);
             }
         }
@@ -5680,7 +5690,7 @@ ${bodyRows}
             const d = document.getElementById('wizScheduleDate')?.value;
             const t = document.getElementById('wizScheduleTime')?.value;
             if (!d || !t) { _setFieldError(document.getElementById(!d ? 'wizScheduleDate' : 'wizScheduleTime'), false, 'Campo obrigatório'); return; }
-            scheduled_at = `${d}T${t}:00`;
+            scheduled_at = `${d}T${t}:00${_lisbonOffset(d)}`;
         }
         const btn = document.getElementById('wizNextBtn');
         try {
