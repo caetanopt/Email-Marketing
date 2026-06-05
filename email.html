@@ -5348,9 +5348,9 @@ ${bodyRows}
         // wizNavBar is now a sticky footer — className stays unchanged
 
         if (step === 4) {
-            // Pre-fill test email input with logged-in user's email
+            // Always pre-fill test email with logged-in user's email
             const _wizTestIn = document.getElementById('wizTestEmailInput');
-            if (_wizTestIn && !_wizTestIn.value) {
+            if (_wizTestIn) {
                 const _u = JSON.parse(localStorage.getItem('pm_user') || '{}');
                 if (_u.email) _wizTestIn.value = _u.email;
             }
