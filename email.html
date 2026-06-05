@@ -4994,6 +4994,13 @@ ${bodyRows}
         } catch(e) { return false; }
     }
     function _wizClearDraft() { localStorage.removeItem(_wizDraftKey()); }
+    function _wizStartNew() {
+        // Explicit "new campaign" — wipe any stale draft and editing context before opening the wizard
+        _wizClearDraft();
+        _editingCampaignId = null;
+        _editingTemplateId = null;
+        showScreen('campaignCreate');
+    }
     let _wizAutoSaveTimer = null;
     function _wizStartAutoSave() {
         clearInterval(_wizAutoSaveTimer);
@@ -7201,12 +7208,6 @@ ${sections.join('\n\n')}
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') {
-                // Always clear template blocks — stale blocks from a previous campaign must never bleed in.
-                // For edit-resume via draft, blocks are rebuilt interactively in step 2.
-                teState.blocks = [];
-                teState.selected = null;
-                const _wmc2 = document.getElementById('wiz_te_mjmlCode'); if (_wmc2) _wmc2.value = '';
-                const _wml2 = document.getElementById('wiz_te_mjmlLines'); if (_wml2) _wml2.textContent = '';
                 wizShowStep(1);
                 // If no editing context, check draft for a saved editing session (survives page refresh)
                 if (!_editingCampaignId) {
@@ -8489,7 +8490,7 @@ ${sections.join('\n\n')}
 
                         <div class="bg-white border border-slate-200 rounded-xl p-5 space-y-2">
                             <h3 class="font-semibold text-slate-900 text-sm mb-3">Acesso rápido</h3>
-                            <a onclick="showScreen('campaignCreate')" data-nav class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 text-sm text-slate-700">
+                            <a onclick="_wizStartNew()" data-nav class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 text-sm text-slate-700">
                                 <span class="w-8 h-8 bg-green-100 text-green-700 rounded-lg flex items-center justify-center">📢</span>
                                 Criar campanha
                             </a>
@@ -8535,7 +8536,7 @@ ${sections.join('\n\n')}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Campanhas</h1>
-                <button onclick="showScreen('campaignCreate')" class="flex items-center gap-2 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">
+                <button onclick="_wizStartNew()" class="flex items-center gap-2 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     Nova Campanha
                 </button>
