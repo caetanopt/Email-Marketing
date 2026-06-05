@@ -7804,7 +7804,7 @@ ${sections.join('\n\n')}
         }
     }
 
-    function selectBrand(id, name, color) {
+    function selectBrand(id, name, color, targetScreen) {
         window._contactsCache  = [];
         window._campaignsCache = [];
         _currentContact = null;
@@ -7826,7 +7826,7 @@ ${sections.join('\n\n')}
             sel.style.boxShadow = `0 0 0 3px ${color}33`;
         }
         renderBrandData(id);
-        showScreen('dashboard');
+        showScreen(targetScreen || 'dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
         _loadTeGlobalSettings().catch(() => {});
     }
@@ -7882,15 +7882,15 @@ ${sections.join('\n\n')}
     }
 
     // ── Brand switch modal ──────────────────────────────────────────
-    let _switchModalSelected = null;
+    let _switchTargetScreen = 'dashboard';
+
+    // Screens that don't make sense to restore when switching brands
+    const _SWITCH_SCREEN_MAP = { campaignCreate: 'campaigns', templateEdit: 'templates' };
 
     function openBrandSwitchModal() {
-        _switchModalSelected = null;
+        const active = document.querySelector('.screen.active')?.id || 'dashboard';
+        _switchTargetScreen = _SWITCH_SCREEN_MAP[active] || active;
         const modal = document.getElementById('brandSwitchModal');
-        const btn   = document.getElementById('brandSwitchConfirmBtn');
-        const label = document.getElementById('brandSwitchLabel');
-        if (btn)   { btn.disabled = true; btn.className = 'px-5 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-200 text-slate-400 cursor-not-allowed'; }
-        if (label) { label.textContent = 'Nenhuma marca selecionada'; }
         _renderBrandSwitchGrid();
         if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     }
@@ -7914,10 +7914,10 @@ ${sections.join('\n\n')}
         }
         grid.innerHTML = brands.map(b => {
             const isCurrent = _currentBrand?.id === b.id;
-            return `<button id="bsw-${b.id}" onclick="_selectSwitchBrand('${b.id}','${escHtml(b.name.replace(/'/g,"\\'"))}','${b.color}')"
+            return `<button id="bsw-${b.id}" onclick="closeBrandSwitchModal();selectBrand('${b.id}','${escHtml(b.name.replace(/'/g,"\\'"))}','${b.color}',_switchTargetScreen)"
                     class="brand-switch-card bg-white border-2 ${isCurrent ? 'border-slate-400' : 'border-slate-200'} rounded-xl overflow-hidden transition-all text-center focus:outline-none"
-                    onmouseover="if(document.getElementById('bsw-${b.id}').dataset.sel!=='1')this.style.borderColor='${b.color}'"
-                    onmouseout="if(document.getElementById('bsw-${b.id}').dataset.sel!=='1')this.style.borderColor=''">
+                    onmouseover="this.style.borderColor='${b.color||'#0f172a'}'"
+                    onmouseout="this.style.borderColor='${isCurrent ? '#94a3b8' : ''}'">
                 <div class="h-20 flex items-center justify-center p-3" style="background:${b.bg||'#f1f1f1'}">
                     ${_brandLogoHtml(b)}
                 </div>
@@ -7927,38 +7927,6 @@ ${sections.join('\n\n')}
                 </div>
             </button>`;
         }).join('');
-        // Mark current brand as pre-selected
-        if (_currentBrand) _selectSwitchBrand(_currentBrand.id, _currentBrand.name, _currentBrand.color);
-    }
-
-    function _selectSwitchBrand(id, name, color) {
-        _switchModalSelected = { id, name, color };
-        // Reset all cards
-        document.querySelectorAll('.brand-switch-card').forEach(el => {
-            el.dataset.sel = '0';
-            el.style.borderColor = '';
-            el.classList.remove('ring-2', 'ring-offset-1');
-        });
-        // Highlight selected
-        const card = document.getElementById(`bsw-${id}`);
-        if (card) {
-            card.dataset.sel = '1';
-            card.style.borderColor = color || '#0f172a';
-        }
-        const btn   = document.getElementById('brandSwitchConfirmBtn');
-        const label = document.getElementById('brandSwitchLabel');
-        if (label) label.textContent = name;
-        if (btn) {
-            btn.disabled = false;
-            btn.className = 'px-5 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-900 text-white hover:bg-slate-700';
-        }
-    }
-
-    function _confirmBrandSwitch() {
-        if (!_switchModalSelected) return;
-        const { id, name, color } = _switchModalSelected;
-        closeBrandSwitchModal();
-        selectBrand(id, name, color);
     }
 
     // ── Per-brand template state store ──────────────────────────────
@@ -12584,16 +12552,6 @@ ${sections.join('\n\n')}
         </div>
         <div class="overflow-y-auto flex-1 p-6">
             <div id="brandSwitchGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3"></div>
-        </div>
-        <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between flex-shrink-0 bg-slate-50 rounded-b-2xl">
-            <span id="brandSwitchLabel" class="text-sm text-slate-400">Nenhuma marca selecionada</span>
-            <div class="flex items-center gap-3">
-                <button onclick="closeBrandSwitchModal()" class="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">Cancelar</button>
-                <button id="brandSwitchConfirmBtn" onclick="_confirmBrandSwitch()" disabled
-                    class="px-5 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-200 text-slate-400 cursor-not-allowed">
-                    Ir para a marca
-                </button>
-            </div>
         </div>
     </div>
 </div>
