@@ -81,14 +81,14 @@
 
     // ── Hash-based routing ───────────────────────────────
     const _ROUTE_TO_SCREEN = {
-        'login': 'login', 'forgot-password': 'forgotPassword', 'brands': 'brandSelect',
+        'login': 'login', 'forgot-password': 'forgotPassword',
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
         'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaigns/new': 'campaignCreate', 'suppression': 'suppression',
         'team': 'team', 'settings': 'brandSettings', 'global': 'globalSettings', 'unsubscribe': 'unsubscribe',
     };
     const _SCREEN_TO_ROUTE = {
-        'login': 'login', 'forgotPassword': 'forgot-password', 'brandSelect': 'brands',
+        'login': 'login', 'forgotPassword': 'forgot-password',
         'dashboard': 'dashboard', 'contacts': 'contacts', 'lists': 'lists',
         'imports': 'imports', 'blocks': 'blocks', 'campaigns': 'campaigns',
         'campaignCreate': 'campaigns/new', 'suppression': 'suppression',
@@ -115,7 +115,6 @@
                     localStorage.setItem('pm_user', JSON.stringify(d.user));
                     localStorage.setItem('pm_brands', JSON.stringify(d.brands));
                     _userBrandIds = new Set(d.brands.map(b => b.brand_id));
-                    renderBrandSelect();
                     _goToDefaultBrandOrSelect();
                 } catch { location.reload(); }
             } else {
@@ -159,7 +158,7 @@
             localStorage.setItem('pm_brands', JSON.stringify(data.brands));
             _userBrandIds = new Set(data.brands.map(b => b.brand_id));
             _applySidebarUserAvatar();
-            _fetchApiBrands().then(() => { renderBrandSelect(); _goToDefaultBrandOrSelect(); });
+            _fetchApiBrands().then(() => _goToDefaultBrandOrSelect());
         } catch (e) {
             if (err) { err.textContent = e.message; err.classList.remove('hidden'); }
         } finally {
@@ -277,7 +276,7 @@
             const b = _allBrands.find(x => x.id === defId);
             if (b) { selectBrand(b.id, b.name, b.color); return; }
         }
-        showScreen('brandSelect');
+        openBrandSwitchModal();
     }
 
     let _pendingAvatarUrl = undefined; // undefined = not changed; null = removed; string = new data URL
@@ -3974,7 +3973,6 @@ ${bodyRows}
             showToast(`Marca "${r.name}" criada com sucesso.`);
             _toggleBrandForm();
             await _fetchApiBrands();
-            renderBrandSelect();
             _loadBrandsAdmin();
         } catch (e) { showToast(e.message, 'error'); }
     }
@@ -4010,13 +4008,12 @@ ${bodyRows}
             showToast(`Marca "${name}" eliminada.`);
             _deleteBrandTarget = null;
             await _fetchApiBrands();
-            renderBrandSelect();
             _loadBrandsAdmin();
-            // If deleted brand was the active one, go to brand select
+            // If deleted brand was the active one, open brand switcher
             if (_currentBrand?.id === id) {
                 _currentBrand = null;
                 localStorage.removeItem('pm_current_brand');
-                showScreen('brandSelect');
+                openBrandSwitchModal();
             }
         } catch (e) {
             showToast(e.message, 'error');
@@ -7051,7 +7048,7 @@ ${sections.join('\n\n')}
 <select id="screenSelector" class="hidden" onchange="showScreen(this.value)">
     <option value="login">Login</option>
     <option value="forgotPassword">Recuperar Password</option>
-    <option value="brandSelect">Seletor de Marca</option>
+
     <option value="dashboard">Dashboard</option>
     <option value="campaigns">Campanhas</option>
     <option value="campaignCreate">Nova Campanha</option>
@@ -7176,34 +7173,6 @@ ${sections.join('\n\n')}
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     ECRÃ 2 — SELETOR DE MARCA
-═══════════════════════════════════════════════════════════════════ -->
-<div id="brandSelect" class="screen fade-in">
-    <div class="min-h-screen bg-slate-50 p-6">
-        <div class="max-w-6xl mx-auto pt-10">
-            <div class="text-center mb-10">
-                <div class="flex items-center justify-center gap-3 mb-6">
-                    <img src="https://caetano.pt/site/uploads/2026/01/caetano-002e5d.svg" alt="Caetano" class="h-7 w-auto">
-                    <div class="w-px h-8 bg-slate-300"></div>
-                    <span class="text-sm font-semibold tracking-widest text-slate-400 uppercase">PrimeMail</span>
-                </div>
-                <h1 id="brandSelectGreeting" class="text-2xl font-semibold text-slate-900 mb-1">Olá</h1>
-                <p class="text-slate-500 text-sm">Escolhe a marca com que queres trabalhar hoje</p>
-            </div>
-
-            <div id="brandSelectGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3">
-            </div>
-
-            <div class="flex justify-center mt-12">
-                <button onclick="doLogout()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 shadow-sm hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                    Terminar sessão
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      COMPONENTE SIDEBAR (reutilizado em todas as páginas internas)
@@ -7846,40 +7815,6 @@ ${sections.join('\n\n')}
         return svgs[b.id] || `<span class="font-bold text-lg" style="color:#000">${b.name}</span>`;
     }
 
-    function renderBrandSelect() {
-        const grid = document.getElementById('brandSelectGrid');
-        if (!grid) return;
-        const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
-        const greet = document.getElementById('brandSelectGreeting');
-        if (greet) greet.textContent = `Olá, ${_u.name || _u.email || 'Administrador'}`;
-        // Use API brands when fetched (supports dynamically created brands);
-        // merge with _allBrands for logo/bg/invert visual metadata
-        let visible;
-        if (_apiBrands.length) {
-            visible = _apiBrands.map(ab => {
-                const hb = _allBrands.find(b => b.id === ab.id) || {};
-                return { ...hb, ...ab, logo: ab.logo_url || hb.logo || '', bg: hb.bg || '#f1f1f1', invert: hb.invert || false };
-            });
-        } else {
-            visible = _userBrandIds.size > 0
-                ? _allBrands.filter(b => _userBrandIds.has(b.id))
-                : _allBrands;
-        }
-        grid.innerHTML = visible.map(b => `
-            <button onclick="selectBrand('${b.id}','${b.name.replace(/'/g,"\\'")}','${b.color}')" data-brand-id="${b.id}"
-                    class="brand-card bg-white border-2 border-slate-200 rounded-xl overflow-hidden transition-all text-center"
-                    onmouseover="this.style.borderColor='${b.color}'"
-                    onmouseout="if(!this.classList.contains('brand-selected'))this.style.borderColor=''">
-                <div class="h-20 flex items-center justify-center p-3" style="background:${b.bg||'#f1f1f1'}">
-                    ${_brandLogoHtml(b)}
-                </div>
-                <div class="px-3 py-2.5 border-t border-slate-100">
-                    <h3 class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">Super Admin</p>
-                </div>
-            </button>
-        `).join('');
-    }
 
     // ── Brand switch modal ──────────────────────────────────────────
     let _switchTargetScreen = 'dashboard';
@@ -8282,11 +8217,11 @@ ${sections.join('\n\n')}
         if (token && brands.length) {
             _userBrandIds = new Set(brands.map(b => b.brand_id));
             // Fetch full brand list from API (needed for dynamic brand selector + new brands)
-            _fetchApiBrands().then(() => renderBrandSelect());
+            _fetchApiBrands();
             // Restore last selected brand
             const savedBrand = (() => { try { return JSON.parse(localStorage.getItem('pm_current_brand')||'null'); } catch { return null; } })();
             const hashScreen = _screenFromHash(location.hash);
-            if (savedBrand && hashScreen && hashScreen !== 'brandSelect') {
+            if (savedBrand && hashScreen) {
                 // Restore brand state and go directly to the screen
                 _currentBrand = savedBrand;
                 applyBrandToSidebar();
@@ -8305,7 +8240,6 @@ ${sections.join('\n\n')}
                     localStorage.setItem('pm_user', JSON.stringify(data.user));
                     localStorage.setItem('pm_brands', JSON.stringify(data.brands));
                     _userBrandIds = new Set(data.brands.map(b => b.brand_id));
-                    renderBrandSelect();
                     _goToDefaultBrandOrSelect();
                 } catch (err) {
                     console.error('DEV_BYPASS_LOGIN falhou:', err);
