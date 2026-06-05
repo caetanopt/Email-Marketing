@@ -3236,6 +3236,7 @@ ${bodyRows}
                     ${ops.map(o => `<option value="${o.value}"${o.value===r.operator?' selected':''}>${o.label}</option>`).join('')}
                 </select>
                 ${noValue ? '' : `<input type="${type==='date'?'date':type==='number'?'number':'text'}" value="${escHtml(r.value||'')}"
+                    data-rule-idx="${i}"
                     oninput="_segRules[${i}].value=this.value"
                     placeholder="Valor…"
                     class="flex-1 min-w-[120px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />`}
@@ -3282,14 +3283,25 @@ ${bodyRows}
         }
     }
 
+    function _setFieldError(el) {
+        if (!el) return;
+        el.style.borderColor = '#f87171';
+        el.style.boxShadow = '0 0 0 3px rgba(248,113,113,0.25)';
+        el.focus();
+        const clear = () => { el.style.borderColor = ''; el.style.boxShadow = ''; el.removeEventListener('input', clear); };
+        el.addEventListener('input', clear);
+    }
+
     async function saveSegment() {
         const name  = document.getElementById('segName')?.value?.trim();
         const match = document.getElementById('segMatch')?.value || 'all';
-        if (!name) { showToast('Nome obrigatório', 'warning'); return; }
+        if (!name) { _setFieldError(document.getElementById('segName')); return; }
         if (!_segRules.length) { showToast('Adiciona pelo menos uma condição', 'warning'); return; }
         const needsValue = r => r.operator !== 'is_empty' && r.operator !== 'is_not_empty';
-        if (_segRules.some(r => needsValue(r) && !(r.value ?? '').toString().trim())) {
-            showToast('Preenche o valor em todas as condições', 'warning'); return;
+        const emptyRules = _segRules.map((r, i) => ({ r, i })).filter(({ r }) => needsValue(r) && !(r.value ?? '').toString().trim());
+        if (emptyRules.length) {
+            emptyRules.forEach(({ i }) => _setFieldError(document.querySelector(`#segRulesList [data-rule-idx="${i}"]`)));
+            return;
         }
         if (!_currentListId) return;
         const btn = document.querySelector('#segModal button[onclick="saveSegment()"]');
