@@ -5669,9 +5669,10 @@ ${bodyRows}
             let campaignId;
             const wasEditing = !!_editingCampaignId;
             if (_editingCampaignId) {
+                const editStatus = sendType === 'schedule' ? 'scheduled' : 'draft';
                 await apiFetch(`/api/campaigns/${_editingCampaignId}`, {
                     method: 'PUT',
-                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params })
+                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params, status: editStatus })
                 });
                 campaignId = _editingCampaignId;
                 _editingCampaignId = null;
