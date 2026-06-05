@@ -334,7 +334,7 @@
         if (!sel) return;
         const brandId = sel.value || null;
         const nameVal = (document.getElementById('upNameInput')?.value || '').trim();
-        if (!nameVal) { showToast('O nome não pode ficar vazio.', 'error'); return; }
+        if (!nameVal) { _setFieldError(document.getElementById('upNameInput'), false, 'O nome não pode ficar vazio.'); return; }
         const body = { default_brand_id: brandId, name: nameVal };
         if (_pendingAvatarUrl !== undefined) body.avatar_url = _pendingAvatarUrl;
         try {
@@ -1005,9 +1005,9 @@
         const email = inp ? inp.value.trim() : '';
         const password = passInp ? passInp.value.trim() : '';
         const role = roleEl ? roleEl.value : 'viewer';
-        if (!name) { showToast('Insira o nome.', 'error'); return; }
-        if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
-        if (!password || password.length < 6) { showToast('Password deve ter pelo menos 6 caracteres.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('inviteNameInput'), false, 'Campo obrigatório'); return; }
+        if (!email || !_isValidEmail(email)) { _setFieldError(document.getElementById('inviteEmailInput'), false, 'Insira um email válido'); return; }
+        if (!password || password.length < 6) { _setFieldError(document.getElementById('invitePasswordInput'), false, 'Mínimo 6 caracteres'); return; }
         const btn = document.getElementById('inviteBtn');
         if (btn) btn.disabled = true;
         try {
@@ -1127,9 +1127,9 @@
         const email    = document.getElementById('editMemberEmail').value.trim();
         const role     = document.getElementById('editMemberRole')?.value || null;
         const password = document.getElementById('editMemberPassword')?.value || '';
-        if (!name) { showToast('Nome obrigatório.', 'error'); return; }
-        if (!email || !_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
-        if (password && password.length < 6) { showToast('A nova password deve ter pelo menos 6 caracteres.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('editMemberName'), false, 'Campo obrigatório'); return; }
+        if (!email || !_isValidEmail(email)) { _setFieldError(document.getElementById('editMemberEmail'), false, 'Email inválido'); return; }
+        if (password && password.length < 6) { _setFieldError(document.getElementById('editMemberPassword'), false, 'Mínimo 6 caracteres'); return; }
         const btn = document.getElementById('editMemberSaveBtn');
         if (btn) btn.disabled = true;
         try {
@@ -2715,7 +2715,7 @@ ${bodyRows}
     async function _iconUploadSave() {
         const name  = document.getElementById('iconUploadName')?.value.trim();
         const scope = document.getElementById('iconUploadScope')?.value || 'brand';
-        if (!name) { showToast('Dá um nome ao ícone.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('iconUploadName'), false, 'Campo obrigatório'); return; }
         if (!_iconUploadDataUrl) { showToast('Escolhe um ficheiro.', 'error'); return; }
         if (!_currentBrand?.id) return;
         try {
@@ -2747,7 +2747,7 @@ ${bodyRows}
     async function confirmNewList() {
         const name = document.getElementById('newListNameInput')?.value.trim();
         const description = document.getElementById('newListDescInput')?.value.trim();
-        if (!name) { showToast('O nome da lista é obrigatório.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('newListNameInput'), false, 'Campo obrigatório'); return; }
         try {
             await apiFetch(`/api/lists?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ name, description }) });
             closeNewListModal();
@@ -2832,9 +2832,9 @@ ${bodyRows}
         const inp = document.getElementById('newExtraFieldName');
         const sel = document.getElementById('newExtraFieldType');
         const name = inp?.value?.trim();
-        if (!name) { showToast('Insere o nome do campo.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('newExtraFieldName'), true, 'Campo obrigatório'); return; }
         if (_listExtraFields.some(f => f.name.toLowerCase() === name.toLowerCase())) {
-            showToast('Já existe um campo com esse nome.', 'error'); return;
+            _setFieldError(document.getElementById('newExtraFieldName'), true, 'Já existe um campo com esse nome'); return;
         }
         const type = sel?.value || 'text';
         _listExtraFields.push({ name, type });
@@ -3285,7 +3285,7 @@ ${bodyRows}
         }
     }
 
-    function _setFieldError(el, floatBelow = false) {
+    function _setFieldError(el, floatBelow = false, message = 'Campo obrigatório') {
         if (!el) return;
         el.parentElement?.querySelector('[data-field-error]')?.remove();
         el.style.borderColor = '#f87171';
@@ -3293,7 +3293,7 @@ ${bodyRows}
         el.focus();
         const msg = document.createElement('p');
         msg.setAttribute('data-field-error', '1');
-        msg.textContent = 'Campo obrigatório';
+        msg.textContent = message;
         if (floatBelow) {
             // absolute so the flex row height is unaffected
             msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:calc(100% + 2px);left:0;white-space:nowrap;z-index:1;';
@@ -3376,7 +3376,7 @@ ${bodyRows}
 
     async function mockSaveListEdit() {
         const n = document.getElementById('listEditName')?.value?.trim();
-        if (!n) { showToast('O nome é obrigatório.', 'error'); return; }
+        if (!n) { _setFieldError(document.getElementById('listEditName'), false, 'Campo obrigatório'); return; }
         const description = document.getElementById('listEditDesc')?.value?.trim() || null;
         if (_currentListId) {
             try {
@@ -3452,8 +3452,8 @@ ${bodyRows}
         const phone   = document.getElementById('lcePhone')?.value.trim();
         const company = document.getElementById('lceCompany')?.value.trim();
         const status  = document.getElementById('lceStatus')?.value || 'active';
-        if (!email) { showToast('O email é obrigatório.', 'error'); return; }
-        if (!_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
+        if (!email) { _setFieldError(document.getElementById('lceEmail'), false, 'Campo obrigatório'); return; }
+        if (!_isValidEmail(email)) { _setFieldError(document.getElementById('lceEmail'), false, 'Email inválido'); return; }
         const saveBtn = document.getElementById('lceSubmitBtn');
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'A guardar…'; }
         try {
@@ -3544,12 +3544,12 @@ ${bodyRows}
     async function confirmAddSuppression() {
         const val    = document.getElementById('suppEmailInput')?.value.trim();
         const reason = document.getElementById('suppReasonSelect')?.value || 'manual';
-        if (!val) { showToast('Preenche o campo obrigatório.', 'error'); return; }
+        if (!val) { _setFieldError(document.getElementById('suppEmailInput'), false, 'Campo obrigatório'); return; }
 
         if (_suppEntryType === 'domain') {
             const domain = val.replace(/^@/, '').toLowerCase();
             if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
-                showToast('Domínio inválido. Exemplo: exemplo.pt', 'error'); return;
+                _setFieldError(document.getElementById('suppEmailInput'), false, 'Domínio inválido. Ex: exemplo.pt'); return;
             }
             try {
                 await apiFetch('/api/suppression', { method: 'POST', body: JSON.stringify({ email: domain, reason, type: 'domain' }) });
@@ -3560,7 +3560,7 @@ ${bodyRows}
             return;
         }
 
-        if (!_isValidEmail(val)) { showToast('Insira um email válido.', 'error'); return; }
+        if (!_isValidEmail(val)) { _setFieldError(document.getElementById('suppEmailInput'), false, 'Email inválido'); return; }
         try {
             await apiFetch('/api/suppression', { method: 'POST', body: JSON.stringify({ email: val, reason }) });
             closeAddSuppressionModal();
@@ -3723,9 +3723,9 @@ ${bodyRows}
     async function _gwlSaveEdit(id) {
         const domain = document.getElementById(`gwlEditDomain_${id}`)?.value.trim().replace(/^@/, '').toLowerCase();
         const note   = document.getElementById(`gwlEditNote_${id}`)?.value.trim();
-        if (!domain) { showToast('Domínio obrigatório.', 'error'); return; }
+        if (!domain) { _setFieldError(document.getElementById(`gwlEditDomain_${id}`), true, 'Campo obrigatório'); return; }
         if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
-            showToast('Domínio inválido. Exemplo: empresa.pt', 'error'); return;
+            _setFieldError(document.getElementById(`gwlEditDomain_${id}`), true, 'Domínio inválido. Ex: empresa.pt'); return;
         }
         try {
             await apiFetch('/api/brands?action=domain_whitelist', { method: 'PUT', body: JSON.stringify({ id, domain, note: note || null }) });
@@ -3761,9 +3761,9 @@ ${bodyRows}
     async function _confirmAddDomainWhitelist() {
         const domain = document.getElementById('gwlDomainInput')?.value.trim().replace(/^@/, '').toLowerCase();
         const note   = document.getElementById('gwlNoteInput')?.value.trim();
-        if (!domain) { showToast('Insere um domínio.', 'error'); return; }
+        if (!domain) { _setFieldError(document.getElementById('gwlDomainInput'), true, 'Campo obrigatório'); return; }
         if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
-            showToast('Domínio inválido. Exemplo: empresa.pt', 'error'); return;
+            _setFieldError(document.getElementById('gwlDomainInput'), true, 'Domínio inválido. Ex: empresa.pt'); return;
         }
         const btn = document.getElementById('gwlConfirmBtn');
         if (btn) btn.disabled = true;
@@ -3797,7 +3797,7 @@ ${bodyRows}
     // ── Forgot Password ──────────────────────────────────
     function confirmForgotPassword() {
         const email = document.getElementById('fpEmailInput')?.value.trim();
-        if (!email || !_isValidEmail(email)) { showToast('Insira um email válido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { _setFieldError(document.getElementById('fpEmailInput'), false, 'Email inválido'); return; }
         document.getElementById('fpFormPanel').classList.add('hidden');
         document.getElementById('fpSuccessPanel').classList.remove('hidden');
         const sp = document.getElementById('fpSuccessEmail');
@@ -3860,7 +3860,7 @@ ${bodyRows}
     async function mockSaveSettingsValidated() {
         const color = document.getElementById('brandColorText')?.value.trim();
         if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
-            showToast('Cor inválida — usa o formato #RRGGBB.', 'error'); return;
+            _setFieldError(document.getElementById('brandColorText'), true, 'Formato inválido: #RRGGBB'); return;
         }
         // CAN-SPAM: physical address required before saving
         const addrEl = document.getElementById('bsVar_company_address');
@@ -4189,7 +4189,7 @@ ${bodyRows}
     async function _blockSave() {
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim();
-        if (!name) { showToast('Indica um nome para o bloco.', 'error'); return; }
+        if (!name) { _setFieldError(nameEl, false, 'Campo obrigatório'); return; }
         const _blkEmailBlocks = (typeof _tePrepareBlocksForEmail === 'function') ? await _tePrepareBlocksForEmail(teState.blocks) : teState.blocks;
         const html = (typeof teBuildEmailHtml === 'function') ? teBuildEmailHtml(_blkEmailBlocks) : '';
         try {
@@ -4383,9 +4383,9 @@ ${bodyRows}
             mime_type = (url.match(/^data:([^;]+)/) || [])[1] || null;
         } else {
             url = document.getElementById('mediaUrl').value.trim();
-            if (!url || !/^https?:\/\//i.test(url)) { showToast('URL inválido (deve começar por http/https).', 'error'); return; }
+            if (!url || !/^https?:\/\//i.test(url)) { _setFieldError(document.getElementById('mediaUrl'), false, 'URL inválido (http/https)'); return; }
         }
-        if (!name) { showToast('Indica um nome.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('mediaName'), false, 'Campo obrigatório'); return; }
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media`, {
                 method: 'POST',
@@ -4514,7 +4514,7 @@ ${bodyRows}
 
     async function confirmUnsubscribe() {
         const email = document.getElementById('unsubEmail')?.value.trim();
-        if (!email || !_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { _setFieldError(document.getElementById('unsubEmail'), false, 'Email inválido'); return; }
         const reason = document.getElementById('unsubReason')?.value || '';
         const { brand_id, token } = _unsubParams();
         const effectiveBrand = brand_id || _currentBrand?.id;
@@ -5085,9 +5085,9 @@ ${bodyRows}
             const name      = document.getElementById('wizName')?.value.trim() || subj;
             const fromName  = document.getElementById('wizFromName')?.value.trim();
             const fromEmail = document.getElementById('wizFromEmail')?.value.trim();
-            if (!subj)      { showToast('O assunto é obrigatório.', 'error'); return; }
-            if (!fromName)  { showToast('O nome do remetente é obrigatório.', 'error'); return; }
-            if (!fromEmail || !_isValidEmail(fromEmail)) { showToast('Indica um email de remetente válido.', 'error'); return; }
+            if (!subj)      { _setFieldError(document.getElementById('wizSubject'), false, 'Campo obrigatório'); return; }
+            if (!fromName)  { _setFieldError(document.getElementById('wizFromName'), false, 'Campo obrigatório'); return; }
+            if (!fromEmail || !_isValidEmail(fromEmail)) { _setFieldError(document.getElementById('wizFromEmail'), false, 'Email inválido'); return; }
             wizShowStep(2); return;
         }
         if (_wizStep === 2) {
@@ -5133,7 +5133,7 @@ ${bodyRows}
         if (sendType === 'schedule') {
             const d = document.getElementById('wizScheduleDate')?.value;
             const t = document.getElementById('wizScheduleTime')?.value;
-            if (!d || !t) { showToast('Escolhe a data e hora de agendamento.', 'error'); return; }
+            if (!d || !t) { _setFieldError(document.getElementById(!d ? 'wizScheduleDate' : 'wizScheduleTime'), false, 'Campo obrigatório'); return; }
             scheduled_at = `${d}T${t}:00`;
         }
         const btn = document.getElementById('wizNextBtn');
@@ -5225,7 +5225,7 @@ ${bodyRows}
     async function _wizSendTest() {
         const input = document.getElementById('wizTestEmailInput');
         const rawEmails = (input?.value || '').split(',').map(e => e.trim()).filter(e => e.includes('@') && _isValidEmail(e));
-        if (!rawEmails.length) { showToast('Insere pelo menos um email válido.', 'error'); return; }
+        if (!rawEmails.length) { _setFieldError(document.getElementById('wizTestEmailInput'), false, 'Insere pelo menos um email válido'); return; }
 
         const btn = document.getElementById('wizTestEmailBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
@@ -5831,8 +5831,8 @@ ${bodyRows}
             template_id:  templateId || undefined,
             list_ids:     listIds,
         };
-        if (!payload.name)    { showToast('O nome é obrigatório.', 'error'); return; }
-        if (!payload.subject) { showToast('O assunto é obrigatório.', 'error'); return; }
+        if (!payload.name)    { _setFieldError(document.getElementById('editCampName'), false, 'Campo obrigatório'); return; }
+        if (!payload.subject) { _setFieldError(document.getElementById('editCampSubject'), false, 'Campo obrigatório'); return; }
         const btn = document.getElementById('editCampBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
         try {
@@ -5972,7 +5972,7 @@ ${bodyRows}
     function mockSendTestEmail() {
         const inp = document.getElementById('campTestEmail');
         const email = inp ? inp.value.trim() : '';
-        if (!email) { showToast('Insira um email de destino.', 'error'); return; }
+        if (!email) { _setFieldError(document.getElementById('campTestEmail'), false, 'Campo obrigatório'); return; }
         showToast(`Email de teste enviado para ${email}.`);
     }
 
@@ -6082,7 +6082,7 @@ function toggleExportMenu() {
     function closeTestEmailModal() { const m = document.getElementById('testEmailModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
     async function confirmTestEmail() {
         const email = document.getElementById('testEmailInput')?.value.trim();
-        if (!email || !_isValidEmail(email)) { showToast('Insere um email válido.', 'error'); return; }
+        if (!email || !_isValidEmail(email)) { _setFieldError(document.getElementById('testEmailInput'), false, 'Email inválido'); return; }
         const btn = document.getElementById('testEmailBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A enviar…'; }
         try {
@@ -6100,7 +6100,7 @@ function toggleExportMenu() {
     }
     async function confirmSchedule() {
         const d=document.getElementById('schedDate')?.value, t=document.getElementById('schedTime')?.value;
-        if (!d||!t) { showToast('Escolhe a data e hora.','error'); return; }
+        if (!d||!t) { _setFieldError(document.getElementById(!d ? 'schedDate' : 'schedTime'), false, 'Campo obrigatório'); return; }
         if (!_currentCampaign?.id) { showToast('Campanha não identificada.','error'); return; }
         try {
             await apiFetch(`/api/campaigns/${_currentCampaign.id}`, {
@@ -6220,8 +6220,8 @@ function toggleExportMenu() {
         const phone   = document.getElementById('ctPhone')?.value.trim();
         const company = document.getElementById('ctCompany')?.value.trim();
         const status  = document.getElementById('ctStatus')?.value || 'active';
-        if (!email) { showToast('O email é obrigatório.', 'error'); return; }
-        if (!_isValidEmail(email)) { showToast('Email inválido.', 'error'); return; }
+        if (!email) { _setFieldError(document.getElementById('ctEmail'), false, 'Campo obrigatório'); return; }
+        if (!_isValidEmail(email)) { _setFieldError(document.getElementById('ctEmail'), false, 'Email inválido'); return; }
         try {
             if (_contactMode === 'new' || !_currentContact?.id) {
                 await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ email, name, phone, company }) });
@@ -6367,8 +6367,8 @@ function toggleExportMenu() {
     async function saveWizTemplate() {
         const name = document.getElementById('wizTplName')?.value.trim();
         const html = document.getElementById('wizTplHtml')?.value.trim();
-        if (!name) { showToast('O nome do template é obrigatório.', 'error'); return; }
-        if (!html)  { showToast('O conteúdo HTML é obrigatório.', 'error'); return; }
+        if (!name) { _setFieldError(document.getElementById('wizTplName'), false, 'Campo obrigatório'); return; }
+        if (!html)  { _setFieldError(document.getElementById('wizTplHtml'), false, 'Campo obrigatório'); return; }
         try {
             const { id } = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
                 method: 'POST', body: JSON.stringify({ name, html_content: html })
