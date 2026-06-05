@@ -5,10 +5,50 @@ const { requireAuth, cors } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
-  const user = requireAuth(req, res);
-  if (!user) return;
 
   const { brand_id, status, page = 1, limit = 20, action, range } = req.query;
+
+  // ── Cron: process scheduled campaigns ──────────────────
+  if (action === 'process-scheduled') {
+    const authHeader = req.headers['authorization'] || '';
+    const cronSecret = process.env.CRON_SECRET || '';
+    const isVercelCron = req.headers['x-vercel-cron'] === '1';
+    if (!isVercelCron && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
+
+    // Find campaigns due for sending
+    const due = await query(
+      `SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at <= NOW() LIMIT 5`
+    );
+
+    const results = [];
+    for (const { id: campId } of due) {
+      try {
+        // Initialize: build recipients, set status='sending'
+        const { total } = await initCampaignSend(campId);
+        let totalSent = 0, totalFailed = 0;
+        // Send all batches (up to 20 batches per cron invocation to avoid timeout)
+        for (let b = 0; b < 20; b++) {
+          const r = await runBatch(campId, null);
+          totalSent += r.sent || 0;
+          totalFailed += r.failed || 0;
+          if (r.done) break;
+        }
+        results.push({ id: campId, total, sent: totalSent, failed: totalFailed });
+      } catch (err) {
+        console.error(`Cron: failed to send campaign ${campId}:`, err.message);
+        results.push({ id: campId, error: err.message });
+      }
+    }
+
+    return res.status(200).json({ ok: true, processed: results.length, results });
+  }
+
+  const user = requireAuth(req, res);
+  if (!user) return;
 
   // SES quota — does not require brand_id
   if (action === 'ses-quota' && req.method === 'GET') {
