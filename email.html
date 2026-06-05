@@ -3905,8 +3905,9 @@ ${bodyRows}
         }
     }
 
-    const _BRANDS_PAGE_SIZE = 15;
-    let _brandsShowAll = false;
+    const _BRANDS_PAGE_SIZE = 10;
+    let _brandsPage = 1;
+    let _allBrandsData = [];
 
     function _renderBrandRow(b) {
         return `<div class="flex items-center gap-4 px-5 py-3.5">
@@ -3923,34 +3924,42 @@ ${bodyRows}
         </div>`;
     }
 
+    function _renderBrandsPage() {
+        const list = document.getElementById('brandAdminList');
+        if (!list) return;
+        const total = _allBrandsData.length;
+        const pages = Math.ceil(total / _BRANDS_PAGE_SIZE);
+        const start = (_brandsPage - 1) * _BRANDS_PAGE_SIZE;
+        const rows = _allBrandsData.slice(start, start + _BRANDS_PAGE_SIZE).map(_renderBrandRow).join('');
+        const pagination = pages > 1 ? `
+            <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_BRANDS_PAGE_SIZE,total)} de ${total}</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="_brandsPage--;_renderBrandsPage()" ${_brandsPage<=1?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+                    <span class="text-xs text-slate-600 px-1">${_brandsPage}/${pages}</span>
+                    <button onclick="_brandsPage++;_renderBrandsPage()" ${_brandsPage>=pages?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+                </div>
+            </div>` : '';
+        list.innerHTML = `<div class="divide-y divide-slate-100">${rows}</div>` + pagination;
+    }
+
     async function _loadBrandsAdmin() {
         const list = document.getElementById('brandAdminList');
         if (!list) return;
-        _brandsShowAll = false;
+        _brandsPage = 1;
         try {
             const data = await apiFetch('/api/brands');
-            const brands = data.data || [];
-            if (!brands.length) {
+            _allBrandsData = data.data || [];
+            if (!_allBrandsData.length) {
                 list.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">Nenhuma marca encontrada.</p>';
                 return;
             }
-            const visible = brands.slice(0, _BRANDS_PAGE_SIZE);
-            const remaining = brands.length - visible.length;
-            list.innerHTML = visible.map(_renderBrandRow).join('') +
-                (remaining > 0 ? `<div class="px-5 py-3 border-t border-slate-100">
-                    <button onclick="_brandsShowAll=true;_loadBrandsAdminAll()" class="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors">
-                        Ver mais ${remaining} marca(s) ▾
-                    </button></div>` : '');
-            list._allBrandsData = brands;
+            _renderBrandsPage();
         } catch (e) {
             list.innerHTML = `<p class="px-5 py-6 text-sm text-red-400 text-center">${escHtml(e.message)}</p>`;
         }
-    }
-
-    function _loadBrandsAdminAll() {
-        const list = document.getElementById('brandAdminList');
-        if (!list || !list._allBrandsData) return;
-        list.innerHTML = list._allBrandsData.map(_renderBrandRow).join('');
     }
 
     async function _createBrand() {
