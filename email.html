@@ -3873,11 +3873,15 @@ ${bodyRows}
         if (!panel) return;
         const isHidden = panel.classList.contains('hidden');
         if (isHidden) {
+            _clearFieldErrors(panel);
             document.getElementById('gwlDomainInput').value = '';
             document.getElementById('gwlNoteInput').value = '';
+            const sc = document.getElementById('gwlSenderChk'); if (sc) sc.checked = true;
+            const uc = document.getElementById('gwlUtmChk');    if (uc) uc.checked = false;
             panel.classList.remove('hidden');
             document.getElementById('gwlDomainInput').focus();
         } else {
+            _clearFieldErrors(panel);
             panel.classList.add('hidden');
         }
     }
@@ -10720,7 +10724,7 @@ ${sections.join('\n\n')}
 
                     <!-- Inline form (hidden by default) -->
                     <div id="gwlFormPanel" class="hidden border-b border-slate-100 bg-slate-50 px-5 py-4">
-                        <div class="flex items-end gap-3 flex-wrap">
+                        <div class="flex items-start gap-3 flex-wrap">
                             <div class="flex-1 min-w-48">
                                 <label class="block text-xs font-medium text-slate-700 mb-1.5">Domínio <span class="text-red-500">*</span></label>
                                 <div class="relative">
@@ -10745,7 +10749,7 @@ ${sections.join('\n\n')}
                                     </label>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 flex-shrink-0">
+                            <div class="flex items-center gap-2 flex-shrink-0 self-end">
                                 <button onclick="_toggleGwlForm()" class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-white text-slate-600">Cancelar</button>
                                 <button id="gwlConfirmBtn" onclick="_confirmAddDomainWhitelist()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50 font-medium">Adicionar</button>
                             </div>
