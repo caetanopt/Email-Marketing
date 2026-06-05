@@ -7850,15 +7850,16 @@ ${sections.join('\n\n')}
         grid.innerHTML = brands.map(b => {
             const isCurrent = _currentBrand?.id === b.id;
             return `<button id="bsw-${b.id}" onclick="closeBrandSwitchModal();selectBrand('${b.id}','${escHtml(b.name.replace(/'/g,"\\'"))}','${b.color}',_switchTargetScreen)"
-                    class="brand-switch-card bg-white border-2 ${isCurrent ? 'border-slate-400' : 'border-slate-200'} rounded-xl overflow-hidden transition-all text-center focus:outline-none"
+                    class="brand-switch-card bg-white border-2 ${isCurrent ? 'border-slate-400' : 'border-slate-200'} rounded-xl overflow-hidden transition-all text-center focus:outline-none flex flex-col"
+                    style="height:130px"
                     onmouseover="this.style.borderColor='${b.color||'#0f172a'}'"
                     onmouseout="this.style.borderColor='${isCurrent ? '#94a3b8' : ''}'">
-                <div class="h-20 flex items-center justify-center p-3" style="background:${b.bg||'#f1f1f1'}">
+                <div class="flex-1 flex items-center justify-center p-3" style="background:${b.bg||'#f1f1f1'}">
                     ${_brandLogoHtml(b)}
                 </div>
-                <div class="px-3 py-2.5 border-t border-slate-100">
-                    <h3 class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</h3>
-                    ${isCurrent ? '<p class="text-[10px] text-slate-400 mt-0.5">Marca actual</p>' : '<p class="text-[10px] text-transparent mt-0.5">·</p>'}
+                <div class="px-2 py-2 border-t border-slate-100 flex flex-col items-center justify-center">
+                    <h3 class="font-semibold text-slate-900 text-xs truncate w-full text-center">${escHtml(b.name)}</h3>
+                    ${isCurrent ? '<p class="text-[9px] text-slate-400 mt-0.5">Marca actual</p>' : ''}
                 </div>
             </button>`;
         }).join('');
