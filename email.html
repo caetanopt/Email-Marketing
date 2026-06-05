@@ -10723,7 +10723,7 @@ ${sections.join('\n\n')}
 
     <!-- ── IA: Imagem → MJML modal ──────────────────────────────────────── -->
     <div id="te_aiImageModal" class="hidden z-[9999] bg-slate-900/70 flex items-center justify-center p-6" style="position:fixed;top:0;left:0;right:0;bottom:0" onclick="if(event.target===this)teCloseAiImageModal()">
-        <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style="height:88vh;max-height:88vh;min-height:560px">
+        <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col" style="height:88vh;max-height:88vh;min-height:560px">
             <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
                 <div>
                     <h2 class="text-base font-semibold text-slate-900 flex items-center gap-2">
@@ -10731,7 +10731,8 @@ ${sections.join('\n\n')}
                         IA — Imagem para MJML
                     </h2>
                     <p class="text-xs text-slate-400 mt-0.5">Faz upload de um screenshot de email e a IA converte-o para MJML</p>
-                    <p class="text-xs text-slate-300 mt-0.5">A conversão usa IA e pode requerer ajustes. Verifica sempre o resultado antes de enviar.</p>
+                    <hr class="my-1.5 border-slate-100">
+                    <p class="text-xs text-slate-300">A conversão usa IA e pode requerer ajustes. Verifica sempre o resultado antes de enviar.</p>
                 </div>
                 <button onclick="teCloseAiImageModal()" class="text-slate-400 hover:text-slate-700">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
