@@ -7849,17 +7849,18 @@ ${sections.join('\n\n')}
         }
         grid.innerHTML = brands.map(b => {
             const isCurrent = _currentBrand?.id === b.id;
+            const borderStyle = isCurrent ? `border-color:${b.color||'#0f172a'}` : '';
             return `<button id="bsw-${b.id}" onclick="closeBrandSwitchModal();selectBrand('${b.id}','${escHtml(b.name.replace(/'/g,"\\'"))}','${b.color}',_switchTargetScreen)"
-                    class="brand-switch-card bg-white border-2 ${isCurrent ? 'border-slate-400' : 'border-slate-200'} rounded-xl overflow-hidden transition-all text-center focus:outline-none flex flex-col"
-                    style="height:130px"
+                    class="brand-switch-card bg-white ${isCurrent ? 'border-[3px]' : 'border-2 border-slate-200'} rounded-xl overflow-hidden transition-all text-center focus:outline-none flex flex-col"
+                    style="height:130px;${borderStyle}"
                     onmouseover="this.style.borderColor='${b.color||'#0f172a'}'"
-                    onmouseout="this.style.borderColor='${isCurrent ? '#94a3b8' : ''}'">
+                    onmouseout="this.style.borderColor='${isCurrent ? b.color||'#0f172a' : ''}'">
                 <div class="flex-1 flex items-center justify-center p-3" style="background:${b.bg||'#f1f1f1'}">
                     ${_brandLogoHtml(b)}
                 </div>
-                <div class="px-2 py-2 border-t border-slate-100 flex flex-col items-center justify-center">
+                <div class="px-2 py-2 border-t flex flex-col items-center justify-center" style="border-color:${isCurrent ? (b.color||'#0f172a')+'33' : '#f1f5f9'}">
                     <h3 class="font-semibold text-slate-900 text-xs truncate w-full text-center">${escHtml(b.name)}</h3>
-                    ${isCurrent ? '<p class="text-[9px] text-slate-400 mt-0.5">Marca actual</p>' : ''}
+                    ${isCurrent ? `<p class="text-[9px] font-semibold mt-0.5" style="color:${b.color||'#0f172a'}"">Marca actual</p>` : ''}
                 </div>
             </button>`;
         }).join('');
@@ -12485,8 +12486,8 @@ ${sections.join('\n\n')}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="overflow-y-auto flex-1 p-6">
-            <div id="brandSwitchGrid" class="grid gap-3" style="grid-template-columns:repeat(auto-fill,120px)"></div>
+        <div class="overflow-y-auto flex-1 p-6 flex justify-center">
+            <div id="brandSwitchGrid" class="grid gap-3" style="grid-template-columns:repeat(auto-fill,120px);width:fit-content"></div>
         </div>
     </div>
 </div>
