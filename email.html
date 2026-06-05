@@ -5214,9 +5214,10 @@ ${bodyRows}
         return Object.keys(p).length ? p : null;
     }
     function _wizRevUtmRender() {
-        const params = _wizGetUtmParams();
-        const badge  = document.getElementById('wizRevUtmBadge');
-        const summary = document.getElementById('wizRevUtmSummary');
+        const params   = _wizGetUtmParams();
+        const toggleOn = document.getElementById('wizUtmEnabled')?.checked || false;
+        const badge    = document.getElementById('wizRevUtmBadge');
+        const summary  = document.getElementById('wizRevUtmSummary');
         if (badge) badge.classList.toggle('hidden', !params);
         if (!summary) return;
         if (params) {
@@ -5226,9 +5227,13 @@ ${bodyRows}
         } else {
             const bvSummary = _currentBrand?.variables || {};
             const hasBrandUtm = bvSummary.utm_source || bvSummary.utm_medium || bvSummary.utm_campaign || bvSummary.utm_content;
-            summary.innerHTML = hasBrandUtm
-                ? `<p class="text-sm text-slate-400">Sem substituição — aplicados os UTM das Definições da marca.</p>`
-                : `<p class="text-sm text-slate-400">Desactivado — sem UTM das Definições configurados.</p>`;
+            if (toggleOn) {
+                summary.innerHTML = `<p class="text-sm text-slate-400">Activo mas sem parâmetros preenchidos — define os valores no passo 1.</p>`;
+            } else if (hasBrandUtm) {
+                summary.innerHTML = `<p class="text-sm text-slate-400">Sem substituição por campanha — aplicados os UTM das Definições da marca.</p>`;
+            } else {
+                summary.innerHTML = `<p class="text-sm text-slate-400">Os UTM das Definições da marca são aplicados se configurados. Ativa no passo 1 para definir UTM por campanha.</p>`;
+            }
         }
     }
     function _wizRevUtmToggleEdit() {
