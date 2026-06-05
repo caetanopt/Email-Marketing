@@ -7001,6 +7001,7 @@ ${sections.join('\n\n')}
     const _screenLoaded = new Set();
 
     function showScreen(id) {
+        _clearFieldErrors();
         const _currentScreen = document.querySelector('.screen.active')?.id;
         // Leaving campaignCreate — reset all wizard state so it doesn't leak into the next open
         if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
