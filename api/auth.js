@@ -23,9 +23,18 @@ module.exports = async function handler(req, res) {
 
       await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
 
-      const brands = await query(
+      let brands = await query(
         'SELECT brand_id, role FROM user_brand_roles WHERE user_id = $1', [user.id]
       );
+
+      if (brands.length === 0) {
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1, 'caetano', 'viewer')
+           ON CONFLICT DO NOTHING`,
+          [user.id]
+        );
+        brands = [{ brand_id: 'caetano', role: 'viewer' }];
+      }
 
       const token = signToken({ id: user.id, email: user.email, name: user.name });
       return res.status(200).json({
