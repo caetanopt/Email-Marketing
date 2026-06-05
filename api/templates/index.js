@@ -1,5 +1,6 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
+const Anthropic = require('@anthropic-ai/sdk');
 
 async function authorizeTemplate(userId, templateId) {
   const r = await query(
@@ -16,12 +17,61 @@ async function authorizeBrand(userId, brandId) {
   return r.length > 0;
 }
 
+async function handleImageToMjml(req, res) {
+  const { image_base64, image_type } = req.body || {};
+  if (!image_base64 || !image_type) {
+    return res.status(400).json({ error: 'image_base64 e image_type obrigatórios' });
+  }
+  const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  if (!validTypes.includes(image_type)) {
+    return res.status(400).json({ error: 'Tipo de imagem inválido' });
+  }
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: 'claude-opus-4-8',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: image_type, data: image_base64 }
+        },
+        {
+          type: 'text',
+          text: `Analisa esta imagem de um email de marketing e converte-a em código MJML válido e completo.
+
+Regras:
+- Usa componentes MJML nativos: mj-section, mj-column, mj-text, mj-image, mj-button, mj-divider, mj-spacer, mj-hero, mj-navbar, etc.
+- Preserva as cores, fontes, espaçamentos e layout visuais da imagem o máximo possível.
+- Para imagens no design, usa URLs placeholder: https://via.placeholder.com/WIDTHxHEIGHT
+- Para textos visíveis, usa o texto real da imagem.
+- O código deve começar com <mjml> e terminar com </mjml>.
+- Não incluas explicações, comentários ou markdown — só o código MJML puro.`
+        }
+      ]
+    }]
+  });
+  const mjml = response.content[0]?.text?.trim() || '';
+  return res.status(200).json({ mjml });
+}
+
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
   const user = requireAuth(req, res);
   if (!user) return;
 
-  const { brand_id, id, target_brand_id } = req.query;
+  const { brand_id, id, target_brand_id, action } = req.query;
+
+  // AI: image → MJML
+  if (action === 'image-to-mjml') {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
+    try {
+      return await handleImageToMjml(req, res);
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'Erro de servidor' });
+    }
+  }
 
   // Operations on a specific template (id present)
   if (id) {

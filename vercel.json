@@ -2,7 +2,8 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/api/webhooks", "destination": "/api/track" },
-    { "source": "/api/lists/:id", "destination": "/api/lists?id=:id" }
+    { "source": "/api/lists/:id", "destination": "/api/lists?id=:id" },
+    { "source": "/api/ai/image-to-mjml", "destination": "/api/templates?action=image-to-mjml" }
   ],
   "headers": [
     {
