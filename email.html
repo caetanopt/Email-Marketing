@@ -3793,10 +3793,12 @@ ${bodyRows}
                     <div class="flex items-end gap-3 flex-wrap">
                         <div class="flex-1 min-w-48">
                             <label class="block text-xs font-medium text-slate-700 mb-1.5">Domínio</label>
-                            <div class="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-slate-900">
-                                <span class="px-3 py-2 bg-slate-50 text-slate-500 text-sm border-r border-slate-200 select-none">@</span>
-                                <input id="gwlEditDomain_${r.id}" type="text" value="${escHtml(r.domain)}" class="flex-1 px-3 py-2 text-sm focus:outline-none bg-white"
-                                    onkeydown="if(event.key==='Enter')_gwlSaveEdit(${r.id});else if(event.key==='Escape')_gwlCancelEdit(${r.id})">
+                            <div class="relative">
+                                <div id="gwlEditDomainWrap_${r.id}" class="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-slate-900">
+                                    <span class="px-3 py-2 bg-slate-50 text-slate-500 text-sm border-r border-slate-200 select-none">@</span>
+                                    <input id="gwlEditDomain_${r.id}" type="text" value="${escHtml(r.domain)}" class="flex-1 px-3 py-2 text-sm focus:outline-none bg-white"
+                                        onkeydown="if(event.key==='Enter')_gwlSaveEdit(${r.id});else if(event.key==='Escape')_gwlCancelEdit(${r.id})">
+                                </div>
                             </div>
                         </div>
                         <div class="flex-1 min-w-48">
@@ -3845,9 +3847,9 @@ ${bodyRows}
         const note       = document.getElementById(`gwlEditNote_${id}`)?.value.trim();
         const use_sender = document.getElementById(`gwlEditSender_${id}`)?.checked ?? true;
         const use_utm    = document.getElementById(`gwlEditUtm_${id}`)?.checked ?? false;
-        if (!domain) { _setFieldError(document.getElementById(`gwlEditDomain_${id}`), true, 'Campo obrigatório'); return; }
+        if (!domain) { _setFieldError(document.getElementById(`gwlEditDomainWrap_${id}`), false, 'Campo obrigatório'); return; }
         if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
-            _setFieldError(document.getElementById(`gwlEditDomain_${id}`), true, 'Domínio inválido. Ex: empresa.pt'); return;
+            _setFieldError(document.getElementById(`gwlEditDomainWrap_${id}`), false, 'Domínio inválido. Ex: empresa.pt'); return;
         }
         try {
             await apiFetch('/api/brands?action=domain_whitelist', { method: 'PUT', body: JSON.stringify({ id, domain, note: note || null, use_sender, use_utm }) });
@@ -3885,9 +3887,9 @@ ${bodyRows}
         const note       = document.getElementById('gwlNoteInput')?.value.trim();
         const use_sender = document.getElementById('gwlSenderChk')?.checked ?? true;
         const use_utm    = document.getElementById('gwlUtmChk')?.checked ?? false;
-        if (!domain) { _setFieldError(document.getElementById('gwlDomainInput'), true, 'Campo obrigatório'); return; }
+        if (!domain) { _setFieldError(document.getElementById('gwlDomainWrap'), false, 'Campo obrigatório'); return; }
         if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
-            _setFieldError(document.getElementById('gwlDomainInput'), true, 'Domínio inválido. Ex: empresa.pt'); return;
+            _setFieldError(document.getElementById('gwlDomainWrap'), false, 'Domínio inválido. Ex: empresa.pt'); return;
         }
         const btn = document.getElementById('gwlConfirmBtn');
         if (btn) btn.disabled = true;
@@ -10721,9 +10723,11 @@ ${sections.join('\n\n')}
                         <div class="flex items-end gap-3 flex-wrap">
                             <div class="flex-1 min-w-48">
                                 <label class="block text-xs font-medium text-slate-700 mb-1.5">Domínio <span class="text-red-500">*</span></label>
-                                <div class="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-slate-900">
-                                    <span class="px-3 py-2 bg-slate-50 text-slate-500 text-sm border-r border-slate-200 select-none">@</span>
-                                    <input id="gwlDomainInput" type="text" placeholder="empresa.pt" class="flex-1 px-3 py-2 text-sm focus:outline-none bg-white" onkeydown="if(event.key==='Enter')_confirmAddDomainWhitelist();else if(event.key==='Escape')_toggleGwlForm()">
+                                <div class="relative">
+                                    <div id="gwlDomainWrap" class="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-slate-900">
+                                        <span class="px-3 py-2 bg-slate-50 text-slate-500 text-sm border-r border-slate-200 select-none">@</span>
+                                        <input id="gwlDomainInput" type="text" placeholder="empresa.pt" class="flex-1 px-3 py-2 text-sm focus:outline-none bg-white" onkeydown="if(event.key==='Enter')_confirmAddDomainWhitelist();else if(event.key==='Escape')_toggleGwlForm()">
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex-1 min-w-48">
