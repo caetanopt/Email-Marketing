@@ -12804,7 +12804,7 @@ ${sections.join('\n\n')}
 
 <!-- Modal trocar de marca -->
 <div id="brandSwitchModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 backdrop-blur-sm items-center justify-center p-6" onclick="if(event.target===this)closeBrandSwitchModal()">
-    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden" style="max-height:85vh">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden" style="max-width:860px;max-height:85vh">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
             <div>
                 <h2 class="text-base font-semibold text-slate-900">Trocar de marca</h2>
@@ -12815,7 +12815,7 @@ ${sections.join('\n\n')}
             </button>
         </div>
         <div class="overflow-y-auto flex-1 p-6">
-            <div id="brandSwitchGrid" class="grid gap-3" style="grid-template-columns:repeat(auto-fill,120px);justify-content:center"></div>
+            <div id="brandSwitchGrid" class="grid gap-3" style="grid-template-columns:repeat(6,1fr)"></div>
         </div>
     </div>
 </div>
