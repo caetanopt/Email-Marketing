@@ -511,44 +511,84 @@
         nav.innerHTML = html;
     }
 
+    const _CAMPAIGNS_PAGE_SIZE = 15;
+    let _campaignsPage = 1;
+    const _statusBadge = { sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>', scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>', draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>', sending:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">A enviar</span>' };
+
+    function _renderCampaignsPage() {
+        const el  = document.getElementById('campaignsTbody');
+        const pag = document.getElementById('campaignsPagination');
+        if (!el) return;
+        const q = (document.getElementById('campSearch')?.value||'').toLowerCase();
+        const s = document.getElementById('campStatusFilter')?.value||'';
+        const all = window._campaignsCache || [];
+        const filtered = all.map((c, i) => ({ c, i }))
+            .filter(({ c }) => (!q || (c.name||'').toLowerCase().includes(q) || (c.subject||'').toLowerCase().includes(q)) && (!s || c.status === s));
+        const total = filtered.length;
+        const pages = Math.ceil(total / _CAMPAIGNS_PAGE_SIZE) || 1;
+        if (_campaignsPage > pages) _campaignsPage = pages;
+        const start = (_campaignsPage - 1) * _CAMPAIGNS_PAGE_SIZE;
+        const pageItems = filtered.slice(start, start + _CAMPAIGNS_PAGE_SIZE);
+        if (!pageItems.length) {
+            el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">${all.length ? 'Sem campanhas correspondentes ao filtro.' : 'Sem campanhas para esta marca.'}</td></tr>`;
+            if (pag) pag.innerHTML = '';
+            return;
+        }
+        const selectAll = document.getElementById('campSelectAll');
+        if (selectAll) selectAll.checked = false;
+        el.innerHTML = pageItems.map(({ c, i }) => {
+            const deletable = ['draft','scheduled'].includes(c.status);
+            return `
+            <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
+                <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'')}" onchange="_updateCampBulkBar()">` : ''}</td>
+                <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
+                <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
+                <td class="px-4 py-3">${_statusBadge[c.status]||c.status}</td>
+                <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
+                <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
+                <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end gap-2">
+                        ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
+                        ${deletable ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
+                        ${c.status === 'sending' || c.status === 'scheduled' ? `<button onclick="event.stopPropagation();_cancelCampaignSend(${i})" class="text-xs px-3 py-1 border border-orange-200 text-orange-600 rounded hover:bg-orange-50">Interromper</button>` : ''}
+                        <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
+                        <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+        if (pag) {
+            pag.innerHTML = pages > 1 ? `
+            <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_CAMPAIGNS_PAGE_SIZE,total)} de ${total}</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="_campaignsPage--;_renderCampaignsPage()" ${_campaignsPage<=1?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+                    <span class="text-xs text-slate-600 px-1">${_campaignsPage}/${pages}</span>
+                    <button onclick="_campaignsPage++;_renderCampaignsPage()" ${_campaignsPage>=pages?'disabled':''}
+                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+                </div>
+            </div>` : '';
+        }
+        _updateCampBulkBar();
+    }
+
     async function _loadCampaigns(brandId) {
         const el = document.getElementById('campaignsTbody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        _campaignsPage = 1;
         try {
-            const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=50`);
-            const statusBadge = { sent:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Enviada</span>', scheduled:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Agendada</span>', draft:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Rascunho</span>', sending:'<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">A enviar</span>' };
-            if (!data.length) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
+            const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=200`);
+            if (!data.length) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
             window._campaignsCache = data;
-            const selectAll = document.getElementById('campSelectAll');
-            if (selectAll) selectAll.checked = false;
-            el.innerHTML = data.map((c, i) => {
-                const deletable = ['draft','scheduled'].includes(c.status);
-                return `
-                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
-                    <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'')}" onchange="_updateCampBulkBar()">` : ''}</td>
-                    <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
-                    <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
-                    <td class="px-4 py-3">${statusBadge[c.status]||c.status}</td>
-                    <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
-                    <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
-                    <td class="px-4 py-3 text-right">
-                        <div class="flex items-center justify-end gap-2">
-                            ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
-                            ${deletable ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
-                            ${c.status === 'sending' || c.status === 'scheduled' ? `<button onclick="event.stopPropagation();_cancelCampaignSend(${i})" class="text-xs px-3 py-1 border border-orange-200 text-orange-600 rounded hover:bg-orange-50">Interromper</button>` : ''}
-                            <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
-                            <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
-                        </div>
-                    </td>
-                </tr>`;
-            }).join('');
+            _renderCampaignsPage();
+            // Dashboard stats (full dataset)
             _setText('dash-campaigns', data.length.toString());
             const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
             _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
-            // Aggregate engagement
-            const sent = data.reduce((s,c) => s + (c.sent_count||0), 0);
-            const opens = data.reduce((s,c) => s + (c.open_count||0), 0);
+            const sent   = data.reduce((s,c) => s + (c.sent_count||0), 0);
+            const opens  = data.reduce((s,c) => s + (c.open_count||0), 0);
             const clicks = data.reduce((s,c) => s + (c.click_count||0), 0);
             const openRate  = sent ? ((opens/sent)*100).toFixed(1) : 0;
             const clickRate = sent ? ((clicks/sent)*100).toFixed(1) : 0;
@@ -559,8 +599,7 @@
             _setBarWidth('dash-click-bar', parseFloat(clickRate));
             _setText('dash-bounce-val', '0%');
             _setBarWidth('dash-bounce-bar', 0);
-        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
-        _updateCampBulkBar();
+        } catch (e) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     async function _loadLists(brandId) {
@@ -6306,12 +6345,8 @@ ${bodyRows}
     }
 
     function filterCampaigns() {
-        const q = (document.getElementById('campSearch')?.value||'').toLowerCase();
-        const s = document.getElementById('campStatusFilter')?.value||'';
-        document.querySelectorAll('#campaignsTbody tr').forEach(tr => {
-            const m = (!q||( tr.dataset.name||'').toLowerCase().includes(q)) && (!s||tr.dataset.status===s);
-            tr.style.display = m ? '' : 'none';
-        });
+        _campaignsPage = 1;
+        _renderCampaignsPage();
     }
 
 function toggleExportMenu() {
@@ -8746,7 +8781,7 @@ ${sections.join('\n\n')}
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody id="campaignsTbody">
+                        <tbody id="campaignsTbody" class="divide-y divide-slate-100">
                             <tr class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" data-name="newsletter bmw abril 2026" data-status="sent" onclick="showCampaign('sent')">
                                 <td class="px-4 py-3">
                                     <p class="font-medium text-slate-900">Newsletter BMW — Abril 2026</p>
@@ -8809,6 +8844,7 @@ ${sections.join('\n\n')}
                             </tr>
                         </tbody>
                     </table>
+                    <div id="campaignsPagination"></div>
                 </div>
             </main>
         </div>
