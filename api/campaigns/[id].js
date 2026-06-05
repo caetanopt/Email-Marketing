@@ -3,6 +3,7 @@ const { requireAuth, cors } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
 const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
+const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
 const APP_URL = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
 const FROM_DOMAIN = process.env.FROM_DOMAIN || 'caetano.pt';
@@ -351,63 +352,26 @@ module.exports = async function handler(req, res) {
 
       // ── Enviar campanha ──────────────────────────────
       if (action === 'send') {
-        const camp = await query(
-          `SELECT c.*
-           FROM campaigns c
-           JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
-           WHERE c.id=$1`, [id, user.id]
+        const campCheck = await query(
+          `SELECT c.id FROM campaigns c JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2 WHERE c.id=$1`,
+          [id, user.id]
         );
-        if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
-        if (camp[0].status === 'sending')
-          return res.status(409).json({ error: 'Campanha já está a ser enviada, aguarda…' });
-        if (camp[0].status === 'sent')
-          return res.status(409).json({ error: 'Campanha já foi enviada.' });
-
-        // Contacts from lists — deduplicate by email (DISTINCT ON) to avoid sending twice
-        // when the same email address appears in multiple selected lists or as duplicate contacts
-        const listContacts = await query(
-          `SELECT DISTINCT ON (lower(c.email)) c.id, c.email, c.name
-           FROM contacts c
-           JOIN list_members lm ON lm.contact_id=c.id
-           JOIN campaign_lists cl ON cl.list_id=lm.list_id AND cl.campaign_id=$1
-           WHERE c.brand_id=$2 AND c.status='active'
-             AND lower(c.email) NOT IN (SELECT lower(email) FROM suppression)
-           ORDER BY lower(c.email), c.id`,
-          [id, camp[0].brand_id]
-        );
-        if (listContacts.length) {
-          const vals = listContacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3})`).join(',');
-          await query(
-            `INSERT INTO campaign_recipients (campaign_id,contact_id,email) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
-            listContacts.flatMap(ct => [id, ct.id, ct.email])
-          );
-        }
-
-        // Count total pending (lists + direct imports)
-        const [{ total }] = await query(
-          `SELECT COUNT(*)::int AS total FROM campaign_recipients WHERE campaign_id=$1 AND status='pending'`,
-          [id]
-        );
-        if (!total) return res.status(400).json({ error: 'Sem destinatários activos. Verifica se a campanha tem listas associadas ou contactos importados directamente.' });
-
-        // CAN-SPAM: ensure physical address is set (use brand default if not configured)
-        const [brand] = await query(`SELECT variables FROM brands WHERE id=$1`, [camp[0].brand_id]);
-        const brandVars = brand?.variables || {};
-        if (!brandVars.company_address) {
-          brandVars.company_address = DEFAULT_COMPANY_ADDRESS;
-        }
-
-        await query("UPDATE campaigns SET status='sending' WHERE id=$1", [id]);
-
+        if (!campCheck[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         try {
-          await query(
-            `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
-             VALUES ($1,$2,$3,'campaign_started',$4)`,
-            [camp[0].brand_id, id, `${total} destinatários`, user.id]
-          );
-        } catch (err) { if (err.code !== '42P01') console.error('send log start:', err); }
-
-        return res.status(200).json({ ok: true, total, queued: true });
+          const { total } = await initCampaignSend(id);
+          // log campaign_started with user
+          try {
+            const [c2] = await query('SELECT brand_id FROM campaigns WHERE id=$1', [id]);
+            await query(
+              `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by) VALUES ($1,$2,$3,'campaign_started',$4)`,
+              [c2.brand_id, id, `${total} destinatários`, user.id]
+            );
+          } catch (err) { if (err.code !== '42P01') console.error('send log start:', err); }
+          return res.status(200).json({ ok: true, total, queued: true });
+        } catch (err) {
+          if (err.message === 'Sem destinatários activos') return res.status(400).json({ error: err.message });
+          throw err;
+        }
       }
 
       // ── Enviar batch (chamado repetidamente pelo frontend) ──────
