@@ -813,8 +813,8 @@
         if (!confirm('Remover este endereço da lista de supressão?')) return;
         try {
             await apiFetch(`/api/suppression`, { method: 'DELETE', body: JSON.stringify({ email }) });
-            btn.closest('tr').remove();
             showToast('Endereço removido da supressão.');
+            _loadSuppression(_suppPage);
         } catch (e) { showToast(e.message, 'error'); }
     }
 
