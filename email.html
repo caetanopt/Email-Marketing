@@ -3905,9 +3905,28 @@ ${bodyRows}
         }
     }
 
+    const _BRANDS_PAGE_SIZE = 15;
+    let _brandsShowAll = false;
+
+    function _renderBrandRow(b) {
+        return `<div class="flex items-center gap-4 px-5 py-3.5">
+            <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${escHtml(b.color||'#0f172a')}"></div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-slate-900">${escHtml(b.name)}</p>
+                ${b.from_email ? `<p class="text-xs text-slate-400">${escHtml(b.from_email)}</p>` : ''}
+            </div>
+            <span class="text-xs text-slate-300 font-mono mr-1">${escHtml(b.id)}</span>
+            <button onclick="_deleteBrand('${escHtml(b.id)}','${escHtml(b.name.replace(/'/g,"\\'"))}')"
+                    class="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                Eliminar
+            </button>
+        </div>`;
+    }
+
     async function _loadBrandsAdmin() {
         const list = document.getElementById('brandAdminList');
         if (!list) return;
+        _brandsShowAll = false;
         try {
             const data = await apiFetch('/api/brands');
             const brands = data.data || [];
@@ -3915,21 +3934,23 @@ ${bodyRows}
                 list.innerHTML = '<p class="px-5 py-6 text-sm text-slate-400 text-center">Nenhuma marca encontrada.</p>';
                 return;
             }
-            list.innerHTML = brands.map(b => `
-                <div class="flex items-center gap-4 px-5 py-3.5">
-                    <div class="w-3 h-3 rounded-full flex-shrink-0" style="background:${escHtml(b.color||'#0f172a')}"></div>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-slate-900">${escHtml(b.name)}</p>
-                        ${b.from_email ? `<p class="text-xs text-slate-400">${escHtml(b.from_email)}</p>` : ''}
-                    </div>
-                    <button onclick="_deleteBrand('${escHtml(b.id)}','${escHtml(b.name.replace(/'/g,"\\'"))}')"
-                            class="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                        Eliminar
-                    </button>
-                </div>`).join('');
+            const visible = brands.slice(0, _BRANDS_PAGE_SIZE);
+            const remaining = brands.length - visible.length;
+            list.innerHTML = visible.map(_renderBrandRow).join('') +
+                (remaining > 0 ? `<div class="px-5 py-3 border-t border-slate-100">
+                    <button onclick="_brandsShowAll=true;_loadBrandsAdminAll()" class="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors">
+                        Ver mais ${remaining} marca(s) ▾
+                    </button></div>` : '');
+            list._allBrandsData = brands;
         } catch (e) {
             list.innerHTML = `<p class="px-5 py-6 text-sm text-red-400 text-center">${escHtml(e.message)}</p>`;
         }
+    }
+
+    function _loadBrandsAdminAll() {
+        const list = document.getElementById('brandAdminList');
+        if (!list || !list._allBrandsData) return;
+        list.innerHTML = list._allBrandsData.map(_renderBrandRow).join('');
     }
 
     async function _createBrand() {

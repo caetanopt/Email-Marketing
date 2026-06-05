@@ -712,24 +712,19 @@ module.exports = async function handler(req, res) {
       const { confirm: confirmed } = req.body || {};
       if (!confirmed) {
         // Return counts for the confirmation dialog
-        const [[contacts], [campaigns], [lists]] = await Promise.all([
+        const [contactsRes, campaignsRes, listsRes, brandRes] = await Promise.all([
           query(`SELECT COUNT(*)::int AS n FROM contacts WHERE brand_id=$1`, [id]),
           query(`SELECT COUNT(*)::int AS n FROM campaigns WHERE brand_id=$1`, [id]),
-          query(`SELECT COUNT(*)::int AS n FROM contact_lists WHERE brand_id=$1`, [id]),
+          query(`SELECT COUNT(*)::int AS n FROM lists WHERE brand_id=$1`, [id]),
+          query(`SELECT name FROM brands WHERE id=$1`, [id]),
         ]);
-        const [brand] = await query(`SELECT name FROM brands WHERE id=$1`, [id]);
         return res.status(200).json({
           requires_confirm: true,
-          brand_name: brand?.name,
-          counts: { contacts: contacts.n, campaigns: campaigns.n, lists: lists.n },
+          brand_name: brandRes[0]?.name,
+          counts: { contacts: contactsRes[0]?.n ?? 0, campaigns: campaignsRes[0]?.n ?? 0, lists: listsRes[0]?.n ?? 0 },
         });
       }
-      // Delete brand — cascades to team roles, blocks, media; manually clean contacts+campaigns
-      await query(`DELETE FROM campaign_recipients WHERE campaign_id IN (SELECT id FROM campaigns WHERE brand_id=$1)`, [id]);
-      await query(`DELETE FROM email_events WHERE campaign_id IN (SELECT id FROM campaigns WHERE brand_id=$1)`, [id]);
-      await query(`DELETE FROM campaigns WHERE brand_id=$1`, [id]);
-      await query(`DELETE FROM contacts WHERE brand_id=$1`, [id]);
-      await query(`DELETE FROM contact_lists WHERE brand_id=$1`, [id]).catch(() => {});
+      // All related tables have ON DELETE CASCADE on brand_id — one DELETE cascades everything
       await query(`DELETE FROM brands WHERE id=$1`, [id]);
       return res.status(200).json({ ok: true });
     }
