@@ -1532,6 +1532,16 @@
         },
     };
 
+    let _teGlobalFontSize = null; // cached from global_settings; applied as default fontSize on new blocks
+
+    async function _loadTeGlobalSettings() {
+        try {
+            const d = await apiFetch('/api/brands?action=global_settings');
+            const px = parseInt(d.font_size);
+            if (px > 0) _teGlobalFontSize = px;
+        } catch (e) { /* silent — migration may not be run yet */ }
+    }
+
     const teLabels = {
         header:'Cabeçalho', heading:'Título', text:'Texto', button:'Botão',
         image:'Imagem', divider:'Separador', spacer:'Espaço', footer:'Rodapé',
@@ -1651,12 +1661,15 @@
         if (type === 'columns2') return { id: teId(), type:'columns', cols:2, children:[[],[]] };
         if (type === 'columns3') return { id: teId(), type:'columns', cols:3, children:[[],[],[]] };
         if (type === 'gridItems') {
+            const fs = _teGlobalFontSize;
             const img = () => ({ id:teId(), type:'image', src:'https://placehold.co/280x160?text=Imagem', alt:'', width:280, align:'center', paddingTop:0, paddingRight:8, paddingBottom:8, paddingLeft:8 });
-            const hd  = (n) => ({ id:teId(), type:'heading', text:`Título ${n}`, color:'#1e293b', bgColor:'#ffffff', fontSize:15, fontWeight:'700', align:'center', paddingTop:4, paddingRight:8, paddingBottom:4, paddingLeft:8 });
-            const tx  = () => ({ id:teId(), type:'text', text:'Descrição do produto ou serviço.', color:'#64748b', bgColor:'#ffffff', fontSize:13, fontWeight:'400', align:'center', lineHeight:1.5, paddingTop:0, paddingRight:8, paddingBottom:8, paddingLeft:8 });
+            const hd  = (n) => ({ id:teId(), type:'heading', text:`Título ${n}`, color:'#1e293b', bgColor:'#ffffff', fontSize:fs || 15, fontWeight:'700', align:'center', paddingTop:4, paddingRight:8, paddingBottom:4, paddingLeft:8 });
+            const tx  = () => ({ id:teId(), type:'text', text:'Descrição do produto ou serviço.', color:'#64748b', bgColor:'#ffffff', fontSize:fs || 13, fontWeight:'400', align:'center', lineHeight:1.5, paddingTop:0, paddingRight:8, paddingBottom:8, paddingLeft:8 });
             return { id:teId(), type:'columns', cols:2, children:[[img(),hd(1),tx()],[img(),hd(2),tx()]] };
         }
-        return { id: teId(), type, ...JSON.parse(JSON.stringify(teDefaults[type] || {})) };
+        const block = { id: teId(), type, ...JSON.parse(JSON.stringify(teDefaults[type] || {})) };
+        if (_teGlobalFontSize !== null && 'fontSize' in block) block.fontSize = _teGlobalFontSize;
+        return block;
     }
 
     // ── Mutations ────────────────────────────────────────────────────
@@ -7662,6 +7675,7 @@ ${sections.join('\n\n')}
         renderBrandData(id);
         showScreen('dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
+        _loadTeGlobalSettings().catch(() => {});
     }
 
     function _brandLogoHtml(b) {
