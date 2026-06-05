@@ -558,17 +558,23 @@
             </tr>`;
         }).join('');
         if (pag) {
-            pag.innerHTML = pages > 1 ? `
-            <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_CAMPAIGNS_PAGE_SIZE,total)} de ${total}</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="_campaignsPage--;_renderCampaignsPage()" ${_campaignsPage<=1?'disabled':''}
-                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
-                    <span class="text-xs text-slate-600 px-1">${_campaignsPage}/${pages}</span>
-                    <button onclick="_campaignsPage++;_renderCampaignsPage()" ${_campaignsPage>=pages?'disabled':''}
-                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
-                </div>
-            </div>` : '';
+            if (pages <= 1) { pag.innerHTML = ''; }
+            else {
+                const p = _campaignsPage;
+                const btn = (label, page, active, disabled) =>
+                    `<button onclick="_campaignsPage=${page};_renderCampaignsPage()" ${disabled?'disabled':''} class="px-3 py-1 border border-slate-200 rounded text-xs ${active?'bg-slate-900 text-white':disabled?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">${label}</button>`;
+                const range = [], delta = 2;
+                for (let i = Math.max(1, p-delta); i <= Math.min(pages, p+delta); i++) range.push(i);
+                let nav = btn('Anterior', p-1, false, p===1);
+                if (range[0] > 1) { nav += btn(1, 1, false, false); if (range[0] > 2) nav += `<span class="px-1 text-slate-400">…</span>`; }
+                range.forEach(i => { nav += btn(i, i, i===p, false); });
+                if (range[range.length-1] < pages) { if (range[range.length-1] < pages-1) nav += `<span class="px-1 text-slate-400">…</span>`; nav += btn(pages, pages, false, false); }
+                nav += btn('Próxima', p+1, false, p===pages);
+                pag.innerHTML = `<div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                    <span>Mostrando ${start+1}–${Math.min(start+_CAMPAIGNS_PAGE_SIZE,total)} de ${total}</span>
+                    <div class="flex items-center gap-1">${nav}</div>
+                </div>`;
+            }
         }
         _updateCampBulkBar();
     }
