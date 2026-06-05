@@ -3310,6 +3310,8 @@ ${bodyRows}
         root.querySelectorAll('[data-field-error]').forEach(msg => {
             const inp = msg.previousElementSibling;
             if (inp) { inp.style.borderColor = ''; inp.style.boxShadow = ''; }
+            const p = msg.parentElement;
+            if (p) p.style.paddingBottom = p.dataset.origPb ?? '';
             msg.remove();
         });
     }
@@ -3321,15 +3323,21 @@ ${bodyRows}
         el.style.borderColor = '#f87171';
         el.style.boxShadow = '0 0 0 3px rgba(248,113,113,0.25)';
         if (parent && getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+        // Reserve space so the label doesn't overlap the next element
+        if (parent) {
+            parent.dataset.origPb = parent.style.paddingBottom || '';
+            parent.style.paddingBottom = '20px';
+        }
         el.focus();
         const msg = document.createElement('p');
         msg.setAttribute('data-field-error', '1');
         msg.textContent = message;
-        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;top:calc(100% + 2px);left:0;white-space:nowrap;z-index:10;pointer-events:none;';
+        msg.style.cssText = 'color:#f87171;font-size:11px;position:absolute;bottom:4px;left:0;white-space:nowrap;z-index:10;pointer-events:none;';
         el.insertAdjacentElement('afterend', msg);
         const clear = () => {
             el.style.borderColor = '';
             el.style.boxShadow = '';
+            if (parent) parent.style.paddingBottom = parent.dataset.origPb ?? '';
             msg.remove();
             el.removeEventListener('input', clear);
         };
