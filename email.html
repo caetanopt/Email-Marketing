@@ -3868,6 +3868,41 @@ ${bodyRows}
         } catch (e) { showToast(e.message, 'error'); }
     }
 
+    // ── Global typography settings ─────────────────────────────────
+    async function _loadGlobalTypography() {
+        try {
+            const data = await apiFetch('/api/brands?action=global_settings');
+            const el = id => document.getElementById(id);
+            const fs = el('gsTypoFontSize');   if (fs) fs.value = (data.font_size  || '14px').replace('px','');
+            const ew = el('gsTypoEmailWidth'); if (ew) ew.value = (data.email_width|| '600px').replace('px','');
+            const lh = el('gsTypoLineHeight'); if (lh) lh.value = data.line_height || '1.6';
+            const ff = el('gsTypoFontFamily'); if (ff) ff.value = data.font_family || 'Arial, sans-serif';
+        } catch (e) { /* silent — migration may not be run yet */ }
+    }
+
+    async function _saveGlobalTypography() {
+        const val = id => document.getElementById(id)?.value.trim();
+        const fs = val('gsTypoFontSize');
+        const ew = val('gsTypoEmailWidth');
+        const lh = val('gsTypoLineHeight');
+        const ff = val('gsTypoFontFamily');
+        const btn = document.getElementById('gsTypoSaveBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
+        try {
+            await apiFetch('/api/brands?action=global_settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    font_size:   fs ? `${fs}px`  : '14px',
+                    email_width: ew ? `${ew}px`  : '600px',
+                    line_height: lh || '1.6',
+                    font_family: ff || 'Arial, sans-serif'
+                })
+            });
+            showToast('Definições de tipografia guardadas.');
+        } catch (e) { showToast(e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+    }
+
     function _toggleGwlForm() {
         const panel = document.getElementById('gwlFormPanel');
         if (!panel) return;
@@ -7235,7 +7270,7 @@ ${sections.join('\n\n')}
                 }
             }
             if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
-            if (id === 'globalSettings') { _loadDomainWhitelist(); }
+            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -10704,6 +10739,56 @@ ${sections.join('\n\n')}
                 </div>
             </header>
             <main class="flex-1 px-8 py-6 space-y-5">
+
+                <!-- Tipografia & Layout -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100">
+                        <h3 class="font-semibold text-slate-900 text-sm">Tipografia & Layout de email</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">Valores por defeito aplicados a todas as marcas ao construir novos templates.</p>
+                    </div>
+                    <div class="px-5 py-5">
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                            <!-- Font size -->
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1.5">Tamanho de letra <span class="font-mono text-slate-400">font-size</span></label>
+                                <div class="flex items-center gap-2">
+                                    <input id="gsTypoFontSize" type="number" min="8" max="32" step="1" placeholder="14" class="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                    <span class="text-sm text-slate-500">px</span>
+                                </div>
+                            </div>
+                            <!-- Email width -->
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1.5">Largura padrão do email <span class="font-mono text-slate-400">max-width</span></label>
+                                <div class="flex items-center gap-2">
+                                    <input id="gsTypoEmailWidth" type="number" min="320" max="900" step="10" placeholder="600" class="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                    <span class="text-sm text-slate-500">px</span>
+                                </div>
+                            </div>
+                            <!-- Line height -->
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1.5">Altura de linha <span class="font-mono text-slate-400">line-height</span></label>
+                                <input id="gsTypoLineHeight" type="number" min="1" max="3" step="0.1" placeholder="1.6" class="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                            </div>
+                            <!-- Font family -->
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1.5">Família tipográfica <span class="font-mono text-slate-400">font-family</span></label>
+                                <select id="gsTypoFontFamily" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                    <option value="Arial, sans-serif">Arial</option>
+                                    <option value="Helvetica, Arial, sans-serif">Helvetica</option>
+                                    <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                                    <option value="Verdana, sans-serif">Verdana</option>
+                                    <option value="Tahoma, sans-serif">Tahoma</option>
+                                    <option value="Georgia, serif">Georgia</option>
+                                    <option value="'Times New Roman', serif">Times New Roman</option>
+                                    <option value="'Courier New', monospace">Courier New</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-5 flex justify-end border-t border-slate-100 pt-4">
+                            <button onclick="_saveGlobalTypography()" id="gsTypoSaveBtn" class="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50">Guardar</button>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Domain Whitelist -->
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
