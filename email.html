@@ -658,7 +658,7 @@
             }
                 el.innerHTML = data.map(l => `
                 <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
-                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(l.name)}</td>
+                    <td class="px-4 py-3 font-medium text-slate-900"><span class="list-name-text">${escHtml(l.name)}</span></td>
                     <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
                     <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
@@ -677,7 +677,7 @@
         } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
-    function _markListImportRow() {
+    function _markListImportRow(pct, sub) {
         try {
             const p = JSON.parse(localStorage.getItem('pm_pending_import') || 'null');
             const listId = String(p?.list_id || _importJob?.listId || '');
@@ -685,11 +685,22 @@
             const row = document.querySelector(`#listsTableBody tr[data-list-id="${listId}"]`);
             if (!row) return;
             const nameCell = row.querySelector('td:first-child');
-            if (!nameCell || nameCell.querySelector('.import-badge')) return;
-            const badge = document.createElement('span');
-            badge.className = 'import-badge ml-2 inline-flex items-center gap-1 text-xs text-blue-600 font-medium';
-            badge.innerHTML = `<svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>A importar…`;
-            nameCell.appendChild(badge);
+            if (!nameCell) return;
+            let badge = nameCell.querySelector('.import-badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'import-badge';
+                nameCell.appendChild(badge);
+            }
+            const pctVal = pct != null ? pct : 0;
+            const label  = sub && sub.includes('/') ? sub : (pctVal > 0 ? `${pctVal}%` : 'Em fila…');
+            badge.className = 'import-badge ml-2 inline-flex flex-col gap-0.5 align-middle';
+            badge.innerHTML = `
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-700 font-medium whitespace-nowrap">
+                    <svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    A importar — ${escHtml(label)}
+                </span>
+                <span class="block w-full h-1 rounded-full bg-blue-100 mt-0.5"><span class="block h-1 rounded-full bg-blue-500 transition-all duration-300" style="width:${pctVal}%"></span></span>`;
         } catch (_) {}
     }
 
@@ -3013,7 +3024,7 @@ ${bodyRows}
 
     async function mockEditList(btn) {
         const tr = btn.closest('tr');
-        const name = tr?.cells[0]?.textContent.trim() || 'Lista';
+        const name = tr?.cells[0]?.querySelector('.list-name-text')?.textContent.trim() || tr?.cells[0]?.textContent.trim() || 'Lista';
         const count = tr?.cells[1]?.textContent.trim() || '0';
         _currentListId = tr?.dataset.listId || null;
         _editingListName = name;
@@ -3306,7 +3317,7 @@ ${bodyRows}
             if (s.list_id && _currentListId && String(s.list_id) === String(_currentListId)) {
                 _showListImportStatus(pct, sub);
             }
-            _markListImportRow();
+            _markListImportRow(pct, sub);
             _pollImportStatus(s.id, brandId, 'restore', () => {});
         } catch (_) {}
     }
@@ -3336,7 +3347,7 @@ ${bodyRows}
                     _showListImportStatus(pct, sub);
                 }
                 // Keep lists table row badge visible while importing
-                _markListImportRow();
+                _markListImportRow(pct, sub);
                 if (s.status === 'done' || s.status === 'cancelled') {
                     localStorage.removeItem('pm_pending_import');
                     _hideListImportStatus();
