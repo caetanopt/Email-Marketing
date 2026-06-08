@@ -1,4 +1,4 @@
-const { query } = require('../../lib/db');
+const { query, transaction } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -104,6 +104,87 @@ module.exports = async function handler(req, res) {
         [brand_id]
       );
       return res.status(200).json({ ok: true });
+    }
+
+    // ── Bulk import ─────────────────────────────────────────────
+    if (action === 'bulk_import' && req.method === 'POST') {
+      const { contacts: rows, list_id: listId } = req.body || {};
+      if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'contacts obrigatório' });
+
+      const BATCH = 200;
+      let imported = 0, skipped = 0, failed = 0;
+
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        try {
+          await transaction(async q => {
+            // Build bulk upsert for contacts
+            const vals = [], params = [];
+            let p = 1;
+            batch.forEach(c => {
+              vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import')`);
+              params.push(brand_id, c.email.toLowerCase().trim(), c.name||null, c.phone||null, c.company||null);
+            });
+            const inserted = await q(
+              `INSERT INTO contacts (brand_id, email, name, phone, company, source)
+               VALUES ${vals.join(',')}
+               ON CONFLICT (brand_id, email) DO UPDATE
+                 SET name=COALESCE(EXCLUDED.name, contacts.name),
+                     phone=COALESCE(EXCLUDED.phone, contacts.phone),
+                     company=COALESCE(EXCLUDED.company, contacts.company),
+                     source=EXCLUDED.source, updated_at=NOW()
+               RETURNING id, email`,
+              params
+            );
+            imported += inserted.length;
+
+            // Apply suppression
+            if (inserted.length) {
+              const ids = inserted.map(r => r.id);
+              await q(
+                `UPDATE contacts SET status=(CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' WHEN s.reason='bounce' THEN 'bounced' ELSE 'suppressed' END)::contact_status
+                 FROM suppression s WHERE contacts.id=ANY($1) AND contacts.email=s.email`,
+                [ids]
+              );
+            }
+
+            // Add to list + save extra_data
+            if (listId && inserted.length) {
+              const lvals = inserted.map((_, i2) => `($1,$${i2+2})`).join(',');
+              await q(
+                `INSERT INTO list_members (list_id, contact_id) VALUES ${lvals} ON CONFLICT DO NOTHING`,
+                [listId, ...inserted.map(r => r.id)]
+              );
+              // extra_data: update rows that have it
+              const emailToId = Object.fromEntries(inserted.map(r => [r.email, r.id]));
+              for (const c of batch) {
+                if (!c._extra_data) continue;
+                const cid = emailToId[c.email.toLowerCase().trim()];
+                if (!cid) continue;
+                await q(
+                  'UPDATE list_members SET extra_data=$1::jsonb WHERE list_id=$2 AND contact_id=$3',
+                  [JSON.stringify(c._extra_data), listId, cid]
+                );
+              }
+            }
+          });
+        } catch (err) {
+          console.error('bulk_import batch error:', err);
+          failed += batch.length;
+          imported -= batch.length < imported ? batch.length : 0;
+        }
+      }
+
+      // Sync suppression
+      try {
+        await query(
+          `UPDATE contacts c SET status=(CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' WHEN s.reason='bounce' THEN 'bounced' WHEN s.reason='spam' THEN 'complained' ELSE 'suppressed' END)::contact_status
+           FROM suppression s WHERE c.email=s.email AND c.brand_id=$1 AND c.status='active'`,
+          [brand_id]
+        );
+      } catch (_) {}
+
+      return res.status(200).json({ imported, skipped, failed });
     }
 
     if (req.method === 'POST') {

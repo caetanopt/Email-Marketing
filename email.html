@@ -3187,23 +3187,12 @@ ${bodyRows}
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); btn.disabled = false; btn.innerHTML = 'Importar'; return; }
 
-            let imported = 0, failed = 0;
-            const CHUNK = 5;
-            for (let i = 0; i < rows.length; i += CHUNK) {
-                const chunk = rows.slice(i, i + CHUNK);
-                await Promise.all(chunk.map(async c => {
-                    try {
-                        const { _extra_data, ...contactData } = c;
-                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(contactData) });
-                        imported++;
-                        if (_currentListId && r.id) {
-                            const body = { contact_id: r.id };
-                            if (_extra_data) body.extra_data = _extra_data;
-                            try { await apiFetch(`/api/lists/${_currentListId}?action=add_contact`, { method: 'POST', body: JSON.stringify(body) }); } catch (err) { console.error(err); }
-                        }
-                    } catch (err) { failed++; console.error('import contact failed:', err); }
-                }));
-            }
+            const result = await apiFetch(
+                `/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`,
+                { method: 'POST', body: JSON.stringify({ contacts: rows, list_id: _currentListId || null }) }
+            );
+            const imported = result.imported || 0;
+            const failed   = result.failed   || 0;
             // Record import history
             try {
                 const listName = document.getElementById('listEditTitle')?.textContent?.replace('Editar — ','') || null;
@@ -3219,8 +3208,6 @@ ${bodyRows}
                     })
                 });
             } catch (err) { console.error('record import:', err); }
-            // Sync suppression
-            try { await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=sync_suppression`, { method: 'POST' }); } catch(e) { console.error(e); }
 
             closeListImportModal();
             showToast(`${imported} contacto${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''}${failed ? `, ${failed} falha${failed !== 1 ? 's' : ''}` : ''}.`);
