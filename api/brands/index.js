@@ -161,12 +161,9 @@ module.exports = async function handler(req, res) {
       if (action === 'user_brands' && member_id) {
         if (!id) return res.status(400).json({ error: 'id (brand_id) obrigatório para verificar permissão' });
         if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
-        // All brands the current admin can access
+        // All active brands in the platform
         const allBrands = await query(
-          `SELECT b.id, b.name, b.color, b.logo_url FROM brands b
-           JOIN user_brand_roles ubr ON ubr.brand_id = b.id AND ubr.user_id = $1
-           WHERE b.active = TRUE ORDER BY b.name`,
-          [user.id]
+          `SELECT id, name, color, logo_url FROM brands WHERE active = TRUE ORDER BY name`
         );
         // Member's account-level role (their role in the current brand)
         const accountRoleRow = await query(
