@@ -7694,7 +7694,10 @@ ${sections.join('\n\n')}
             // User profile screen — always reload (not brand-specific)
             if (id === 'userProfile') _loadUserProfile();
             // SES quota widget — load once per brand session
-            if (id === 'campaigns' && !_screenLoaded.has('sesQuota')) { _loadSesQuota(); _screenLoaded.add('sesQuota'); }
+            if (id === 'campaigns') {
+                if (!_screenLoaded.has('sesQuota')) { _loadSesQuota(); _screenLoaded.add('sesQuota'); }
+                _applyViewerCampaignRestrictions(_currentUserRole === 'viewer');
+            }
             // Roles info panel: only visible to owner / admin / administrador
             if (id === 'team') { _syncRolesPanel(); if (!_screenLoaded.has('team')) { _loadTeamMembers(); _screenLoaded.add('team'); } }
             // Load campaign report when entering report screen (always reload — report is campaign-specific)
@@ -8038,6 +8041,25 @@ ${sections.join('\n\n')}
         _applyAreaPermissionsToSidebar();
     }
 
+    function _applyViewerCampaignRestrictions(isViewer) {
+        // Nova Campanha button
+        const newCampBtn = document.querySelector('#campaigns header button[onclick="_wizStartNew()"]');
+        if (newCampBtn) newCampBtn.classList.toggle('hidden', isViewer);
+        // SES quota widget
+        const sesWidget = document.getElementById('sesQuotaWidget');
+        if (sesWidget && isViewer) sesWidget.classList.add('hidden');
+        // Pre-filter to sent only for viewers
+        const statusFilter = document.getElementById('campStatusFilter');
+        if (statusFilter && isViewer && statusFilter.value === '') {
+            statusFilter.value = 'sent';
+            // Hide draft/scheduled options
+            statusFilter.querySelectorAll('option').forEach(o => {
+                if (o.value !== '' && o.value !== 'sent') o.classList.add('hidden');
+            });
+            filterCampaigns();
+        }
+    }
+
     // Hide nav items the user does not have access to (per current brand).
     async function _applyAreaPermissionsToSidebar() {
         if (!_currentBrand?.id) return;
@@ -8069,6 +8091,8 @@ ${sections.join('\n\n')}
             if (_currentUserRole !== 'owner') {
                 document.querySelectorAll('.nav-globalSettings').forEach(el => el.classList.add('hidden'));
             }
+            // Viewer (Marketing Account): hide Nova Campanha button and SES widget, show only sent campaigns
+            _applyViewerCampaignRestrictions(_currentUserRole === 'viewer');
         } catch (err) {
             // Silent — migration may not have been run yet, fall back to full access
             console.error('permissions fetch:', err);
