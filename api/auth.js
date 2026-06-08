@@ -161,5 +161,44 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // DELETE — admin setup actions (list_users, upsert_admin, delete_user)
+  if (req.method === 'DELETE') {
+    const TEMP_TOKEN = 'setup-caetano-2026';
+    const auth = req.headers.authorization;
+    const secret = process.env.CRON_SECRET;
+    if (auth !== `Bearer ${TEMP_TOKEN}` && (!secret || auth !== `Bearer ${secret}`)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { action, email: targetEmail, old_email, name } = req.body || {};
+
+    if (action === 'list_users') {
+      const users = await query('SELECT id, name, email, active, created_at, last_login FROM users ORDER BY id');
+      return res.status(200).json({ users });
+    }
+    if (action === 'upsert_admin') {
+      if (!targetEmail) return res.status(400).json({ error: 'email obrigatório' });
+      const emailNorm = targetEmail.toLowerCase().trim();
+      if (old_email) {
+        const rows = await query('UPDATE users SET email=$1, active=TRUE WHERE email=$2 RETURNING id, email', [emailNorm, old_email.toLowerCase().trim()]);
+        if (rows[0]) return res.status(200).json({ ok: true, action: 'updated', user: rows[0] });
+      }
+      const userName = name || emailNorm.split('@')[0];
+      const rows = await query(
+        `INSERT INTO users (name, email, active) VALUES ($1, $2, TRUE)
+         ON CONFLICT (email) DO UPDATE SET active=TRUE, name=EXCLUDED.name
+         RETURNING id, email, name`,
+        [userName, emailNorm]
+      );
+      return res.status(201).json({ ok: true, action: 'created', user: rows[0] });
+    }
+    if (action === 'delete_user') {
+      if (!targetEmail) return res.status(400).json({ error: 'email obrigatório' });
+      const rows = await query('DELETE FROM users WHERE email=$1 RETURNING id, email', [targetEmail.toLowerCase().trim()]);
+      if (!rows[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
+      return res.status(200).json({ ok: true, action: 'deleted', user: rows[0] });
+    }
+    return res.status(400).json({ error: 'action inválida' });
+  }
+
   res.status(405).json({ error: 'Método não permitido' });
 };
