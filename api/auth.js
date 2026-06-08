@@ -208,6 +208,15 @@ module.exports = async function handler(req, res) {
         return res.status(500).json({ error: err.message, stack: err.stack?.split('\n')[0] });
       }
     }
+    if (action === 'update_role') {
+      const { role } = req.body || {};
+      if (!targetEmail || !role) return res.status(400).json({ error: 'email e role obrigatórios' });
+      if (!['owner','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido: owner, editor ou viewer' });
+      const found = await query('SELECT id FROM users WHERE email=$1', [targetEmail.toLowerCase().trim()]);
+      if (!found[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
+      await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2', [role, found[0].id]);
+      return res.status(200).json({ ok: true, action: 'role_updated', user_id: found[0].id, role });
+    }
     return res.status(400).json({ error: 'action inválida' });
   }
 
