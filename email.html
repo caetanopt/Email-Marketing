@@ -579,7 +579,12 @@
                 <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'')}" onchange="_updateCampBulkBar()">` : ''}</td>
                 <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
                 <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
-                <td class="px-4 py-3">${_statusBadge[c.status]||c.status}</td>
+                <td class="px-4 py-3">
+                    ${_statusBadge[c.status]||c.status}
+                    <span id="camp-import-badge-${c.id}" class="${(_wizImporting && _editingCampaignId == c.id) ? '' : 'hidden'}">
+                        ${(_wizImporting && _editingCampaignId == c.id) ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-600 whitespace-nowrap"><svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>${_wizImportTotal ? Math.round(_wizImportDone/_wizImportTotal*100)+'%' : 'A importar…'}</span>` : ''}
+                    </span>
+                </td>
                 <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
                 <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
                 <td class="px-4 py-3 text-right">
@@ -6386,6 +6391,9 @@ ${bodyRows}
             // Keep step 4 banner in sync
             _wizImportDone = done; _wizImportTotal = total;
             if (_wizStep === 4) _wizUpdateStep4ImportBanner();
+            // Update campaigns list badge (visible if user navigated away during import)
+            const _cb = _editingCampaignId && document.getElementById(`camp-import-badge-${_editingCampaignId}`);
+            if (_cb) { _cb.className = ''; _cb.innerHTML = `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-600 whitespace-nowrap"><svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>${pct}%</span>`; }
         };
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
@@ -6461,6 +6469,8 @@ ${bodyRows}
             if (progressDiv) progressDiv.classList.add('hidden');
             if (_wizStep === 4) _wizUpdateStep4ImportBanner();
             if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar e adicionar à campanha'; }
+            const _cb = _editingCampaignId && document.getElementById(`camp-import-badge-${_editingCampaignId}`);
+            if (_cb) { _cb.className = 'hidden'; _cb.innerHTML = ''; }
         }
     }
 
