@@ -193,9 +193,14 @@ module.exports = async function handler(req, res) {
     }
     if (action === 'delete_user') {
       if (!targetEmail) return res.status(400).json({ error: 'email obrigatório' });
-      const rows = await query('DELETE FROM users WHERE email=$1 RETURNING id, email', [targetEmail.toLowerCase().trim()]);
-      if (!rows[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
-      return res.status(200).json({ ok: true, action: 'deleted', user: rows[0] });
+      const emailNorm = targetEmail.toLowerCase().trim();
+      const found = await query('SELECT id, email FROM users WHERE email=$1', [emailNorm]);
+      if (!found[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
+      const uid = found[0].id;
+      await query('DELETE FROM magic_link_tokens WHERE user_id=$1', [uid]);
+      await query('DELETE FROM user_brand_roles WHERE user_id=$1', [uid]);
+      await query('DELETE FROM users WHERE id=$1', [uid]);
+      return res.status(200).json({ ok: true, action: 'deleted', user: found[0] });
     }
     return res.status(400).json({ error: 'action inválida' });
   }
