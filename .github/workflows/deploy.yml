@@ -1,0 +1,19 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - claude/email-marketing-saas-M2qZP
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        run: npx vercel --prod --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_jf00Jpfp6cElvXAfxaxVal0Q
+          VERCEL_PROJECT_ID: prj_8h1BsSA38ium1KAi543djG6sbnV8
