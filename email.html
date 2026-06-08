@@ -8259,17 +8259,37 @@ ${sections.join('\n\n')}
         try {
             const pending = JSON.parse(localStorage.getItem('pm_pending_import') || 'null');
             if (pending && pending.job_id && pending.brand_id === id) {
+                // Show banner immediately — don't wait for API
+                _importJob = { source: 'restore', brandId: id, jobId: pending.job_id };
+                _showImportBanner('A processar em segundo plano…', 0, 'A verificar estado…');
+                // Immediate status check to update banner with real progress
                 apiFetch(`/api/contacts?brand_id=${id}&action=import_status&job_id=${pending.job_id}`)
                     .then(s => {
-                        if (!s || s.status === 'done' || s.status === 'failed') {
-                            localStorage.removeItem('pm_pending_import');
+                        if (!s) {
+                            _pollImportStatus(pending.job_id, id, 'restore', () => {});
                             return;
                         }
-                        _importJob = { source: 'restore', brandId: id, jobId: pending.job_id };
-                        _showImportBanner('A processar em segundo plano…', 0, 'Em fila — aguarda o próximo ciclo do servidor…');
+                        if (s.status === 'done') {
+                            localStorage.removeItem('pm_pending_import');
+                            _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0);
+                            return;
+                        }
+                        if (s.status === 'failed') {
+                            localStorage.removeItem('pm_pending_import');
+                            document.getElementById('importBanner')?.classList.add('hidden');
+                            showToast('Importação falhou no servidor.', 'error');
+                            return;
+                        }
+                        const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
+                        const sub = s.status === 'queued'
+                            ? 'Em fila — aguarda o próximo ciclo do servidor…'
+                            : `${s.processed||0} / ${s.total||0} contactos`;
+                        _showImportBanner('A processar em segundo plano…', pct, sub);
                         _pollImportStatus(pending.job_id, id, 'restore', () => {});
                     })
-                    .catch(() => {});
+                    .catch(() => {
+                        _pollImportStatus(pending.job_id, id, 'restore', () => {});
+                    });
             }
         } catch (_) {}
         _loadTeGlobalSettings().catch(() => {});
