@@ -300,8 +300,10 @@ module.exports = async function handler(req, res) {
       try {
         await query(IMPORT_INIT_SQL);
         const rows = await query(
-          `SELECT id, status, total, processed, imported, skipped, failed_cnt, file_name, list_name, list_id, created_at
-           FROM import_jobs WHERE id=$1 AND brand_id=$2`,
+          `SELECT ij.id, ij.status, ij.total, ij.processed, ij.imported, ij.skipped, ij.failed_cnt,
+                  ij.file_name, ij.list_name, ij.list_id, ij.created_at,
+                  COALESCE((SELECT COUNT(*)::int FROM list_members WHERE list_id = ij.list_id), 0) AS list_count
+           FROM import_jobs ij WHERE ij.id=$1 AND ij.brand_id=$2`,
           [job_id, brand_id]
         );
         return res.status(200).json(rows[0] || null);
@@ -315,9 +317,11 @@ module.exports = async function handler(req, res) {
       try {
         await query(IMPORT_INIT_SQL);
         const rows = await query(
-          `SELECT id, status, total, processed, imported, skipped, failed_cnt, file_name, list_name, list_id, created_at
-           FROM import_jobs WHERE brand_id=$1 AND status IN ('queued','pending','processing')
-           ORDER BY created_at DESC LIMIT 1`,
+          `SELECT ij.id, ij.status, ij.total, ij.processed, ij.imported, ij.skipped, ij.failed_cnt,
+                  ij.file_name, ij.list_name, ij.list_id, ij.created_at,
+                  COALESCE((SELECT COUNT(*)::int FROM list_members WHERE list_id = ij.list_id), 0) AS list_count
+           FROM import_jobs ij WHERE ij.brand_id=$1 AND ij.status IN ('queued','pending','processing')
+           ORDER BY ij.created_at DESC LIMIT 1`,
           [brand_id]
         );
         return res.status(200).json(rows[0] || null);

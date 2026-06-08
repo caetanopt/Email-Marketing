@@ -3311,7 +3311,8 @@ ${bodyRows}
             if (s.status === 'done') { localStorage.removeItem('pm_pending_import'); _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0); return; }
             if (s.status === 'failed') { localStorage.removeItem('pm_pending_import'); showToast('Importação falhou no servidor.', 'error'); return; }
             const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
-            const sub = s.status === 'queued' ? 'Em fila — aguarda o próximo ciclo do servidor…' : `${s.processed||0} / ${s.total||0} contactos`;
+            const displayCount = s.list_id ? (s.list_count ?? s.processed ?? 0) : (s.processed || 0);
+            const sub = s.status === 'queued' ? 'Em fila — aguarda o próximo ciclo do servidor…' : `${displayCount} / ${s.total||0} contactos`;
             _importJob = { source: 'restore', brandId, jobId: s.id };
             _showImportBanner('A processar em segundo plano…', pct, sub);
             if (s.list_id && _currentListId && String(s.list_id) === String(_currentListId)) {
@@ -3333,9 +3334,11 @@ ${bodyRows}
                     return;
                 }
                 const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
+                // Use live list_count (actual DB rows) to match the CONTACTOS column
+                const displayCount = s.list_id ? (s.list_count ?? s.processed ?? 0) : (s.processed || 0);
                 const sub = s.status === 'queued'
                     ? 'Em fila — aguarda o próximo ciclo do servidor…'
-                    : `${s.processed||0} / ${s.total||0} contactos`;
+                    : `${displayCount} / ${s.total||0} contactos`;
                 // Update floating banner
                 const banner = document.getElementById('importBanner');
                 if (banner && !banner.classList.contains('hidden')) {
