@@ -8543,8 +8543,15 @@ ${sections.join('\n\n')}
         if (_magicToken) { _handleMagicToken(_magicToken); return; }
         // Check for existing session
         const token = getToken();
+        // Validate token expiry client-side before touching any screen (avoids dashboard flash)
+        if (token) {
+            try {
+                const _payload = JSON.parse(atob(token.split('.')[1]));
+                if (_payload.exp * 1000 < Date.now()) { clearAuth(); }
+            } catch { clearAuth(); }
+        }
         const brands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
-        if (token && brands.length) {
+        if (getToken() && brands.length) {
             _userBrandIds = new Set(brands.map(b => b.brand_id));
             // Fetch full brand list from API (needed for dynamic brand selector + new brands)
             _fetchApiBrands();
