@@ -311,6 +311,22 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    if (action === 'import_active' && req.method === 'GET') {
+      try {
+        await query(IMPORT_INIT_SQL);
+        const rows = await query(
+          `SELECT id, status, total, processed, imported, skipped, failed_cnt, file_name, list_name, list_id, created_at
+           FROM import_jobs WHERE brand_id=$1 AND status IN ('queued','pending','processing')
+           ORDER BY created_at DESC LIMIT 1`,
+          [brand_id]
+        );
+        return res.status(200).json(rows[0] || null);
+      } catch (e) {
+        if (e.code === '42P01') return res.status(200).json(null);
+        throw e;
+      }
+    }
+
     if (action === 'import_cancel' && req.method === 'POST') {
       const { job_id } = req.body || {};
       if (!job_id) return res.status(400).json({ error: 'job_id obrigatório' });

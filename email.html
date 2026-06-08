@@ -3287,6 +3287,30 @@ ${bodyRows}
         if (_importPollTimer) { clearTimeout(_importPollTimer); _importPollTimer = null; }
     }
 
+    async function _restoreActiveImport(brandId) {
+        // Query the server for any active import job — works for all users, not just the importer
+        try {
+            const s = await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_active`);
+            if (!s) { localStorage.removeItem('pm_pending_import'); return; }
+            // Job found — update localStorage so the poll loop has the job_id
+            const existing = (() => { try { return JSON.parse(localStorage.getItem('pm_pending_import') || 'null'); } catch { return null; } })();
+            if (!existing || existing.job_id !== s.id) {
+                localStorage.setItem('pm_pending_import', JSON.stringify({ job_id: s.id, brand_id: brandId, total: s.total, list_id: s.list_id }));
+            }
+            if (s.status === 'done') { localStorage.removeItem('pm_pending_import'); _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0); return; }
+            if (s.status === 'failed') { localStorage.removeItem('pm_pending_import'); showToast('Importação falhou no servidor.', 'error'); return; }
+            const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
+            const sub = s.status === 'queued' ? 'Em fila — aguarda o próximo ciclo do servidor…' : `${s.processed||0} / ${s.total||0} contactos`;
+            _importJob = { source: 'restore', brandId, jobId: s.id };
+            _showImportBanner('A processar em segundo plano…', pct, sub);
+            if (s.list_id && _currentListId && String(s.list_id) === String(_currentListId)) {
+                _showListImportStatus(pct, sub);
+            }
+            _markListImportRow();
+            _pollImportStatus(s.id, brandId, 'restore', () => {});
+        } catch (_) {}
+    }
+
     function _pollImportStatus(jobId, brandId, source, onDone) {
         if (_importPollTimer) clearTimeout(_importPollTimer);
         const poll = async () => {
@@ -8325,46 +8349,8 @@ ${sections.join('\n\n')}
         renderBrandData(id);
         showScreen(targetScreen || 'dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
-        // Restore import banner if there's a pending job (survives page reload)
-        try {
-            const pending = JSON.parse(localStorage.getItem('pm_pending_import') || 'null');
-            if (pending && pending.job_id && pending.brand_id === id) {
-                // Show banner immediately — don't wait for API
-                _importJob = { source: 'restore', brandId: id, jobId: pending.job_id };
-                _showImportBanner('A processar em segundo plano…', 0, 'A verificar estado…');
-                // Immediate status check to update banner with real progress
-                apiFetch(`/api/contacts?brand_id=${id}&action=import_status&job_id=${pending.job_id}`)
-                    .then(s => {
-                        if (!s) {
-                            _pollImportStatus(pending.job_id, id, 'restore', () => {});
-                            return;
-                        }
-                        if (s.status === 'done') {
-                            localStorage.removeItem('pm_pending_import');
-                            _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0);
-                            return;
-                        }
-                        if (s.status === 'failed') {
-                            localStorage.removeItem('pm_pending_import');
-                            document.getElementById('importBanner')?.classList.add('hidden');
-                            showToast('Importação falhou no servidor.', 'error');
-                            return;
-                        }
-                        const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
-                        const sub = s.status === 'queued'
-                            ? 'Em fila — aguarda o próximo ciclo do servidor…'
-                            : `${s.processed||0} / ${s.total||0} contactos`;
-                        _showImportBanner('A processar em segundo plano…', pct, sub);
-                        if (s.list_id && _currentListId && String(s.list_id) === String(_currentListId)) {
-                            _showListImportStatus(pct, sub);
-                        }
-                        _pollImportStatus(pending.job_id, id, 'restore', () => {});
-                    })
-                    .catch(() => {
-                        _pollImportStatus(pending.job_id, id, 'restore', () => {});
-                    });
-            }
-        } catch (_) {}
+        // Restore import banner — query server so all users (not just the importer) see it
+        _restoreActiveImport(id);
         _loadTeGlobalSettings().catch(() => {});
         // Save as default brand for next login
         const _pu = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
@@ -8806,28 +8792,8 @@ ${sections.join('\n\n')}
                 applyBrandToSidebar();
                 renderBrandData(savedBrand.id);
                 _loadTeGlobalSettings().catch(() => {});
-                // Restore import banner (selectBrand is not called in this fast path)
-                try {
-                    const _pending = JSON.parse(localStorage.getItem('pm_pending_import') || 'null');
-                    if (_pending && _pending.job_id && _pending.brand_id === savedBrand.id) {
-                        _importJob = { source: 'restore', brandId: savedBrand.id, jobId: _pending.job_id };
-                        _showImportBanner('A processar em segundo plano…', 0, 'A verificar estado…');
-                        apiFetch(`/api/contacts?brand_id=${savedBrand.id}&action=import_status&job_id=${_pending.job_id}`)
-                            .then(s => {
-                                if (!s) { _pollImportStatus(_pending.job_id, savedBrand.id, 'restore', () => {}); return; }
-                                if (s.status === 'done') { localStorage.removeItem('pm_pending_import'); _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0); return; }
-                                if (s.status === 'failed') { localStorage.removeItem('pm_pending_import'); document.getElementById('importBanner')?.classList.add('hidden'); showToast('Importação falhou.', 'error'); return; }
-                                const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
-                                const sub = s.status === 'queued' ? 'Em fila — aguarda o próximo ciclo do servidor…' : `${s.processed||0} / ${s.total||0} contactos`;
-                                _showImportBanner('A processar em segundo plano…', pct, sub);
-                                if (s.list_id && _currentListId && String(s.list_id) === String(_currentListId)) {
-                                    _showListImportStatus(pct, sub);
-                                }
-                                _pollImportStatus(_pending.job_id, savedBrand.id, 'restore', () => {});
-                            })
-                            .catch(() => { _pollImportStatus(_pending.job_id, savedBrand.id, 'restore', () => {}); });
-                    }
-                } catch (_) {}
+                // Restore import banner — query server so all users see it (selectBrand not called in fast path)
+                _restoreActiveImport(savedBrand.id);
                 // Campaign-specific screens need the campaign loaded first
                 const _repMatch  = location.hash.match(/^#campaigns\/(\d+)\/report$/);
                 const _campMatch = location.hash.match(/^#campaigns\/(\d+)$/);
