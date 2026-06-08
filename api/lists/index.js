@@ -226,12 +226,18 @@ module.exports = withAuth(async (req, res, user) => {
       }
 
       if (req.method === 'POST' && action === 'add_contact') {
-        const { contact_id: cid } = req.body || {};
+        const { contact_id: cid, extra_data } = req.body || {};
         if (!cid) return res.status(400).json({ error: 'contact_id obrigatório' });
         await query(
           'INSERT INTO list_members (list_id, contact_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
           [id, cid]
         );
+        if (extra_data && typeof extra_data === 'object' && Object.keys(extra_data).length) {
+          await query(
+            'UPDATE list_members SET extra_data=$1::jsonb WHERE list_id=$2 AND contact_id=$3',
+            [JSON.stringify(extra_data), id, cid]
+          );
+        }
         return res.status(200).json({ ok: true });
       }
 

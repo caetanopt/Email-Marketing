@@ -3183,7 +3183,7 @@ ${bodyRows}
             if (isTxt) {
                 rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
             } else {
-                rows = _parseCsv(text);
+                rows = _parseCsv(text, _listExtraFields);
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); btn.disabled = false; btn.innerHTML = 'Importar'; return; }
 
@@ -3193,10 +3193,13 @@ ${bodyRows}
                 const chunk = rows.slice(i, i + CHUNK);
                 await Promise.all(chunk.map(async c => {
                     try {
-                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
+                        const { _extra_data, ...contactData } = c;
+                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(contactData) });
                         imported++;
                         if (_currentListId && r.id) {
-                            try { await apiFetch(`/api/lists/${_currentListId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch (err) { console.error(err); }
+                            const body = { contact_id: r.id };
+                            if (_extra_data) body.extra_data = _extra_data;
+                            try { await apiFetch(`/api/lists/${_currentListId}?action=add_contact`, { method: 'POST', body: JSON.stringify(body) }); } catch (err) { console.error(err); }
                         }
                     } catch (err) { failed++; console.error('import contact failed:', err); }
                 }));
@@ -8709,7 +8712,7 @@ ${sections.join('\n\n')}
         if (btn) btn.disabled = true;
     }
 
-    function _parseCsv(text) {
+    function _parseCsv(text, extraFields = []) {
         // Auto-detect delimiter (comma, semicolon, tab)
         const firstLine = text.split(/\r?\n/, 1)[0] || '';
         const delim = firstLine.includes(';') ? ';' : firstLine.includes('\t') ? '\t' : ',';
@@ -8739,17 +8742,30 @@ ${sections.join('\n\n')}
         const lastIdx    = headers.findIndex(h => h === 'last_name' || h === 'apelido');
         const phoneIdx   = headers.findIndex(h => h === 'phone' || h === 'telefone');
         const companyIdx = headers.findIndex(h => h === 'company' || h === 'empresa');
+        // Map extra fields by name (case-insensitive)
+        const extraIdx = {};
+        (extraFields || []).forEach(f => {
+            const idx = headers.findIndex(h => h === f.name.toLowerCase());
+            if (idx >= 0) extraIdx[f.name] = idx;
+        });
         if (emailIdx < 0) return [];
         return lines.slice(1).map(l => {
             const cols = parseLine(l);
             const fname = nameIdx >= 0 ? cols[nameIdx] : '';
             const lname = lastIdx >= 0 ? cols[lastIdx] : '';
-            return {
+            const row = {
                 email:   (cols[emailIdx]||'').toLowerCase(),
                 name:    [fname, lname].filter(Boolean).join(' ').trim() || null,
-                phone:   phoneIdx >= 0 ? cols[phoneIdx] : null,
-                company: companyIdx >= 0 ? cols[companyIdx] : null,
+                phone:   phoneIdx >= 0 ? (cols[phoneIdx]||null) : null,
+                company: companyIdx >= 0 ? (cols[companyIdx]||null) : null,
             };
+            // Capture extra field values
+            const extra = {};
+            Object.entries(extraIdx).forEach(([name, idx]) => {
+                if (cols[idx]?.trim()) extra[name] = cols[idx].trim();
+            });
+            if (Object.keys(extra).length) row._extra_data = extra;
+            return row;
         }).filter(c => c.email && _isValidEmail(c.email));
     }
 

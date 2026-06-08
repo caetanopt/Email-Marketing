@@ -115,8 +115,11 @@ module.exports = async function handler(req, res) {
         `INSERT INTO contacts (brand_id, email, name, phone, company, source, custom_attributes)
          VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (brand_id, email) DO UPDATE
-           SET name=EXCLUDED.name, phone=EXCLUDED.phone, company=EXCLUDED.company,
-               source=EXCLUDED.source, custom_attributes=EXCLUDED.custom_attributes,
+           SET name=COALESCE(EXCLUDED.name, contacts.name),
+               phone=COALESCE(EXCLUDED.phone, contacts.phone),
+               company=COALESCE(EXCLUDED.company, contacts.company),
+               source=EXCLUDED.source,
+               custom_attributes=COALESCE(EXCLUDED.custom_attributes, contacts.custom_attributes),
                updated_at=NOW()
          RETURNING id`,
         [brand_id, e, name||null, phone||null,
