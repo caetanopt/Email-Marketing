@@ -8525,7 +8525,10 @@ ${sections.join('\n\n')}
                         showScreen('campaignReport');
                     }).catch(() => showScreen('campaigns'));
                 } else if (_campMatch) {
-                    showCampaign(_campMatch[1]);
+                    apiFetch(`/api/campaigns/${_campMatch[1]}`).then(c => {
+                        _currentCampaign = c;
+                        showCampaign(null, c);
+                    }).catch(() => showScreen('campaigns'));
                 } else {
                     showScreen(hashScreen);
                 }
