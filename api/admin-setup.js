@@ -48,5 +48,13 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ users });
   }
 
-  return res.status(400).json({ error: 'action inválida. Use: upsert_admin ou list_users' });
+  if (action === 'delete_user') {
+    if (!newEmail) return res.status(400).json({ error: 'email obrigatório' });
+    const emailNorm = newEmail.toLowerCase().trim();
+    const rows = await query('DELETE FROM users WHERE email=$1 RETURNING id, email', [emailNorm]);
+    if (!rows[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
+    return res.status(200).json({ ok: true, action: 'deleted', user: rows[0] });
+  }
+
+  return res.status(400).json({ error: 'action inválida. Use: upsert_admin, list_users ou delete_user' });
 };
