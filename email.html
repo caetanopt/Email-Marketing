@@ -3183,11 +3183,26 @@ ${bodyRows}
     }
 
     let _importJob = null;
+    let _importPollTimer = null;
 
-    function _updateImportProgressUI(job) {
-        const pct = job.total ? Math.round(job.processed / job.total * 100) : 0;
-        const sub = `${job.processed} / ${job.total}`;
-        if (job.source === 'list') {
+    function _showImportBanner(title, pct, sub) {
+        const banner = document.getElementById('importBanner');
+        if (!banner) return;
+        document.getElementById('importBannerSpinner')?.classList.remove('hidden');
+        document.getElementById('importBannerCheck')?.classList.add('hidden');
+        document.getElementById('importBannerTitle').textContent = title;
+        document.getElementById('importBannerBar').style.width = (pct||0) + '%';
+        document.getElementById('importBannerBar').classList.replace('bg-green-400','bg-blue-400');
+        document.getElementById('importBannerSub').textContent = sub || '';
+        banner.classList.remove('hidden');
+    }
+
+    function _updateImportProgressUI(processed, total, phase, source) {
+        const pct = total ? Math.round(processed / total * 100) : 0;
+        const sub = phase === 'upload'
+            ? `A enviar… ${pct}%`
+            : `${processed} / ${total} contactos`;
+        if (source === 'list') {
             const bar = document.getElementById('liProgressBar');
             const s = document.getElementById('liProgressSub');
             if (bar) bar.style.width = pct + '%';
@@ -3200,41 +3215,12 @@ ${bodyRows}
         }
         const banner = document.getElementById('importBanner');
         if (banner && !banner.classList.contains('hidden')) {
-            const b = document.getElementById('importBannerBar');
-            const s = document.getElementById('importBannerSub');
-            if (b) b.style.width = pct + '%';
-            if (s) s.textContent = sub;
+            document.getElementById('importBannerBar').style.width = pct + '%';
+            document.getElementById('importBannerSub').textContent = sub;
         }
     }
 
-    async function _runImportChunks(chunks, brandId, listId, job) {
-        for (const chunk of chunks) {
-            let success = false;
-            for (let attempt = 1; attempt <= 3 && !success; attempt++) {
-                try {
-                    const r = await apiFetch(
-                        `/api/contacts?brand_id=${brandId}&action=bulk_import`,
-                        { method: 'POST', body: JSON.stringify({ contacts: chunk, list_id: listId || null }) }
-                    );
-                    job.imported += r.imported || 0;
-                    job.skipped  += r.skipped  || 0;
-                    job.failed   += r.failed   || 0;
-                    success = true;
-                } catch {
-                    if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 2000));
-                    else job.failed += chunk.length;
-                }
-            }
-            job.processed = Math.min(job.processed + chunk.length, job.total);
-            _updateImportProgressUI(job);
-        }
-        job.done = true;
-    }
-
-    function _finishImportUI(job) {
-        const { imported, skipped, failed } = job;
-        const msg = `${imported} contacto${imported!==1?'s':''} importado${imported!==1?'s':''}${skipped?`, ${skipped} ignorado${skipped!==1?'s':''}`:''  }${failed?`, ${failed} falha${failed!==1?'s':''}`:''}.`;
-        showToast(msg);
+    function _finishImportBanner(imported, skipped, failed) {
         const banner = document.getElementById('importBanner');
         if (banner && !banner.classList.contains('hidden')) {
             document.getElementById('importBannerSpinner')?.classList.add('hidden');
@@ -3242,23 +3228,39 @@ ${bodyRows}
             document.getElementById('importBannerTitle').textContent = 'Importação concluída';
             document.getElementById('importBannerBar').style.width = '100%';
             document.getElementById('importBannerBar').classList.replace('bg-blue-400','bg-green-400');
-            setTimeout(() => banner.classList.add('hidden'), 4000);
+            const msg = `${imported} importado${imported!==1?'s':''}${skipped?`, ${skipped} ignorado${skipped!==1?'s':''}`:''  }${failed?`, ${failed} falha${failed!==1?'s':''}`:''  }`;
+            document.getElementById('importBannerSub').textContent = msg;
+            setTimeout(() => banner.classList.add('hidden'), 5000);
         }
+        const toastMsg = `${imported} contacto${imported!==1?'s':''} importado${imported!==1?'s':''}${skipped?`, ${skipped} ignorado${skipped!==1?'s':''}`:''  }${failed?`, ${failed} falha${failed!==1?'s':''}`:''  }.`;
+        showToast(toastMsg);
         _importJob = null;
+        if (_importPollTimer) { clearTimeout(_importPollTimer); _importPollTimer = null; }
+    }
+
+    function _pollImportStatus(jobId, brandId, source, onDone) {
+        if (_importPollTimer) clearTimeout(_importPollTimer);
+        const poll = async () => {
+            try {
+                const s = await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_status&job_id=${jobId}`);
+                if (!s) return; // job gone
+                _updateImportProgressUI(s.processed || 0, s.total || 0, 'process', source);
+                if (s.status === 'done') {
+                    _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0);
+                    if (onDone) onDone();
+                    return;
+                }
+                if (s.status === 'failed') { showToast('Importação falhou no servidor.', 'error'); return; }
+            } catch {}
+            _importPollTimer = setTimeout(poll, 3000);
+        };
+        _importPollTimer = setTimeout(poll, 3000);
     }
 
     function _liDismissAndContinue() {
         closeListImportModal();
-        if (_importJob && !_importJob.done) {
-            const banner = document.getElementById('importBanner');
-            if (banner) {
-                document.getElementById('importBannerSpinner')?.classList.remove('hidden');
-                document.getElementById('importBannerCheck')?.classList.add('hidden');
-                document.getElementById('importBannerTitle').textContent = 'A importar contactos…';
-                document.getElementById('importBannerBar').classList.replace('bg-green-400','bg-blue-400');
-                banner.classList.remove('hidden');
-                _updateImportProgressUI(_importJob);
-            }
+        if (_importJob) {
+            _showImportBanner('A importar contactos…', 0, 'A enviar ficheiro…');
         }
     }
 
@@ -3266,6 +3268,7 @@ ${bodyRows}
         const btn = document.getElementById('liSubmitBtn');
         if (!btn || btn.disabled) return;
         if (!_liFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
+
         const text = await _liFile.text();
         const isTxt = _liTab === 'txt';
         let rows = isTxt
@@ -3282,38 +3285,60 @@ ${bodyRows}
         const fileName = _liFile.name;
         const brandId  = _currentBrand.id;
 
-        _importJob = { done: false, source: 'list', total: rows.length, processed: 0, imported: 0, skipped: 0, failed: 0 };
-
-        // Show progress, hide normal footer
+        // Show progress section
         document.getElementById('liModalFooter')?.classList.add('hidden');
         document.getElementById('liProgressSection')?.classList.remove('hidden');
         document.getElementById('liProgressBar').style.width = '0%';
-        document.getElementById('liProgressSub').textContent = `0 / ${rows.length}`;
+        document.getElementById('liProgressSub').textContent = 'A criar importação…';
 
-        // Run in background (not awaited)
-        (async () => {
-            await _runImportChunks(chunks, brandId, listId, _importJob);
-            try {
-                await apiFetch(`/api/contacts?brand_id=${brandId}&action=imports`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        file_name: fileName, list_id: listId, list_name: listName,
-                        total_rows: rows.length,
-                        imported: _importJob.imported, skipped: _importJob.skipped, failed: _importJob.failed,
-                        status: _importJob.failed === 0 ? 'completed' : (_importJob.imported > 0 ? 'partial' : 'failed'),
+        _importJob = { source: 'list', brandId, jobId: null };
+
+        try {
+            // 1 — Create job on server
+            const { job_id } = await apiFetch(
+                `/api/contacts?brand_id=${brandId}&action=import_create`,
+                { method: 'POST', body: JSON.stringify({ total: rows.length, file_name: fileName, list_id: listId, list_name: listName }) }
+            );
+            _importJob.jobId = job_id;
+
+            // 2 — Upload chunks concurrently (5 at a time)
+            const CONCURRENCY = 5;
+            let uploaded = 0;
+            for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+                const batch = chunks.slice(i, i + CONCURRENCY);
+                await Promise.all(batch.map((chunk, j) =>
+                    apiFetch(`/api/contacts?brand_id=${brandId}&action=import_chunk`, {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id, seq: i + j, contacts: chunk })
                     })
-                });
-            } catch {}
-            // Reset modal state (whether open or closed)
+                ));
+                uploaded += batch.length;
+                _updateImportProgressUI(Math.min(uploaded * CHUNK, rows.length), rows.length, 'upload', 'list');
+            }
+
+            // 3 — Mark job as ready (cron will pick it up)
+            await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_ready`,
+                { method: 'POST', body: JSON.stringify({ job_id }) }
+            );
+
+            // 4 — Reset modal, show banner, start polling
             document.getElementById('liModalFooter')?.classList.remove('hidden');
             document.getElementById('liProgressSection')?.classList.add('hidden');
             const b = document.getElementById('liSubmitBtn');
             if (b) { b.disabled = false; b.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar'; }
-            closeListImportModal();
             _liClearFile();
-            _finishImportUI(_importJob || { imported: 0, skipped: 0, failed: 0 });
-            _loadListMembers(1);
-        })();
+            closeListImportModal();
+            _showImportBanner('A processar em segundo plano…', 0, `0 / ${rows.length} contactos`);
+            _pollImportStatus(job_id, brandId, 'list', () => _loadListMembers(1));
+
+        } catch (e) {
+            document.getElementById('liModalFooter')?.classList.remove('hidden');
+            document.getElementById('liProgressSection')?.classList.add('hidden');
+            const b = document.getElementById('liSubmitBtn');
+            if (b) { b.disabled = false; b.innerHTML = 'Importar'; }
+            _importJob = null;
+            showToast('Erro: ' + e.message, 'error');
+        }
     }
 
     let _listEditCurrentPage = 1;
@@ -8857,6 +8882,7 @@ ${sections.join('\n\n')}
         const btn = document.getElementById('importSubmitBtn');
         if (!btn || btn.disabled) return;
         if (!_importFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
+
         const text = await _importFile.text();
         const isTxt = _importFile.name.toLowerCase().endsWith('.txt');
         let rows = isTxt
@@ -8874,34 +8900,54 @@ ${sections.join('\n\n')}
         const fileName = _importFile.name;
         const brandId  = _currentBrand.id;
 
-        _importJob = { done: false, source: 'contacts', total: rows.length, processed: 0, imported: 0, skipped: 0, failed: 0 };
-
         btn.disabled = true;
         btn.classList.add('hidden');
         document.getElementById('mockImportProgress')?.classList.remove('hidden');
         document.getElementById('mockProgressBar').style.width = '0%';
-        document.getElementById('mockProgressSub').textContent = `0 / ${rows.length}`;
+        document.getElementById('mockProgressSub').textContent = 'A criar importação…';
+        _importJob = { source: 'contacts', brandId, jobId: null };
 
-        (async () => {
-            await _runImportChunks(chunks, brandId, listId, _importJob);
-            try {
-                await apiFetch(`/api/contacts?brand_id=${brandId}&action=imports`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        file_name: fileName, list_id: listId, list_name: listName,
-                        total_rows: rows.length,
-                        imported: _importJob.imported, skipped: _importJob.skipped, failed: _importJob.failed,
-                        status: _importJob.failed === 0 ? 'completed' : (_importJob.imported > 0 ? 'partial' : 'failed'),
+        try {
+            const { job_id } = await apiFetch(
+                `/api/contacts?brand_id=${brandId}&action=import_create`,
+                { method: 'POST', body: JSON.stringify({ total: rows.length, file_name: fileName, list_id: listId, list_name: listName }) }
+            );
+            _importJob.jobId = job_id;
+
+            const CONCURRENCY = 5;
+            let uploaded = 0;
+            for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+                const batch = chunks.slice(i, i + CONCURRENCY);
+                await Promise.all(batch.map((chunk, j) =>
+                    apiFetch(`/api/contacts?brand_id=${brandId}&action=import_chunk`, {
+                        method: 'POST',
+                        body: JSON.stringify({ job_id, seq: i + j, contacts: chunk })
                     })
-                });
-            } catch {}
+                ));
+                uploaded += batch.length;
+                _updateImportProgressUI(Math.min(uploaded * CHUNK, rows.length), rows.length, 'upload', 'contacts');
+            }
+
+            await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_ready`,
+                { method: 'POST', body: JSON.stringify({ job_id }) }
+            );
+
             clearMockFile();
             btn.disabled = false;
             btn.classList.remove('hidden');
             document.getElementById('mockImportProgress')?.classList.add('hidden');
-            _finishImportUI(_importJob || { imported: 0, skipped: 0, failed: 0 });
-            Promise.all([_loadContacts(brandId), _loadLists(brandId), _loadImportHistory()]).catch(() => {});
-        })();
+            _showImportBanner('A processar em segundo plano…', 0, `0 / ${rows.length} contactos`);
+            _pollImportStatus(job_id, brandId, 'contacts', () =>
+                Promise.all([_loadContacts(brandId), _loadLists(brandId), _loadImportHistory()]).catch(() => {})
+            );
+
+        } catch (e) {
+            btn.disabled = false;
+            btn.classList.remove('hidden');
+            document.getElementById('mockImportProgress')?.classList.add('hidden');
+            _importJob = null;
+            showToast('Erro: ' + e.message, 'error');
+        }
     }
 
     function setImportTab(tab) {

@@ -1,8 +1,201 @@
 const { query, transaction } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 
+const IMPORT_INIT_SQL = `
+  CREATE TABLE IF NOT EXISTS import_jobs (
+    id         SERIAL PRIMARY KEY,
+    brand_id   VARCHAR NOT NULL,
+    list_id    INTEGER,
+    list_name  VARCHAR,
+    file_name  VARCHAR,
+    status     VARCHAR DEFAULT 'uploading',
+    total      INTEGER DEFAULT 0,
+    processed  INTEGER DEFAULT 0,
+    imported   INTEGER DEFAULT 0,
+    skipped    INTEGER DEFAULT 0,
+    failed_cnt INTEGER DEFAULT 0,
+    created_by INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS import_chunks (
+    id       SERIAL PRIMARY KEY,
+    job_id   INTEGER NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+    seq      INTEGER NOT NULL,
+    status   VARCHAR DEFAULT 'pending',
+    contacts JSONB NOT NULL,
+    imported INTEGER DEFAULT 0,
+    skipped  INTEGER DEFAULT 0,
+    failed   INTEGER DEFAULT 0
+  )`;
+
+const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+// ── Shared batch processor (used by bulk_import and cron) ──────────────────
+async function processBatch(brandId, listId, batch) {
+  let imported = 0, skipped = 0, failed = 0;
+
+  const validRows = [];
+  for (const c of batch) {
+    const email = (c.email || '').toLowerCase().trim();
+    if (!email || !EMAIL_RE.test(email)) { skipped++; continue; }
+    validRows.push({ ...c, email });
+  }
+
+  if (validRows.length) {
+    try {
+      const allEmails = validRows.map(c => c.email);
+      const suppressed = await query(`SELECT email FROM suppression WHERE email = ANY($1)`, [allEmails]);
+      if (suppressed.length) {
+        const suppressedSet = new Set(suppressed.map(r => r.email));
+        const filtered = validRows.filter(c => !suppressedSet.has(c.email));
+        skipped += validRows.length - filtered.length;
+        validRows.length = 0;
+        validRows.push(...filtered);
+      }
+    } catch (_) {}
+  }
+
+  if (validRows.length) {
+    try {
+      await transaction(async q => {
+        const vals = [], params = [];
+        let p = 1;
+        validRows.forEach(c => {
+          vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import')`);
+          params.push(brandId, c.email, c.name||null, c.phone||null, c.company||null);
+        });
+        const inserted = await q(
+          `INSERT INTO contacts (brand_id, email, name, phone, company, source)
+           VALUES ${vals.join(',')}
+           ON CONFLICT (brand_id, email) DO UPDATE
+             SET name=COALESCE(EXCLUDED.name, contacts.name),
+                 phone=COALESCE(EXCLUDED.phone, contacts.phone),
+                 company=COALESCE(EXCLUDED.company, contacts.company),
+                 source=EXCLUDED.source, updated_at=NOW()
+           RETURNING id, email`,
+          params
+        );
+        imported += inserted.length;
+
+        if (listId && inserted.length) {
+          const lvals = inserted.map((_, i) => `($1,$${i+2})`).join(',');
+          await q(
+            `INSERT INTO list_members (list_id, contact_id) VALUES ${lvals} ON CONFLICT DO NOTHING`,
+            [listId, ...inserted.map(r => r.id)]
+          );
+          const emailToId = Object.fromEntries(inserted.map(r => [r.email, r.id]));
+          for (const c of validRows) {
+            if (!c._extra_data) continue;
+            const cid = emailToId[c.email];
+            if (!cid) continue;
+            await q(
+              'UPDATE list_members SET extra_data=$1::jsonb WHERE list_id=$2 AND contact_id=$3',
+              [JSON.stringify(c._extra_data), listId, cid]
+            );
+          }
+        }
+      });
+    } catch (err) {
+      console.error('processBatch error:', err);
+      failed += validRows.length;
+      imported = 0;
+    }
+  }
+
+  return { imported, skipped, failed };
+}
+
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
+
+  // ── Cron: process pending import jobs (no user auth) ──────────────────────
+  if (req.query.action === 'import_process') {
+    const isVercelCron = req.headers['x-vercel-cron'] === '1';
+    const secret = process.env.CRON_SECRET;
+    const auth = req.headers.authorization;
+    if (!isVercelCron && (!secret || auth !== `Bearer ${secret}`)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+      await query(IMPORT_INIT_SQL);
+      const DEADLINE = Date.now() + 8000; // leave 2s buffer for Vercel 10s limit
+      let processed_jobs = 0;
+
+      while (Date.now() < DEADLINE) {
+        // Pick oldest queued job (skip locked to handle concurrent cron runs)
+        const jobs = await query(
+          `SELECT id, brand_id, list_id FROM import_jobs
+           WHERE status IN ('queued','processing')
+           ORDER BY created_at LIMIT 1`
+        );
+        if (!jobs[0]) break;
+        const job = jobs[0];
+
+        await query(`UPDATE import_jobs SET status='processing', updated_at=NOW() WHERE id=$1`, [job.id]);
+
+        // Find next pending chunk
+        const chunks = await query(
+          `SELECT id, contacts FROM import_chunks
+           WHERE job_id=$1 AND status='pending' ORDER BY seq LIMIT 1`,
+          [job.id]
+        );
+
+        if (!chunks[0]) {
+          // All chunks processed — finalise job
+          const stats = await query(
+            `SELECT COALESCE(SUM(imported),0)::int imported, COALESCE(SUM(skipped),0)::int skipped,
+                    COALESCE(SUM(failed),0)::int failed
+             FROM import_chunks WHERE job_id=$1`,
+            [job.id]
+          );
+          const s = stats[0];
+          const jobRow = await query(
+            `UPDATE import_jobs SET status='done', imported=$1, skipped=$2, failed_cnt=$3,
+             processed=total, updated_at=NOW() WHERE id=$4
+             RETURNING brand_id, list_id, list_name, file_name, total, created_by`,
+            [s.imported, s.skipped, s.failed, job.id]
+          );
+          // Record in imports history
+          if (jobRow[0]) {
+            const j = jobRow[0];
+            try {
+              await query(
+                `INSERT INTO imports (brand_id, file_name, list_id, list_name, total_rows, imported, skipped, failed, status, created_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                [j.brand_id, j.file_name, j.list_id, j.list_name, j.total,
+                 s.imported, s.skipped, s.failed,
+                 s.failed === 0 ? 'completed' : (s.imported > 0 ? 'partial' : 'failed'),
+                 j.created_by]
+              );
+            } catch (_) {}
+          }
+          processed_jobs++;
+          continue;
+        }
+
+        const chunk = chunks[0];
+        const contacts = Array.isArray(chunk.contacts) ? chunk.contacts : [];
+        const result = await processBatch(job.brand_id, job.list_id, contacts);
+
+        await query(
+          `UPDATE import_chunks SET status='done', imported=$1, skipped=$2, failed=$3 WHERE id=$4`,
+          [result.imported, result.skipped, result.failed, chunk.id]
+        );
+        await query(
+          `UPDATE import_jobs SET processed=processed+$1, updated_at=NOW() WHERE id=$2`,
+          [contacts.length, job.id]
+        );
+      }
+
+      return res.status(200).json({ ok: true, processed_jobs });
+    } catch (err) {
+      console.error('import_process cron error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── All other actions require user auth ───────────────────────────────────
   const user = requireAuth(req, res);
   if (!user) return;
 
@@ -58,6 +251,55 @@ module.exports = async function handler(req, res) {
       return res.status(405).json({ error: 'Método não permitido' });
     }
 
+    // ── Server-side import queue ──────────────────────────────────────────────
+    if (action === 'import_create' && req.method === 'POST') {
+      await query(IMPORT_INIT_SQL);
+      const { total, file_name, list_id: lid, list_name } = req.body || {};
+      const rows = await query(
+        `INSERT INTO import_jobs (brand_id, list_id, list_name, file_name, total, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [brand_id, lid||null, list_name||null, file_name||null, total||0, user.id]
+      );
+      return res.status(201).json({ job_id: rows[0].id });
+    }
+
+    if (action === 'import_chunk' && req.method === 'POST') {
+      const { job_id, seq, contacts: chunk } = req.body || {};
+      if (!job_id || !Array.isArray(chunk)) return res.status(400).json({ error: 'job_id e contacts obrigatórios' });
+      await query(
+        `INSERT INTO import_chunks (job_id, seq, contacts) VALUES ($1,$2,$3::jsonb)`,
+        [job_id, seq||0, JSON.stringify(chunk)]
+      );
+      return res.status(201).json({ ok: true });
+    }
+
+    if (action === 'import_ready' && req.method === 'POST') {
+      const { job_id } = req.body || {};
+      if (!job_id) return res.status(400).json({ error: 'job_id obrigatório' });
+      await query(
+        `UPDATE import_jobs SET status='queued', updated_at=NOW() WHERE id=$1 AND brand_id=$2`,
+        [job_id, brand_id]
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'import_status' && req.method === 'GET') {
+      const { job_id } = req.query;
+      if (!job_id) return res.status(400).json({ error: 'job_id obrigatório' });
+      try {
+        await query(IMPORT_INIT_SQL);
+        const rows = await query(
+          `SELECT id, status, total, processed, imported, skipped, failed_cnt, file_name, list_name, created_at
+           FROM import_jobs WHERE id=$1 AND brand_id=$2`,
+          [job_id, brand_id]
+        );
+        return res.status(200).json(rows[0] || null);
+      } catch (e) {
+        if (e.code === '42P01') return res.status(200).json(null);
+        throw e;
+      }
+    }
+
     if (req.method === 'GET') {
       const params = [brand_id];
       let join = '', where = 'WHERE c.brand_id = $1';
@@ -94,7 +336,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) });
     }
 
-    // ── Sync suppression: mark contacts already in suppression list ──
+    // ── Sync suppression ──────────────────────────────────────────────────────
     if (action === 'sync_suppression' && req.method === 'POST') {
       await query(
         `UPDATE contacts c
@@ -106,89 +348,12 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // ── Bulk import ─────────────────────────────────────────────
+    // ── Bulk import (direct, kept for small imports / campaign wizard) ────────
     if (action === 'bulk_import' && req.method === 'POST') {
       const { contacts: rows, list_id: listId } = req.body || {};
       if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'contacts obrigatório' });
-
-      // Server-side email + domain validation
-      const emailRe = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      let skipped = 0, failed = 0, imported = 0;
-
-      const validRows = [];
-      for (const c of rows) {
-        const email = (c.email || '').toLowerCase().trim();
-        if (!email || !emailRe.test(email)) { skipped++; continue; }
-        validRows.push({ ...c, email });
-      }
-
-      // Pre-filter suppression list — skip suppressed emails before inserting
-      if (validRows.length) {
-        try {
-          const allEmails = validRows.map(c => c.email);
-          const suppressed = await query(`SELECT email FROM suppression WHERE email = ANY($1)`, [allEmails]);
-          if (suppressed.length) {
-            const suppressedSet = new Set(suppressed.map(r => r.email));
-            const before = validRows.length;
-            const filtered = validRows.filter(c => !suppressedSet.has(c.email));
-            skipped += before - filtered.length;
-            validRows.length = 0;
-            validRows.push(...filtered);
-          }
-        } catch (_) {}
-      }
-
-      const BATCH = 200;
-
-      for (let i = 0; i < validRows.length; i += BATCH) {
-        const batch = validRows.slice(i, i + BATCH);
-        try {
-          await transaction(async q => {
-            const vals = [], params = [];
-            let p = 1;
-            batch.forEach(c => {
-              vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import')`);
-              params.push(brand_id, c.email, c.name||null, c.phone||null, c.company||null);
-            });
-            const inserted = await q(
-              `INSERT INTO contacts (brand_id, email, name, phone, company, source)
-               VALUES ${vals.join(',')}
-               ON CONFLICT (brand_id, email) DO UPDATE
-                 SET name=COALESCE(EXCLUDED.name, contacts.name),
-                     phone=COALESCE(EXCLUDED.phone, contacts.phone),
-                     company=COALESCE(EXCLUDED.company, contacts.company),
-                     source=EXCLUDED.source, updated_at=NOW()
-               RETURNING id, email`,
-              params
-            );
-            imported += inserted.length;
-
-            if (listId && inserted.length) {
-              const lvals = inserted.map((_, i2) => `($1,$${i2+2})`).join(',');
-              await q(
-                `INSERT INTO list_members (list_id, contact_id) VALUES ${lvals} ON CONFLICT DO NOTHING`,
-                [listId, ...inserted.map(r => r.id)]
-              );
-              const emailToId = Object.fromEntries(inserted.map(r => [r.email, r.id]));
-              for (const c of batch) {
-                if (!c._extra_data) continue;
-                const cid = emailToId[c.email];
-                if (!cid) continue;
-                await q(
-                  'UPDATE list_members SET extra_data=$1::jsonb WHERE list_id=$2 AND contact_id=$3',
-                  [JSON.stringify(c._extra_data), listId, cid]
-                );
-              }
-            }
-          });
-        } catch (err) {
-          console.error('bulk_import batch error:', err);
-          failed += batch.length;
-          if (imported >= batch.length) imported -= batch.length;
-        }
-      }
-
-      return res.status(200).json({ imported, skipped, failed });
+      const result = await processBatch(brand_id, listId, rows);
+      return res.status(200).json(result);
     }
 
     if (req.method === 'POST') {
@@ -210,7 +375,6 @@ module.exports = async function handler(req, res) {
         [brand_id, e, name||null, phone||null,
          company||null, source||null, custom_attributes ? JSON.stringify(custom_attributes) : null]
       );
-      // Immediately mark as suppressed/unsubscribed if in suppression list
       await query(
         `UPDATE contacts SET status = (CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' ELSE 'suppressed' END)::contact_status
          FROM suppression s WHERE contacts.id=$1 AND contacts.email=s.email`,
