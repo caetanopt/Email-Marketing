@@ -9000,7 +9000,15 @@ ${sections.join('\n\n')}
             // Capture extra field values
             const extra = {};
             Object.entries(extraIdx).forEach(([name, idx]) => {
-                if (cols[idx]?.trim()) extra[name] = cols[idx].trim();
+                if (!cols[idx]?.trim()) return;
+                let val = cols[idx].trim();
+                // Convert DD/MM/YYYY or DD-MM-YYYY → YYYY-MM-DD for date fields
+                const field = (extraFields || []).find(f => f.name === name);
+                if (field?.type === 'date') {
+                    const dm = val.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+                    if (dm) val = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+                }
+                extra[name] = val;
             });
             if (Object.keys(extra).length) row._extra_data = extra;
             return row;
@@ -12218,14 +12226,14 @@ ${sections.join('\n\n')}
      MODAL — EDITAR CONTACTO (da lista)
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="listContactEditModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4" onclick="if(event.target===this)closeListContactEditModal()">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[88vh]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
             <h2 class="text-base font-semibold text-slate-900">Editar Contacto</h2>
             <button onclick="closeListContactEditModal()" class="text-slate-400 hover:text-slate-700">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="px-6 py-5 space-y-4">
+        <div class="px-6 py-5 space-y-4 overflow-y-auto flex-1">
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Email <span class="text-red-500">*</span></label>
                 <input id="lceEmail" type="email" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="email@exemplo.com" />
@@ -12256,7 +12264,7 @@ ${sections.join('\n\n')}
             </div>
             <div id="lceExtraFields"></div>
         </div>
-        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200">
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 flex-shrink-0">
             <button onclick="closeListContactEditModal()" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
             <button id="lceSubmitBtn" onclick="saveListContactEdit()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">Guardar</button>
         </div>
