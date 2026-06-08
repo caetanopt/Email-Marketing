@@ -311,18 +311,20 @@ module.exports = async function handler(req, res) {
 
       // ── Adicionar destinatários directos (sem lista) ────────────
       if (action === 'add_direct_recipients') {
-        const { contact_ids } = req.body || {};
+        const { contact_ids, temp_contact_ids = [] } = req.body || {};
         if (!Array.isArray(contact_ids) || !contact_ids.length)
           return res.status(400).json({ error: 'contact_ids obrigatório' });
+        await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
+        const tempSet = new Set((temp_contact_ids || []).map(Number));
         const contacts = await query(
           `SELECT id, email FROM contacts WHERE id = ANY($1::int[]) AND brand_id=$2`,
           [contact_ids, camp.brand_id]
         );
         if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
-        const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3},'pending')`).join(',');
+        const vals = contacts.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},'pending',$${i*4+4})`).join(',');
         await query(
-          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
-          contacts.flatMap(ct => [id, ct.id, ct.email])
+          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status,is_temp) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
+          contacts.flatMap(ct => [id, ct.id, ct.email, tempSet.has(Number(ct.id))])
         );
         return res.status(200).json({ ok: true, added: contacts.length });
       }
@@ -587,6 +589,17 @@ module.exports = async function handler(req, res) {
 
         if (remaining === 0) {
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
+          try {
+            await query(
+              `DELETE FROM contacts
+               WHERE id IN (
+                 SELECT cr.contact_id FROM campaign_recipients cr
+                 WHERE cr.campaign_id = $1 AND cr.is_temp = true
+                   AND NOT EXISTS (SELECT 1 FROM list_members lm WHERE lm.contact_id = cr.contact_id)
+               )`,
+              [id]
+            );
+          } catch (e) { if (e.code !== '42703') console.error('temp contact cleanup:', e); }
           try {
             const [totals] = await query(
               `SELECT COUNT(*) FILTER (WHERE status='sent')::int AS total_sent,

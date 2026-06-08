@@ -6013,9 +6013,10 @@ ${bodyRows}
             if (_wizDirectContactIds.length && campaignId) {
                 try {
                     await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
-                        method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds })
+                        method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds, temp_contact_ids: _wizTempContactIds })
                     });
                     _wizDirectContactIds = [];
+                    _wizTempContactIds = [];
                     _wizUpdateDirectNotice();
                 } catch (e) { console.error('add_direct_recipients:', e); }
             }
@@ -6255,6 +6256,7 @@ ${bodyRows}
         if (nb && _wizStep === 4) { nb.disabled = false; nb.textContent = 'Guardar Rascunho'; }
     }
     let _wizDirectContactIds = [];
+    let _wizTempContactIds = [];
     let _wizDirectContacts = [];
     let _wizExistingContacts = [];
     let _wizExistingDirectCount = 0;
@@ -6328,6 +6330,7 @@ ${bodyRows}
 
     function _wizClearDirect() {
         _wizDirectContactIds = [];
+        _wizTempContactIds = [];
         _wizExistingDirectCount = 0;
         _wizDirectContacts = [];
         _wizExistingContacts = [];
@@ -6420,6 +6423,7 @@ ${bodyRows}
             // Import contacts to DB, collect IDs — show live progress per chunk
             let imported = 0, failed = 0;
             const newIds = [];
+            const newTempIds = [];
             const CHUNK = 5;
             _wizImporting = true;
             _wizUpdateProgress(0, rows.length);
@@ -6427,7 +6431,7 @@ ${bodyRows}
                 await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
                     try {
                         const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
-                        if (r.id) { newIds.push(r.id); imported++; }
+                        if (r.id) { newIds.push(r.id); if (r.created) newTempIds.push(r.id); imported++; }
                     } catch { failed++; }
                 }));
                 _wizUpdateProgress(imported + failed, rows.length);
@@ -6442,6 +6446,7 @@ ${bodyRows}
             } catch {}
 
             // Store IDs and display data for direct campaign recipients (deduplicated)
+            newTempIds.forEach(id => { if (!_wizTempContactIds.includes(id)) _wizTempContactIds.push(id); });
             newIds.forEach(id => { if (!_wizDirectContactIds.includes(id)) _wizDirectContactIds.push(id); });
             rows.forEach(r => { if (r.email && !_wizDirectContacts.find(c => c.email === r.email.toLowerCase())) _wizDirectContacts.push({ email: r.email.toLowerCase(), name: [r.first_name, r.last_name].filter(Boolean).join(' ') }); });
             _wizUpdateDirectNotice();
@@ -6587,6 +6592,7 @@ ${bodyRows}
         _editingTemplateId = c.template_id || null;
         _wizExistingDirectCount = c.direct_count || 0;
         _wizDirectContactIds = [];
+        _wizTempContactIds = [];
         _wizDirectContacts = [];
         _wizExistingContacts = [];
         _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
@@ -6653,6 +6659,7 @@ ${bodyRows}
             _editingTemplateId = c.template_id || null;
             _wizExistingDirectCount = c.direct_count || 0;
             _wizDirectContactIds = [];
+            _wizTempContactIds = [];
             _wizDirectContacts = [];
             _wizExistingContacts = [];
             _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
@@ -7872,6 +7879,7 @@ ${sections.join('\n\n')}
         if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
             _editingCampaignId = null;
             _wizDirectContactIds = [];
+            _wizTempContactIds = [];
             _wizDirectContacts = [];
             _wizExistingContacts = [];
             _wizExistingDirectCount = 0;
@@ -7953,6 +7961,7 @@ ${sections.join('\n\n')}
                 }
                 if (!_editingCampaignId) {
                     _wizDirectContactIds = [];
+                    _wizTempContactIds = [];
                     _wizExistingDirectCount = 0;
                     _wizDirectContacts = [];
                     _wizExistingContacts = [];
