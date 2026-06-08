@@ -45,11 +45,22 @@ async function processBatch(brandId, listId, batch) {
   if (validRows.length) {
     try {
       const allEmails = validRows.map(c => c.email);
-      const suppressed = await query(`SELECT email FROM suppression WHERE email = ANY($1)`, [allEmails]);
+      const allDomains = [...new Set(allEmails.map(e => '@' + e.split('@')[1]))];
+      // Check exact email suppression AND blocked domains (stored as @domain.com)
+      const suppressed = await query(
+        `SELECT email FROM suppression WHERE email = ANY($1) OR email = ANY($2)`,
+        [allEmails, allDomains]
+      );
       if (suppressed.length) {
-        const suppressedSet = new Set(suppressed.map(r => r.email));
-        const filtered = validRows.filter(c => !suppressedSet.has(c.email));
-        skipped += validRows.length - filtered.length;
+        const suppressedEmails = new Set(suppressed.filter(r => !r.email.startsWith('@')).map(r => r.email));
+        const blockedDomains  = new Set(suppressed.filter(r =>  r.email.startsWith('@')).map(r => r.email));
+        const before = validRows.length;
+        const filtered = validRows.filter(c => {
+          if (suppressedEmails.has(c.email)) return false;
+          if (blockedDomains.has('@' + c.email.split('@')[1])) return false;
+          return true;
+        });
+        skipped += before - filtered.length;
         validRows.length = 0;
         validRows.push(...filtered);
       }
