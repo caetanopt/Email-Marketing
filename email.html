@@ -290,7 +290,14 @@
         const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
         const defId = _u.default_brand_id;
         if (defId) {
-            const b = _allBrands.find(x => x.id === defId);
+            const b = _allBrands.find(x => x.id === defId) || _apiBrands.find(x => x.id === defId);
+            if (b) { selectBrand(b.id, b.name, b.color); return; }
+        }
+        // Auto-select if user only has access to one brand
+        const userBrands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
+        if (userBrands.length === 1) {
+            const brandId = userBrands[0].brand_id;
+            const b = _allBrands.find(x => x.id === brandId) || _apiBrands.find(x => x.id === brandId);
             if (b) { selectBrand(b.id, b.name, b.color); return; }
         }
         openBrandSwitchModal();
@@ -8090,6 +8097,13 @@ ${sections.join('\n\n')}
         showScreen(targetScreen || 'dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
         _loadTeGlobalSettings().catch(() => {});
+        // Save as default brand for next login
+        const _pu = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
+        if (_pu.default_brand_id !== id) {
+            _pu.default_brand_id = id;
+            localStorage.setItem('pm_user', JSON.stringify(_pu));
+            apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify({ default_brand_id: id }) }).catch(() => {});
+        }
     }
 
     function _brandLogoHtml(b) {
