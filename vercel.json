@@ -1,9 +1,6 @@
 {
   "cleanUrls": true,
   "github": { "enabled": false },
-  "crons": [
-    { "path": "/api/cron/import", "schedule": "* * * * *" }
-  ],
   "rewrites": [
     { "source": "/api/webhooks", "destination": "/api/track" },
     { "source": "/api/lists/:id", "destination": "/api/lists?id=:id" },
