@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
       );
 
       const appUrl = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
-      const magicUrl = `${appUrl}/?magic=${token}`;
+      const magicUrl = `${appUrl}/email?magic=${token}`;
       const from = process.env.MAGIC_LINK_FROM || 'PrimeMail <noreply@caetano.pt>';
 
       await getSESClient().send(new SendEmailCommand({
