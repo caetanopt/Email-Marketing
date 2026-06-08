@@ -6250,8 +6250,9 @@ ${bodyRows}
             const draft = document.querySelector('input[name="wizSendType"][value="draft"]');
             if (draft) { draft.checked = true; document.getElementById('wizSchedulePicker')?.classList.add('hidden'); }
         }
+        // Confirm button always enabled during import — draft can always be saved
         const nb = document.getElementById('wizNextBtn');
-        if (nb && _wizStep === 4) { nb.disabled = true; nb.textContent = 'A importar…'; }
+        if (nb && _wizStep === 4) { nb.disabled = false; nb.textContent = 'Guardar Rascunho'; }
     }
     let _wizDirectContactIds = [];
     let _wizDirectContacts = [];
