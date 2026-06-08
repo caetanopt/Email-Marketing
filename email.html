@@ -3182,53 +3182,131 @@ ${bodyRows}
         if (btn) btn.disabled = true;
     }
 
+    let _importJob = null;
+
+    function _updateImportProgressUI(job) {
+        const pct = job.total ? Math.round(job.processed / job.total * 100) : 0;
+        const sub = `${job.processed} / ${job.total}`;
+        if (job.source === 'list') {
+            const bar = document.getElementById('liProgressBar');
+            const s = document.getElementById('liProgressSub');
+            if (bar) bar.style.width = pct + '%';
+            if (s) s.textContent = sub;
+        } else {
+            const bar = document.getElementById('mockProgressBar');
+            const s = document.getElementById('mockProgressSub');
+            if (bar) bar.style.width = pct + '%';
+            if (s) s.textContent = sub;
+        }
+        const banner = document.getElementById('importBanner');
+        if (banner && !banner.classList.contains('hidden')) {
+            const b = document.getElementById('importBannerBar');
+            const s = document.getElementById('importBannerSub');
+            if (b) b.style.width = pct + '%';
+            if (s) s.textContent = sub;
+        }
+    }
+
+    async function _runImportChunks(chunks, brandId, listId, job) {
+        for (const chunk of chunks) {
+            try {
+                const r = await apiFetch(
+                    `/api/contacts?brand_id=${brandId}&action=bulk_import`,
+                    { method: 'POST', body: JSON.stringify({ contacts: chunk, list_id: listId || null }) }
+                );
+                job.imported += r.imported || 0;
+                job.skipped  += r.skipped  || 0;
+                job.failed   += r.failed   || 0;
+            } catch { job.failed += chunk.length; }
+            job.processed = Math.min(job.processed + chunk.length, job.total);
+            _updateImportProgressUI(job);
+        }
+        job.done = true;
+    }
+
+    function _finishImportUI(job) {
+        const { imported, skipped, failed } = job;
+        const msg = `${imported} contacto${imported!==1?'s':''} importado${imported!==1?'s':''}${skipped?`, ${skipped} ignorado${skipped!==1?'s':''}`:''  }${failed?`, ${failed} falha${failed!==1?'s':''}`:''}.`;
+        showToast(msg);
+        const banner = document.getElementById('importBanner');
+        if (banner && !banner.classList.contains('hidden')) {
+            document.getElementById('importBannerSpinner')?.classList.add('hidden');
+            document.getElementById('importBannerCheck')?.classList.remove('hidden');
+            document.getElementById('importBannerTitle').textContent = 'Importação concluída';
+            document.getElementById('importBannerBar').style.width = '100%';
+            document.getElementById('importBannerBar').classList.replace('bg-blue-400','bg-green-400');
+            setTimeout(() => banner.classList.add('hidden'), 4000);
+        }
+        _importJob = null;
+    }
+
+    function _liDismissAndContinue() {
+        closeListImportModal();
+        if (_importJob && !_importJob.done) {
+            const banner = document.getElementById('importBanner');
+            if (banner) {
+                document.getElementById('importBannerSpinner')?.classList.remove('hidden');
+                document.getElementById('importBannerCheck')?.classList.add('hidden');
+                document.getElementById('importBannerTitle').textContent = 'A importar contactos…';
+                document.getElementById('importBannerBar').classList.replace('bg-green-400','bg-blue-400');
+                banner.classList.remove('hidden');
+                _updateImportProgressUI(_importJob);
+            }
+        }
+    }
+
     async function _liStartImport() {
         const btn = document.getElementById('liSubmitBtn');
         if (!btn || btn.disabled) return;
         if (!_liFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
-        btn.disabled = true;
-        btn.innerHTML = '<svg class="animate-spin w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…';
-        try {
-            const text = await _liFile.text();
-            const isTxt = _liTab === 'txt';
-            let rows = [];
-            if (isTxt) {
-                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
-            } else {
-                rows = _parseCsv(text, _listExtraFields);
-            }
-            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); btn.disabled = false; btn.innerHTML = 'Importar'; return; }
+        const text = await _liFile.text();
+        const isTxt = _liTab === 'txt';
+        let rows = isTxt
+            ? text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&_isValidEmail(l)).map(e=>({email:e.toLowerCase()}))
+            : _parseCsv(text, _listExtraFields);
+        if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 
-            const result = await apiFetch(
-                `/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`,
-                { method: 'POST', body: JSON.stringify({ contacts: rows, list_id: _currentListId || null }) }
-            );
-            const imported = result.imported || 0;
-            const failed   = result.failed   || 0;
-            // Record import history
+        const CHUNK = 300;
+        const chunks = [];
+        for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
+
+        const listId   = _currentListId || null;
+        const listName = document.getElementById('listEditTitle')?.textContent?.replace('Editar — ','') || null;
+        const fileName = _liFile.name;
+        const brandId  = _currentBrand.id;
+
+        _importJob = { done: false, source: 'list', total: rows.length, processed: 0, imported: 0, skipped: 0, failed: 0 };
+
+        // Show progress, hide normal footer
+        document.getElementById('liModalFooter')?.classList.add('hidden');
+        document.getElementById('liProgressSection')?.classList.remove('hidden');
+        document.getElementById('liProgressBar').style.width = '0%';
+        document.getElementById('liProgressSub').textContent = `0 / ${rows.length}`;
+
+        // Run in background (not awaited)
+        (async () => {
+            await _runImportChunks(chunks, brandId, listId, _importJob);
             try {
-                const listName = document.getElementById('listEditTitle')?.textContent?.replace('Editar — ','') || null;
-                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
+                await apiFetch(`/api/contacts?brand_id=${brandId}&action=imports`, {
                     method: 'POST',
                     body: JSON.stringify({
-                        file_name: _liFile.name,
-                        list_id: _currentListId,
-                        list_name: listName,
+                        file_name: fileName, list_id: listId, list_name: listName,
                         total_rows: rows.length,
-                        imported, skipped: rows.length - imported - failed, failed,
-                        status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed'),
+                        imported: _importJob.imported, skipped: _importJob.skipped, failed: _importJob.failed,
+                        status: _importJob.failed === 0 ? 'completed' : (_importJob.imported > 0 ? 'partial' : 'failed'),
                     })
                 });
-            } catch (err) { console.error('record import:', err); }
-
+            } catch {}
+            // Reset modal state (whether open or closed)
+            document.getElementById('liModalFooter')?.classList.remove('hidden');
+            document.getElementById('liProgressSection')?.classList.add('hidden');
+            const b = document.getElementById('liSubmitBtn');
+            if (b) { b.disabled = false; b.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar'; }
             closeListImportModal();
-            showToast(`${imported} contacto${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''}${failed ? `, ${failed} falha${failed !== 1 ? 's' : ''}` : ''}.`);
+            _liClearFile();
+            _finishImportUI(_importJob || { imported: 0, skipped: 0, failed: 0 });
             _loadListMembers(1);
-        } catch (e) {
-            btn.disabled = false;
-            btn.innerHTML = 'Importar';
-            showToast('Erro: ' + e.message, 'error');
-        }
+        })();
     }
 
     let _listEditCurrentPage = 1;
@@ -8772,52 +8850,51 @@ ${sections.join('\n\n')}
         const btn = document.getElementById('importSubmitBtn');
         if (!btn || btn.disabled) return;
         if (!_importFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
+        const text = await _importFile.text();
+        const isTxt = _importFile.name.toLowerCase().endsWith('.txt');
+        let rows = isTxt
+            ? text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&_isValidEmail(l)).map(e=>({email:e.toLowerCase()}))
+            : _parseCsv(text);
+        if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
+
+        const CHUNK = 300;
+        const chunks = [];
+        for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
+
+        const sel = document.getElementById('importListSelect');
+        const listId   = sel?.value || null;
+        const listName = sel?.selectedOptions?.[0]?.textContent?.split(' (')[0] || null;
+        const fileName = _importFile.name;
+        const brandId  = _currentBrand.id;
+
+        _importJob = { done: false, source: 'contacts', total: rows.length, processed: 0, imported: 0, skipped: 0, failed: 0 };
+
         btn.disabled = true;
-        btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-2 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…';
-        try {
-            const text = await _importFile.text();
-            const isTxt = _importFile.name.toLowerCase().endsWith('.txt');
-            let rows = [];
-            if (isTxt) {
-                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
-            } else {
-                rows = _parseCsv(text);
-            }
-            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); btn.disabled = false; btn.innerHTML = 'Importar'; return; }
+        btn.classList.add('hidden');
+        document.getElementById('mockImportProgress')?.classList.remove('hidden');
+        document.getElementById('mockProgressBar').style.width = '0%';
+        document.getElementById('mockProgressSub').textContent = `0 / ${rows.length}`;
 
-            const sel = document.getElementById('importListSelect');
-            const listId = sel?.value || null;
-            const listName = sel?.selectedOptions?.[0]?.textContent?.split(' (')[0] || null;
-
-            const result = await apiFetch(
-                `/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`,
-                { method: 'POST', body: JSON.stringify({ contacts: rows, list_id: listId || null }) }
-            );
-            const imported = result.imported || 0;
-            const failed   = result.failed   || 0;
-            const skipped  = result.skipped  || 0;
-
+        (async () => {
+            await _runImportChunks(chunks, brandId, listId, _importJob);
             try {
-                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
+                await apiFetch(`/api/contacts?brand_id=${brandId}&action=imports`, {
                     method: 'POST',
                     body: JSON.stringify({
-                        file_name: _importFile.name,
-                        list_id: listId, list_name: listName,
-                        total_rows: rows.length, imported, skipped, failed,
-                        status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed'),
+                        file_name: fileName, list_id: listId, list_name: listName,
+                        total_rows: rows.length,
+                        imported: _importJob.imported, skipped: _importJob.skipped, failed: _importJob.failed,
+                        status: _importJob.failed === 0 ? 'completed' : (_importJob.imported > 0 ? 'partial' : 'failed'),
                     })
                 });
-            } catch (err) { console.error('record import:', err); }
-
+            } catch {}
             clearMockFile();
-            btn.innerHTML = 'Importar';
-            showToast(`${imported} contacto${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''}${skipped ? `, ${skipped} ignorado${skipped !== 1 ? 's' : ''} (supressão/inválidos)` : ''}${failed ? `, ${failed} falha${failed !== 1 ? 's' : ''}` : ''}.`);
-            Promise.all([_loadContacts(_currentBrand.id), _loadLists(_currentBrand.id), _loadImportHistory()]).catch(err => console.error(err));
-        } catch (e) {
             btn.disabled = false;
-            btn.innerHTML = 'Importar';
-            showToast('Erro: ' + e.message, 'error');
-        }
+            btn.classList.remove('hidden');
+            document.getElementById('mockImportProgress')?.classList.add('hidden');
+            _finishImportUI(_importJob || { imported: 0, skipped: 0, failed: 0 });
+            Promise.all([_loadContacts(brandId), _loadLists(brandId), _loadImportHistory()]).catch(() => {});
+        })();
     }
 
     function setImportTab(tab) {
@@ -11166,6 +11243,15 @@ ${sections.join('\n\n')}
                             </svg>
                             Importar
                         </button>
+                        <div id="mockImportProgress" class="hidden">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-sm font-medium text-slate-700">A importar…</span>
+                                <span id="mockProgressSub" class="text-xs text-slate-500">0 / 0</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2">
+                                <div id="mockProgressBar" class="bg-slate-900 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -12047,13 +12133,25 @@ ${sections.join('\n\n')}
                 <span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco são ignoradas.
             </div>
         </div>
-        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200">
-            <button onclick="closeListImportModal()" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
-            <button id="liSubmitBtn" onclick="_liStartImport()" disabled
-                class="px-5 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                Importar
-            </button>
+        <div class="px-6 py-4 border-t border-slate-200">
+            <div id="liModalFooter" class="flex items-center justify-end gap-3">
+                <button onclick="closeListImportModal()" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">Cancelar</button>
+                <button id="liSubmitBtn" onclick="_liStartImport()" disabled
+                    class="px-5 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                    Importar
+                </button>
+            </div>
+            <div id="liProgressSection" class="hidden">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-sm font-medium text-slate-700">A importar…</span>
+                    <span id="liProgressSub" class="text-xs text-slate-500">0 / 0</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2 mb-3">
+                    <div id="liProgressBar" class="bg-slate-900 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+                </div>
+                <button onclick="_liDismissAndContinue()" class="text-xs text-slate-500 hover:text-slate-700 underline">Fechar e continuar a trabalhar →</button>
+            </div>
         </div>
     </div>
 </div>
@@ -12942,6 +13040,24 @@ ${sections.join('\n\n')}
             <div id="brandSwitchGrid" class="grid gap-3" style="grid-template-columns:repeat(6,1fr)"></div>
         </div>
     </div>
+</div>
+
+<!-- ── Floating import progress banner ──────────────────────────────────── -->
+<div id="importBanner" class="hidden fixed bottom-6 right-6 z-[200] bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-4 min-w-[300px] max-w-xs">
+  <div class="flex items-center justify-between mb-2.5">
+    <div class="flex items-center gap-2">
+      <svg id="importBannerSpinner" class="animate-spin w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+      <svg id="importBannerCheck" class="hidden w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+      <span class="text-sm font-semibold" id="importBannerTitle">A importar contactos…</span>
+    </div>
+    <button onclick="document.getElementById('importBanner').classList.add('hidden')" class="text-slate-400 hover:text-white ml-2 flex-shrink-0">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="w-full bg-slate-700 rounded-full h-1.5 mb-2">
+    <div id="importBannerBar" class="bg-blue-400 h-1.5 rounded-full transition-all duration-300" style="width:0%"></div>
+  </div>
+  <p class="text-xs text-slate-400" id="importBannerSub">A preparar…</p>
 </div>
 
 </body>
