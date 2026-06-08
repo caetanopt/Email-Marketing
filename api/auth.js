@@ -217,6 +217,14 @@ module.exports = async function handler(req, res) {
       await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2', [role, found[0].id]);
       return res.status(200).json({ ok: true, action: 'role_updated', user_id: found[0].id, role });
     }
+    if (action === 'clear_list') {
+      const { list_name } = req.body || {};
+      if (!list_name) return res.status(400).json({ error: 'list_name obrigatório' });
+      const lists = await query('SELECT id, name FROM lists WHERE LOWER(name)=LOWER($1)', [list_name]);
+      if (!lists[0]) return res.status(404).json({ error: 'Lista não encontrada' });
+      const deleted = await query('DELETE FROM list_members WHERE list_id=$1 RETURNING contact_id', [lists[0].id]);
+      return res.status(200).json({ ok: true, list: lists[0].name, list_id: lists[0].id, removed: deleted.length });
+    }
     return res.status(400).json({ error: 'action inválida' });
   }
 
