@@ -7588,13 +7588,16 @@ ${sections.join('\n\n')}
             document.getElementById('screenSelector').value = id;
             window.scrollTo(0, 0);
             // Re-inject sidebar if slot is empty
+            let _sidebarReinjected = false;
             screen.querySelectorAll('[data-sidebar-slot]').forEach(slot => {
                 if (!slot.innerHTML.trim()) {
                     const tpl = document.getElementById('sidebar');
-                    if (tpl) slot.innerHTML = tpl.innerHTML;
+                    if (tpl) { slot.innerHTML = tpl.innerHTML; _sidebarReinjected = true; }
                 }
             });
             _applySidebarUserAvatar();
+            // Re-apply area permissions whenever sidebar is freshly injected
+            if (_sidebarReinjected && _currentBrand?.id) _applyAreaPermissionsToSidebar();
             // Sync theme toggle icons in the freshly-injected sidebar
             const _isDark = document.documentElement.classList.contains('dark');
             screen.querySelectorAll('.theme-icon-light, .theme-icon-dark').forEach(el => {
@@ -8060,11 +8063,11 @@ ${sections.join('\n\n')}
             }
             // Always hide team for editor and marketing account (viewer)
             if (restrictedRoles.includes(_currentUserRole)) {
-                document.querySelector('.nav-team')?.classList.add('hidden');
+                document.querySelectorAll('.nav-team').forEach(el => el.classList.add('hidden'));
             }
             // Only owners see global settings
             if (_currentUserRole !== 'owner') {
-                document.querySelector('.nav-globalSettings')?.classList.add('hidden');
+                document.querySelectorAll('.nav-globalSettings').forEach(el => el.classList.add('hidden'));
             }
         } catch (err) {
             // Silent — migration may not have been run yet, fall back to full access
