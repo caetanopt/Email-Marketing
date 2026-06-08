@@ -5655,8 +5655,12 @@ ${bodyRows}
         if (step === 1 || step === 2) _wizVarsRender();
         if (step === 2) _wizInitPreview();
         if (step === 3) _wizRefreshLists();
-        const nb = document.getElementById('wizNextBtn'); if (nb) nb.textContent = step===4 ? 'Confirmar' : 'Seguinte →';
+        const nb = document.getElementById('wizNextBtn'); if (nb) { nb.disabled = false; nb.textContent = step===4 ? 'Confirmar' : 'Seguinte →'; }
         const pb = document.getElementById('wizPrevBtn'); if (pb) pb.style.display = step===1 ? 'none' : '';
+        // Re-enable send options whenever leaving step 4 (may have been locked by import banner)
+        if (step !== 4) {
+            document.querySelectorAll('input[name="wizSendType"]').forEach(r => { r.disabled = false; r.closest('label')?.classList.remove('opacity-40','cursor-not-allowed'); });
+        }
         const sb = document.getElementById('wizSaveDraftBtn'); if (sb) sb.style.display = step===4 ? 'none' : '';
         // wizNavBar is now a sticky footer — className stays unchanged
 
