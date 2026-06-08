@@ -8515,8 +8515,20 @@ ${sections.join('\n\n')}
                 _currentBrand = savedBrand;
                 applyBrandToSidebar();
                 renderBrandData(savedBrand.id);
-                showScreen(hashScreen);
                 _loadTeGlobalSettings().catch(() => {});
+                // Campaign-specific screens need the campaign loaded first
+                const _repMatch  = location.hash.match(/^#campaigns\/(\d+)\/report$/);
+                const _campMatch = location.hash.match(/^#campaigns\/(\d+)$/);
+                if (_repMatch) {
+                    apiFetch(`/api/campaigns/${_repMatch[1]}`).then(c => {
+                        _currentCampaign = c;
+                        showScreen('campaignReport');
+                    }).catch(() => showScreen('campaigns'));
+                } else if (_campMatch) {
+                    showCampaign(_campMatch[1]);
+                } else {
+                    showScreen(hashScreen);
+                }
             } else {
                 _goToDefaultBrandOrSelect();
             }
