@@ -201,6 +201,7 @@ module.exports = async function handler(req, res) {
         try { await query('DELETE FROM magic_link_tokens WHERE user_id=$1', [uid]); } catch (e1) { return res.status(500).json({ error: 'magic_link_tokens: ' + e1.message }); }
         try { await query('DELETE FROM user_brand_areas WHERE user_id=$1', [uid]); } catch (_) {}
         try { await query('DELETE FROM user_brand_roles WHERE user_id=$1', [uid]); } catch (e2) { return res.status(500).json({ error: 'user_brand_roles: ' + e2.message }); }
+        try { await query('UPDATE media SET created_by=NULL WHERE created_by=$1', [uid]); } catch (_) {}
         try { await query('DELETE FROM users WHERE id=$1', [uid]); } catch (e3) { return res.status(500).json({ error: 'users: ' + e3.message }); }
         return res.status(200).json({ ok: true, action: 'deleted', user: found[0] });
       } catch (err) {
