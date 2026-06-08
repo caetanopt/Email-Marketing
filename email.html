@@ -6327,6 +6327,17 @@ ${bodyRows}
         const btn = document.getElementById(`wiz${T}ImportBtn`);
         if (!file) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
         if (type === 'excel' && file.size > 5 * 1024 * 1024) { showToast('Ficheiro Excel demasiado grande. Máximo 5 MB.', 'error'); return; }
+        const progressDiv  = document.getElementById(`wiz${T}Progress`);
+        const progressText = document.getElementById(`wiz${T}ProgressText`);
+        const progressBar  = document.getElementById(`wiz${T}ProgressBar`);
+        const progressPct  = document.getElementById(`wiz${T}ProgressPct`);
+        const _wizUpdateProgress = (done, total) => {
+            const pct = total ? Math.round(done / total * 100) : 0;
+            if (progressDiv)  progressDiv.classList.remove('hidden');
+            if (progressText) progressText.textContent = `${done} / ${total} contactos`;
+            if (progressBar)  progressBar.style.width = pct + '%';
+            if (progressPct)  progressPct.textContent = pct + '%';
+        };
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
             let rows = [];
@@ -6360,10 +6371,11 @@ ${bodyRows}
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 
-            // Import contacts to DB, collect IDs
+            // Import contacts to DB, collect IDs — show live progress per chunk
             let imported = 0, failed = 0;
             const newIds = [];
             const CHUNK = 5;
+            _wizUpdateProgress(0, rows.length);
             for (let i = 0; i < rows.length; i += CHUNK) {
                 await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
                     try {
@@ -6371,6 +6383,7 @@ ${bodyRows}
                         if (r.id) { newIds.push(r.id); imported++; }
                     } catch { failed++; }
                 }));
+                _wizUpdateProgress(imported + failed, rows.length);
             }
 
             // Record import history (best-effort)
@@ -6392,6 +6405,7 @@ ${bodyRows}
         } catch (e) {
             showToast('Erro: ' + escHtml(e.message), 'error');
         } finally {
+            if (progressDiv) progressDiv.classList.add('hidden');
             if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar e adicionar à campanha'; }
         }
     }
@@ -9801,6 +9815,13 @@ ${sections.join('\n\n')}
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                                     Importar e adicionar à campanha
                                 </button>
+                                <div id="wizCsvProgress" class="hidden px-1 pt-1">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-xs text-slate-600" id="wizCsvProgressText">0 / 0 contactos</span>
+                                        <span class="text-xs font-medium text-slate-700" id="wizCsvProgressPct">0%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div id="wizCsvProgressBar" class="bg-slate-900 h-1.5 rounded-full transition-all duration-300" style="width:0%"></div></div>
+                                </div>
                             </div>
 
                             <!-- Panel: Excel -->
@@ -9835,6 +9856,13 @@ ${sections.join('\n\n')}
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                                     Importar e adicionar à campanha
                                 </button>
+                                <div id="wizExcelProgress" class="hidden px-1 pt-1">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-xs text-slate-600" id="wizExcelProgressText">0 / 0 contactos</span>
+                                        <span class="text-xs font-medium text-slate-700" id="wizExcelProgressPct">0%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div id="wizExcelProgressBar" class="bg-slate-900 h-1.5 rounded-full transition-all duration-300" style="width:0%"></div></div>
+                                </div>
                             </div>
 
                             <!-- Panel: TXT -->
@@ -9869,6 +9897,13 @@ ${sections.join('\n\n')}
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                                     Importar e adicionar à campanha
                                 </button>
+                                <div id="wizTxtProgress" class="hidden px-1 pt-1">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-xs text-slate-600" id="wizTxtProgressText">0 / 0 contactos</span>
+                                        <span class="text-xs font-medium text-slate-700" id="wizTxtProgressPct">0%</span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-1.5"><div id="wizTxtProgressBar" class="bg-slate-900 h-1.5 rounded-full transition-all duration-300" style="width:0%"></div></div>
+                                </div>
                             </div>
                         </div>
                         </div><!-- /coluna esquerda -->
