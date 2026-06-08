@@ -60,7 +60,19 @@
     const _dbFilterLists     = _debounce(() => filterLists(),     220);
     const _dbMediaGrid       = _debounce(() => _renderMediaGrid(),220);
     // ── Helpers ────────────────────────────────────────
-    function _isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')); }
+    function _isValidEmail(e) {
+      const s = String(e || '').trim().toLowerCase();
+      if (!s) return false;
+      const at = s.indexOf('@');
+      if (at < 1 || at !== s.lastIndexOf('@')) return false;
+      const local = s.slice(0, at), domain = s.slice(at + 1);
+      if (!local || !domain) return false;
+      const parts = domain.split('.');
+      if (parts.length < 2 || parts.some(p => !p)) return false; // no empty parts / consecutive dots
+      const tld = parts[parts.length - 1];
+      if (!/^[a-z]{2,}$/.test(tld)) return false; // TLD: at least 2 alpha chars
+      return /^[^\s@,;:]+$/.test(local) && /^[a-zA-Z0-9.-]+$/.test(domain);
+    }
     // ── Toast notification ─────────────────────────────
     function showToast(msg, type) {
         const colors = { success:'bg-green-600', error:'bg-red-600', warning:'bg-amber-500', info:'bg-slate-800' };
@@ -8771,56 +8783,40 @@ ${sections.join('\n\n')}
             } else {
                 rows = _parseCsv(text);
             }
-            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
+            if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); btn.disabled = false; btn.innerHTML = 'Importar'; return; }
 
-            // Determine target list
             const sel = document.getElementById('importListSelect');
             const listId = sel?.value || null;
             const listName = sel?.selectedOptions?.[0]?.textContent?.split(' (')[0] || null;
 
-            let imported = 0, failed = 0;
-            const CHUNK = 5;
-            for (let i = 0; i < rows.length; i += CHUNK) {
-                const chunk = rows.slice(i, i + CHUNK);
-                await Promise.all(chunk.map(async c => {
-                    try {
-                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
-                        imported++;
-                        if (listId && r.id) {
-                            try { await apiFetch(`/api/lists/${listId}?action=add_contact`, { method: 'POST', body: JSON.stringify({ contact_id: r.id }) }); } catch (err) { console.error(err); }
-                        }
-                    } catch (err) { failed++; console.error('import contact failed:', err); }
-                }));
-            }
-            // Record import history (best-effort)
+            const result = await apiFetch(
+                `/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`,
+                { method: 'POST', body: JSON.stringify({ contacts: rows, list_id: listId || null }) }
+            );
+            const imported = result.imported || 0;
+            const failed   = result.failed   || 0;
+            const skipped  = result.skipped  || 0;
+
             try {
                 await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
                     method: 'POST',
                     body: JSON.stringify({
                         file_name: _importFile.name,
-                        list_id: listId,
-                        list_name: listName,
-                        total_rows: rows.length,
-                        imported,
-                        skipped: rows.length - imported - failed,
-                        failed,
+                        list_id: listId, list_name: listName,
+                        total_rows: rows.length, imported, skipped, failed,
                         status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed'),
                     })
                 });
             } catch (err) { console.error('record import:', err); }
-            // Cross-reference imported contacts with global suppression list
-            try {
-                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=sync_suppression`, { method: 'POST' });
-            } catch(e) { console.error('sync_suppression:', e); }
+
             clearMockFile();
             btn.innerHTML = 'Importar';
-            showToast(`${imported} contactos importados${failed?`, ${failed} falhas`:''}. Supressão sincronizada.`);
+            showToast(`${imported} contacto${imported !== 1 ? 's' : ''} importado${imported !== 1 ? 's' : ''}${skipped ? `, ${skipped} ignorado${skipped !== 1 ? 's' : ''} (supressão/inválidos)` : ''}${failed ? `, ${failed} falha${failed !== 1 ? 's' : ''}` : ''}.`);
             Promise.all([_loadContacts(_currentBrand.id), _loadLists(_currentBrand.id), _loadImportHistory()]).catch(err => console.error(err));
         } catch (e) {
             btn.disabled = false;
             btn.innerHTML = 'Importar';
             showToast('Erro: ' + e.message, 'error');
-            return;
         }
     }
 
