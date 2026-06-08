@@ -3107,6 +3107,10 @@ ${bodyRows}
     function closeListImportModal() {
         const m = document.getElementById('listImportModal');
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+        // Show banner if import is in progress
+        if (_importJob && _importJob.jobId) {
+            _showImportBanner('A processar em segundo plano…', 0, 'O servidor está a processar os contactos');
+        }
     }
 
     function _liSetTab(tab) {
@@ -3243,18 +3247,32 @@ ${bodyRows}
         const poll = async () => {
             try {
                 const s = await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_status&job_id=${jobId}`);
-                if (!s) return; // job gone
-                _updateImportProgressUI(s.processed || 0, s.total || 0, 'process', source);
+                if (!s) { localStorage.removeItem('pm_pending_import'); return; }
+                const pct = s.total ? Math.round((s.processed||0) / s.total * 100) : 0;
+                const sub = s.status === 'queued'
+                    ? 'Em fila — aguarda o próximo ciclo do servidor…'
+                    : `${s.processed||0} / ${s.total||0} contactos`;
+                // Update banner
+                const banner = document.getElementById('importBanner');
+                if (banner && !banner.classList.contains('hidden')) {
+                    document.getElementById('importBannerBar').style.width = pct + '%';
+                    document.getElementById('importBannerSub').textContent = sub;
+                }
                 if (s.status === 'done') {
+                    localStorage.removeItem('pm_pending_import');
                     _finishImportBanner(s.imported||0, s.skipped||0, s.failed_cnt||0);
                     if (onDone) onDone();
                     return;
                 }
-                if (s.status === 'failed') { showToast('Importação falhou no servidor.', 'error'); return; }
+                if (s.status === 'failed') {
+                    localStorage.removeItem('pm_pending_import');
+                    showToast('Importação falhou no servidor.', 'error');
+                    return;
+                }
             } catch {}
-            _importPollTimer = setTimeout(poll, 3000);
+            _importPollTimer = setTimeout(poll, 5000);
         };
-        _importPollTimer = setTimeout(poll, 3000);
+        _importPollTimer = setTimeout(poll, 5000);
     }
 
     function _liDismissAndContinue() {
@@ -3320,6 +3338,8 @@ ${bodyRows}
             await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_ready`,
                 { method: 'POST', body: JSON.stringify({ job_id }) }
             );
+            // Persist so banner survives page reload
+            localStorage.setItem('pm_pending_import', JSON.stringify({ job_id, brand_id: brandId, total: rows.length }));
 
             // 4 — Reset modal, show banner, start polling
             document.getElementById('liModalFooter')?.classList.remove('hidden');
@@ -3328,7 +3348,7 @@ ${bodyRows}
             if (b) { b.disabled = false; b.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar'; }
             _liClearFile();
             closeListImportModal();
-            _showImportBanner('A processar em segundo plano…', 0, `0 / ${rows.length} contactos`);
+            _showImportBanner('A processar em segundo plano…', 0, 'Em fila — aguarda o próximo ciclo do servidor…');
             _pollImportStatus(job_id, brandId, 'list', () => _loadListMembers(1));
 
         } catch (e) {
@@ -8235,6 +8255,23 @@ ${sections.join('\n\n')}
         renderBrandData(id);
         showScreen(targetScreen || 'dashboard');
         showToast(`A trabalhar com a marca ${name}.`);
+        // Restore import banner if there's a pending job (survives page reload)
+        try {
+            const pending = JSON.parse(localStorage.getItem('pm_pending_import') || 'null');
+            if (pending && pending.job_id && pending.brand_id === id) {
+                apiFetch(`/api/contacts?brand_id=${id}&action=import_status&job_id=${pending.job_id}`)
+                    .then(s => {
+                        if (!s || s.status === 'done' || s.status === 'failed') {
+                            localStorage.removeItem('pm_pending_import');
+                            return;
+                        }
+                        _importJob = { source: 'restore', brandId: id, jobId: pending.job_id };
+                        _showImportBanner('A processar em segundo plano…', 0, 'Em fila — aguarda o próximo ciclo do servidor…');
+                        _pollImportStatus(pending.job_id, id, 'restore', () => {});
+                    })
+                    .catch(() => {});
+            }
+        } catch (_) {}
         _loadTeGlobalSettings().catch(() => {});
         // Save as default brand for next login
         const _pu = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
@@ -8931,12 +8968,13 @@ ${sections.join('\n\n')}
             await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_ready`,
                 { method: 'POST', body: JSON.stringify({ job_id }) }
             );
+            localStorage.setItem('pm_pending_import', JSON.stringify({ job_id, brand_id: brandId, total: rows.length }));
 
             clearMockFile();
             btn.disabled = false;
             btn.classList.remove('hidden');
             document.getElementById('mockImportProgress')?.classList.add('hidden');
-            _showImportBanner('A processar em segundo plano…', 0, `0 / ${rows.length} contactos`);
+            _showImportBanner('A processar em segundo plano…', 0, 'Em fila — aguarda o próximo ciclo do servidor…');
             _pollImportStatus(job_id, brandId, 'contacts', () =>
                 Promise.all([_loadContacts(brandId), _loadLists(brandId), _loadImportHistory()]).catch(() => {})
             );
