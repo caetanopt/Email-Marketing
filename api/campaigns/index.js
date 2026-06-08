@@ -27,10 +27,8 @@ module.exports = async function handler(req, res) {
     const results = [];
     for (const { id: campId } of due) {
       try {
-        // Initialize: build recipients, set status='sending'
         const { total } = await initCampaignSend(campId);
         let totalSent = 0, totalFailed = 0;
-        // Send all batches (up to 20 batches per cron invocation to avoid timeout)
         for (let b = 0; b < 20; b++) {
           const r = await runBatch(campId, null);
           totalSent += r.sent || 0;
