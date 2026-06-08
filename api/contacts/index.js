@@ -289,13 +289,29 @@ module.exports = async function handler(req, res) {
       try {
         await query(IMPORT_INIT_SQL);
         const rows = await query(
-          `SELECT id, status, total, processed, imported, skipped, failed_cnt, file_name, list_name, created_at
+          `SELECT id, status, total, processed, imported, skipped, failed_cnt, file_name, list_name, list_id, created_at
            FROM import_jobs WHERE id=$1 AND brand_id=$2`,
           [job_id, brand_id]
         );
         return res.status(200).json(rows[0] || null);
       } catch (e) {
         if (e.code === '42P01') return res.status(200).json(null);
+        throw e;
+      }
+    }
+
+    if (action === 'import_cancel' && req.method === 'POST') {
+      const { job_id } = req.body || {};
+      if (!job_id) return res.status(400).json({ error: 'job_id obrigatório' });
+      try {
+        await query(IMPORT_INIT_SQL);
+        await query(
+          `UPDATE import_jobs SET status='cancelled' WHERE id=$1 AND brand_id=$2 AND status IN ('queued','pending','processing')`,
+          [job_id, brand_id]
+        );
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        if (e.code === '42P01') return res.status(200).json({ ok: true });
         throw e;
       }
     }
