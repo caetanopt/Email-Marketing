@@ -260,13 +260,22 @@ module.exports = async function handler(req, res) {
         if (!rows[0]) return res.status(404).json({ error: 'Marca não encontrada' });
         return res.status(200).json(rows[0]);
       }
-      const rows = await query(
-        `SELECT b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, ubr.role
-         FROM brands b
-         JOIN user_brand_roles ubr ON ubr.brand_id = b.id AND ubr.user_id = $1
-         WHERE b.active = TRUE ORDER BY b.name`,
-        [user.id]
+      // Owners see all active brands; others see only their assigned brands
+      const isOwner = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
       );
+      const rows = isOwner[0]
+        ? await query(
+            `SELECT b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, 'owner' AS role
+             FROM brands b WHERE b.active = TRUE ORDER BY b.name`
+          )
+        : await query(
+            `SELECT b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, ubr.role
+             FROM brands b
+             JOIN user_brand_roles ubr ON ubr.brand_id = b.id AND ubr.user_id = $1
+             WHERE b.active = TRUE ORDER BY b.name`,
+            [user.id]
+          );
       return res.status(200).json({ data: rows });
     }
 
