@@ -1,7 +1,7 @@
 {
   "cleanUrls": true,
   "crons": [
-    { "path": "/api/cron", "schedule": "* * * * *" }
+    { "path": "/api/cron", "schedule": "*/15 * * * *" }
   ],
   "rewrites": [
     { "source": "/api/webhooks", "destination": "/api/track" },
@@ -15,7 +15,7 @@
       "headers": [
         { "key": "Access-Control-Allow-Origin",  "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Authorization, Content-Type" }
+        { "key": ": Access-Control-Allow-Headers", "value": "Authorization, Content-Type" }
       ]
     }
   ]
