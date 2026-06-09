@@ -1182,7 +1182,8 @@
                 </tr>`;
             }).join('') || `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Sem membros.</td></tr>`;
         } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400 text-sm">Erro ao carregar membros.</td></tr>`;
+            console.error('_loadTeamMembers error:', e);
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400 text-sm">Erro ao carregar membros: ${e.message}</td></tr>`;
         }
     }
 
