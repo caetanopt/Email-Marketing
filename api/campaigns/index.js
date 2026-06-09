@@ -72,26 +72,59 @@ module.exports = async function handler(req, res) {
   if (action === 'global_stats' && req.method === 'GET') {
     const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || 'all'] || null;
     const sinceClause = days ? `AND c.sent_at >= NOW() - ($1 * INTERVAL '1 day')` : '';
-    const params = days ? [days] : [];
 
-    const perBrand = await query(
-      `SELECT
-          b.id, b.name, b.color, b.logo_url,
-          COUNT(DISTINCT c.id) FILTER (WHERE c.status='sent')::int            AS campaigns,
-          COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int           AS sent,
-          COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int        AS bounced,
-          COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int     AS unique_opens,
-          COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int    AS unique_clicks,
-          COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
-       FROM brands b
-       JOIN user_brand_roles ubr ON ubr.brand_id=b.id AND ubr.user_id=$${params.length+1}
-       LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause}
-       LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-       LEFT JOIN email_events ee ON ee.campaign_id=c.id
-       WHERE b.active=TRUE
-       GROUP BY b.id ORDER BY sent DESC`,
-      days ? [days, user.id] : [user.id]
-    );
+    // If the user is admin/owner in the provided brand, return all active brands
+    let isGroupAdmin = false;
+    if (brand_id) {
+      const roleRow = await query(
+        `SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2`,
+        [user.id, brand_id]
+      );
+      isGroupAdmin = roleRow[0] && ['administrador', 'admin', 'owner'].includes((roleRow[0].role || '').toLowerCase());
+    }
+
+    let perBrand;
+    if (isGroupAdmin) {
+      // Admin: all active brands (no role restriction)
+      perBrand = await query(
+        `SELECT
+            b.id, b.name, b.color, b.logo_url,
+            COUNT(DISTINCT c.id) FILTER (WHERE c.status='sent')::int            AS campaigns,
+            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int           AS sent,
+            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int        AS bounced,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int     AS unique_opens,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int    AS unique_clicks,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
+         FROM brands b
+         LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause}
+         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+         LEFT JOIN email_events ee ON ee.campaign_id=c.id
+         WHERE b.active=TRUE
+         GROUP BY b.id ORDER BY sent DESC`,
+        days ? [days] : []
+      );
+    } else {
+      // Non-admin: only brands the user has a role in
+      const params = days ? [days] : [];
+      perBrand = await query(
+        `SELECT
+            b.id, b.name, b.color, b.logo_url,
+            COUNT(DISTINCT c.id) FILTER (WHERE c.status='sent')::int            AS campaigns,
+            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int           AS sent,
+            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int        AS bounced,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int     AS unique_opens,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int    AS unique_clicks,
+            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
+         FROM brands b
+         JOIN user_brand_roles ubr ON ubr.brand_id=b.id AND ubr.user_id=$${params.length+1}
+         LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause}
+         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
+         LEFT JOIN email_events ee ON ee.campaign_id=c.id
+         WHERE b.active=TRUE
+         GROUP BY b.id ORDER BY sent DESC`,
+        days ? [days, user.id] : [user.id]
+      );
+    }
 
     const totals = perBrand.reduce((acc, b) => ({
       campaigns:   acc.campaigns   + b.campaigns,

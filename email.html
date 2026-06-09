@@ -283,7 +283,7 @@
         const tbody = document.getElementById('statsBrandsTbody');
         if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
-            const qs = new URLSearchParams({ action:'global_stats', ...(_statsRange !== 'all' ? { range: _statsRange } : {}) });
+            const qs = new URLSearchParams({ action:'global_stats', brand_id: _currentBrand.id, ...(_statsRange !== 'all' ? { range: _statsRange } : {}) });
             const d = await apiFetch(`/api/campaigns?${qs}`);
             if (!d.brands?.length) { if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem dados para o período seleccionado.</td></tr>`; return; }
             _statsBrandsData = d;
