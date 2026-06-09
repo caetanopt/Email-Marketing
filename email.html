@@ -5964,7 +5964,7 @@ ${bodyRows}
         if (_wizStep === 3) {
             const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
             const listTotal = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
-            const directTotal = _wizExistingContacts.length + _wizDirectContacts.length + (_wizExistingContacts.length === 0 ? _wizExistingDirectCount : 0);
+            const directTotal = _wizExistingDirectCount + _wizDirectContactIds.length;
             const total = listTotal + directTotal;
             if (total === 0 && !_wizImporting) {
                 const err = document.getElementById('wizListsError');
@@ -6537,7 +6537,7 @@ ${bodyRows}
     function wizUpdateListsTotal() {
         const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
         const listTotal = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
-        const directTotal = _wizExistingContacts.length + _wizDirectContacts.length + (_wizExistingContacts.length === 0 ? _wizExistingDirectCount : 0);
+        const directTotal = _wizExistingDirectCount + _wizDirectContactIds.length;
         const total = listTotal + directTotal;
         const totalBar = document.getElementById('wizListsTotal');
         const totalCount = document.getElementById('wizListsTotalCount');
