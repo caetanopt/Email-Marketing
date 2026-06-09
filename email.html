@@ -6377,7 +6377,13 @@ ${bodyRows}
         if (total > 0) document.getElementById('wizListsError')?.classList.add('hidden');
     }
 
-    function _wizClearDirect() {
+    async function _wizClearDirect() {
+        if (_editingCampaignId) {
+            if (!confirm('Remover todos os contactos importados directamente desta campanha?')) return;
+            try {
+                await apiFetch(`/api/campaigns/${_editingCampaignId}?action=remove_direct_recipients`, { method: 'DELETE' });
+            } catch (e) { showToast('Erro ao remover: ' + e.message, 'error'); return; }
+        }
         _wizDirectContactIds = [];
         _wizTempContactIds = [];
         _wizExistingDirectCount = 0;
@@ -6397,7 +6403,7 @@ ${bodyRows}
         if (!allContacts.length && !_wizExistingDirectCount) { panel.classList.add('hidden'); return; }
         panel.classList.remove('hidden');
         const total = allContacts.length || _wizExistingDirectCount;
-        if (countEl) countEl.textContent = total;
+        if (countEl) countEl.textContent = total.toLocaleString('pt-PT');
         if (!allContacts.length) {
             list.innerHTML = `<div class="px-4 py-3 text-xs text-slate-400 italic">A carregar…</div>`;
             return;
@@ -6413,7 +6419,7 @@ ${bodyRows}
                     <p class="text-xs text-slate-500 truncate">${escHtml(c.email)}</p>
                 </div>
             </div>`;
-        }).join('');
+        }).join('') + (total > allContacts.length ? `<div class="px-4 py-2.5 text-xs text-slate-400 italic text-center">… e mais ${(total - allContacts.length).toLocaleString('pt-PT')} contactos</div>` : '');
     }
 
     async function _wizStartImport(type) {
@@ -6665,11 +6671,12 @@ ${bodyRows}
         _wizRenderDirectPanel();
         if (_wizExistingDirectCount > 0) {
             const _fetchForId = c.id;
-            apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+            apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients, total }) => {
                 // Discard if the user has already navigated to a different campaign
                 if (_editingCampaignId !== _fetchForId) return;
                 _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
-                _wizExistingDirectCount = _wizExistingContacts.length;
+                // Use server total — don't overwrite with the display-limited fetch size
+                _wizExistingDirectCount = total || _wizExistingContacts.length;
                 _wizUpdateDirectNotice();
                 _wizRenderDirectPanel();
             }).catch(() => {});

@@ -68,15 +68,24 @@ module.exports = async function handler(req, res) {
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
 
     if (req.method === 'GET' && action === 'get_direct_recipients') {
+      const [{ total }] = await query(
+        `SELECT COUNT(*)::int AS total FROM campaign_recipients WHERE campaign_id=$1`, [id]
+      );
       const recs = await query(
         `SELECT cr.email, c.name AS contact_name
          FROM campaign_recipients cr
          LEFT JOIN contacts c ON c.id = cr.contact_id
          WHERE cr.campaign_id = $1
-         ORDER BY cr.id DESC LIMIT 500`,
+         ORDER BY cr.id DESC LIMIT 100`,
         [id]
       );
-      return res.status(200).json({ recipients: recs });
+      return res.status(200).json({ recipients: recs, total });
+    }
+
+    if (req.method === 'DELETE' && action === 'remove_direct_recipients') {
+      if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível modificar uma campanha já enviada.' });
+      await query(`DELETE FROM campaign_recipients WHERE campaign_id=$1`, [id]);
+      return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'GET' && action === 'send_log') {
