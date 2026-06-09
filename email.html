@@ -4482,6 +4482,67 @@ ${bodyRows}
         }
     }
 
+    // ── Brand audit ───────────────────────────────────────────────
+    async function _runBrandAudit() {
+        const btn    = document.getElementById('brandAuditBtn');
+        const result = document.getElementById('brandAuditResult');
+        const empty  = document.getElementById('brandAuditEmpty');
+        const tbody  = document.getElementById('brandAuditTbody');
+        const sumEl  = document.getElementById('brandAuditSummary');
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = 'A verificar…';
+        try {
+            const { summary, brands } = await apiFetch('/api/brands?action=audit');
+            const allOk = summary.with_issues === 0;
+            sumEl.innerHTML = [
+                allOk
+                    ? `<span class="flex items-center gap-1.5 text-green-700 font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Todas as marcas OK</span>`
+                    : `<span class="flex items-center gap-1.5 text-amber-700 font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z"/></svg>${summary.with_issues} marca(s) com alertas</span>`,
+                `<span class="text-slate-400">•</span>`,
+                `<span class="text-slate-600">${summary.total} marcas no total</span>`,
+                `<span class="text-slate-400">•</span>`,
+                `<span class="text-green-700">${summary.ok} OK</span>`,
+            ].join('');
+            tbody.innerHTML = brands.map(b => {
+                const dot = b.ok
+                    ? `<span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-2"></span>`
+                    : `<span class="inline-block w-2 h-2 rounded-full bg-amber-400 mr-2"></span>`;
+                const cell = (n, zero) => n === 0
+                    ? `<td class="px-4 py-3 text-center font-semibold ${zero ? 'text-red-500' : 'text-slate-400'}">${n}</td>`
+                    : `<td class="px-4 py-3 text-center text-slate-700">${n.toLocaleString('pt-PT')}</td>`;
+                const warnings = b.warnings.length
+                    ? b.warnings.map(w => `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800 mr-1">${escHtml(w)}</span>`).join('')
+                    : `<span class="text-green-600 text-xs">Sem alertas</span>`;
+                return `<tr class="hover:bg-slate-50 ${!b.active ? 'opacity-50' : ''}">
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            ${dot}
+                            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${escHtml(b.color||'#94a3b8')}"></span>
+                            <div>
+                                <p class="font-medium text-slate-900 text-sm">${escHtml(b.name)}</p>
+                                <p class="text-xs text-slate-400 font-mono">${escHtml(b.id)}${b.active ? '' : ' · inactiva'}</p>
+                            </div>
+                        </div>
+                    </td>
+                    ${cell(b.users_count, b.users_count === 0)}
+                    ${cell(b.lists_count, b.lists_count === 0)}
+                    ${cell(b.contacts_count, false)}
+                    ${cell(b.templates_count, b.templates_count === 0)}
+                    <td class="px-4 py-3 text-center text-slate-700">${b.campaigns_count.toLocaleString('pt-PT')} <span class="text-xs text-slate-400">(${b.campaigns_sent} env.)</span></td>
+                    <td class="px-4 py-3">${warnings}</td>
+                </tr>`;
+            }).join('');
+            result.classList.remove('hidden');
+            empty.classList.add('hidden');
+        } catch (e) {
+            showToast('Erro na auditoria: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> Executar auditoria`;
+        }
+    }
+
     // ── Global typography settings ─────────────────────────────────
     async function _loadGlobalTypography() {
         try {
@@ -11975,6 +12036,42 @@ ${sections.join('\n\n')}
                     <div id="brandAdminList" class="divide-y divide-slate-100">
                         <p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>
                     </div>
+                </div>
+
+                <!-- Auditoria de Marcas -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Auditoria de Marcas</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Verifica se todas as marcas têm listas, utilizadores, templates e email remetente configurados.</p>
+                        </div>
+                        <button onclick="_runBrandAudit()" id="brandAuditBtn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            Executar auditoria
+                        </button>
+                    </div>
+                    <div id="brandAuditResult" class="hidden">
+                        <!-- Summary bar -->
+                        <div id="brandAuditSummary" class="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-4 text-sm"></div>
+                        <!-- Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Marca</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Utilizadores</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Listas</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Contactos</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Templates</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Campanhas</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Alertas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="brandAuditTbody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="brandAuditEmpty" class="px-5 py-8 text-center text-sm text-slate-400">Clica em "Executar auditoria" para verificar o estado de todas as marcas.</div>
                 </div>
 
                 <!-- Delete brand confirmation modal -->

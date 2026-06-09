@@ -214,6 +214,47 @@ module.exports = async function handler(req, res) {
           throw e;
         }
       }
+      // ── Brand audit (owner-only) ──────────────────────────────
+      if (action === 'audit') {
+        const ownerRow = await query(
+          `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+        );
+        if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+
+        const brands = await query(
+          `SELECT
+              b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, b.active,
+              (SELECT COUNT(*)::int FROM lists WHERE brand_id=b.id)           AS lists_count,
+              (SELECT COUNT(*)::int FROM contacts WHERE brand_id=b.id)        AS contacts_count,
+              (SELECT COUNT(*)::int FROM templates WHERE brand_id=b.id)       AS templates_count,
+              (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id)       AS campaigns_count,
+              (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id AND status='sent') AS campaigns_sent,
+              (SELECT COUNT(*)::int FROM user_brand_roles WHERE brand_id=b.id) AS users_count,
+              (CASE WHEN b.from_email IS NOT NULL AND b.from_email<>'' THEN TRUE ELSE FALSE END) AS has_from_email,
+              (CASE WHEN b.from_name  IS NOT NULL AND b.from_name <>'' THEN TRUE ELSE FALSE END) AS has_from_name
+           FROM brands b
+           ORDER BY b.name`
+        );
+
+        const issues = brands.map(b => {
+          const warnings = [];
+          if (!b.has_from_email) warnings.push('from_email não configurado');
+          if (!b.has_from_name)  warnings.push('from_name não configurado');
+          if (b.lists_count    === 0) warnings.push('sem listas');
+          if (b.users_count    === 0) warnings.push('sem utilizadores');
+          if (b.templates_count === 0) warnings.push('sem templates');
+          return { ...b, warnings, ok: warnings.length === 0 };
+        });
+
+        const summary = {
+          total: issues.length,
+          ok:    issues.filter(b => b.ok).length,
+          with_issues: issues.filter(b => !b.ok).length,
+        };
+
+        return res.status(200).json({ summary, brands: issues });
+      }
+
       // ── Global settings GET (owner-only) ─────────────────────
       if (action === 'global_settings') {
         const ownerRow = await query(
