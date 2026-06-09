@@ -192,14 +192,18 @@ module.exports = async function handler(req, res) {
       }
 
       if (id && action === 'team') {
-        // Global team: all users that have any brand role, with their highest role
+        // Global team: all users across all brands, deduped with highest role
         const rows = await query(
-          `SELECT u.id, u.name, u.email, u.active, u.last_login,
-                  (SELECT ubr.role FROM user_brand_roles ubr WHERE ubr.user_id = u.id
-                   ORDER BY CASE ubr.role WHEN 'owner' THEN 1 WHEN 'administrador' THEN 2 WHEN 'editor' THEN 3 ELSE 4 END
-                   LIMIT 1) AS role
+          `WITH ranked AS (
+             SELECT user_id, role,
+                    ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY
+                      CASE role WHEN 'owner' THEN 1 WHEN 'administrador' THEN 2
+                                WHEN 'editor' THEN 3 ELSE 4 END) AS rn
+             FROM user_brand_roles
+           )
+           SELECT u.id, u.name, u.email, u.active, u.last_login, r.role
            FROM users u
-           WHERE EXISTS (SELECT 1 FROM user_brand_roles WHERE user_id = u.id)
+           JOIN ranked r ON r.user_id = u.id AND r.rn = 1
            ORDER BY u.name`
         );
         return res.status(200).json({ data: rows });
@@ -807,6 +811,7 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor' });
+    console.error('brands handler error:', err?.message, err?.code);
+    res.status(500).json({ error: err?.message || 'Erro de servidor' });
   }
 };
