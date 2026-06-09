@@ -6920,7 +6920,7 @@ ${bodyRows}
         try {
             const d = await apiFetch('/api/campaigns?action=ses-quota');
             const widget = document.getElementById('sesQuotaWidget');
-            if (!d.configured || !widget) return;
+            if (!d.configured || !widget || _currentUserRole === 'viewer') return;
             if (d.error) { widget.classList.remove('hidden'); document.getElementById('sesRemaining').textContent = 'Erro'; return; }
             widget.classList.remove('hidden');
             const pct = d.max24h > 0 ? Math.round((d.sent24h / d.max24h) * 100) : 0;
