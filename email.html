@@ -120,7 +120,8 @@
         const token = getToken();
         const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) };
         const res = await fetch(API_BASE + path, { ...options, headers });
-        const data = await res.json();
+        let data;
+        try { data = await res.json(); } catch { throw new Error(`Erro de servidor (${res.status})`); }
         if (res.status === 401 && path !== '/api/auth') {
             localStorage.removeItem('pm_token');
             localStorage.removeItem('pm_user');
@@ -6739,10 +6740,10 @@ ${bodyRows}
             _wizRenderDirectPanel();
             if (_wizExistingDirectCount > 0) {
                 const _fetchForId = c.id;
-                apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+                apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients, total }) => {
                     if (_editingCampaignId !== _fetchForId) return;
                     _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
-                    _wizExistingDirectCount = _wizExistingContacts.length;
+                    _wizExistingDirectCount = total || _wizExistingContacts.length;
                     _wizUpdateDirectNotice();
                     _wizRenderDirectPanel();
                 }).catch(() => {});
