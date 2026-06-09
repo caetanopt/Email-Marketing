@@ -46,6 +46,10 @@
     });
     // ── HTML escape helper ─────────────────────────────
     function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    // ── Session cache (stale-while-revalidate) ─────────
+    function _cacheSet(key, data) { try { sessionStorage.setItem('pm_' + key, JSON.stringify(data)); } catch (_) {} }
+    function _cacheGet(key) { try { return JSON.parse(sessionStorage.getItem('pm_' + key) || 'null'); } catch (_) { return null; } }
+    function _cacheClear(prefix) { try { Object.keys(sessionStorage).filter(k => k.startsWith('pm_' + prefix)).forEach(k => sessionStorage.removeItem(k)); } catch (_) {} }
     // ── Debounce helper ────────────────────────────────
     function _debounce(fn, ms = 250) {
         let t;
@@ -488,7 +492,30 @@
         _contactsUpdateBulkBar();
         const el = document.getElementById('contactsTbody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `contacts_${brandId}_p${page}`;
+        const cached = page === 1 ? _cacheGet(cacheKey) : null;
+        if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        if (cached) {
+            window._contactsCache = cached.data;
+            _contactsApiTotal = cached.total || 0;
+            const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Ativo</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Cancelado</span>', bounced:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Rejeitado</span>', complained:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700">Marcado como spam</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Suprimido</span>' };
+            const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
+            el.innerHTML = cached.data.map((c, i) => `
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
+                    <td class="px-4 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="contact-row-cb rounded border-slate-300" data-id="${c.id}" onchange="_toggleContactCheck(${c.id},this)" /></td>
+                    <td class="px-4 py-3 font-medium text-slate-900">${c.name||'—'}</td>
+                    <td class="px-4 py-3 text-slate-600">${c.email}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.company||'—'}</span></td>
+                    <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
+                    <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
+                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+                        <button onclick="showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button>
+                        <button onclick="doDeleteContact(${c.id},'${(c.name||c.email).replace(/'/g,"\\'")}')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
+                    </td>
+                </tr>`).join('');
+            _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
+            _updateContactsPagination();
+        }
         try {
             const { data, total } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=${_contactsPerPage}&page=${page}`);
             _contactsApiTotal = total || 0;
@@ -501,6 +528,7 @@
                 _setText('dash-contacts', '0');
                 return;
             }
+            if (page === 1) _cacheSet(cacheKey, { data, total });
             window._contactsCache = data;
             const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
             el.innerHTML = data.map((c, i) => `
@@ -518,7 +546,7 @@
                 </tr>`).join('');
             _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
             _updateContactsPagination();
-        } catch (e) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _updateContactsPagination() {
@@ -620,66 +648,81 @@
         _updateCampBulkBar();
     }
 
+    function _applyCampaignsData(data) {
+        window._campaignsCache = data;
+        _renderCampaignsPage();
+        _setText('dash-campaigns', data.length.toString());
+        const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
+        _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
+        const sent   = data.reduce((s,c) => s + (c.sent_count||0), 0);
+        const opens  = data.reduce((s,c) => s + (c.open_count||0), 0);
+        const clicks = data.reduce((s,c) => s + (c.click_count||0), 0);
+        const openRate  = sent ? ((opens/sent)*100).toFixed(1) : 0;
+        const clickRate = sent ? ((clicks/sent)*100).toFixed(1) : 0;
+        _setText('dash-openrate', openRate + '%');
+        _setText('dash-open-val', openRate + '%');
+        _setText('dash-click-val', clickRate + '%');
+        _setBarWidth('dash-open-bar', parseFloat(openRate));
+        _setBarWidth('dash-click-bar', parseFloat(clickRate));
+        _setText('dash-bounce-val', '0%');
+        _setBarWidth('dash-bounce-bar', 0);
+    }
+
     async function _loadCampaigns(brandId) {
         const el = document.getElementById('campaignsTbody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `campaigns_${brandId}`;
+        const cached = _cacheGet(cacheKey);
+        if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         _campaignsPage = 1;
+        if (cached) _applyCampaignsData(cached);
         try {
             const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=200`);
-            if (!data.length) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
-            window._campaignsCache = data;
-            _renderCampaignsPage();
-            // Dashboard stats (full dataset)
-            _setText('dash-campaigns', data.length.toString());
-            const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
-            _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
-            const sent   = data.reduce((s,c) => s + (c.sent_count||0), 0);
-            const opens  = data.reduce((s,c) => s + (c.open_count||0), 0);
-            const clicks = data.reduce((s,c) => s + (c.click_count||0), 0);
-            const openRate  = sent ? ((opens/sent)*100).toFixed(1) : 0;
-            const clickRate = sent ? ((clicks/sent)*100).toFixed(1) : 0;
-            _setText('dash-openrate', openRate + '%');
-            _setText('dash-open-val', openRate + '%');
-            _setText('dash-click-val', clickRate + '%');
-            _setBarWidth('dash-open-bar', parseFloat(openRate));
-            _setBarWidth('dash-click-bar', parseFloat(clickRate));
-            _setText('dash-bounce-val', '0%');
-            _setBarWidth('dash-bounce-bar', 0);
-        } catch (e) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+            if (!data.length) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; _cacheSet(cacheKey, []); return; }
+            _cacheSet(cacheKey, data);
+            _applyCampaignsData(data);
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+    }
+
+    function _applyListsData(el, data) {
+        const wizLists = document.getElementById('wizListsContainer');
+        if (!data.length) {
+            el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas criadas.</td></tr>`;
+            if (wizLists) wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis.</p>`;
+            return;
+        }
+        el.innerHTML = data.map(l => `
+            <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
+                <td class="px-4 py-3 font-medium text-slate-900"><span class="list-name-text">${escHtml(l.name)}</span></td>
+                <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
+                <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
+                <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
+                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                    <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                    <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                </td>
+            </tr>`).join('');
+        _markListImportRow();
+        if (wizLists) wizLists.innerHTML = data.map((l) => `
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" class="rounded" data-contacts="${l.total_contacts||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
+                <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
+                <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
+            </label>`).join('');
     }
 
     async function _loadLists(brandId) {
         const el = document.getElementById('listsTableBody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `lists_${brandId}`;
+        const cached = _cacheGet(cacheKey);
+        if (!cached) el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        if (cached) _applyListsData(el, cached);
         try {
             const { data } = await apiFetch(`/api/lists?brand_id=${brandId}&limit=50`);
-            const wizLists = document.getElementById('wizListsContainer');
-            if (!data.length) {
-                el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas criadas.</td></tr>`;
-                if (wizLists) wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis.</p>`;
-                return;
-            }
-                el.innerHTML = data.map(l => `
-                <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
-                    <td class="px-4 py-3 font-medium text-slate-900"><span class="list-name-text">${escHtml(l.name)}</span></td>
-                    <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
-                    <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
-                    <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
-                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                        <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                        <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                    </td>
-                </tr>`).join('');
-            _markListImportRow();
-            if (wizLists) wizLists.innerHTML = data.map((l, i) => `
-                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" class="rounded" data-contacts="${l.total_contacts||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
-                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
-                    <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
-                </label>`).join('');
-        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+            _cacheSet(cacheKey, data);
+            _applyListsData(el, data);
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _markListImportRow(pct, sub) {
@@ -8438,6 +8481,9 @@ ${sections.join('\n\n')}
     function selectBrand(id, name, color, targetScreen) {
         window._contactsCache  = [];
         window._campaignsCache = [];
+        _cacheClear('campaigns_');
+        _cacheClear('lists_');
+        _cacheClear('contacts_');
         _currentContact = null;
         _currentListId  = null;
         const hb = _allBrands.find(x => x.id === id) || {};
