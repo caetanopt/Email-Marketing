@@ -250,19 +250,18 @@ module.exports = withAuth(async (req, res, user) => {
   // ── List collection operations (?brand_id=X) ─────────────────────────────
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
+  const listQuery = `
+    SELECT l.id, l.name, l.description, l.created_at, l.extra_fields,
+           COUNT(lm.contact_id)::int AS total_contacts
+    FROM lists l
+    JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $1
+    LEFT JOIN list_members lm ON lm.list_id = l.id
+    GROUP BY l.id ORDER BY l.name`;
+
   try {
     if (req.method === 'GET') {
-      let rows = await query(
-        `SELECT l.id, l.name, l.description, l.created_at, l.extra_fields,
-                COUNT(lm.contact_id)::int AS total_contacts
-         FROM lists l
-         JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-         LEFT JOIN list_members lm ON lm.list_id = l.id
-         WHERE l.brand_id = $1
-         GROUP BY l.id ORDER BY l.name`,
-        [brand_id, user.id]
-      );
-      // Auto-create the two default lists if brand has none
+      let rows = await query(listQuery, [user.id]);
+      // Auto-create the two default lists globally if the user has no lists at all
       if (rows.length === 0) {
         const defaults = [
           ['Marketing',     'Lista principal de marketing'],
@@ -276,16 +275,7 @@ module.exports = withAuth(async (req, res, user) => {
             );
           } catch (_) {}
         }
-        rows = await query(
-          `SELECT l.id, l.name, l.description, l.created_at, l.extra_fields,
-                  COUNT(lm.contact_id)::int AS total_contacts
-           FROM lists l
-           JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-           LEFT JOIN list_members lm ON lm.list_id = l.id
-           WHERE l.brand_id = $1
-           GROUP BY l.id ORDER BY l.name`,
-          [brand_id, user.id]
-        );
+        rows = await query(listQuery, [user.id]);
       }
       return res.status(200).json({ data: rows });
     }

@@ -295,11 +295,13 @@ module.exports = async function handler(req, res) {
       );
       if (list_ids) {
         if (list_ids.length) {
-          const owned = await query(
-            `SELECT id FROM lists WHERE id = ANY($1::int[]) AND brand_id = $2`,
-            [list_ids, camp.brand_id]
+          const accessible = await query(
+            `SELECT l.id FROM lists l
+             JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
+             WHERE l.id = ANY($1::int[])`,
+            [list_ids, user.id]
           );
-          if (owned.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não pertencem a esta marca' });
+          if (accessible.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não são acessíveis' });
         }
         await query('DELETE FROM campaign_lists WHERE campaign_id=$1', [id]);
         if (list_ids.length) {

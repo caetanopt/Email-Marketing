@@ -192,11 +192,14 @@ module.exports = async function handler(req, res) {
       }
 
       if (id && action === 'team') {
+        // Global team: all users across all brands, deduped with highest role
         const rows = await query(
-          `SELECT u.id, u.name, u.email, u.active, u.last_login, ubr.role
-           FROM user_brand_roles ubr JOIN users u ON u.id = ubr.user_id
-           WHERE ubr.brand_id = $1 ORDER BY u.name`,
-          [id]
+          `SELECT DISTINCT ON (u.id) u.id, u.name, u.email, u.active, u.last_login, ubr.role
+           FROM users u
+           JOIN user_brand_roles ubr ON ubr.user_id = u.id
+           ORDER BY u.id,
+             CASE ubr.role WHEN 'owner' THEN 1 WHEN 'administrador' THEN 2 WHEN 'editor' THEN 3 ELSE 4 END,
+             u.name`
         );
         return res.status(200).json({ data: rows });
       }
@@ -555,11 +558,15 @@ module.exports = async function handler(req, res) {
         );
         userId = r[0].id;
       }
-      await query(
-        `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
-         ON CONFLICT (user_id, brand_id) DO UPDATE SET role=EXCLUDED.role`,
-        [userId, id, safeRole]
-      );
+      // Add to ALL active brands (global team)
+      const allBrands = await query('SELECT id FROM brands WHERE active=TRUE');
+      for (const { id: brandId } of allBrands) {
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role=EXCLUDED.role`,
+          [userId, brandId, safeRole]
+        );
+      }
 
       // Send welcome email via AWS SES API
       let emailSent = false;
@@ -633,7 +640,8 @@ module.exports = async function handler(req, res) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { role } = req.body || {};
       if (!['owner','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido' });
-      await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [role, member_id, id]);
+      // Update role across ALL brands (global team)
+      await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2', [role, member_id]);
       return res.status(200).json({ ok: true });
     }
 
@@ -663,8 +671,9 @@ module.exports = async function handler(req, res) {
     if (req.method === 'DELETE' && id && action === 'remove_member' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes remover-te a ti próprio' });
-      try { await query('DELETE FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]); } catch (_) {}
-      await query('DELETE FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]);
+      // Remove from ALL brands (global team)
+      try { await query('DELETE FROM user_brand_areas WHERE user_id=$1', [member_id]); } catch (_) {}
+      await query('DELETE FROM user_brand_roles WHERE user_id=$1', [member_id]);
       return res.status(200).json({ ok: true });
     }
 
