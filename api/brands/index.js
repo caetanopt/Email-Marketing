@@ -197,8 +197,8 @@ module.exports = async function handler(req, res) {
           `WITH ranked AS (
              SELECT user_id, role,
                     ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY
-                      CASE role WHEN 'owner' THEN 1 WHEN 'administrador' THEN 2
-                                WHEN 'editor' THEN 3 ELSE 4 END) AS rn
+                      CASE role WHEN 'owner' THEN 1 WHEN 'editor' THEN 2
+                                ELSE 3 END) AS rn
              FROM user_brand_roles
            )
            SELECT u.id, u.name, u.email, u.active, u.last_login, r.role
