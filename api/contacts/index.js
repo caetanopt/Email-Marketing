@@ -418,7 +418,7 @@ module.exports = async function handler(req, res) {
                source=EXCLUDED.source,
                custom_attributes=COALESCE(EXCLUDED.custom_attributes, contacts.custom_attributes),
                updated_at=NOW()
-         RETURNING id`,
+         RETURNING id, (xmax = 0) AS created`,
         [brand_id, e, name||null, phone||null,
          company||null, source||null, custom_attributes ? JSON.stringify(custom_attributes) : null]
       );
@@ -427,7 +427,7 @@ module.exports = async function handler(req, res) {
          FROM suppression s WHERE contacts.id=$1 AND contacts.email=s.email`,
         [rows[0].id]
       );
-      return res.status(201).json({ id: rows[0].id, email: e });
+      return res.status(201).json({ id: rows[0].id, email: e, created: rows[0].created });
     }
 
     if (req.method === 'DELETE') {

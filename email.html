@@ -6459,6 +6459,14 @@ ${bodyRows}
             rows.forEach(r => { if (r.email && !_wizDirectContacts.find(c => c.email === r.email.toLowerCase())) _wizDirectContacts.push({ email: r.email.toLowerCase(), name: [r.first_name, r.last_name].filter(Boolean).join(' ') }); });
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
+            // If editing an existing campaign, link contacts immediately (don't wait for submit)
+            if (_editingCampaignId && newIds.length) {
+                try {
+                    await apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
+                        method: 'POST', body: JSON.stringify({ contact_ids: newIds, temp_contact_ids: newTempIds })
+                    });
+                } catch (e) { console.error('add_direct_recipients (immediate):', e); }
+            }
             _wizClearFile(type);
             _wizRecipTab('lists');
             showToast(`${imported} contactos adicionados a esta campanha.${failed ? ` (${failed} falhas)` : ''}`);
@@ -7887,6 +7895,12 @@ ${sections.join('\n\n')}
         const _currentScreen = document.querySelector('.screen.active')?.id;
         // Leaving campaignCreate — reset all wizard state so it doesn't leak into the next open
         if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
+            // Persist any unsaved direct contacts before clearing state
+            if (_editingCampaignId && _wizDirectContactIds.length) {
+                apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
+                    method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds, temp_contact_ids: _wizTempContactIds })
+                }).catch(() => {});
+            }
             _editingCampaignId = null;
             _wizDirectContactIds = [];
             _wizTempContactIds = [];
