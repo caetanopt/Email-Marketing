@@ -6,6 +6,9 @@ const { requireAuth, cors } = require('../../lib/auth');
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
+  // Delegate per-campaign requests (routed here via vercel.json rewrite)
+  if (req.query.id) return require('./[id]')(req, res);
+
   const { brand_id, status, page = 1, limit = 20, action, range } = req.query;
 
   // ── Cron: process scheduled campaigns ──────────────────
