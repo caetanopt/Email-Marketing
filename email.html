@@ -211,8 +211,11 @@
     function _applyStatsFilter() {
         if (!_statsBrandsData) return;
         const d = _statsBrandsData;
-        const filteredBrand = _statsBrandFilter ? d.brands.find(b => b.id === _statsBrandFilter) : null;
-        const t = filteredBrand || d.totals;
+        // Group view = admin on Caetano; all other brands = single-brand view
+        const isGroupView = _isStatsAdmin() && _currentBrand?.id === 'caetano';
+        const filteredBrand = (isGroupView && _statsBrandFilter) ? d.brands.find(b => b.id === _statsBrandFilter) : null;
+        const currentBrandData = d.brands.find(b => b.id === _currentBrand?.id);
+        const t = filteredBrand || (isGroupView ? d.totals : (currentBrandData || d.totals));
         const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         const setW  = (id, p) => { const el = document.getElementById(id); if (el) el.style.width = Math.min(p,100)+'%'; };
         setEl('statsTotalSent',   t.sent.toLocaleString('pt-PT'));
@@ -231,18 +234,18 @@
         const label   = document.getElementById('statsGroupLabel');
         const backBtn = document.getElementById('statsBackBtn');
         if (label) {
-            if (!_isStatsAdmin()) {
-                label.textContent = `${_currentBrand.name} — Estatísticas`;
-            } else {
+            if (isGroupView) {
                 label.textContent = filteredBrand ? `${filteredBrand.name} — Estatísticas` : 'Grupo Caetano — todos os envios';
+            } else {
+                label.textContent = `${_currentBrand.name} — Estatísticas`;
             }
         }
-        // Back button only visible for admins when drilled into a brand
-        if (backBtn) backBtn.classList.toggle('hidden', !_statsBrandFilter || !_isStatsAdmin());
+        // Back button only in group view when drilled into a specific brand
+        if (backBtn) backBtn.classList.toggle('hidden', !filteredBrand || !isGroupView);
         // Table rows
         const tbody = document.getElementById('statsBrandsTbody');
         if (!tbody) return;
-        const brands = filteredBrand ? [filteredBrand] : (_isStatsAdmin() ? d.brands : d.brands.filter(b => b.id === _currentBrand.id));
+        const brands = filteredBrand ? [filteredBrand] : (isGroupView ? d.brands : (currentBrandData ? [currentBrandData] : []));
         const maxOpen = Math.max(...d.brands.map(x => x.openRate), 1);
         const bar = (v, max, color) => `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0"><div class="h-1.5 rounded-full ${color}" style="width:${Math.min(v/Math.max(max,1)*100,100).toFixed(0)}%"></div></div><span>${v}%</span></div>`;
         tbody.innerHTML = brands.map(b => {
@@ -250,9 +253,9 @@
             const logo = brandMeta.logo
                 ? `<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${brandMeta.bg||'#fff'}"><img src="${brandMeta.logo}" class="w-6 h-6 object-contain${brandMeta.invert?' brightness-0 invert':''}" onerror="this.style.display='none'"></div>`
                 : `<span class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style="background:${b.color||'#64748b'}">${(b.name||'?')[0]}</span>`;
-            const verBtn = (_statsBrandFilter || !_isStatsAdmin())
-                ? ''
-                : `<button onclick="_viewBrandStats('${b.id}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button>`;
+            const verBtn = isGroupView && !filteredBrand
+                ? `<button onclick="_viewBrandStats('${b.id}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button>`
+                : '';
             return `<tr class="hover:bg-slate-50 border-b border-slate-100 last:border-0">
                 <td class="px-4 py-3"><div class="flex items-center gap-2.5">${logo}<span class="font-medium text-slate-900">${b.name}</span></div></td>
                 <td class="px-4 py-3 text-slate-600 text-right">${b.campaigns}</td>
@@ -287,14 +290,11 @@
             const d = await apiFetch(`/api/campaigns?${qs}`);
             if (!d.brands?.length) { if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem dados para o período seleccionado.</td></tr>`; return; }
             _statsBrandsData = d;
-            if (!_isStatsAdmin()) {
-                // Non-admin: always locked to the current brand
-                _statsBrandFilter = _currentBrand.id;
-            } else {
-                // Admin: preserve drill-down filter across range changes (unless brand no longer in data)
-                if (_statsBrandFilter && !d.brands.find(b => b.id === _statsBrandFilter)) {
-                    _statsBrandFilter = null;
-                }
+            // Group view only on Caetano; all other brands reset the drill-down filter
+            if (_currentBrand?.id !== 'caetano') {
+                _statsBrandFilter = null;
+            } else if (_statsBrandFilter && !d.brands.find(b => b.id === _statsBrandFilter)) {
+                _statsBrandFilter = null;
             }
             _applyStatsFilter();
         } catch(e) {
