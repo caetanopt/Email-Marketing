@@ -73,15 +73,12 @@ module.exports = async function handler(req, res) {
     const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || 'all'] || null;
     const sinceClause = days ? `AND c.sent_at >= NOW() - ($1 * INTERVAL '1 day')` : '';
 
-    // If the user is admin/owner in the provided brand, return all active brands
-    let isGroupAdmin = false;
-    if (brand_id) {
-      const roleRow = await query(
-        `SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2`,
-        [user.id, brand_id]
-      );
-      isGroupAdmin = roleRow[0] && ['administrador', 'admin', 'owner'].includes((roleRow[0].role || '').toLowerCase());
-    }
+    // Global admin = owner in ANY brand (not tied to the current brand)
+    const ownerRow = await query(
+      `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`,
+      [user.id]
+    );
+    const isGroupAdmin = !!ownerRow[0];
 
     let perBrand;
     if (isGroupAdmin) {
