@@ -495,7 +495,10 @@
         if (!el) return;
         const cacheKey = `contacts_${brandId}_p${page}`;
         const cached = page === 1 ? _cacheGet(cacheKey) : null;
-        if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        if (!cached) {
+            el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+            _setText('dash-contacts', '…');
+        }
         if (cached) {
             window._contactsCache = cached.data;
             _contactsApiTotal = cached.total || 0;
@@ -8568,9 +8571,8 @@ ${sections.join('\n\n')}
     function selectBrand(id, name, color, targetScreen) {
         window._contactsCache  = [];
         window._campaignsCache = [];
-        _cacheClear('campaigns_');
-        _cacheClear('lists_');
-        _cacheClear('contacts_');
+        // Per-brand sessionStorage caches are kept — each loader renders the
+        // new brand's cached data instantly and refreshes in the background.
         _currentContact = null;
         _currentListId  = null;
         const hb = _allBrands.find(x => x.id === id) || {};
@@ -8902,16 +8904,36 @@ ${sections.join('\n\n')}
         _setText('dash-metrics-title', `Métricas globais (${lbl})`);
         _setText('dash-openrate-sub', `Campanhas enviadas (${lbl})`);
         _setText('dash-top-title', `Top campanhas (${lbl})`);
-        ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '…'));
+        // Stale-while-revalidate: paint the cached snapshot for this brand+range
+        // immediately, then refresh quietly when the API responds.
+        const cacheKey = `dash_${brandId}_${range}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) {
+            _applyDashboardData(cached);
+        } else {
+            ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '…'));
+            ['dash-open-bar','dash-click-bar','dash-bounce-bar'].forEach(id => _setBarWidth(id, 0));
+            const rc = document.getElementById('dashRecentCampaigns');
+            if (rc) rc.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+            const tc = document.getElementById('dashTopCampaigns');
+            if (tc) tc.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        }
         let r;
         try {
             r = await apiFetch(`/api/campaigns?brand_id=${brandId}&action=dashboard&range=${range}`);
         } catch (e) {
             console.error('dashboard fetch:', e);
-            ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '—'));
-            _renderDashTable('dashTopCampaigns', [], null, 4);
+            if (!cached) {
+                ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '—'));
+                _renderDashTable('dashTopCampaigns', [], null, 4);
+            }
             return;
         }
+        _cacheSet(cacheKey, r);
+        _applyDashboardData(r);
+    }
+
+    function _applyDashboardData(r) {
         _setText('dash-campaigns', (r.campaigns||0).toLocaleString('pt-PT'));
         _setText('dash-emails',    (r.emails||0).toLocaleString('pt-PT'));
         _setText('dash-openrate',  r.openRate + '%');
@@ -8954,16 +8976,7 @@ ${sections.join('\n\n')}
             if (feEl && !feEl.value) feEl.value = b.from_email || '';
         }).catch(() => {});
 
-        _setText('dash-campaigns', '…');
-        _setText('dash-emails', '—');
-        _setText('dash-openrate', '—');
-        _setText('dash-open-val', '—');
-        _setText('dash-click-val', '—');
-        _setText('dash-bounce-val', '—');
-
-        const rcEl = document.getElementById('dashRecentCampaigns');
-        if (rcEl) rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
-
+        // Dashboard placeholders/cached paint are handled inside renderDashboardRange
         const impEl = document.getElementById('importsTbody');
         if (impEl) impEl.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
 
