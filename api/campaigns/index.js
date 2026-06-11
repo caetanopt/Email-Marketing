@@ -30,7 +30,26 @@ module.exports = async function handler(req, res) {
     const results = [];
     for (const { id: campId } of due) {
       try {
-        const { total } = await initCampaignSend(campId);
+        // Atomic claim — if a concurrent cron invocation already took this
+        // campaign, the UPDATE matches no row and we skip it (no double-send).
+        const claimed = await query(
+          `UPDATE campaigns SET status='sending' WHERE id=$1 AND status='scheduled' RETURNING id`,
+          [campId]
+        );
+        if (!claimed[0]) continue;
+
+        let total = 0;
+        try {
+          ({ total } = await initCampaignSend(campId));
+        } catch (err) {
+          if (err.message === 'Sem destinatários activos') {
+            // Nothing to send — close the campaign instead of leaving it stuck in 'sending'
+            await query(`UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1`, [campId]);
+            results.push({ id: campId, total: 0, sent: 0, failed: 0 });
+            continue;
+          }
+          throw err;
+        }
         let totalSent = 0, totalFailed = 0;
         for (let b = 0; b < 20; b++) {
           const r = await runBatch(campId, null);
@@ -43,6 +62,46 @@ module.exports = async function handler(req, res) {
         console.error(`Cron: failed to send campaign ${campId}:`, err.message);
         results.push({ id: campId, error: err.message });
       }
+    }
+
+    // Resume campaigns stuck in 'sending' with no recent activity — happens when
+    // the browser is closed mid-send or a previous invocation was cut short.
+    try {
+      const stuck = await query(
+        `SELECT c.id FROM campaigns c
+         WHERE c.status='sending'
+           -- the send actually started (at least one attempt recorded)…
+           AND EXISTS (
+             SELECT 1 FROM campaign_recipients cr2
+             WHERE cr2.campaign_id=c.id
+               AND COALESCE(cr2.attempted_at, cr2.sent_at) IS NOT NULL
+           )
+           -- …but stalled: nothing attempted in the last 10 minutes
+           AND NOT EXISTS (
+             SELECT 1 FROM campaign_recipients cr
+             WHERE cr.campaign_id=c.id
+               AND COALESCE(cr.attempted_at, cr.sent_at) > NOW() - INTERVAL '10 minutes'
+           )
+         LIMIT 3`
+      );
+      for (const { id: campId } of stuck) {
+        try {
+          let totalSent = 0, totalFailed = 0;
+          for (let b = 0; b < 20; b++) {
+            const r = await runBatch(campId, null);
+            totalSent += r.sent || 0;
+            totalFailed += r.failed || 0;
+            if (r.done) break;
+          }
+          results.push({ id: campId, resumed: true, sent: totalSent, failed: totalFailed });
+        } catch (err) {
+          console.error(`Cron: failed to resume campaign ${campId}:`, err.message);
+          results.push({ id: campId, resumed: true, error: err.message });
+        }
+      }
+    } catch (err) {
+      // attempted_at may not exist on older schemas — skip resume silently
+      if (err.code !== '42703') console.error('Cron: stuck campaign scan failed:', err.message);
     }
 
     return res.status(200).json({ ok: true, processed: results.length, results });
@@ -80,45 +139,53 @@ module.exports = async function handler(req, res) {
     );
     const isGroupAdmin = !!ownerRow[0];
 
+    // Pre-aggregate per table to avoid the cartesian explosion of joining
+    // campaign_recipients AND email_events on the same campaign row.
+    const statsBody = (brandFilterJoin) => `
+      WITH sc AS (
+        SELECT c.id, c.brand_id FROM campaigns c
+        WHERE c.status='sent' ${sinceClause}
+      ),
+      cc AS (SELECT brand_id, COUNT(*)::int AS campaigns FROM sc GROUP BY brand_id),
+      rc AS (
+        SELECT sc.brand_id,
+               COUNT(*) FILTER (WHERE cr.status='sent')::int    AS sent,
+               COUNT(*) FILTER (WHERE cr.status='bounced')::int AS bounced
+        FROM campaign_recipients cr JOIN sc ON sc.id=cr.campaign_id
+        GROUP BY sc.brand_id
+      ),
+      ev AS (
+        SELECT sc.brand_id,
+               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int        AS unique_opens,
+               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int       AS unique_clicks,
+               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
+        FROM email_events ee JOIN sc ON sc.id=ee.campaign_id
+        GROUP BY sc.brand_id
+      )
+      SELECT b.id, b.name, b.color, b.logo_url,
+             COALESCE(cc.campaigns,0)     AS campaigns,
+             COALESCE(rc.sent,0)          AS sent,
+             COALESCE(rc.bounced,0)       AS bounced,
+             COALESCE(ev.unique_opens,0)  AS unique_opens,
+             COALESCE(ev.unique_clicks,0) AS unique_clicks,
+             COALESCE(ev.unsubscribes,0)  AS unsubscribes
+      FROM brands b
+      ${brandFilterJoin}
+      LEFT JOIN cc ON cc.brand_id=b.id
+      LEFT JOIN rc ON rc.brand_id=b.id
+      LEFT JOIN ev ON ev.brand_id=b.id
+      WHERE b.active=TRUE
+      ORDER BY COALESCE(rc.sent,0) DESC`;
+
     let perBrand;
     if (isGroupAdmin) {
       // Admin: all active brands (no role restriction)
-      perBrand = await query(
-        `SELECT
-            b.id, b.name, b.color, b.logo_url,
-            COUNT(DISTINCT c.id) FILTER (WHERE c.status='sent')::int            AS campaigns,
-            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int           AS sent,
-            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int        AS bounced,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int     AS unique_opens,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int    AS unique_clicks,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
-         FROM brands b
-         LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause}
-         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-         LEFT JOIN email_events ee ON ee.campaign_id=c.id
-         WHERE b.active=TRUE
-         GROUP BY b.id ORDER BY sent DESC`,
-        days ? [days] : []
-      );
+      perBrand = await query(statsBody(''), days ? [days] : []);
     } else {
       // Non-admin: only brands the user has a role in
       const params = days ? [days] : [];
       perBrand = await query(
-        `SELECT
-            b.id, b.name, b.color, b.logo_url,
-            COUNT(DISTINCT c.id) FILTER (WHERE c.status='sent')::int            AS campaigns,
-            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int           AS sent,
-            COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int        AS bounced,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int     AS unique_opens,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int    AS unique_clicks,
-            COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
-         FROM brands b
-         JOIN user_brand_roles ubr ON ubr.brand_id=b.id AND ubr.user_id=$${params.length+1}
-         LEFT JOIN campaigns c ON c.brand_id=b.id AND c.status='sent' ${sinceClause}
-         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-         LEFT JOIN email_events ee ON ee.campaign_id=c.id
-         WHERE b.active=TRUE
-         GROUP BY b.id ORDER BY sent DESC`,
+        statsBody(`JOIN user_brand_roles ubr ON ubr.brand_id=b.id AND ubr.user_id=$${params.length+1}`),
         days ? [days, user.id] : [user.id]
       );
     }
@@ -157,44 +224,61 @@ module.exports = async function handler(req, res) {
     if (action === 'dashboard' && req.method === 'GET') {
       const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || '30d'] || 30;
       const sinceParams = [brand_id, days];
+      // Per-campaign counters via LATERAL sub-queries — joining recipients AND
+      // events on the same row multiplies them (cartesian) and is very slow.
+      const campaignCounters = `
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*) FILTER (WHERE cr.status='sent')::int AS sent
+          FROM campaign_recipients cr WHERE cr.campaign_id=c.id
+        ) rc ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+                 COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+          FROM email_events ee WHERE ee.campaign_id=c.id
+        ) ev ON TRUE`;
       const [[agg], recent, top] = await Promise.all([
         query(
-          `SELECT
-              COUNT(DISTINCT c.id)::int AS campaigns,
-              COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int  AS sent,
-              COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='bounced')::int AS bounced,
-              COUNT(DISTINCT cr.id)::int AS total_recipients,
-              COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
-              COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
-           FROM campaigns c
-           LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-           LEFT JOIN email_events ee ON ee.campaign_id=c.id
-           WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')`,
+          `WITH sc AS (
+             SELECT id FROM campaigns
+             WHERE brand_id=$1 AND status='sent' AND sent_at >= NOW() - ($2 * INTERVAL '1 day')
+           ),
+           rc AS (
+             SELECT COUNT(*)::int AS total_recipients,
+                    COUNT(*) FILTER (WHERE status='sent')::int    AS sent,
+                    COUNT(*) FILTER (WHERE status='bounced')::int AS bounced
+             FROM campaign_recipients WHERE campaign_id IN (SELECT id FROM sc)
+           ),
+           ev AS (
+             SELECT COUNT(DISTINCT contact_id) FILTER (WHERE type='open' )::int AS unique_opens,
+                    COUNT(DISTINCT contact_id) FILTER (WHERE type='click')::int AS unique_clicks
+             FROM email_events WHERE campaign_id IN (SELECT id FROM sc)
+           )
+           SELECT (SELECT COUNT(*)::int FROM sc) AS campaigns,
+                  rc.sent, rc.bounced, rc.total_recipients,
+                  ev.unique_opens, ev.unique_clicks
+           FROM rc, ev`,
           sinceParams
         ),
         query(
           `SELECT c.id, c.name, c.subject, c.sent_at, c.status,
-                  COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+                  COALESCE(rc.sent,0) AS sent,
+                  COALESCE(ev.unique_opens,0)  AS unique_opens,
+                  COALESCE(ev.unique_clicks,0) AS unique_clicks
            FROM campaigns c
-           LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-           LEFT JOIN email_events ee ON ee.campaign_id=c.id
+           ${campaignCounters}
            WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
-           GROUP BY c.id ORDER BY c.sent_at DESC NULLS LAST LIMIT 5`,
+           ORDER BY c.sent_at DESC NULLS LAST LIMIT 5`,
           sinceParams
         ),
         query(
           `WITH base AS (
              SELECT c.id, c.name, c.subject, c.sent_at, c.status,
-                    COUNT(DISTINCT cr.id) FILTER (WHERE cr.status='sent')::int AS sent,
-                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS unique_opens,
-                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks
+                    COALESCE(rc.sent,0) AS sent,
+                    COALESCE(ev.unique_opens,0)  AS unique_opens,
+                    COALESCE(ev.unique_clicks,0) AS unique_clicks
              FROM campaigns c
-             LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-             LEFT JOIN email_events ee ON ee.campaign_id=c.id
+             ${campaignCounters}
              WHERE c.brand_id=$1 AND c.status='sent' AND c.sent_at >= NOW() - ($2 * INTERVAL '1 day')
-             GROUP BY c.id
            )
            SELECT * FROM base
            WHERE sent > 0
@@ -230,18 +314,25 @@ module.exports = async function handler(req, res) {
                 c.from_name, c.from_email, c.preview_text, c.utm_params,
                 b.num AS brand_num,
                 t.name AS template_name, u.name AS created_by_name,
-                COUNT(DISTINCT cr.id)::int AS total_recipients,
-                COUNT(DISTINCT CASE WHEN cr.status='sent' THEN cr.id END)::int AS sent_count,
-                COUNT(DISTINCT CASE WHEN ee_o.type='open'  THEN ee_o.id END)::int AS open_count,
-                COUNT(DISTINCT CASE WHEN ee_c.type='click' THEN ee_c.id END)::int AS click_count
+                COALESCE(rc.total,0) AS total_recipients,
+                COALESCE(rc.sent,0)  AS sent_count,
+                COALESCE(ev.opens,0)  AS open_count,
+                COALESCE(ev.clicks,0) AS click_count
          FROM campaigns c
          LEFT JOIN brands b ON b.id=c.brand_id
          LEFT JOIN templates t ON t.id=c.template_id
          LEFT JOIN users u ON u.id=c.created_by
-         LEFT JOIN campaign_recipients cr ON cr.campaign_id=c.id
-         LEFT JOIN email_events ee_o ON ee_o.campaign_id=c.id AND ee_o.type='open'
-         LEFT JOIN email_events ee_c ON ee_c.campaign_id=c.id AND ee_c.type='click'
-         ${where} GROUP BY c.id,b.num,t.name,u.name
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE cr.status='sent')::int AS sent
+           FROM campaign_recipients cr WHERE cr.campaign_id=c.id
+         ) rc ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) FILTER (WHERE ee.type='open' )::int AS opens,
+                  COUNT(*) FILTER (WHERE ee.type='click')::int AS clicks
+           FROM email_events ee WHERE ee.campaign_id=c.id
+         ) ev ON TRUE
+         ${where}
          ORDER BY c.created_at DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
         params
       );
@@ -297,6 +388,7 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor' });
+    console.error('campaigns handler error:', err?.message, err?.code);
+    res.status(500).json({ error: err?.message || 'Erro de servidor' });
   }
 };

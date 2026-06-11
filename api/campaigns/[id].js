@@ -223,15 +223,23 @@ module.exports = async function handler(req, res) {
              ORDER BY sent_at DESC NULLS LAST LIMIT 5
            )
            SELECT lc.id, lc.name, lc.sent_at,
-                  COUNT(cr.*) FILTER (WHERE cr.status='sent')::int AS sent,
-                  COUNT(cr.*)::int AS total_recipients,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS unique_opens,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
-                  COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+                  COALESCE(rc.sent,0)  AS sent,
+                  COALESCE(rc.total,0) AS total_recipients,
+                  COALESCE(ev.unique_opens,0)  AS unique_opens,
+                  COALESCE(ev.unique_clicks,0) AS unique_clicks,
+                  COALESCE(ev.unsubs,0) AS unsubs
            FROM last_camps lc
-           LEFT JOIN campaign_recipients cr ON cr.campaign_id = lc.id
-           LEFT JOIN email_events ee ON ee.campaign_id = lc.id
-           GROUP BY lc.id, lc.name, lc.sent_at
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE cr.status='sent')::int AS sent
+             FROM campaign_recipients cr WHERE cr.campaign_id = lc.id
+           ) rc ON TRUE
+           LEFT JOIN LATERAL (
+             SELECT COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int  AS unique_opens,
+                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
+                    COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+             FROM email_events ee WHERE ee.campaign_id = lc.id
+           ) ev ON TRUE
            ORDER BY lc.sent_at DESC NULLS LAST`,
           [camp[0].brand_id]
         );
@@ -404,6 +412,27 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
         if (camp[0].status !== 'sending')
           return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
+
+        // Honour suppressions added after the recipients were built (mid-send
+        // unsubscribes, direct imports) — never send to a suppressed address.
+        try {
+          await query(
+            `UPDATE campaign_recipients cr
+             SET status='failed', error_message='Endereço na lista de supressão', attempted_at=NOW()
+             WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
+               AND EXISTS (SELECT 1 FROM suppression s WHERE lower(s.email)=lower(cr.email))`,
+            [id]
+          );
+        } catch (e) {
+          if (e.code === '42703') {
+            await query(
+              `UPDATE campaign_recipients cr SET status='failed'
+               WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
+                 AND EXISTS (SELECT 1 FROM suppression s WHERE lower(s.email)=lower(cr.email))`,
+              [id]
+            );
+          } else { throw e; }
+        }
 
         const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
         // Pick up both fresh pending contacts and soft-bounce retries

@@ -502,16 +502,16 @@
             const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Ativo</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Cancelado</span>', bounced:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Rejeitado</span>', complained:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700">Marcado como spam</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Suprimido</span>' };
             const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
             el.innerHTML = cached.data.map((c, i) => `
-                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-email="${escHtml(c.email)}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
                     <td class="px-4 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="contact-row-cb rounded border-slate-300" data-id="${c.id}" onchange="_toggleContactCheck(${c.id},this)" /></td>
-                    <td class="px-4 py-3 font-medium text-slate-900">${c.name||'—'}</td>
-                    <td class="px-4 py-3 text-slate-600">${c.email}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.company||'—'}</span></td>
+                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(c.name)||'—'}</td>
+                    <td class="px-4 py-3 text-slate-600">${escHtml(c.email)}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${escHtml(c.company)||'—'}</span></td>
                     <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
                     <td class="px-4 py-3 text-right flex items-center justify-end gap-2" onclick="event.stopPropagation()">
                         <button onclick="showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button>
-                        <button onclick="doDeleteContact(${c.id},'${(c.name||c.email).replace(/'/g,"\\'")}')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
+                        <button onclick="doDeleteContact(${c.id},(_contactsCache[${i}]||{}).name||(_contactsCache[${i}]||{}).email||'')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
                     </td>
                 </tr>`).join('');
             _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
@@ -533,16 +533,16 @@
             window._contactsCache = data;
             const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
             el.innerHTML = data.map((c, i) => `
-                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-email="${escHtml(c.email)}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
                     <td class="px-4 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="contact-row-cb rounded border-slate-300" data-id="${c.id}" onchange="_toggleContactCheck(${c.id},this)" /></td>
-                    <td class="px-4 py-3 font-medium text-slate-900">${c.name||'—'}</td>
-                    <td class="px-4 py-3 text-slate-600">${c.email}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.company||'—'}</span></td>
+                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(c.name)||'—'}</td>
+                    <td class="px-4 py-3 text-slate-600">${escHtml(c.email)}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${escHtml(c.company)||'—'}</span></td>
                     <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
                     <td class="px-4 py-3 text-right flex items-center justify-end gap-2" onclick="event.stopPropagation()">
                         <button onclick="showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button>
-                        <button onclick="doDeleteContact(${c.id},'${(c.name||c.email).replace(/'/g,"\\'")}')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
+                        <button onclick="doDeleteContact(${c.id},(_contactsCache[${i}]||{}).name||(_contactsCache[${i}]||{}).email||'')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
                     </td>
                 </tr>`).join('');
             _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
@@ -604,8 +604,8 @@
         el.innerHTML = pageItems.map(({ c, i }) => {
             const deletable = ['draft','scheduled'].includes(c.status);
             return `
-            <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
-                <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'')}" onchange="_updateCampBulkBar()">` : ''}</td>
+            <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
+                <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${escHtml(c.name||'')}" onchange="_updateCampBulkBar()">` : ''}</td>
                 <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
                 <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
                 <td class="px-4 py-3">
@@ -693,7 +693,7 @@
             return;
         }
         el.innerHTML = data.map(l => `
-            <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
+            <tr class="hover:bg-slate-50" data-name="${escHtml((l.name||'').toLowerCase())}" data-list-id="${l.id}">
                 <td class="px-4 py-3 font-medium text-slate-900"><span class="list-name-text">${escHtml(l.name)}</span></td>
                 <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
                 <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
@@ -1147,6 +1147,7 @@
         tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         try {
             const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=team`);
+            window._teamCache = data || [];
             const roleBadge = { owner:'bg-purple-100 text-purple-700', viewer:'bg-slate-100 text-slate-600' };
             const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600','bg-blue-600','bg-green-600'];
             const _currentUserId = JSON.parse(localStorage.getItem('pm_user')||'{}').id;
@@ -1161,8 +1162,8 @@
                     `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
                 ).join('');
                 const canManage = _canSeeRolesPanel();
-                const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
-                const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
+                const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},(_teamCache[${i}]||{}).name||'','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
+                const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},(_teamCache[${i}]||{}).name||'','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
                 const actions = isMe
                     ? `<span class="text-xs text-slate-300">—</span>`
                     : (m.role === 'owner'
