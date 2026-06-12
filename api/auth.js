@@ -40,6 +40,19 @@ module.exports = async function handler(req, res) {
       let brands = await query(
         'SELECT brand_id, role FROM user_brand_roles WHERE user_id = $1', [r.user_id]
       );
+      // Administradores (owner em qualquer marca) têm sempre owner em TODAS as
+      // marcas activas — self-heal a cada login para marcas criadas entretanto.
+      if (brands.some(b => b.role === 'owner')) {
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role)
+           SELECT $1, id, 'owner' FROM brands WHERE active = TRUE
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role = 'owner'`,
+          [r.user_id]
+        );
+        brands = await query(
+          'SELECT brand_id, role FROM user_brand_roles WHERE user_id = $1', [r.user_id]
+        );
+      }
       if (!brands.length) {
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1, 'caetano', 'viewer') ON CONFLICT DO NOTHING`,
