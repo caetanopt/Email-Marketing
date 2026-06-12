@@ -540,22 +540,26 @@ module.exports = async function handler(req, res) {
         }
 
         const c = camp[0];
-        const sesClient = getSESClient();
+        const DRY_RUN = process.env.SEND_DRY_RUN === 'true';
 
-        // Pre-flight quota check — same logic as runBatch in sendCampaign.js
+        const sesClient = DRY_RUN ? null : getSESClient();
+
+        // Pre-flight quota check — skip in dry-run
         let quotaRemaining = Infinity;
-        try {
-          const quotaInfo = await sesClient.send(new GetSendQuotaCommand({}));
-          quotaRemaining = Math.max(0, Math.floor(quotaInfo.Max24HourSend - quotaInfo.SentLast24Hours));
-          if (quotaRemaining < 1) {
-            const [{ remaining }] = await query(
-              "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
-              [id]
-            );
-            return res.status(200).json({ done: false, sent: 0, failed: 0, remaining, quotaExhausted: true });
+        if (!DRY_RUN) {
+          try {
+            const quotaInfo = await sesClient.send(new GetSendQuotaCommand({}));
+            quotaRemaining = Math.max(0, Math.floor(quotaInfo.Max24HourSend - quotaInfo.SentLast24Hours));
+            if (quotaRemaining < 1) {
+              const [{ remaining }] = await query(
+                "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
+                [id]
+              );
+              return res.status(200).json({ done: false, sent: 0, failed: 0, remaining, quotaExhausted: true });
+            }
+          } catch (e) {
+            console.warn('send_batch: quota pre-check failed, proceeding:', e.message);
           }
-        } catch (e) {
-          console.warn('send_batch: quota pre-check failed, proceeding:', e.message);
         }
 
         const toSend = quotaRemaining < pending.length ? pending.slice(0, quotaRemaining) : pending;
@@ -636,24 +640,30 @@ module.exports = async function handler(req, res) {
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
-              const sesCmd = new SendEmailCommand({
-                Source: `${fromName} <${fromEmail}>`,
-                Destination: { ToAddresses: [contact.email] },
-                Message: {
-                  Subject: { Charset: 'UTF-8', Data: c.subject || '(sem assunto)' },
-                  Body: {
-                    Html: { Charset: 'UTF-8', Data: finalHtml },
-                    Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
+
+              let msgId = null;
+              if (DRY_RUN) {
+                msgId = `dryrun-${id}-${contact.contact_id}-${Date.now()}`;
+              } else {
+                const sesCmd = new SendEmailCommand({
+                  Source: `${fromName} <${fromEmail}>`,
+                  Destination: { ToAddresses: [contact.email] },
+                  Message: {
+                    Subject: { Charset: 'UTF-8', Data: c.subject || '(sem assunto)' },
+                    Body: {
+                      Html: { Charset: 'UTF-8', Data: finalHtml },
+                      Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
+                    },
                   },
-                },
-                ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
-                Tags: [
-                  { Name: 'campaign_id', Value: String(id) },
-                  { Name: 'contact_id',  Value: String(contact.contact_id) },
-                ],
-              });
-              const info = await sesClient.send(sesCmd);
-              const msgId = info?.MessageId || null;
+                  ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
+                  Tags: [
+                    { Name: 'campaign_id', Value: String(id) },
+                    { Name: 'contact_id',  Value: String(contact.contact_id) },
+                  ],
+                });
+                const info = await sesClient.send(sesCmd);
+                msgId = info?.MessageId || null;
+              }
               try {
                 await query(
                   "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
@@ -752,7 +762,7 @@ module.exports = async function handler(req, res) {
         if (batchState.quotaHit) {
           return res.status(200).json({ ok: true, sent, failed, remaining, done: false, quotaExhausted: true });
         }
-        return res.status(200).json({ ok: true, sent, failed, remaining, done: remaining === 0 });
+        return res.status(200).json({ ok: true, sent, failed, remaining, done: remaining === 0, ...(DRY_RUN ? { dryRun: true } : {}) });
       }
 
 
