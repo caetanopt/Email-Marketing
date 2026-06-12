@@ -5,6 +5,58 @@ const { SendEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses')
 const crypto = require('crypto');
 const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
+function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
+  const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
+  const altBoundary = `==ALT${Date.now()}${Math.random().toString(36).slice(2)}==`;
+  const encodeB = s => '=?UTF-8?B?' + Buffer.from(s, 'utf8').toString('base64') + '?=';
+  const needsEncode = s => /[^\x20-\x7E]/.test(s);
+  const hdrSubject = needsEncode(subject) ? encodeB(subject) : subject;
+  const hdrFrom = needsEncode(fromName)
+    ? `${encodeB(fromName)} <${fromEmail}>`
+    : `${fromName} <${fromEmail}>`;
+
+  const lines = [
+    `MIME-Version: 1.0`,
+    `From: ${hdrFrom}`,
+    `To: ${toEmail}`,
+    `Subject: ${hdrSubject}`,
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    ``,
+    `--${boundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    ``,
+    `--${altBoundary}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    Buffer.from(textBody, 'utf8').toString('base64'),
+    ``,
+    `--${altBoundary}`,
+    `Content-Type: text/html; charset=UTF-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    Buffer.from(htmlBody, 'utf8').toString('base64'),
+    ``,
+    `--${altBoundary}--`,
+  ];
+
+  for (const att of (attachments || [])) {
+    const fname = needsEncode(att.name) ? encodeB(att.name) : att.name;
+    lines.push(
+      `--${boundary}`,
+      `Content-Type: ${att.type || 'application/octet-stream'}; name="${fname}"`,
+      `Content-Disposition: attachment; filename="${fname}"`,
+      `Content-Transfer-Encoding: base64`,
+      ``,
+      att.data,  // já vem base64 do browser
+      ``
+    );
+  }
+  lines.push(`--${boundary}--`);
+  return lines.join('\r\n');
+}
+
 const APP_URL = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
 const FROM_DOMAIN = process.env.FROM_DOMAIN || 'caetano.pt';
 const DEFAULT_COMPANY_ADDRESS = process.env.COMPANY_ADDRESS || 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
@@ -293,13 +345,19 @@ module.exports = async function handler(req, res) {
     if (req.method === 'PUT') {
       if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível editar uma campanha já enviada.' });
       const { name, subject, preview_text, from_name, from_email,
-              template_id, scheduled_at, status, list_ids } = req.body || {};
+              template_id, scheduled_at, status, list_ids, utm_params, attachments } = req.body || {};
       await query(
         `UPDATE campaigns SET name=COALESCE($1,name), subject=$2, preview_text=$3,
          from_name=$4, from_email=$5, template_id=COALESCE($6,template_id),
-         scheduled_at=$7, status=COALESCE($8,status), updated_at=NOW() WHERE id=$9 AND brand_id=$10`,
+         scheduled_at=$7, status=COALESCE($8,status),
+         utm_params=COALESCE($9,utm_params),
+         attachments=COALESCE($10,attachments),
+         updated_at=NOW() WHERE id=$11 AND brand_id=$12`,
         [name||null, subject||null, preview_text||null, from_name||null, from_email||null,
-         template_id||null, scheduled_at||null, status||null, id, camp.brand_id]
+         template_id||null, scheduled_at||null, status||null,
+         utm_params != null ? JSON.stringify(utm_params) : null,
+         attachments != null ? JSON.stringify(attachments) : null,
+         id, camp.brand_id]
       );
       if (list_ids) {
         if (list_ids.length) {
@@ -636,24 +694,46 @@ module.exports = async function handler(req, res) {
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
-              const sesCmd = new SendEmailCommand({
-                Source: `${fromName} <${fromEmail}>`,
-                Destination: { ToAddresses: [contact.email] },
-                Message: {
-                  Subject: { Charset: 'UTF-8', Data: c.subject || '(sem assunto)' },
-                  Body: {
-                    Html: { Charset: 'UTF-8', Data: finalHtml },
-                    Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
+              const campAttachments = c.attachments || [];
+              let msgId = null;
+              if (campAttachments.length > 0) {
+                const { SendRawEmailCommand } = require('@aws-sdk/client-ses');
+                const rawMsg = buildRawEmail({
+                  fromName, fromEmail, toEmail: contact.email, replyTo,
+                  subject: c.subject || '(sem assunto)',
+                  htmlBody: finalHtml,
+                  textBody: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
+                  attachments: campAttachments,
+                });
+                const rawCmd = new SendRawEmailCommand({
+                  RawMessage: { Data: Buffer.from(rawMsg) },
+                  Tags: [
+                    { Name: 'campaign_id', Value: String(id) },
+                    { Name: 'contact_id',  Value: String(contact.contact_id) },
+                  ],
+                });
+                const info = await sesClient.send(rawCmd);
+                msgId = info?.MessageId || null;
+              } else {
+                const sesCmd = new SendEmailCommand({
+                  Source: `${fromName} <${fromEmail}>`,
+                  Destination: { ToAddresses: [contact.email] },
+                  Message: {
+                    Subject: { Charset: 'UTF-8', Data: c.subject || '(sem assunto)' },
+                    Body: {
+                      Html: { Charset: 'UTF-8', Data: finalHtml },
+                      Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
+                    },
                   },
-                },
-                ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
-                Tags: [
-                  { Name: 'campaign_id', Value: String(id) },
-                  { Name: 'contact_id',  Value: String(contact.contact_id) },
-                ],
-              });
-              const info = await sesClient.send(sesCmd);
-              const msgId = info?.MessageId || null;
+                  ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
+                  Tags: [
+                    { Name: 'campaign_id', Value: String(id) },
+                    { Name: 'contact_id',  Value: String(contact.contact_id) },
+                  ],
+                });
+                const info = await sesClient.send(sesCmd);
+                msgId = info?.MessageId || null;
+              }
               try {
                 await query(
                   "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",

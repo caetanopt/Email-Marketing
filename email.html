@@ -5979,7 +5979,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             return !!d.editingId;
         } catch(e) { return false; }
     }
-    function _wizClearDraft() { localStorage.removeItem(_wizDraftKey()); }
+    function _wizClearDraft() { _wizAttachments = []; localStorage.removeItem(_wizDraftKey()); }
     function _wizStartNew() {
         // Explicit "new campaign" — wipe any stale draft, editing context and editor blocks
         _wizClearDraft();
@@ -6028,6 +6028,7 @@ ${teSerializeBlocksComment(srcBlocks)}
 
         if (step === 4) {
             _wizUpdateStep4ImportBanner();
+            _wizRenderAttachments();
             // Always pre-fill test email with logged-in user's email
             const _wizTestIn = document.getElementById('wizTestEmailInput');
             if (_wizTestIn) {
@@ -6360,7 +6361,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const editStatus = sendType === 'schedule' ? 'scheduled' : 'draft';
                 await apiFetch(`/api/campaigns/${_editingCampaignId}`, {
                     method: 'PUT',
-                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params, status: editStatus })
+                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params, attachments: _wizAttachments, status: editStatus })
                 });
                 campaignId = _editingCampaignId;
                 _editingCampaignId = null;
@@ -6368,7 +6369,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             } else {
                 const res = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
                     method: 'POST',
-                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params })
+                    body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params, attachments: _wizAttachments })
                 });
                 campaignId = res.id;
             }
@@ -6630,6 +6631,64 @@ ${teSerializeBlocksComment(srcBlocks)}
     let _wizExistingContacts = [];
     let _wizExistingDirectCount = 0;
     let _wizSubmitting = false;
+    let _wizAttachments = []; // [{name, type, size, data}] — data é base64 sem prefixo
+
+    function _wizAttachPick() {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.multiple = true;
+        inp.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip';
+        inp.onchange = () => {
+            const MAX_EACH = 5 * 1024 * 1024;   // 5 MB por ficheiro
+            const MAX_TOTAL = 9 * 1024 * 1024;  // 9 MB total (SES limita a 10 MB)
+            Array.from(inp.files).forEach(f => {
+                if (f.size > MAX_EACH) { showToast(`"${f.name}" excede 5 MB — ignorado.`, 'error'); return; }
+                const currentTotal = _wizAttachments.reduce((s, a) => s + a.size, 0);
+                if (currentTotal + f.size > MAX_TOTAL) { showToast('Limite total de 9 MB atingido — ficheiro ignorado.', 'error'); return; }
+                if (_wizAttachments.find(a => a.name === f.name)) return; // já existe
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const dataUrl = e.target.result; // "data:mime;base64,XXXX"
+                    const base64 = dataUrl.split(',')[1];
+                    _wizAttachments.push({ name: f.name, type: f.type || 'application/octet-stream', size: f.size, data: base64 });
+                    _wizRenderAttachments();
+                };
+                reader.readAsDataURL(f);
+            });
+        };
+        inp.click();
+    }
+    function _wizAttachRemove(idx) {
+        _wizAttachments.splice(idx, 1);
+        _wizRenderAttachments();
+    }
+    function _wizRenderAttachments() {
+        const list = document.getElementById('wizAttachList');
+        const totalEl = document.getElementById('wizAttachTotal');
+        if (!list) return;
+        if (!_wizAttachments.length) {
+            list.innerHTML = '<p class="text-xs text-slate-400 italic">Sem anexos adicionados.</p>';
+            if (totalEl) totalEl.textContent = '';
+            return;
+        }
+        const fmt = b => b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(1)} MB`;
+        list.innerHTML = _wizAttachments.map((a, i) => `
+            <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                <div class="flex items-center gap-2 min-w-0">
+                    <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                    <span class="text-xs text-slate-700 truncate">${escHtml(a.name)}</span>
+                    <span class="text-[10px] text-slate-400 shrink-0">${fmt(a.size)}</span>
+                </div>
+                <button onclick="_wizAttachRemove(${i})" class="text-slate-400 hover:text-red-500 shrink-0" title="Remover">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>`).join('');
+        const total = _wizAttachments.reduce((s, a) => s + a.size, 0);
+        if (totalEl) {
+            totalEl.textContent = `Total: ${fmt(total)}`;
+            totalEl.className = `text-[10px] mt-1 ${total > 8*1024*1024 ? 'text-amber-600 font-medium' : 'text-slate-400'}`;
+        }
+    }
 
     function _wizPickFile(type) {
         const inp = document.createElement('input');
@@ -7046,6 +7105,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             teState.blocks = [];
             teState.selected = null;
         }
+        _wizAttachments = Array.isArray(c.attachments) ? c.attachments : [];
     }
 
     async function _editCurrentCampaignInWizard() {
@@ -7098,6 +7158,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             wizUpdateListsTotal();
             // Render variables panel
             _wizVarsRender();
+            _wizAttachments = Array.isArray(c.attachments) ? c.attachments : [];
         } catch (e) { showToast(e.message, 'error'); }
     }
 
@@ -10486,6 +10547,22 @@ ${sections.join('\n\n')}
                                 <button id="wizTestEmailBtn" onclick="_wizSendTest()" class="flex-shrink-0 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-50 whitespace-nowrap">Enviar Teste</button>
                             </div>
                             <p class="text-[10px] text-slate-400 mt-2">O assunto terá o prefixo [TESTE]. Não afecta a campanha original.</p>
+                        </div>
+                        <!-- Anexos -->
+                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                            <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                                Anexos
+                            </h3>
+                            <p class="text-xs text-slate-400 mb-3">Ficheiros enviados a todos os destinatários. Máx. 5 MB por ficheiro, 9 MB no total.</p>
+                            <div id="wizAttachList" class="space-y-2 mb-3">
+                                <p class="text-xs text-slate-400 italic">Sem anexos adicionados.</p>
+                            </div>
+                            <p id="wizAttachTotal" class="text-[10px] text-slate-400 mb-3"></p>
+                            <button onclick="_wizAttachPick()" class="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                Adicionar ficheiro
+                            </button>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
