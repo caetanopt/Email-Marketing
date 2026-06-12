@@ -65,8 +65,10 @@ module.exports = async function handler(req, res) {
           } catch (err) {
             if (err.code === 'already_sending') continue;
             if (err.message === 'Sem destinatários activos') {
-              await query(`UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1`, [campId]);
-              results.push({ id: campId, total: 0, sent: 0, failed: 0 });
+              // initCampaignSend already reverted the campaign to 'draft'.
+              // Log and skip — the user needs to add recipients before the campaign can send.
+              console.warn(`Cron: campaign ${campId} has no active recipients — left as draft`);
+              results.push({ id: campId, total: 0, sent: 0, failed: 0, noRecipients: true });
               continue;
             }
             throw err;

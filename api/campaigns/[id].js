@@ -383,10 +383,9 @@ module.exports = async function handler(req, res) {
         );
         if (!campCheck[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         try {
-          const { total } = await initCampaignSend(id);
+          const { total, campaign: c2 } = await initCampaignSend(id);
           // log campaign_started with user
           try {
-            const [c2] = await query('SELECT brand_id FROM campaigns WHERE id=$1', [id]);
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by) VALUES ($1,$2,$3,'campaign_started',$4)`,
               [c2.brand_id, id, `${total} destinatários`, user.id]
