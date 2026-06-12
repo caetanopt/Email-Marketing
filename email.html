@@ -5234,13 +5234,60 @@ ${bodyRows}
         const file = ev.target.files?.[0];
         if (file) _mediaReadFile(file);
     }
+    // Optimiza uma imagem antes do upload: redimensiona para máx. 1200px de
+    // largura (2× retina dos 600px dos emails) e recomprime. GIFs não são
+    // tocados (o canvas destruiria a animação). Devolve sempre o resultado
+    // mais pequeno entre o original e o optimizado.
+    const MEDIA_MAX_BYTES = 1024 * 1024; // 1 MB
+    const MEDIA_MAX_WIDTH = 1200;
+    function _optimizeImage(dataUrl, mimeType) {
+        return new Promise((resolve) => {
+            if (mimeType === 'image/gif') return resolve(dataUrl);
+            const img = new Image();
+            img.onerror = () => resolve(dataUrl);
+            img.onload = () => {
+                try {
+                    const scale = Math.min(1, MEDIA_MAX_WIDTH / img.naturalWidth);
+                    const w = Math.round(img.naturalWidth * scale);
+                    const h = Math.round(img.naturalHeight * scale);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(img, 0, 0, w, h);
+                    let out;
+                    if (mimeType === 'image/png') {
+                        // PNG só se tiver transparência; caso contrário JPEG comprime muito melhor
+                        const px = ctx.getImageData(0, 0, w, h).data;
+                        let hasAlpha = false;
+                        for (let i = 3; i < px.length; i += 4) { if (px[i] < 255) { hasAlpha = true; break; } }
+                        out = hasAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
+                    } else {
+                        out = canvas.toDataURL('image/jpeg', 0.85);
+                    }
+                    // Mantém o mais pequeno — recomprimir pode aumentar ficheiros já optimizados
+                    resolve(out.length < dataUrl.length ? out : dataUrl);
+                } catch (e) { resolve(dataUrl); }
+            };
+            img.src = dataUrl;
+        });
+    }
     function _mediaReadFile(file) {
         const allowed = ['image/png','image/jpeg','image/gif'];
         if (!allowed.includes(file.type)) { showToast('Formato não suportado. Usa PNG, JPG ou GIF.', 'error'); return; }
-        if (file.size > 2 * 1024 * 1024) { showToast('Ficheiro demasiado grande (máx 2 MB).', 'error'); return; }
+        if (file.size > MEDIA_MAX_BYTES) {
+            showToast(`Ficheiro demasiado grande (${(file.size/1024/1024).toFixed(1)} MB). O máximo permitido é 1 MB.`, 'error');
+            return;
+        }
         const reader = new FileReader();
-        reader.onload = e => {
-            _mediaPendingDataUrl = e.target.result;
+        reader.onload = async e => {
+            const original = e.target.result;
+            const optimized = await _optimizeImage(original, file.type);
+            _mediaPendingDataUrl = optimized;
+            if (optimized.length < original.length * 0.95) {
+                const kb = s => Math.round((s.length * 3 / 4) / 1024);
+                showToast(`Imagem optimizada: ${kb(original)} KB → ${kb(optimized)} KB`, 'info');
+            }
             const box = document.getElementById('mediaPreviewBox');
             const img = document.getElementById('mediaPreviewImg');
             img.src = _mediaPendingDataUrl;
@@ -11016,7 +11063,7 @@ ${sections.join('\n\n')}
             <div id="mediaDropZone" ondrop="_mediaDrop(event)" ondragover="event.preventDefault();this.classList.add('border-slate-900','bg-slate-50')" ondragleave="this.classList.remove('border-slate-900','bg-slate-50')" onclick="document.getElementById('mediaFile').click()" class="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
                 <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                 <p class="text-sm text-slate-600">Arrasta uma imagem ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
-                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG, GIF · até 2 MB</p>
+                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG, GIF · até 1 MB · optimização automática (máx. 1200px)</p>
                 <input id="mediaFile" type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" class="hidden" onchange="_mediaPickFile(event)">
             </div>
             <!-- URL field (hidden by default) -->

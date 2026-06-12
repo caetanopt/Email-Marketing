@@ -510,6 +510,9 @@ module.exports = async function handler(req, res) {
       const blobName = `m/${id}/${shortId}.${ext}`;
       try {
         const buffer = Buffer.from(data_base64, 'base64');
+        if (buffer.length > 1024 * 1024) {
+          return res.status(413).json({ error: `Imagem demasiado grande (${(buffer.length/1024/1024).toFixed(1)} MB). O máximo permitido é 1 MB.` });
+        }
         const blob = await put(blobName, buffer, { access: 'public', contentType: mime_type });
         return res.status(200).json({ url: blob.url });
       } catch (e) {
