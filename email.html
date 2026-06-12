@@ -8857,13 +8857,7 @@ ${sections.join('\n\n')}
         // Restore import banner — query server so all users (not just the importer) see it
         _restoreActiveImport(id);
         _loadTeGlobalSettings().catch(() => {});
-        // Save as default brand for next login
-        const _pu = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
-        if (_pu.default_brand_id !== id) {
-            _pu.default_brand_id = id;
-            localStorage.setItem('pm_user', JSON.stringify(_pu));
-            apiFetch('/api/auth', { method: 'PUT', body: JSON.stringify({ default_brand_id: id }) }).catch(() => {});
-        }
+        // Nota: trocar de marca NÃO altera a "marca por defeito" (definida apenas no perfil).
     }
 
     function _brandLogoHtml(b) {
