@@ -4555,7 +4555,6 @@ ${bodyRows}
                     ${cell(b.users_count, b.users_count === 0)}
                     ${cell(b.admins_count, b.active && b.admins_count === 0)}
                     ${cell(b.contacts_count, false)}
-                    ${cell(b.templates_count, b.templates_count === 0)}
                     <td class="px-4 py-3 text-center text-slate-700">${b.campaigns_count.toLocaleString('pt-PT')} <span class="text-xs text-slate-400">(${b.campaigns_sent} env.)</span></td>
                     <td class="px-4 py-3">${warnings}</td>
                 </tr>`;
@@ -12125,7 +12124,7 @@ ${sections.join('\n\n')}
                     <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                         <div>
                             <h3 class="font-semibold text-slate-900 text-sm">Auditoria de Marcas</h3>
-                            <p class="text-xs text-slate-400 mt-0.5">Verifica se todas as marcas têm utilizadores, administradores, templates e email remetente configurados. Repara automaticamente o acesso dos administradores a todas as marcas.</p>
+                            <p class="text-xs text-slate-400 mt-0.5">Verifica se todas as marcas têm utilizadores, administradores e email remetente configurados. Repara automaticamente o acesso dos administradores a todas as marcas.</p>
                         </div>
                         <button onclick="_runBrandAudit()" id="brandAuditBtn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
@@ -12144,7 +12143,6 @@ ${sections.join('\n\n')}
                                         <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Utilizadores</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Admins</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Contactos</th>
-                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Templates</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Campanhas</th>
                                         <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Alertas</th>
                                     </tr>

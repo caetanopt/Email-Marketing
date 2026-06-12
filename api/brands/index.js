@@ -266,7 +266,6 @@ module.exports = async function handler(req, res) {
           `SELECT
               b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, b.active,
               (SELECT COUNT(*)::int FROM contacts WHERE brand_id=b.id)        AS contacts_count,
-              (SELECT COUNT(*)::int FROM templates WHERE brand_id=b.id)       AS templates_count,
               (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id)       AS campaigns_count,
               (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id AND status='sent') AS campaigns_sent,
               (SELECT COUNT(*)::int FROM user_brand_roles WHERE brand_id=b.id) AS users_count,
@@ -283,7 +282,6 @@ module.exports = async function handler(req, res) {
           if (!b.has_from_name)  warnings.push('from_name não configurado');
           if (b.users_count    === 0) warnings.push('sem utilizadores');
           if (b.active && b.admins_count === 0) warnings.push('sem administradores');
-          if (b.templates_count === 0) warnings.push('sem templates');
           return { ...b, warnings, ok: warnings.length === 0 };
         });
 
