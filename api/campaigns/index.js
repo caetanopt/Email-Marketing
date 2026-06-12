@@ -16,7 +16,10 @@ module.exports = async function handler(req, res) {
     const authHeader = req.headers['authorization'] || '';
     const cronSecret = process.env.CRON_SECRET || '';
     const isVercelCron = req.headers['x-vercel-cron'] === '1';
-    if (!isVercelCron && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
+    // Se CRON_SECRET estiver configurado, pedidos externos têm de o apresentar.
+    // Se não estiver configurado, permite qualquer chamada externa (útil em dev
+    // ou quando o serviço de cron externo não suporta headers de autorização).
+    if (!isVercelCron && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 

@@ -7355,7 +7355,7 @@ function toggleExportMenu() {
         try {
             await apiFetch(`/api/campaigns/${_currentCampaign.id}`, {
                 method: 'PUT',
-                body: JSON.stringify({ scheduled_at: `${d}T${t}:00`, status: 'scheduled' })
+                body: JSON.stringify({ scheduled_at: `${d}T${t}:00${_lisbonOffset(d)}`, status: 'scheduled' })
             });
             closeScheduleModal(); showScreen('campaigns');
             showToast(`Campanha agendada para ${d} às ${t}.`);
