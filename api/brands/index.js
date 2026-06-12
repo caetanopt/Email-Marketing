@@ -225,8 +225,11 @@ module.exports = async function handler(req, res) {
               );
             }
           }
+          // As restrições de áreas são GLOBAIS (aplicam-se a todas as marcas):
+          // lê as áreas de qualquer marca onde estejam configuradas, para que
+          // mudar de marca nunca devolva "sem restrições" por engano.
           const [areas, roleRow] = await Promise.all([
-            query('SELECT area FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
+            query('SELECT DISTINCT area FROM user_brand_areas WHERE user_id=$1', [member_id]),
             query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
           ]);
           const role = roleRow[0]?.role || null;
@@ -709,15 +712,20 @@ module.exports = async function handler(req, res) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { areas, restricted } = req.body || {};
       try {
-        await query('DELETE FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]);
+        // As restrições são GLOBAIS: aplicam-se a todas as marcas, não apenas
+        // à marca onde o admin estava quando as configurou.
+        await query('DELETE FROM user_brand_areas WHERE user_id=$1', [member_id]);
         // restricted=false (or omitted) means full access -> no rows.
         if (restricted && Array.isArray(areas) && areas.length) {
           const safeAreas = areas.filter(a => typeof a === 'string' && /^[a-zA-Z]+$/.test(a));
           if (safeAreas.length) {
-            const vals = safeAreas.map((_, i) => `($1,$2,$${i + 3})`).join(',');
             await query(
-              `INSERT INTO user_brand_areas (user_id, brand_id, area) VALUES ${vals} ON CONFLICT DO NOTHING`,
-              [member_id, id, ...safeAreas]
+              `INSERT INTO user_brand_areas (user_id, brand_id, area)
+               SELECT $1, b.id, a.area
+               FROM brands b CROSS JOIN unnest($2::text[]) AS a(area)
+               WHERE b.active = TRUE
+               ON CONFLICT DO NOTHING`,
+              [member_id, safeAreas]
             );
           }
         }

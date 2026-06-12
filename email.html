@@ -695,8 +695,9 @@
         if (cached) _applyCampaignsData(cached);
         try {
             const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=200`);
-            if (!data.length) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; _cacheSet(cacheKey, []); return; }
             _cacheSet(cacheKey, data);
+            // Sempre via _applyCampaignsData — também no caso vazio, para limpar
+            // o cache, a paginação e os contadores da marca anterior.
             _applyCampaignsData(data);
         } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
