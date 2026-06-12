@@ -715,6 +715,7 @@
                 <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
                     <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                    <button onclick="apiClearListContacts(${l.id}, this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover contactos</button>
                 </td>
             </tr>`).join('');
         _markListImportRow();
@@ -1002,6 +1003,19 @@
             await apiFetch(`/api/lists/${listId}`, { method: 'DELETE' });
             btn.closest('tr').remove();
             showToast('Lista apagada.');
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function apiClearListContacts(listId, btn) {
+        const name = btn?.closest('tr')?.querySelector('.list-name-text')?.textContent.trim() || 'esta lista';
+        if (!confirm(`Remover todos os contactos da lista "${name}"?\n\nATENÇÃO: os contactos serão ELIMINADOS PERMANENTEMENTE da base de dados (em todas as marcas e listas), incluindo os respectivos históricos de envio.`)) return;
+        if (!confirm('Esta acção é irreversível. Confirmas a eliminação definitiva dos contactos?')) return;
+        try {
+            const r = await apiFetch(`/api/lists/${listId}?action=clear_contacts`, { method: 'DELETE' });
+            _cacheClear('lists_');
+            _cacheClear('contacts_');
+            showToast(`${r.deleted || 0} contacto(s) eliminados da base de dados.`);
+            if (_currentBrand?.id) _loadLists(_currentBrand.id);
         } catch (e) { showToast(e.message, 'error'); }
     }
 

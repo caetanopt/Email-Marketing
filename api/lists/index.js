@@ -240,6 +240,28 @@ module.exports = withAuth(async (req, res, user) => {
           await query('DELETE FROM list_members WHERE list_id=$1 AND contact_id=$2', [id, contact_id]);
           return res.status(200).json({ ok: true });
         }
+        if (action === 'clear_contacts') {
+          // Acção destrutiva — apaga os contactos da base de dados, não apenas
+          // da lista. Restrita a owners/admins.
+          const adm = await query(
+            `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role IN ('owner','admin') LIMIT 1`,
+            [user.id]
+          );
+          if (!adm[0]) return res.status(403).json({ error: 'Sem permissão para eliminar contactos.' });
+          // email_events.contact_id não tem ON DELETE — anular antes de apagar
+          await query(
+            `UPDATE email_events SET contact_id=NULL
+             WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
+            [id]
+          );
+          const del = await query(
+            `DELETE FROM contacts
+             WHERE id IN (SELECT contact_id FROM list_members WHERE list_id=$1)
+             RETURNING id`,
+            [id]
+          );
+          return res.status(200).json({ ok: true, deleted: del.length });
+        }
         // As duas listas são fixas e comuns a todas as marcas — não podem ser apagadas
         return res.status(403).json({ error: 'As listas Marketing e Colaboradores são fixas e não podem ser apagadas.' });
       }
