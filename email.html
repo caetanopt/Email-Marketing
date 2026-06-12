@@ -665,9 +665,28 @@
         _updateCampBulkBar();
     }
 
+    // Polling automático: enquanto houver campanhas agendadas ou em envio,
+    // a listagem actualiza-se sozinha (sem refresh manual) até estarem enviadas.
+    let _campaignsPollTimer = null;
+    function _scheduleCampaignsPoll(data) {
+        clearTimeout(_campaignsPollTimer);
+        const hasActive = (data || []).some(c => c.status === 'sending' || c.status === 'scheduled');
+        if (!hasActive) return;
+        _campaignsPollTimer = setTimeout(async () => {
+            // Só continua se o ecrã de campanhas ainda estiver visível
+            if (document.querySelector('.screen.active')?.id !== 'campaigns' || !_currentBrand?.id) return;
+            try {
+                const { data: fresh } = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}&limit=200`);
+                _cacheSet(`campaigns_${_currentBrand.id}`, fresh);
+                _applyCampaignsData(fresh); // re-agenda o próximo poll se ainda houver activas
+            } catch (_) { _scheduleCampaignsPoll(data); /* erro transitório — tenta de novo */ }
+        }, 8000);
+    }
+
     function _applyCampaignsData(data) {
         window._campaignsCache = data;
         _renderCampaignsPage();
+        _scheduleCampaignsPoll(data);
         _setText('dash-campaigns', data.length.toString());
         const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
         _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
