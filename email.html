@@ -5761,7 +5761,7 @@ ${bodyRows}
         timeEl.innerHTML = '';
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 15) {
-                if (isToday && (h < ln.h || (h === ln.h && m <= ln.m + 5))) continue;
+                if (isToday && (h < ln.h || (h === ln.h && m < ln.m))) continue;
                 const hh = String(h).padStart(2, '0'), mm = String(m).padStart(2, '0');
                 const opt = document.createElement('option');
                 opt.value = `${hh}:${mm}`; opt.textContent = `${hh}:${mm}`;
