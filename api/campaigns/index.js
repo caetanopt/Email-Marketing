@@ -394,10 +394,11 @@ module.exports = async function handler(req, res) {
         if (!tpl[0]) return res.status(400).json({ error: 'Template não pertence a esta marca' });
       }
       if (list_ids?.length) {
+        // Listas globais: basta o utilizador pertencer a alguma marca
         const accessible = await query(
           `SELECT l.id FROM lists l
-           JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-           WHERE l.id = ANY($1::int[])`,
+           WHERE l.id = ANY($1::int[])
+             AND EXISTS (SELECT 1 FROM user_brand_roles WHERE user_id = $2)`,
           [list_ids, user.id]
         );
         if (accessible.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não são acessíveis' });

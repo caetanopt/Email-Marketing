@@ -715,7 +715,6 @@
                 <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
                     <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                    <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
                 </td>
             </tr>`).join('');
         _markListImportRow();
@@ -3641,7 +3640,7 @@ ${bodyRows}
     async function _loadSegments() {
         if (!_currentListId) return;
         try {
-            const { data } = await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments`);
+            const { data } = await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments&brand_id=${_currentBrand.id}`);
             _segments = data || [];
         } catch(_) { _segments = []; }
         _renderSegments();
@@ -3898,7 +3897,7 @@ ${bodyRows}
                 await apiFetch(`/api/lists?segment_id=${_segEditId}`, { method: 'PUT', body: JSON.stringify(body) });
                 showToast('Segmento actualizado');
             } else {
-                await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments`, { method: 'POST', body: JSON.stringify(body) });
+                await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments&brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(body) });
                 showToast('Segmento criado');
             }
             closeSegmentModal();

@@ -348,20 +348,21 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
+      // Listas são globais: ao filtrar por lista mostram-se TODOS os membros,
+      // independentemente da marca do contacto. Sem lista, a vista é por marca.
       const params = [brand_id];
-      let join = '', where = 'WHERE c.brand_id = $1';
+      let join = '', where = list_id ? 'WHERE $1::text IS NOT NULL' : 'WHERE c.brand_id = $1';
 
       if (list_id) {
         params.push(list_id);
-        join = `JOIN list_members lm ON lm.contact_id = c.id AND lm.list_id = $${params.length}
-                JOIN lists l_chk ON l_chk.id = lm.list_id AND l_chk.brand_id = $1`;
+        join = `JOIN list_members lm ON lm.contact_id = c.id AND lm.list_id = $${params.length}`;
       }
       if (status)  { params.push(status);         where += ` AND c.status = $${params.length}`; }
       if (search)  { params.push(`%${search}%`);  where += ` AND (c.email ILIKE $${params.length} OR c.name ILIKE $${params.length})`; }
 
       const countParams = [brand_id];
-      let countJoin = '', countWhere = 'WHERE c.brand_id = $1';
-      if (list_id)  { countParams.push(list_id); countJoin = `JOIN list_members lm ON lm.contact_id = c.id AND lm.list_id = $${countParams.length} JOIN lists l_chk ON l_chk.id = lm.list_id AND l_chk.brand_id = $1`; }
+      let countJoin = '', countWhere = list_id ? 'WHERE $1::text IS NOT NULL' : 'WHERE c.brand_id = $1';
+      if (list_id)  { countParams.push(list_id); countJoin = `JOIN list_members lm ON lm.contact_id = c.id AND lm.list_id = $${countParams.length}`; }
       if (status)   { countParams.push(status);          countWhere += ` AND c.status = $${countParams.length}`; }
       if (search)   { countParams.push(`%${search}%`);  countWhere += ` AND (c.email ILIKE $${countParams.length} OR c.name ILIKE $${countParams.length})`; }
 

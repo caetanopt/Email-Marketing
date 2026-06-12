@@ -49,19 +49,21 @@ function buildSegmentWhere(rules, match) {
   return { sql: `(${conditions.join(op)})`, params };
 }
 
+// As listas são globais (comuns a todas as marcas): o acesso exige apenas que
+// o utilizador pertença a alguma marca. Os segmentos são por marca (brand_id).
+async function hasAnyRole(userId) {
+  const r = await query('SELECT 1 FROM user_brand_roles WHERE user_id=$1 LIMIT 1', [userId]);
+  return !!r[0];
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 module.exports = withAuth(async (req, res, user) => {
   const { id, brand_id, action, contact_id, segment_id, list_id } = req.query;
 
   // ── Segment single operations (?segment_id=X) ─────────────────────────────
   if (segment_id) {
-    const auth = await query(
-      `SELECT s.*, l.brand_id FROM segments s
-       JOIN lists l ON l.id = s.list_id
-       JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-       WHERE s.id = $1`,
-      [segment_id, user.id]
-    );
+    if (!await hasAnyRole(user.id)) return res.status(404).json({ error: 'Segmento não encontrado' });
+    const auth = await query(`SELECT s.* FROM segments s WHERE s.id = $1`, [segment_id]);
     if (!auth[0]) return res.status(404).json({ error: 'Segmento não encontrado' });
     const seg = auth[0];
 
@@ -108,21 +110,30 @@ module.exports = withAuth(async (req, res, user) => {
 
   // ── Segment collection operations (?list_id=X&action=segments|segment_preview)
   if (list_id && action && (action === 'segments' || action === 'segment_preview')) {
-    const listAuth = await query(
-      `SELECT l.* FROM lists l
-       JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-       WHERE l.id = $1`,
-      [list_id, user.id]
-    );
+    if (!await hasAnyRole(user.id)) return res.status(404).json({ error: 'Lista não encontrada' });
+    const listAuth = await query(`SELECT l.* FROM lists l WHERE l.id = $1`, [list_id]);
     if (!listAuth[0]) return res.status(404).json({ error: 'Lista não encontrada' });
 
     try {
       if (action === 'segments' && req.method === 'GET') {
-        const segs = await query(
-          `SELECT s.id, s.name, s.description, s.rules, s.match, s.created_at
-           FROM segments s WHERE s.list_id = $1 ORDER BY s.name`,
-          [list_id]
-        );
+        // Segmentos são por marca: mostra apenas os da marca actual
+        let segs;
+        try {
+          segs = await query(
+            brand_id
+              ? `SELECT s.id, s.name, s.description, s.rules, s.match, s.created_at
+                 FROM segments s WHERE s.list_id = $1 AND (s.brand_id = $2 OR s.brand_id IS NULL) ORDER BY s.name`
+              : `SELECT s.id, s.name, s.description, s.rules, s.match, s.created_at
+                 FROM segments s WHERE s.list_id = $1 ORDER BY s.name`,
+            brand_id ? [list_id, brand_id] : [list_id]
+          );
+        } catch (e) {
+          if (e.code !== '42703') throw e; // migração 037 ainda não correu
+          segs = await query(
+            `SELECT s.id, s.name, s.description, s.rules, s.match, s.created_at
+             FROM segments s WHERE s.list_id = $1 ORDER BY s.name`, [list_id]
+          );
+        }
         const withCounts = await Promise.all(segs.map(async s => {
           try {
             const { sql, params } = buildSegmentWhere(s.rules, s.match);
@@ -142,11 +153,22 @@ module.exports = withAuth(async (req, res, user) => {
       if (action === 'segments' && req.method === 'POST') {
         const { name, description, rules, match } = req.body || {};
         if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
-        const rows = await query(
-          `INSERT INTO segments (list_id, name, description, rules, match)
-           VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING id`,
-          [list_id, name, description||null, JSON.stringify(rules||[]), match||'all']
-        );
+        const segBrand = brand_id || req.body?.brand_id || null;
+        let rows;
+        try {
+          rows = await query(
+            `INSERT INTO segments (list_id, name, description, rules, match, brand_id)
+             VALUES ($1,$2,$3,$4::jsonb,$5,$6) RETURNING id`,
+            [list_id, name, description||null, JSON.stringify(rules||[]), match||'all', segBrand]
+          );
+        } catch (e) {
+          if (e.code !== '42703') throw e; // migração 037 ainda não correu
+          rows = await query(
+            `INSERT INTO segments (list_id, name, description, rules, match)
+             VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING id`,
+            [list_id, name, description||null, JSON.stringify(rules||[]), match||'all']
+          );
+        }
         return res.status(201).json({ id: rows[0].id });
       }
 
@@ -172,12 +194,8 @@ module.exports = withAuth(async (req, res, user) => {
 
   // ── List single operations (?id=X) ────────────────────────────────────────
   if (id) {
-    const auth = await query(
-      `SELECT l.* FROM lists l
-       JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $2
-       WHERE l.id = $1`,
-      [id, user.id]
-    );
+    if (!await hasAnyRole(user.id)) return res.status(404).json({ error: 'Lista não encontrada' });
+    const auth = await query(`SELECT l.* FROM lists l WHERE l.id = $1`, [id]);
     if (!auth[0]) return res.status(404).json({ error: 'Lista não encontrada' });
 
     try {
@@ -206,11 +224,12 @@ module.exports = withAuth(async (req, res, user) => {
           );
           return res.status(200).json({ ok: true });
         }
-        const { name, description, extra_fields } = req.body || {};
+        // Listas fixas (Marketing/Colaboradores): o nome não pode ser alterado
+        const { description, extra_fields } = req.body || {};
         await query(
-          `UPDATE lists SET name=COALESCE($1,name), description=$2,
-           extra_fields=COALESCE($3::jsonb,extra_fields) WHERE id=$4`,
-          [name||null, description||null,
+          `UPDATE lists SET description=$1,
+           extra_fields=COALESCE($2::jsonb,extra_fields) WHERE id=$3`,
+          [description||null,
            extra_fields !== undefined ? JSON.stringify(extra_fields) : null, id]
         );
         return res.status(200).json({ ok: true });
@@ -221,8 +240,8 @@ module.exports = withAuth(async (req, res, user) => {
           await query('DELETE FROM list_members WHERE list_id=$1 AND contact_id=$2', [id, contact_id]);
           return res.status(200).json({ ok: true });
         }
-        await query('DELETE FROM lists WHERE id=$1', [id]);
-        return res.status(200).json({ ok: true });
+        // As duas listas são fixas e comuns a todas as marcas — não podem ser apagadas
+        return res.status(403).json({ error: 'As listas Marketing e Colaboradores são fixas e não podem ser apagadas.' });
       }
 
       if (req.method === 'POST' && action === 'add_contact') {
@@ -250,44 +269,43 @@ module.exports = withAuth(async (req, res, user) => {
   // ── List collection operations (?brand_id=X) ─────────────────────────────
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
+  // Listas globais — as mesmas duas listas para todas as marcas. Deduplica por
+  // nome (menor id) para instalações onde a migração 037 ainda não correu.
   const listQuery = `
-    SELECT l.id, l.name, l.description, l.created_at, l.extra_fields,
-           COUNT(lm.contact_id)::int AS total_contacts
+    SELECT DISTINCT ON (l.name)
+           l.id, l.name, l.description, l.created_at, l.extra_fields,
+           (SELECT COUNT(*)::int FROM list_members lm WHERE lm.list_id = l.id) AS total_contacts
     FROM lists l
-    JOIN user_brand_roles ubr ON ubr.brand_id = l.brand_id AND ubr.user_id = $1
-    LEFT JOIN list_members lm ON lm.list_id = l.id
-    GROUP BY l.id ORDER BY l.name`;
+    WHERE l.name IN ('Marketing','Colaboradores')
+    ORDER BY l.name, l.id`;
 
   try {
+    if (!await hasAnyRole(user.id)) return res.status(403).json({ error: 'Sem permissão' });
     if (req.method === 'GET') {
-      let rows = await query(listQuery, [user.id]);
-      // Auto-create the two default lists globally if the user has no lists at all
-      if (rows.length === 0) {
+      let rows = await query(listQuery);
+      // Auto-criar as duas listas fixas se ainda não existirem
+      if (rows.length < 2) {
         const defaults = [
           ['Marketing',     'Lista principal de marketing'],
           ['Colaboradores', 'Lista de colaboradores internos'],
         ];
         for (const [name, description] of defaults) {
+          if (rows.some(r => r.name === name)) continue;
           try {
             await query(
-              'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) ON CONFLICT (brand_id, name) DO NOTHING',
+              'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
               [brand_id, name, description]
             );
           } catch (_) {}
         }
-        rows = await query(listQuery, [user.id]);
+        rows = await query(listQuery);
       }
       return res.status(200).json({ data: rows });
     }
 
     if (req.method === 'POST') {
-      const { name, description } = req.body || {};
-      if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
-      const rows = await query(
-        'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) RETURNING id',
-        [brand_id, name, description||null]
-      );
-      return res.status(201).json({ id: rows[0].id, name });
+      // Só existem as duas listas fixas — não é possível criar novas
+      return res.status(403).json({ error: 'Só existem as listas Marketing e Colaboradores, comuns a todas as marcas.' });
     }
 
     res.status(405).json({ error: 'Método não permitido' });
