@@ -395,6 +395,7 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, total, queued: true });
         } catch (err) {
           if (err.message === 'Sem destinatários activos') return res.status(400).json({ error: err.message });
+          if (err.code === 'already_sending') return res.status(200).json({ ok: true, total: 0, queued: true, already_sending: true });
           throw err;
         }
       }

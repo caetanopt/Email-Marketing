@@ -57,16 +57,13 @@ module.exports = async function handler(req, res) {
       try {
         let total = 0;
         if (!resuming) {
-          // Atomic claim — concurrent cron invocations skip campaigns already taken.
-          const claimed = await query(
-            `UPDATE campaigns SET status='sending' WHERE id=$1 AND status='scheduled' RETURNING id`,
-            [campId]
-          );
-          if (!claimed[0]) continue;
-
+          // initCampaignSend owns the atomic claim (UPDATE … WHERE status IN
+          // ('draft','scheduled') RETURNING *). If another worker beat us here
+          // it throws {code:'already_sending'} — skip and move to the next campaign.
           try {
             ({ total } = await initCampaignSend(campId));
           } catch (err) {
+            if (err.code === 'already_sending') continue;
             if (err.message === 'Sem destinatários activos') {
               await query(`UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1`, [campId]);
               results.push({ id: campId, total: 0, sent: 0, failed: 0 });
