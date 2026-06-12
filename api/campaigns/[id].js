@@ -362,9 +362,28 @@ module.exports = async function handler(req, res) {
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         if (!['sending','scheduled'].includes(camp[0].status))
           return res.status(409).json({ error: 'Apenas campanhas em envio ou agendadas podem ser canceladas.' });
-        // Reset to draft — pending recipients are left as-is (can resend later)
-        await query(`UPDATE campaigns SET status='draft', sent_at=NULL WHERE id=$1`, [id]);
-        await query(`UPDATE campaign_recipients SET status='pending' WHERE campaign_id=$1 AND status='pending'`, [id]);
+        // Atomic: only cancel if still sending/scheduled — if the last batch
+        // finished meanwhile and marked the campaign 'sent', don't clobber it.
+        const cancelled = await query(
+          `UPDATE campaigns SET status='draft', sent_at=NULL
+           WHERE id=$1 AND status IN ('sending','scheduled') RETURNING id`, [id]
+        );
+        if (!cancelled[0])
+          return res.status(409).json({ error: 'A campanha terminou entretanto — não foi cancelada.' });
+        // Reset retry recipients to pending so a later resend starts fresh.
+        try {
+          await query(
+            `UPDATE campaign_recipients SET status='pending', error_message=NULL
+             WHERE campaign_id=$1 AND status='retry'`, [id]
+          );
+        } catch (e) {
+          if (e.code === '42703') {
+            await query(
+              `UPDATE campaign_recipients SET status='pending'
+               WHERE campaign_id=$1 AND status='retry'`, [id]
+            );
+          } else { throw e; }
+        }
         try {
           await query(
             `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
