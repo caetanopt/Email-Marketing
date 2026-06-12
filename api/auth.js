@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
       if (brands.some(b => b.role === 'owner')) {
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role)
-           SELECT $1, id, 'owner' FROM brands WHERE active = TRUE
+           SELECT $1, id, 'owner'::user_role FROM brands WHERE active = TRUE
            ON CONFLICT (user_id, brand_id) DO UPDATE SET role = 'owner'`,
           [r.user_id]
         );

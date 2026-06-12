@@ -3,7 +3,7 @@
 -- auditoria) mantém esta invariante daqui em diante.
 
 INSERT INTO user_brand_roles (user_id, brand_id, role)
-SELECT DISTINCT ubr.user_id, b.id, 'owner'
+SELECT DISTINCT ubr.user_id, b.id, 'owner'::user_role
 FROM user_brand_roles ubr
 CROSS JOIN brands b
 WHERE ubr.role = 'owner' AND b.active = TRUE

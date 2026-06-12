@@ -250,7 +250,7 @@ module.exports = async function handler(req, res) {
         // marca) têm owner em TODAS as marcas activas, e sem restrições de áreas.
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role)
-           SELECT DISTINCT ubr.user_id, b.id, 'owner'
+           SELECT DISTINCT ubr.user_id, b.id, 'owner'::user_role
            FROM user_brand_roles ubr CROSS JOIN brands b
            WHERE ubr.role='owner' AND b.active=TRUE
            ON CONFLICT (user_id, brand_id) DO UPDATE SET role='owner'`
@@ -693,7 +693,7 @@ module.exports = async function handler(req, res) {
       if (role === 'owner') {
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role)
-           SELECT $1, b.id, 'owner' FROM brands b WHERE b.active=TRUE
+           SELECT $1, b.id, 'owner'::user_role FROM brands b WHERE b.active=TRUE
            ON CONFLICT (user_id, brand_id) DO UPDATE SET role='owner'`,
           [member_id]
         );
@@ -829,7 +829,7 @@ module.exports = async function handler(req, res) {
         // marca nova — não apenas o criador.
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role)
-           SELECT u.user_id, $1, 'owner' FROM (
+           SELECT u.user_id, $1, 'owner'::user_role FROM (
              SELECT DISTINCT user_id FROM user_brand_roles WHERE role='owner'
              UNION SELECT $2::int
            ) u
