@@ -2658,7 +2658,68 @@
     // Restaura blocos a partir de conteúdo guardado: HTML com marcador (novo formato)
     // ou MJML (formato antigo). Devolve null se nenhum formato for reconhecido.
     function teBlocksFromContent(content) {
-        return teExtractBlocksFromHtml(content) || teParseMjmlToBlocks(content);
+        return teExtractBlocksFromHtml(content) || teParseMjmlToBlocks(content) || teHtmlToBlocks(content);
+    }
+    // Reverse-parses HTML produced by teBuildEmailHtml — backward compat for blocks saved
+    // before the <!--teBlocks:--> comment was introduced.
+    function teHtmlToBlocks(html) {
+        try {
+            const doc = new DOMParser().parseFromString(html || '', 'text/html');
+            const tbl600 = doc.querySelector('table[width="600"]');
+            if (!tbl600) return null;
+            const bodyRows = Array.from(tbl600.querySelectorAll(':scope > tbody > tr, :scope > tr'));
+            if (!bodyRows.length) return null;
+            const uid = () => 'b' + Math.random().toString(36).slice(2, 10);
+            const blocks = [];
+            for (const tr of bodyRows) {
+                const outerTd = tr.querySelector(':scope > td');
+                if (!outerTd) continue;
+                const bg = (outerTd.style.background || outerTd.style.backgroundColor || '#ffffff').trim();
+                const innerTd = outerTd.querySelector('table td');
+                if (!innerTd) continue;
+                const inner = innerTd.innerHTML.trim();
+                const id = uid();
+                if (!inner) { blocks.push({ id, type: 'spacer', height: 24, bgColor: bg }); continue; }
+                // Heading
+                const hEl = innerTd.querySelector('h1,h2,h3');
+                if (hEl) { blocks.push({ id, type: 'heading', level: hEl.tagName.toLowerCase(), text: hEl.textContent || '', bgColor: bg, color: hEl.style.color || '#1e293b' }); continue; }
+                // Divider
+                if (innerTd.querySelector('hr')) { blocks.push({ id, type: 'divider', bgColor: bg, color: '#e2e8f0' }); continue; }
+                // Image
+                const imgEl = innerTd.querySelector('img');
+                if (imgEl) {
+                    const aEl = innerTd.querySelector('a');
+                    blocks.push({ id, type: 'image', src: imgEl.getAttribute('src') || '', alt: imgEl.getAttribute('alt') || '', href: aEl ? (aEl.getAttribute('href') || '') : '', bgColor: bg, width: 100 });
+                    continue;
+                }
+                // List
+                const ulEl = innerTd.querySelector('ul');
+                if (ulEl) {
+                    const items = Array.from(ulEl.querySelectorAll('li')).map(li => ({ id: 'i' + Math.random().toString(36).slice(2, 8), text: li.textContent || '' }));
+                    blocks.push({ id, type: 'listItems', items, bgColor: bg, color: ulEl.style.color || '#334155' });
+                    continue;
+                }
+                // Button (nested table with <a>)
+                const btnA = innerTd.querySelector('table a');
+                if (btnA) {
+                    blocks.push({ id, type: 'button', text: btnA.textContent || '', href: btnA.getAttribute('href') || '', bgColor: bg, buttonColor: btnA.style.backgroundColor || '#1e293b', textColor: btnA.style.color || '#ffffff', align: 'center' });
+                    continue;
+                }
+                // Paragraph — distinguishes header block (dark bg + bold) from plain text
+                const pEl = innerTd.querySelector('p');
+                if (pEl) {
+                    const isBold = pEl.style.fontWeight === 'bold' || pEl.style.fontWeight === '700';
+                    const isDark = bg && bg !== '#ffffff' && bg !== '#f5f7fa' && bg !== 'transparent';
+                    if (isDark && isBold) {
+                        blocks.push({ id, type: 'header', text: pEl.textContent || '', bgColor: bg, textColor: pEl.style.color || '#ffffff', fontSize: parseInt(pEl.style.fontSize) || 22 });
+                    } else {
+                        blocks.push({ id, type: 'text', text: pEl.innerHTML || '', bgColor: bg, color: pEl.style.color || '#334155', fontSize: parseInt(pEl.style.fontSize) || 14, lineHeight: parseFloat(pEl.style.lineHeight) || 1.6 });
+                    }
+                    continue;
+                }
+            }
+            return blocks.length ? blocks : null;
+        } catch(e) { return null; }
     }
     function teApplyMjml(silent) {
         const code = _teEl('mjmlCode');
