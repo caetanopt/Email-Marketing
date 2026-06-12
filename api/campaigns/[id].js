@@ -1,7 +1,7 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
-const { SendEmailCommand } = require('@aws-sdk/client-ses');
+const { SendEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
@@ -510,6 +510,24 @@ module.exports = async function handler(req, res) {
         const c = camp[0];
         const sesClient = getSESClient();
 
+        // Pre-flight quota check — same logic as runBatch in sendCampaign.js
+        let quotaRemaining = Infinity;
+        try {
+          const quotaInfo = await sesClient.send(new GetSendQuotaCommand({}));
+          quotaRemaining = Math.max(0, Math.floor(quotaInfo.Max24HourSend - quotaInfo.SentLast24Hours));
+          if (quotaRemaining < 1) {
+            const [{ remaining }] = await query(
+              "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
+              [id]
+            );
+            return res.status(200).json({ done: false, sent: 0, failed: 0, remaining, quotaExhausted: true });
+          }
+        } catch (e) {
+          console.warn('send_batch: quota pre-check failed, proceeding:', e.message);
+        }
+
+        const toSend = quotaRemaining < pending.length ? pending.slice(0, quotaRemaining) : pending;
+
         const fromName   = c.from_name  || c.brand_from_name  || 'PrimeMail';
         const fromEmail  = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo    = c.reply_to   || c.brand_reply_to   || undefined;
@@ -518,7 +536,6 @@ module.exports = async function handler(req, res) {
         const utmStr = Object.entries(utmParams).filter(([, v]) => v)
           .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
-        // Wraps every external link with a click-tracking redirect, then appends UTM params
         function injectTracking(html, campaignId, contactId) {
           return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, rawUrl) => {
             // Decode HTML entities that esc() may have introduced (& → &amp;, etc.)
@@ -544,9 +561,12 @@ module.exports = async function handler(req, res) {
 
         const RATE = parseInt(process.env.SES_RATE || '14', 10);
         let sent = 0, failed = 0;
+        const batchState = { quotaHit: false };
 
-        for (let i = 0; i < pending.length; i += RATE) {
-          await Promise.all(pending.slice(i, i + RATE).map(async contact => {
+        for (let i = 0; i < toSend.length; i += RATE) {
+          if (batchState.quotaHit) break;
+          await Promise.all(toSend.slice(i, i + RATE).map(async contact => {
+            if (batchState.quotaHit) return;
             try {
               const token = unsubToken(contact.email, c.brand_id);
               const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
@@ -626,7 +646,12 @@ module.exports = async function handler(req, res) {
             } catch (err) {
               console.error('SES send error:', err?.message);
               const errMsg = (err?.message || 'unknown').slice(0, 500);
-              // Classify error: transient SES/network errors get a retry (up to 3 attempts)
+              const isQuotaError = /Daily message quota exceeded|quota.*exceeded|DailyQuota/i.test(errMsg)
+                || err?.name === 'LimitExceededException';
+              if (isQuotaError) {
+                batchState.quotaHit = true;
+                return; // leave recipient as 'pending'
+              }
               const isTransient = /Throttling|ServiceUnavailable|RequestTimeout|ECONNRESET|ETIMEDOUT/i.test(errMsg);
               const currentRetry = contact.retry_count || 0;
               const newStatus = (isTransient && currentRetry < 2) ? 'retry' : 'failed';
@@ -656,7 +681,8 @@ module.exports = async function handler(req, res) {
               failed++;
             }
           }));
-          if (i + RATE < pending.length) await new Promise(r => setTimeout(r, 1000));
+          if (batchState.quotaHit) break;
+          if (i + RATE < toSend.length) await new Promise(r => setTimeout(r, 1000));
         }
 
         const [{ remaining }] = await query(
@@ -691,6 +717,9 @@ module.exports = async function handler(req, res) {
           } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
         }
 
+        if (batchState.quotaHit) {
+          return res.status(200).json({ ok: true, sent, failed, remaining, done: false, quotaExhausted: true });
+        }
         return res.status(200).json({ ok: true, sent, failed, remaining, done: remaining === 0 });
       }
 

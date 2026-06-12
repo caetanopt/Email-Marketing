@@ -6188,6 +6188,11 @@ ${bodyRows}
                         totalSent   += r.sent   || 0;
                         totalFailed += r.failed || 0;
                         if (r.done || r.warning) break;
+                        if (r.quotaExhausted) {
+                            showToast(`Quota diária SES atingida — ${totalSent.toLocaleString('pt-PT')} emails enviados. Os restantes (${(r.remaining||0).toLocaleString('pt-PT')}) serão enviados automaticamente quando a quota renovar à meia-noite UTC.`, 'info');
+                            showScreen('campaigns'); _loadCampaigns(_currentBrand.id); _wizClearDraft(); wizShowStep(1);
+                            return;
+                        }
                     }
                     showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
                 } else {
@@ -7148,6 +7153,13 @@ function toggleExportMenu() {
                 if (progTxt) progTxt.textContent = `${(totalSent + totalFailed).toLocaleString('pt-PT')} / ${grandTotal.toLocaleString('pt-PT')} enviados`;
                 if (r.done) break;
                 if (r.warning) { showToast(r.warning, 'info'); break; }
+                if (r.quotaExhausted) {
+                    closeSendNowModal();
+                    showScreen('campaigns');
+                    showToast(`Quota diária SES atingida — ${totalSent.toLocaleString('pt-PT')} emails enviados. Os restantes (${(r.remaining||0).toLocaleString('pt-PT')}) serão enviados automaticamente quando a quota renovar à meia-noite UTC.`, 'info');
+                    _loadCampaigns(_currentBrand.id);
+                    return;
+                }
             }
 
             closeSendNowModal();

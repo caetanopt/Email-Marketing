@@ -77,16 +77,17 @@ module.exports = async function handler(req, res) {
         }
 
         let totalSent = 0, totalFailed = 0;
-        // Run batches until done or until we must yield to the next invocation.
-        // No hard cap on b — we run as many batches as the deadline allows.
+        // Run batches until done, quota exhausted, or deadline approaching.
+        let quotaExhausted = false;
         for (;;) {
-          if (timeLeft() < 8000) break; // stop before Vercel kills the function
+          if (timeLeft() < 8000) break;
           const r = await runBatch(campId, null);
           totalSent += r.sent || 0;
           totalFailed += r.failed || 0;
           if (r.done) break;
+          if (r.quotaExhausted) { quotaExhausted = true; break; }
         }
-        results.push({ id: campId, resuming, total, sent: totalSent, failed: totalFailed });
+        results.push({ id: campId, resuming, total, sent: totalSent, failed: totalFailed, ...(quotaExhausted ? { quotaExhausted: true } : {}) });
       } catch (err) {
         console.error(`Cron: failed to send campaign ${campId}:`, err.message);
         results.push({ id: campId, error: err.message });
@@ -119,15 +120,16 @@ module.exports = async function handler(req, res) {
       for (const { id: campId } of stuck) {
         if (timeLeft() < 8000) break;
         try {
-          let totalSent = 0, totalFailed = 0;
+          let totalSent = 0, totalFailed = 0, quotaExhausted = false;
           for (;;) {
             if (timeLeft() < 8000) break;
             const r = await runBatch(campId, null);
             totalSent += r.sent || 0;
             totalFailed += r.failed || 0;
             if (r.done) break;
+            if (r.quotaExhausted) { quotaExhausted = true; break; }
           }
-          results.push({ id: campId, resumed: true, sent: totalSent, failed: totalFailed });
+          results.push({ id: campId, resumed: true, sent: totalSent, failed: totalFailed, ...(quotaExhausted ? { quotaExhausted: true } : {}) });
         } catch (err) {
           console.error(`Cron: failed to resume campaign ${campId}:`, err.message);
           results.push({ id: campId, resumed: true, error: err.message });
