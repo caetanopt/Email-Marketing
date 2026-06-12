@@ -13,15 +13,8 @@ module.exports = async function handler(req, res) {
 
   // ── Cron: process scheduled campaigns ──────────────────
   if (action === 'process-scheduled') {
-    const authHeader = req.headers['authorization'] || '';
-    const cronSecret = process.env.CRON_SECRET || '';
-    const isVercelCron = req.headers['x-vercel-cron'] === '1';
-    // Se CRON_SECRET estiver configurado, pedidos externos têm de o apresentar.
-    // Se não estiver configurado, permite qualquer chamada externa (útil em dev
-    // ou quando o serviço de cron externo não suporta headers de autorização).
-    if (!isVercelCron && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    // Endpoint público — apenas processa campanhas já agendadas pelo utilizador,
+    // não executa acções arbitrárias. Não requer autenticação.
 
     const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
