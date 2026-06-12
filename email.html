@@ -6826,15 +6826,19 @@ ${bodyRows}
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
             } else if (_currentCampStatus === 'scheduled') {
                 act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
-                    ${testBtn}
                     <button onclick="_editCurrentCampaignInWizard()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
-                    <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
-                    <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>`;
+                    <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>`;
             } else {
                 act.innerHTML = `<button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
                     ${_currentUserRole !== 'viewer' ? `<button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>` : ''}`;
             }
         }
+        // Painéis condicionais: teste e listas só visíveis em draft
+        const _showTestAndLists = (_currentCampStatus === 'draft');
+        const _sendPanelEl = document.getElementById('campSendPanel');
+        const _listsPanelEl = document.getElementById('campListsPanel');
+        if (_sendPanelEl)  _sendPanelEl.classList.toggle('hidden', !_showTestAndLists);
+        if (_listsPanelEl) _listsPanelEl.classList.toggle('hidden', !_showTestAndLists);
         // Badge
         const badge = document.getElementById('campStatusBadge');
         if (badge) {
@@ -10545,7 +10549,7 @@ ${sections.join('\n\n')}
                             </div>
                         </div>
 
-                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div id="campListsPanel" class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas destinatárias</h3>
                             <div id="campShowLists" class="space-y-2">
                                 <div class="text-sm text-slate-400 py-2">A carregar…</div>
