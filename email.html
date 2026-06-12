@@ -1616,6 +1616,23 @@
         teRender();
         _teLoading = false;
         _teMarkClean();
+        // Template da BD sem estado em memória — carregar o conteúdo guardado do servidor
+        if (!saved && !preset && id && !String(id).startsWith('tpl')) {
+            apiFetch(`/api/templates?id=${id}`).then(t => {
+                if (teTemplateId !== id) return; // utilizador mudou de template entretanto
+                if (nameEl && t.name) nameEl.value = t.name;
+                if (h1El && t.name) h1El.textContent = `Editar — ${t.name}`;
+                const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(t.html_content || '') : null;
+                if (blocks && blocks.length) {
+                    teState.blocks = blocks;
+                    teState.selected = null;
+                    teRender();
+                    _teMarkClean();
+                } else if (t.html_content) {
+                    showToast('Conteúdo guardado num formato antigo — não foi possível carregar os blocos. Reconstrói e guarda para actualizar.', 'info');
+                }
+            }).catch(() => {});
+        }
     }
     function teNewTemplate() {
         teTemplateId = null;
@@ -2620,6 +2637,29 @@
             return blocks;
         } catch(e) { return null; }
     }
+    // ── Blocks <-> HTML round trip ─────────────────────────────────
+    // O HTML de email gerado não é re-parseável de forma fiável, por isso
+    // o estado dos blocos é embebido num comentário no próprio HTML.
+    function teSerializeBlocksComment(blocks) {
+        try {
+            const clean = JSON.parse(JSON.stringify(blocks, (k, v) => k === '_pngUrl' ? undefined : v));
+            const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(clean))));
+            return `<!--teBlocks:${b64}-->`;
+        } catch (e) { return ''; }
+    }
+    function teExtractBlocksFromHtml(html) {
+        const m = /<!--teBlocks:([A-Za-z0-9+/=]+)-->/.exec(html || '');
+        if (!m) return null;
+        try {
+            const blocks = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+            return Array.isArray(blocks) && blocks.length ? blocks : null;
+        } catch (e) { return null; }
+    }
+    // Restaura blocos a partir de conteúdo guardado: HTML com marcador (novo formato)
+    // ou MJML (formato antigo). Devolve null se nenhum formato for reconhecido.
+    function teBlocksFromContent(content) {
+        return teExtractBlocksFromHtml(content) || teParseMjmlToBlocks(content);
+    }
     function teApplyMjml(silent) {
         const code = _teEl('mjmlCode');
         if (!code) return;
@@ -2754,7 +2794,8 @@ ${body}
             }
         };
 
-        const bodyRows = (overrideBlocks || teState.blocks).map(blockToHtml).join('\n');
+        const srcBlocks = overrideBlocks || teState.blocks;
+        const bodyRows = srcBlocks.map(blockToHtml).join('\n');
         return `<!DOCTYPE html>
 <html lang="pt" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -2775,6 +2816,7 @@ ${bodyRows}
 </table>
 </td></tr>
 </table>
+${teSerializeBlocksComment(srcBlocks)}
 </body>
 </html>`;
     }
@@ -5082,7 +5124,7 @@ ${bodyRows}
             _blockReturnTo = returnTo;
             _teMode = 'block';
             _teBlockType = b.type;
-            const blocks = (typeof teParseMjmlToBlocks === 'function') ? teParseMjmlToBlocks(b.html_content || '') : null;
+            const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(b.html_content || '') : null;
             teState.blocks = blocks || [];
             teState.selected = null;
             _teCtx = 'te_';
@@ -5937,10 +5979,12 @@ ${bodyRows}
     }
     function _wizClearDraft() { localStorage.removeItem(_wizDraftKey()); }
     function _wizStartNew() {
-        // Explicit "new campaign" — wipe any stale draft and editing context before opening the wizard
+        // Explicit "new campaign" — wipe any stale draft, editing context and editor blocks
         _wizClearDraft();
         _editingCampaignId = null;
         _editingTemplateId = null;
+        teState.blocks = [];
+        teState.selected = null;
         showScreen('campaignCreate');
     }
     let _wizAutoSaveTimer = null;
@@ -6989,13 +7033,16 @@ ${bodyRows}
         if (nb) nb.textContent = 'Seguinte →';
         // Render variables panel
         _wizVarsRender();
-        // Load template HTML into editor blocks so step 2 and test email have content
-        if (c.html_content && typeof teParseMjmlToBlocks === 'function') {
-            const parsed = teParseMjmlToBlocks(c.html_content);
-            if (parsed && parsed.length) {
-                teState.blocks = parsed;
-                teState.selected = null;
-            }
+        // Load template HTML into editor blocks so step 2 and test email have content.
+        // Se o conteúdo não for restaurável, limpa o editor — nunca manter blocos de
+        // uma sessão anterior, senão o submit sobrescreve o template com conteúdo errado.
+        if (c.html_content && typeof teBlocksFromContent === 'function') {
+            const parsed = teBlocksFromContent(c.html_content);
+            teState.blocks = (parsed && parsed.length) ? parsed : [];
+            teState.selected = null;
+        } else {
+            teState.blocks = [];
+            teState.selected = null;
         }
     }
 
@@ -7683,8 +7730,8 @@ function toggleExportMenu() {
                 showToast(`Bloco "${b.name}" inserido.`);
                 return;
             }
-            const parsed = (typeof teParseMjmlToBlocks === 'function') ? teParseMjmlToBlocks(b.html_content || '') : null;
-            if (!parsed || !parsed.length) { showToast('Bloco vazio ou em formato não reconhecido.', 'error'); return; }
+            const parsed = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(b.html_content || '') : null;
+            if (!parsed || !parsed.length) { showToast('Bloco vazio ou em formato não reconhecido. Abre o bloco em "Blocos" e volta a guardá-lo.', 'error'); return; }
             // Insert at top for header, bottom for footer
             if (b.type === 'header') teState.blocks = [...parsed, ...teState.blocks];
             else teState.blocks = [...teState.blocks, ...parsed];
