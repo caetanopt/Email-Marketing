@@ -2590,7 +2590,7 @@
             case 'mj-button':
                 return { id, type:'button', text:el.textContent, bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
             case 'mj-image':
-                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center' };
+                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', href:el.getAttribute('href')||'' };
             case 'mj-divider':
                 return { id, type:'divider', color:el.getAttribute('border-color')||'#e2e8f0', thickness:parseInt(el.getAttribute('border-width'))||1, borderStyle:el.getAttribute('border-style')||'solid', dividerWidth:el.getAttribute('width')||'100%', ...teParsePadAttr(el.getAttribute('padding')) };
             case 'mj-spacer':
@@ -2711,10 +2711,12 @@ ${body}
                     return rowPad(
                         `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:1.4">${b.text||''}</p>`,
                         b.bgColor||'#1e293b', pad(b));
-                case 'heading':
+                case 'heading': {
+                    const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
                     return rowPad(
-                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${b.text||''}</p>`,
+                        `<${hTag} style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${b.text||''}</${hTag}>`,
                         b.bgColor||'#ffffff', pad(b));
+                }
                 case 'text':
                     return rowPad(
                         `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${b.text||''}</p>`,
@@ -2784,8 +2786,8 @@ ${body}
                         `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="background:${b.bgColor||'#0f172a'};border-radius:8px;text-align:${b.align||'center'}"><a href="${esc(b.href||'#')}" style="display:block;padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:700;color:${b.textColor||'#ffffff'};text-decoration:none">${b.title||''}${lbDesc}</a></td></tr></table>`,
                         '#ffffff', pad(b));
                 }
-                case 'list': {
-                    const liHtml = (b.items||[]).map(it => `<li style="margin-bottom:6px">${it}</li>`).join('');
+                case 'listItems': {
+                    const liHtml = (b.items||[]).map(it => `<li style="margin-bottom:6px">${it.text||''}</li>`).join('');
                     return rowPad(
                         `<ul style="margin:0;padding-left:20px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>`,
                         b.bgColor||'#ffffff', pad(b));
