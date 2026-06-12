@@ -62,7 +62,7 @@
     const _dbFilterCampaigns = _debounce(() => filterCampaigns(), 220);
     const _dbFilterContacts  = _debounce(() => filterContacts(),  220);
     const _dbFilterLists     = _debounce(() => filterLists(),     220);
-    const _dbMediaGrid       = _debounce(() => { _mediaVisibleCount = 10; _renderMediaGrid(); }, 220);
+    const _dbMediaGrid       = _debounce(() => { _mediaRowsShown = 2; _renderMediaGrid(); }, 220);
     // ── Helpers ────────────────────────────────────────
     function _isValidEmail(e) {
       const s = String(e || '').trim().toLowerCase();
@@ -5106,7 +5106,7 @@ ${bodyRows}
     // ── Biblioteca de Multimédia ────────────────────────
     let _mediaItems = [];
     let _mediaTab = 'all';
-    let _mediaVisibleCount = 10; // ~2 rows; "Ver mais" expands by 10
+    let _mediaRowsShown = 2; // linhas completas visíveis; "Ver mais" adiciona 2
     let _mediaPendingFiles = []; // [{dataUrl,mimeType,name,status}]
     let _mediaSource = 'upload';
     let _mediaPendingDataUrl = null; // kept for picker/URL mode
@@ -5158,7 +5158,10 @@ ${bodyRows}
             return;
         }
         empty.classList.add('hidden');
-        const visible = items.slice(0, _mediaVisibleCount);
+        // Colunas reais da grelha (auto-fill minmax(230px,1fr), gap 12px) para
+        // que as linhas visíveis fiquem sempre completas, sem buracos.
+        const cols = Math.max(1, Math.floor((grid.clientWidth + 12) / (230 + 12)));
+        const visible = items.slice(0, cols * _mediaRowsShown);
         const remaining = items.length - visible.length;
         const ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         grid.innerHTML = visible.map(m => `
@@ -5192,20 +5195,25 @@ ${bodyRows}
         if (moreWrap) {
             if (remaining > 0) {
                 moreWrap.classList.remove('hidden');
-                document.getElementById('mediaShowMoreBtn').textContent = `Ver mais ${remaining} imagem${remaining === 1 ? '' : 'ns'}`;
+                document.getElementById('mediaShowMoreBtn').textContent = remaining === 1 ? 'Ver mais 1 imagem' : `Ver mais ${remaining} imagens`;
             } else {
                 moreWrap.classList.add('hidden');
             }
         }
     }
     function _mediaShowMore() {
-        _mediaVisibleCount += 10;
+        _mediaRowsShown += 2;
         _renderMediaGrid();
     }
+    // Re-render no resize: o nº de colunas muda e as linhas devem manter-se completas
+    window.addEventListener('resize', _debounce(() => {
+        const grid = document.getElementById('mediaGrid');
+        if (grid && grid.offsetParent !== null) _renderMediaGrid();
+    }, 250));
 
     function _mediaSwitchTab(tab) {
         _mediaTab = tab;
-        _mediaVisibleCount = 10;
+        _mediaRowsShown = 2;
         ['All','Brand','Shared'].forEach(t => {
             const el = document.getElementById('mediaTab' + t);
             if (!el) return;
