@@ -67,7 +67,13 @@ module.exports = async function handler(req, res) {
           `INSERT INTO email_events (campaign_id, contact_id, type)
            SELECT cr.campaign_id, c.id, 'unsubscribe' FROM contacts c
            LEFT JOIN campaign_recipients cr ON cr.contact_id=c.id
-           WHERE c.brand_id=$1 AND c.email=$2 ORDER BY cr.sent_at DESC NULLS LAST LIMIT 1`,
+           WHERE c.brand_id=$1 AND c.email=$2
+             AND NOT EXISTS (
+               SELECT 1 FROM email_events ee
+               WHERE ee.contact_id=c.id AND ee.type='unsubscribe'
+                 AND ee.campaign_id IS NOT DISTINCT FROM cr.campaign_id
+             )
+           ORDER BY cr.sent_at DESC NULLS LAST LIMIT 1`,
           [brand_id, e]
         );
       } catch (err) { console.error('unsubscribe event log:', err); }

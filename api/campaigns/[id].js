@@ -221,10 +221,10 @@ module.exports = async function handler(req, res) {
            FROM email_events WHERE campaign_id=$1 AND type='click'`, [id]
         );
         const [unsubs] = await query(
-          "SELECT COUNT(*)::int AS total FROM email_events WHERE campaign_id=$1 AND type='unsubscribe'", [id]
+          "SELECT COUNT(DISTINCT contact_id)::int AS total FROM email_events WHERE campaign_id=$1 AND type='unsubscribe'", [id]
         );
         const [spam] = await query(
-          "SELECT COUNT(*)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
+          "SELECT COUNT(DISTINCT contact_id)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
         );
         const top_links = await query(
           `SELECT url, COUNT(*)::int AS clicks, COUNT(DISTINCT contact_id)::int AS unique_clicks
@@ -289,7 +289,7 @@ module.exports = async function handler(req, res) {
            LEFT JOIN LATERAL (
              SELECT COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int  AS unique_opens,
                     COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
-                    COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
              FROM email_events ee WHERE ee.campaign_id = lc.id
            ) ev ON TRUE
            ORDER BY lc.sent_at DESC NULLS LAST`,
