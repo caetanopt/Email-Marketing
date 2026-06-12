@@ -667,8 +667,7 @@
     }
 
     async function _openCampReport(i) {
-        const c = _campaignsCache[i];
-        try { _currentCampaign = await apiFetch(`/api/campaigns/${c.id}`); } catch(e) { showToast(e.message,'error'); return; }
+        await showCampaign(null, _campaignsCache[i]);
         showScreen('campaignReport');
     }
 
