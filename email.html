@@ -6736,6 +6736,29 @@ ${teSerializeBlocksComment(srcBlocks)}
     let _wizExistingDirectCount = 0;
     let _wizSubmitting = false;
     let _wizAttachments = []; // [{name, type, size, data}] — data é base64 sem prefixo
+    let _wizPendingScreen = null;
+    let _wizSkipUnsavedCheck = false;
+
+    function _wizHasUnsavedChanges() {
+        if (_editingCampaignId) return true;
+        if (typeof _wizStep !== 'undefined' && _wizStep > 1) return true;
+        const name = document.getElementById('wizName')?.value.trim();
+        const subj = document.getElementById('wizSubject')?.value.trim();
+        return !!(name || subj);
+    }
+    function wizUnsavedLeave() {
+        const m = document.getElementById('wizUnsavedModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+        _wizSkipUnsavedCheck = true;
+        const s = _wizPendingScreen; _wizPendingScreen = null;
+        if (s) showScreen(s);
+        _wizSkipUnsavedCheck = false;
+    }
+    function wizUnsavedStay() {
+        const m = document.getElementById('wizUnsavedModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+        _wizPendingScreen = null;
+    }
 
     function _wizAttachPick() {
         const inp = document.createElement('input');
@@ -8490,6 +8513,13 @@ ${sections.join('\n\n')}
     function showScreen(id) {
         _clearFieldErrors();
         const _currentScreen = document.querySelector('.screen.active')?.id;
+        // Intercept navigation away from campaign wizard if there are unsaved changes
+        if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate' && !_wizSkipUnsavedCheck && _wizHasUnsavedChanges()) {
+            _wizPendingScreen = id;
+            const m = document.getElementById('wizUnsavedModal');
+            if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+            return;
+        }
         // Leaving campaignCreate — reset all wizard state so it doesn't leak into the next open
         if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
             // Persist any unsaved direct contacts before clearing state
@@ -14014,6 +14044,24 @@ ${sections.join('\n\n')}
         <div class="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 flex-shrink-0">
             <button onclick="closeWizCreateTemplate()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button onclick="saveWizTemplate()" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Guardar e seleccionar</button>
+        </div>
+    </div>
+</div>
+
+<div id="wizUnsavedModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div class="px-6 pt-6 pb-4 border-b border-slate-100">
+            <div class="flex items-center gap-3 mb-1">
+                <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                </div>
+                <h2 class="text-base font-semibold text-slate-900">Alterações não guardadas</h2>
+            </div>
+            <p class="text-sm text-slate-500 mt-2 ml-12">Tens alterações na campanha que ainda não foram guardadas. Se saíres agora perdes essas alterações.</p>
+        </div>
+        <div class="px-6 py-5 flex items-center justify-end gap-3">
+            <button onclick="wizUnsavedStay()" class="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Continuar a editar</button>
+            <button onclick="wizUnsavedLeave()" class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">Sair sem guardar</button>
         </div>
     </div>
 </div>
