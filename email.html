@@ -5123,21 +5123,41 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
         empty.classList.add('hidden');
         const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        list.innerHTML = items.map(b => `
-            <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-                <div class="h-32 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer relative" onclick="_blockEdit(${b.id})">
-                    <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
-                </div>
-                <div class="p-4 flex-1 flex flex-col">
-                    <p class="font-semibold text-slate-900 text-sm">${escHtml(b.name)}</p>
-                    <p class="text-xs text-slate-400 mt-0.5">Editado em ${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
-                    <div class="flex items-center gap-2 mt-3">
-                        <button onclick="_blockEdit(${b.id})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                        <button onclick="_blockDelete(${b.id})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+        if (items.length > 2) {
+            list.className = 'border border-slate-200 rounded-xl overflow-hidden bg-white divide-y divide-slate-100';
+            list.innerHTML = items.map(b => `
+                <div class="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors">
+                    <div class="w-24 h-14 bg-slate-50 border border-slate-200 rounded overflow-hidden flex-shrink-0 cursor-pointer relative" onclick="_blockEdit(${b.id})">
+                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.25);transform-origin:top left;width:400%;height:400%"></iframe>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</p>
+                        <p class="text-xs text-slate-400 mt-0.5">${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button onclick="_blockEdit(${b.id})" class="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                        <button onclick="_blockDelete(${b.id})" class="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
+        } else {
+            list.className = 'grid grid-cols-3 gap-5';
+            list.innerHTML = items.map(b => `
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                    <div class="h-32 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer relative" onclick="_blockEdit(${b.id})">
+                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col">
+                        <p class="font-semibold text-slate-900 text-sm">${escHtml(b.name)}</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Editado em ${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
+                        <div class="flex items-center gap-2 mt-3">
+                            <button onclick="_blockEdit(${b.id})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                            <button onclick="_blockDelete(${b.id})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
     }
     function _bsRenderBlocksList() {
         const list = document.getElementById('bsBlocksList');
@@ -5147,23 +5167,43 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
         empty.classList.add('hidden');
         const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        list.innerHTML = items.map(b => `
-            <div class="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-sm transition-shadow flex flex-col">
-                <div class="h-24 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
-                    <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
-                </div>
-                <div class="p-3 flex items-center justify-between gap-2">
-                    <div class="min-w-0">
-                        <p class="font-medium text-slate-900 text-xs truncate">${escHtml(b.name)}</p>
+        if (items.length > 2) {
+            list.className = 'border border-slate-200 rounded-xl overflow-hidden bg-white divide-y divide-slate-100';
+            list.innerHTML = items.map(b => `
+                <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
+                    <div class="w-20 h-12 bg-slate-50 border border-slate-200 rounded overflow-hidden flex-shrink-0 cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
+                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.25);transform-origin:top left;width:400%;height:400%"></iframe>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-medium text-slate-900 text-sm truncate">${escHtml(b.name)}</p>
                         <p class="text-xs text-slate-400">${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
                     </div>
                     <div class="flex items-center gap-1.5 flex-shrink-0">
-                        <button onclick="_blockEdit(${b.id},'brandSettings')" class="text-xs px-2 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                        <button onclick="_blockDelete(${b.id})" class="text-xs px-2 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                        <button onclick="_blockEdit(${b.id},'brandSettings')" class="text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
+                        <button onclick="_blockDelete(${b.id})" class="text-xs px-2.5 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
+        } else {
+            list.className = 'grid grid-cols-2 gap-4';
+            list.innerHTML = items.map(b => `
+                <div class="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-sm transition-shadow flex flex-col">
+                    <div class="h-24 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
+                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                    </div>
+                    <div class="p-3 flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <p class="font-medium text-slate-900 text-xs truncate">${escHtml(b.name)}</p>
+                            <p class="text-xs text-slate-400">${new Date(b.updated_at||b.created_at).toLocaleDateString('pt-PT')}</p>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <button onclick="_blockEdit(${b.id},'brandSettings')" class="text-xs px-2 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                            <button onclick="_blockDelete(${b.id})" class="text-xs px-2 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
     }
     function _blockNew(returnTo = 'blocks') {
         _editingBlockId = null;
