@@ -1605,6 +1605,7 @@
         teState.selected = null;
         _teLoading = true;
         showScreen('templateEdit');
+        document.querySelectorAll('#templateEdit .te-tpl-only').forEach(el => el.classList.remove('hidden'));
         const titleMap = { tpl1:'Newsletter Primavera 2026', tpl2:'Promoção Flash — Verão', tpl3:'Boas-vindas — Welcome' };
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         if (nameEl) nameEl.value = titleMap[id] || '';
@@ -1640,6 +1641,7 @@
         teState.selected = null;
         _teLoading = true;
         showScreen('templateEdit');
+        document.querySelectorAll('#templateEdit .te-tpl-only').forEach(el => el.classList.remove('hidden'));
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         if (nameEl) nameEl.value = '';
         const descEl = document.getElementById('te-desc-input');
@@ -5198,6 +5200,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (nameEl) nameEl.value = b.name || '';
             document.getElementById('te_btnPickHeader')?.classList.add('hidden');
             document.getElementById('te_btnPickFooter')?.classList.add('hidden');
+            document.querySelectorAll('#templateEdit .te-tpl-only').forEach(el => el.classList.add('hidden'));
             if (typeof teRender === 'function') teRender();
         } catch (e) { showToast(e.message, 'error'); }
     }
@@ -11647,12 +11650,12 @@ ${sections.join('\n\n')}
                         <input type="text" value="Newsletter Primavera 2026"
                                class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     </div>
-                    <div class="flex-1 min-w-[200px]">
+                    <div class="flex-1 min-w-[200px] te-tpl-only">
                         <label class="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
                         <input id="te-desc-input" type="text" value="" placeholder="Descrição breve do template (opcional)"
                                class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                     </div>
-                    <label class="flex items-center gap-2 cursor-pointer pb-2">
+                    <label class="flex items-center gap-2 cursor-pointer pb-2 te-tpl-only">
                         <input type="checkbox" class="rounded border-slate-300" />
                         <span class="text-sm text-slate-700">Partilhado</span>
                     </label>
@@ -11684,19 +11687,19 @@ ${sections.join('\n\n')}
                     </button>
                     <!-- Converter HTML → MJML -->
                     <button type="button" onclick="teOpenConverter()"
-                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
+                            class="te-tpl-only px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-violet-700 border-violet-200 hover:bg-violet-50 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         Converter HTML
                     </button>
                     <!-- IA: Imagem → MJML -->
                     <button type="button" onclick="teOpenAiImageModal()"
-                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50 transition-colors">
+                            class="te-tpl-only px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                         IA → MJML
                     </button>
                     <!-- Open preview modal -->
                     <button type="button" onclick="teOpenPreviewModal()"
-                            class="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
+                            class="te-tpl-only px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 transition-colors">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
