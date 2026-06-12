@@ -615,16 +615,16 @@ module.exports = async function handler(req, res) {
       let emailError = null;
       const brandRows = await query('SELECT name, from_name, from_email FROM brands WHERE id=$1', [id]);
       const brandName  = brandRows[0]?.name || id;
-      const fromName   = brandRows[0]?.from_name  || 'PrimeMail';
+      const fromName   = brandRows[0]?.from_name  || 'eMKT';
       const fromEmail  = brandRows[0]?.from_email || `info@caetano.pt`;
       const appUrl     = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
       const roleLabel  = { owner: 'Administrador', editor: 'Editor', viewer: 'Marketing Account' };
-      const emailSubject = `Foste adicionado à equipa ${brandName} no PrimeMail`;
+      const emailSubject = `Foste adicionado à equipa ${brandName} no eMKT`;
       const emailHtml = `<p>Olá ${name},</p>
-        <p>Foste adicionado à marca <strong>${brandName}</strong> no PrimeMail com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
+        <p>Foste adicionado à marca <strong>${brandName}</strong> no eMKT com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
         <p>Podes aceder à plataforma em <a href="${appUrl}">${appUrl}</a> com o teu email e a password definida pelo administrador.</p>
         <p>Bem-vindo à equipa!</p>`;
-      const emailText = `Olá ${name},\n\nForaste adicionado à marca ${brandName} no PrimeMail com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`;
+      const emailText = `Olá ${name},\n\nForaste adicionado à marca ${brandName} no eMKT com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`;
 
       if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
         try {

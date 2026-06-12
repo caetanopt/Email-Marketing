@@ -1,6 +1,6 @@
 # 17 — Ordem de Desenvolvimento Recomendada
 
-## Caetano PrimeMail — Sequência de Implementação Sem Dívida Técnica
+## Caetano eMKT — Sequência de Implementação Sem Dívida Técnica
 
 ---
 
@@ -232,5 +232,5 @@ Fase 6:                                                          █████
 
 ---
 
-*Fim da documentação principal do Caetano PrimeMail.*
+*Fim da documentação principal do Caetano eMKT.*
 *Ver [README.md](../README.md) para índice completo.*

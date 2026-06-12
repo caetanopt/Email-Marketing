@@ -1,4 +1,4 @@
--- PrimeMail — Schema PostgreSQL (Supabase)
+-- eMKT — Schema PostgreSQL (Supabase)
 -- Executar no Supabase: Project → SQL Editor → New Query → colar e Run
 
 -- ── Marcas ──────────────────────────────────────────

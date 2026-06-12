@@ -1,12 +1,12 @@
-# Caetano PrimeMail
+# Caetano eMKT
 
 > **Plataforma SaaS de Email Marketing Multi-Marca para o Grupo Caetano**
 
 ---
 
-## O que é o Caetano PrimeMail?
+## O que é o Caetano eMKT?
 
-O **Caetano PrimeMail** é uma plataforma profissional de email marketing construída especificamente para operar num ambiente **multi-marca** (multi-brand), servindo as diferentes marcas do Grupo Caetano (BMW, Hyundai, BYD, Audi, Alpine, Dacia, Caetano Parts, entre outras).
+O **Caetano eMKT** é uma plataforma profissional de email marketing construída especificamente para operar num ambiente **multi-marca** (multi-brand), servindo as diferentes marcas do Grupo Caetano (BMW, Hyundai, BYD, Audi, Alpine, Dacia, Caetano Parts, entre outras).
 
 A plataforma combina a usabilidade de ferramentas como Mailchimp com o controlo e soberania de dados de soluções auto-hospedadas como o Sendy, adaptada às necessidades operacionais de um grupo automóvel com múltiplas marcas, bases de dados extensas e requisitos rigorosos de segurança e conformidade RGPD.
 
@@ -76,5 +76,5 @@ Destina-se a:
 ---
 
 *Versão: 1.0 — Abril 2026*
-*Plataforma: Caetano PrimeMail*
+*Plataforma: Caetano eMKT*
 *Grupo: Salvador Caetano*

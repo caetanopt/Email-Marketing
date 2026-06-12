@@ -1,12 +1,12 @@
 # 10 — UX / Dashboard / Backoffice
 
-## Caetano PrimeMail — Estrutura da Interface e Experiência do Utilizador
+## Caetano eMKT — Estrutura da Interface e Experiência do Utilizador
 
 ---
 
 ## 10.1 Filosofia de UX
 
-A interface do Caetano PrimeMail deve ser:
+A interface do Caetano eMKT deve ser:
 
 - **Focada** — cada página tem um objetivo claro, sem ruído visual
 - **Contextual** — o utilizador sabe sempre em que marca está a trabalhar
@@ -369,7 +369,7 @@ Acesso por Marca:
 Quando BMW está ativa:
 - Barra lateral e topbar com **borda/destaque azul BMW (#1C69D4)**
 - Logótipo BMW visível no dropdown
-- Título do browser: "Dashboard — BMW | Caetano PrimeMail"
+- Título do browser: "Dashboard — BMW | Caetano eMKT"
 
 Quando Hyundai está ativa:
 - Barra lateral e topbar com **destaque azul-escuro Hyundai (#002C5F)**
@@ -382,7 +382,7 @@ Quando Hyundai está ativa:
 function applyBrandTheme(brand: Brand) {
     document.documentElement.style.setProperty('--brand-color', brand.primary_color)
     document.documentElement.style.setProperty('--brand-color-light', lighten(brand.primary_color, 0.8))
-    document.title = `${currentPage} — ${brand.name} | Caetano PrimeMail`
+    document.title = `${currentPage} — ${brand.name} | Caetano eMKT`
 }
 ```
 

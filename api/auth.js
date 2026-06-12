@@ -101,22 +101,22 @@ module.exports = async function handler(req, res) {
 
       const appUrl = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
       const magicUrl = `${appUrl}/email?magic=${token}`;
-      const from = process.env.MAGIC_LINK_FROM || 'PrimeMail <noreply@caetano.pt>';
+      const from = process.env.MAGIC_LINK_FROM || 'eMKT <noreply@caetano.pt>';
 
       await getSESClient().send(new SendEmailCommand({
         Source: from,
         Destination: { ToAddresses: [emailNorm] },
         Message: {
-          Subject: { Data: 'O seu link de acesso — PrimeMail' },
+          Subject: { Data: 'O seu link de acesso — eMKT' },
           Body: {
             Html: { Data: `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:480px;margin:40px auto;color:#1e293b">
               <img src="https://caetano.pt/site/uploads/2026/01/caetano-002e5d.svg" alt="Caetano" style="height:32px;margin-bottom:24px">
-              <h2 style="margin:0 0 8px">Link de acesso ao PrimeMail</h2>
+              <h2 style="margin:0 0 8px">Link de acesso ao eMKT</h2>
               <p style="color:#64748b;margin:0 0 24px">Clique no botão abaixo para aceder. O link é válido durante <strong>15 minutos</strong>.</p>
-              <a href="${magicUrl}" style="display:inline-block;padding:12px 28px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Aceder ao PrimeMail</a>
+              <a href="${magicUrl}" style="display:inline-block;padding:12px 28px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Aceder ao eMKT</a>
               <p style="margin-top:24px;font-size:12px;color:#94a3b8">Se não solicitou este acesso, ignore este email.</p>
             </body></html>` },
-            Text: { Data: `Link de acesso ao PrimeMail (válido 15 min):\n${magicUrl}\n\nSe não solicitou este acesso, ignore este email.` },
+            Text: { Data: `Link de acesso ao eMKT (válido 15 min):\n${magicUrl}\n\nSe não solicitou este acesso, ignore este email.` },
           },
         },
       }));

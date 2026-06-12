@@ -1,12 +1,12 @@
 # 03 — Definição de MVP
 
-## Caetano PrimeMail — MVP e Roadmap
+## Caetano eMKT — MVP e Roadmap
 
 ---
 
 ## 3.1 Filosofia do MVP
 
-O MVP do Caetano PrimeMail deve ser **simples de usar mas tecnicamente robusto**. Não é um protótipo descartável — é a fundação sobre a qual a V2 e V3 serão construídas. Por isso, as decisões de arquitetura do MVP têm de ser corretas desde o início, mesmo que algumas funcionalidades sejam adicionadas depois.
+O MVP do Caetano eMKT deve ser **simples de usar mas tecnicamente robusto**. Não é um protótipo descartável — é a fundação sobre a qual a V2 e V3 serão construídas. Por isso, as decisões de arquitetura do MVP têm de ser corretas desde o início, mesmo que algumas funcionalidades sejam adicionadas depois.
 
 > **Princípio:** Construir menos funcionalidades, mas construí-las bem. A base técnica do MVP não pode criar dívida técnica para o futuro.
 

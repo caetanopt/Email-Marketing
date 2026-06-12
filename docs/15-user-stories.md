@@ -1,6 +1,6 @@
 # 15 — User Stories Iniciais
 
-## Caetano PrimeMail — Histórias de Utilizador para o MVP
+## Caetano eMKT — Histórias de Utilizador para o MVP
 
 ---
 

@@ -618,7 +618,7 @@ module.exports = async function handler(req, res) {
 
         const toSend = quotaRemaining < pending.length ? pending.slice(0, quotaRemaining) : pending;
 
-        const fromName   = c.from_name  || c.brand_from_name  || 'PrimeMail';
+        const fromName   = c.from_name  || c.brand_from_name  || 'eMKT';
         const fromEmail  = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo    = c.reply_to   || c.brand_reply_to   || undefined;
 
@@ -858,12 +858,12 @@ module.exports = async function handler(req, res) {
 
         const sesClientTest = getSESClient();
         const c = camp[0];
-        const fromName  = c.from_name  || c.brand_from_name  || 'PrimeMail';
+        const fromName  = c.from_name  || c.brand_from_name  || 'eMKT';
         const fromEmail = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         const unsubUrl = `${APP_URL}#unsubscribe`;
         const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
-          <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo PrimeMail.</p>
+          <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo eMKT.</p>
           <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
         </div>`;
         // Apply UTM params + click tracking (same as real sends so test reflects exact behaviour)

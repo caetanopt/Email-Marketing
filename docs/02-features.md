@@ -1,6 +1,6 @@
 # 02 — Funcionalidades Principais
 
-## Módulos Funcionais do Caetano PrimeMail
+## Módulos Funcionais do Caetano eMKT
 
 ---
 

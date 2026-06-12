@@ -1,6 +1,6 @@
 # 16 — Requisitos Não Funcionais
 
-## Caetano PrimeMail — RNF: Performance, Segurança, Disponibilidade e Mais
+## Caetano eMKT — RNF: Performance, Segurança, Disponibilidade e Mais
 
 ---
 

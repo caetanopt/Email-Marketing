@@ -1,6 +1,6 @@
 # 06 — Estratégia de Performance para Grandes Volumes
 
-## Caetano PrimeMail — Como Manter a Plataforma Rápida
+## Caetano eMKT — Como Manter a Plataforma Rápida
 
 ---
 

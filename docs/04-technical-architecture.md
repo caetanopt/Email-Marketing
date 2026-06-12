@@ -1,6 +1,6 @@
 # 04 — Arquitetura Técnica
 
-## Caetano PrimeMail — Stack e Infraestrutura
+## Caetano eMKT — Stack e Infraestrutura
 
 ---
 
@@ -213,7 +213,7 @@ services:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     CAETANO PRIMEMAIL                        │
+│                     CAETANO EMKT                        │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │              Frontend (Vue 3 + Inertia)              │   │

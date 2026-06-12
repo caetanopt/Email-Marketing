@@ -1,4 +1,4 @@
--- PrimeMail — Dados iniciais
+-- eMKT — Dados iniciais
 
 INSERT INTO brands (id, name, color, from_name, from_email) VALUES
   ('caetano',     'Caetano',       '#002E5D', 'Caetano',        'newsletter@caetano.pt'),

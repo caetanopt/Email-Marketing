@@ -1,6 +1,6 @@
 # 14 — Resumo Executivo
 
-## Caetano PrimeMail — Stack, Arquitetura, MVP e Prioridades
+## Caetano eMKT — Stack, Arquitetura, MVP e Prioridades
 
 ---
 
@@ -8,7 +8,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    STACK CAETANO PRIMEMAIL                           │
+│                    STACK CAETANO EMKT                           │
 ├─────────────────────────┬───────────────────────────────────────────┤
 │ CAMADA                  │ TECNOLOGIA                                 │
 ├─────────────────────────┼───────────────────────────────────────────┤
@@ -54,7 +54,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                  ARQUITETURA CAETANO PRIMEMAIL                       │
+│                  ARQUITETURA CAETANO EMKT                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  DESIGN PRINCIPLES:                                                  │
@@ -107,7 +107,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      MVP CAETANO PRIMEMAIL                           │
+│                      MVP CAETANO EMKT                           │
 │                   (16 semanas / ~4 meses)                           │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
@@ -211,7 +211,7 @@
 
 ## Síntese Final
 
-O **Caetano PrimeMail** é uma plataforma ambiciosa mas completamente viável com a stack e abordagem descritas neste documento.
+O **Caetano eMKT** é uma plataforma ambiciosa mas completamente viável com a stack e abordagem descritas neste documento.
 
 A chave para o sucesso está em três decisões que têm de ser tomadas desde o início e não podem ser revertidas facilmente:
 

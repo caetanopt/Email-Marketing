@@ -1,6 +1,6 @@
 # 08 — Fluxo Seguro de Autenticação e Login
 
-## Caetano PrimeMail — Autenticação, Sessões e Contexto de Marca
+## Caetano eMKT — Autenticação, Sessões e Contexto de Marca
 
 ---
 

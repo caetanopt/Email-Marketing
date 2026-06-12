@@ -1,12 +1,12 @@
 # 01 — Visão do Produto
 
-## Caetano PrimeMail — Product Vision Document
+## Caetano eMKT — Product Vision Document
 
 ---
 
 ## 1.1 Objetivo da Plataforma
 
-O **Caetano PrimeMail** nasce para resolver um problema concreto do Grupo Caetano: gerir comunicações de email marketing para múltiplas marcas automóveis de forma centralizada, eficiente, segura e conforme com o RGPD, sem depender de ferramentas externas pagas por volume de envio ou de plataformas genéricas que não refletem a realidade operacional multi-marca do grupo.
+O **Caetano eMKT** nasce para resolver um problema concreto do Grupo Caetano: gerir comunicações de email marketing para múltiplas marcas automóveis de forma centralizada, eficiente, segura e conforme com o RGPD, sem depender de ferramentas externas pagas por volume de envio ou de plataformas genéricas que não refletem a realidade operacional multi-marca do grupo.
 
 A plataforma cobre todo o ciclo de vida de uma campanha de email marketing:
 - Construção e gestão de bases de dados de contactos por marca
@@ -95,7 +95,7 @@ Importar ficheiros CSV com dezenas ou centenas de milhar de contactos em ferrame
 
 ## 1.5 Diferenciais Face a Ferramentas Tradicionais
 
-| Dimensão | Mailchimp | Sendy | Caetano PrimeMail |
+| Dimensão | Mailchimp | Sendy | Caetano eMKT |
 |----------|-----------|-------|-------------------|
 | Multi-marca nativo | Não (contas separadas) | Não | **Sim, nativo** |
 | Self-hosted / soberania dados | Não | Sim | **Sim** |

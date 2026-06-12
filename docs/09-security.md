@@ -1,6 +1,6 @@
 # 09 — Segurança e Proteção de Dados
 
-## Caetano PrimeMail — Security by Design e RGPD
+## Caetano eMKT — Security by Design e RGPD
 
 ---
 

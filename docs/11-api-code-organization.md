@@ -1,6 +1,6 @@
 # 11 — API e Organização do Código
 
-## Caetano PrimeMail — Estrutura Laravel, Padrões e Boas Práticas
+## Caetano eMKT — Estrutura Laravel, Padrões e Boas Práticas
 
 ---
 

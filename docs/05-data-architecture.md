@@ -1,6 +1,6 @@
 # 05 — Arquitetura de Dados
 
-## Caetano PrimeMail — Entidades, Relações e Estratégia Multi-Marca
+## Caetano eMKT — Entidades, Relações e Estratégia Multi-Marca
 
 ---
 
