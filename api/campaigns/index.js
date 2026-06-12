@@ -22,72 +22,106 @@ module.exports = async function handler(req, res) {
 
     const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
-    // Find campaigns due for sending
+    // How long this cron invocation is allowed to run before it must stop and let
+    // the next invocation continue. Default 50 s — safe margin under maxDuration:60.
+    // Override with CRON_MAX_SECONDS env var (e.g. 280 on a 300 s plan).
+    const DEADLINE_MS = parseInt(process.env.CRON_MAX_SECONDS || '50', 10) * 1000;
+    const cronStart = Date.now();
+    const timeLeft = () => DEADLINE_MS - (Date.now() - cronStart);
+
+    // Pick up:
+    //   • campaigns newly due for sending (status='scheduled')
+    //   • campaigns already in 'sending' that still have work — these are mid-send
+    //     from a previous cron invocation that was cut short by the function timeout.
+    //     Without this second clause they would only be picked up by the stall detector
+    //     (10-minute window), making large sends extremely slow.
     const due = await query(
-      `SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at <= NOW() LIMIT 5`
+      `SELECT id, false AS resuming FROM campaigns
+       WHERE status='scheduled' AND scheduled_at <= NOW()
+       UNION ALL
+       SELECT c.id, true AS resuming FROM campaigns c
+       WHERE c.status='sending'
+         AND EXISTS (
+           SELECT 1 FROM campaign_recipients cr
+           WHERE cr.campaign_id=c.id AND cr.status IN ('pending','retry')
+         )
+       LIMIT 5`
     );
 
     const results = [];
-    for (const { id: campId } of due) {
-      try {
-        // Atomic claim — if a concurrent cron invocation already took this
-        // campaign, the UPDATE matches no row and we skip it (no double-send).
-        const claimed = await query(
-          `UPDATE campaigns SET status='sending' WHERE id=$1 AND status='scheduled' RETURNING id`,
-          [campId]
-        );
-        if (!claimed[0]) continue;
+    for (const { id: campId, resuming } of due) {
+      // Stop processing new campaigns if we are close to the function deadline —
+      // the next cron invocation will pick up the remaining work.
+      if (timeLeft() < 8000) break;
 
+      try {
         let total = 0;
-        try {
-          ({ total } = await initCampaignSend(campId));
-        } catch (err) {
-          if (err.message === 'Sem destinatários activos') {
-            // Nothing to send — close the campaign instead of leaving it stuck in 'sending'
-            await query(`UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1`, [campId]);
-            results.push({ id: campId, total: 0, sent: 0, failed: 0 });
-            continue;
+        if (!resuming) {
+          // Atomic claim — concurrent cron invocations skip campaigns already taken.
+          const claimed = await query(
+            `UPDATE campaigns SET status='sending' WHERE id=$1 AND status='scheduled' RETURNING id`,
+            [campId]
+          );
+          if (!claimed[0]) continue;
+
+          try {
+            ({ total } = await initCampaignSend(campId));
+          } catch (err) {
+            if (err.message === 'Sem destinatários activos') {
+              await query(`UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1`, [campId]);
+              results.push({ id: campId, total: 0, sent: 0, failed: 0 });
+              continue;
+            }
+            throw err;
           }
-          throw err;
         }
+
         let totalSent = 0, totalFailed = 0;
-        for (let b = 0; b < 20; b++) {
+        // Run batches until done or until we must yield to the next invocation.
+        // No hard cap on b — we run as many batches as the deadline allows.
+        for (;;) {
+          if (timeLeft() < 8000) break; // stop before Vercel kills the function
           const r = await runBatch(campId, null);
           totalSent += r.sent || 0;
           totalFailed += r.failed || 0;
           if (r.done) break;
         }
-        results.push({ id: campId, total, sent: totalSent, failed: totalFailed });
+        results.push({ id: campId, resuming, total, sent: totalSent, failed: totalFailed });
       } catch (err) {
         console.error(`Cron: failed to send campaign ${campId}:`, err.message);
         results.push({ id: campId, error: err.message });
       }
     }
 
-    // Resume campaigns stuck in 'sending' with no recent activity — happens when
-    // the browser is closed mid-send or a previous invocation was cut short.
+    // Stall safety net — catches campaigns abandoned by a browser-initiated send
+    // (user closed the tab) or a server crash. With the main loop above now
+    // resuming in-progress campaigns, a genuinely stalled campaign is one with
+    // no activity for 3 minutes (not 10) — a shorter window means faster recovery.
     try {
       const stuck = await query(
         `SELECT c.id FROM campaigns c
          WHERE c.status='sending'
-           -- the send actually started (at least one attempt recorded)…
            AND EXISTS (
              SELECT 1 FROM campaign_recipients cr2
              WHERE cr2.campaign_id=c.id
                AND COALESCE(cr2.attempted_at, cr2.sent_at) IS NOT NULL
            )
-           -- …but stalled: nothing attempted in the last 10 minutes
            AND NOT EXISTS (
              SELECT 1 FROM campaign_recipients cr
              WHERE cr.campaign_id=c.id
-               AND COALESCE(cr.attempted_at, cr.sent_at) > NOW() - INTERVAL '10 minutes'
+               AND COALESCE(cr.attempted_at, cr.sent_at) > NOW() - INTERVAL '3 minutes'
            )
-         LIMIT 3`
+           -- exclude campaigns already queued for processing above
+           AND c.id NOT IN (${due.map((_, i) => `$${i+1}`).join(',') || 'NULL'})
+         LIMIT 3`,
+        due.map(d => d.id)
       );
       for (const { id: campId } of stuck) {
+        if (timeLeft() < 8000) break;
         try {
           let totalSent = 0, totalFailed = 0;
-          for (let b = 0; b < 20; b++) {
+          for (;;) {
+            if (timeLeft() < 8000) break;
             const r = await runBatch(campId, null);
             totalSent += r.sent || 0;
             totalFailed += r.failed || 0;
@@ -100,11 +134,12 @@ module.exports = async function handler(req, res) {
         }
       }
     } catch (err) {
-      // attempted_at may not exist on older schemas — skip resume silently
       if (err.code !== '42703') console.error('Cron: stuck campaign scan failed:', err.message);
     }
 
-    return res.status(200).json({ ok: true, processed: results.length, results });
+    return res.status(200).json({
+      ok: true, processed: results.length, elapsed_ms: Date.now() - cronStart, results
+    });
   }
 
   const user = requireAuth(req, res);

@@ -435,26 +435,63 @@ module.exports = async function handler(req, res) {
         }
 
         const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
-        // Pick up both fresh pending contacts and soft-bounce retries
-        const pending = await query(
-          `SELECT cr.contact_id, cr.email, con.name, con.phone, con.company, cr.retry_count,
-                  COALESCE((
-                    SELECT jsonb_object_agg(key, value)
-                    FROM (
-                      SELECT key, value
-                      FROM list_members lm2
-                      JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
-                      CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
-                      WHERE lm2.contact_id = cr.contact_id
-                    ) ed
-                  ), '{}'::jsonb) AS extra_data
-           FROM campaign_recipients cr
-           JOIN contacts con ON con.id = cr.contact_id
-           WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
-           ORDER BY cr.status DESC, cr.contact_id ASC
-           LIMIT $2`,
-          [id, BATCH]
-        );
+        // Claim atomically — see sendCampaign.js runBatch for the full rationale.
+        let claimedRows;
+        try {
+          claimedRows = await query(
+            `WITH claimed AS (
+               UPDATE campaign_recipients
+               SET attempted_at = NOW()
+               WHERE campaign_id = $1
+                 AND ctid IN (
+                   SELECT ctid FROM campaign_recipients
+                   WHERE campaign_id = $1 AND status IN ('pending','retry')
+                   ORDER BY status DESC, contact_id ASC
+                   LIMIT $2
+                   FOR UPDATE SKIP LOCKED
+                 )
+               RETURNING contact_id, email, retry_count
+             )
+             SELECT c.contact_id, c.email, c.retry_count,
+                    con.name, con.phone, con.company,
+                    COALESCE((
+                      SELECT jsonb_object_agg(key, value)
+                      FROM (
+                        SELECT key, value
+                        FROM list_members lm2
+                        JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
+                        CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
+                        WHERE lm2.contact_id = c.contact_id
+                      ) ed
+                    ), '{}'::jsonb) AS extra_data
+             FROM claimed c
+             JOIN contacts con ON con.id = c.contact_id`,
+            [id, BATCH]
+          );
+        } catch (e) {
+          if (e.code !== '42703') throw e;
+          claimedRows = await query(
+            `SELECT cr.contact_id, cr.email, cr.retry_count,
+                    con.name, con.phone, con.company,
+                    COALESCE((
+                      SELECT jsonb_object_agg(key, value)
+                      FROM (
+                        SELECT key, value
+                        FROM list_members lm2
+                        JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
+                        CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
+                        WHERE lm2.contact_id = cr.contact_id
+                      ) ed
+                    ), '{}'::jsonb) AS extra_data
+             FROM campaign_recipients cr
+             JOIN contacts con ON con.id = cr.contact_id
+             WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
+             ORDER BY cr.status DESC, cr.contact_id ASC
+             LIMIT $2`,
+            [id, BATCH]
+          );
+        }
+        const pending = claimedRows;
 
         if (!pending.length) {
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
