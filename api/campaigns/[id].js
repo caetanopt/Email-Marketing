@@ -1,7 +1,7 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
-const { SendEmailCommand } = require('@aws-sdk/client-ses');
+const { SendEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
@@ -68,15 +68,24 @@ module.exports = async function handler(req, res) {
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
 
     if (req.method === 'GET' && action === 'get_direct_recipients') {
+      const [{ total }] = await query(
+        `SELECT COUNT(*)::int AS total FROM campaign_recipients WHERE campaign_id=$1`, [id]
+      );
       const recs = await query(
         `SELECT cr.email, c.name AS contact_name
          FROM campaign_recipients cr
          LEFT JOIN contacts c ON c.id = cr.contact_id
          WHERE cr.campaign_id = $1
-         ORDER BY cr.id DESC LIMIT 500`,
+         ORDER BY cr.id DESC LIMIT 100`,
         [id]
       );
-      return res.status(200).json({ recipients: recs });
+      return res.status(200).json({ recipients: recs, total });
+    }
+
+    if (req.method === 'DELETE' && action === 'remove_direct_recipients') {
+      if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível modificar uma campanha já enviada.' });
+      await query(`DELETE FROM campaign_recipients WHERE campaign_id=$1`, [id]);
+      return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'GET' && action === 'send_log') {
@@ -214,15 +223,23 @@ module.exports = async function handler(req, res) {
              ORDER BY sent_at DESC NULLS LAST LIMIT 5
            )
            SELECT lc.id, lc.name, lc.sent_at,
-                  COUNT(cr.*) FILTER (WHERE cr.status='sent')::int AS sent,
-                  COUNT(cr.*)::int AS total_recipients,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int AS unique_opens,
-                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
-                  COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+                  COALESCE(rc.sent,0)  AS sent,
+                  COALESCE(rc.total,0) AS total_recipients,
+                  COALESCE(ev.unique_opens,0)  AS unique_opens,
+                  COALESCE(ev.unique_clicks,0) AS unique_clicks,
+                  COALESCE(ev.unsubs,0) AS unsubs
            FROM last_camps lc
-           LEFT JOIN campaign_recipients cr ON cr.campaign_id = lc.id
-           LEFT JOIN email_events ee ON ee.campaign_id = lc.id
-           GROUP BY lc.id, lc.name, lc.sent_at
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE cr.status='sent')::int AS sent
+             FROM campaign_recipients cr WHERE cr.campaign_id = lc.id
+           ) rc ON TRUE
+           LEFT JOIN LATERAL (
+             SELECT COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int  AS unique_opens,
+                    COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS unique_clicks,
+                    COUNT(*) FILTER (WHERE ee.type='unsubscribe')::int AS unsubs
+             FROM email_events ee WHERE ee.campaign_id = lc.id
+           ) ev ON TRUE
            ORDER BY lc.sent_at DESC NULLS LAST`,
           [camp[0].brand_id]
         );
@@ -286,11 +303,14 @@ module.exports = async function handler(req, res) {
       );
       if (list_ids) {
         if (list_ids.length) {
-          const owned = await query(
-            `SELECT id FROM lists WHERE id = ANY($1::int[]) AND brand_id = $2`,
-            [list_ids, camp.brand_id]
+          // Listas globais: basta o utilizador pertencer a alguma marca
+          const accessible = await query(
+            `SELECT l.id FROM lists l
+             WHERE l.id = ANY($1::int[])
+               AND EXISTS (SELECT 1 FROM user_brand_roles WHERE user_id = $2)`,
+            [list_ids, user.id]
           );
-          if (owned.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não pertencem a esta marca' });
+          if (accessible.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não são acessíveis' });
         }
         await query('DELETE FROM campaign_lists WHERE campaign_id=$1', [id]);
         if (list_ids.length) {
@@ -311,18 +331,24 @@ module.exports = async function handler(req, res) {
 
       // ── Adicionar destinatários directos (sem lista) ────────────
       if (action === 'add_direct_recipients') {
-        const { contact_ids } = req.body || {};
+        const { contact_ids, temp_contact_ids = [] } = req.body || {};
         if (!Array.isArray(contact_ids) || !contact_ids.length)
           return res.status(400).json({ error: 'contact_ids obrigatório' });
+        await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
+        const tempSet = new Set((temp_contact_ids || []).map(Number));
         const contacts = await query(
-          `SELECT id, email FROM contacts WHERE id = ANY($1::int[]) AND brand_id=$2`,
+          `SELECT id, email FROM contacts
+           WHERE id = ANY($1::int[]) AND brand_id=$2
+             AND status NOT IN ('suppressed','bounced','unsubscribed','complained')
+             AND lower(email) NOT IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
+             AND '@'||split_part(lower(email),'@',2) NOT IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')`,
           [contact_ids, camp.brand_id]
         );
         if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
-        const vals = contacts.map((_, i) => `($${i*3+1},$${i*3+2},$${i*3+3},'pending')`).join(',');
+        const vals = contacts.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},'pending',$${i*4+4})`).join(',');
         await query(
-          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
-          contacts.flatMap(ct => [id, ct.id, ct.email])
+          `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status,is_temp) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
+          contacts.flatMap(ct => [id, ct.id, ct.email, tempSet.has(Number(ct.id))])
         );
         return res.status(200).json({ ok: true, added: contacts.length });
       }
@@ -337,9 +363,28 @@ module.exports = async function handler(req, res) {
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         if (!['sending','scheduled'].includes(camp[0].status))
           return res.status(409).json({ error: 'Apenas campanhas em envio ou agendadas podem ser canceladas.' });
-        // Reset to draft — pending recipients are left as-is (can resend later)
-        await query(`UPDATE campaigns SET status='draft', sent_at=NULL WHERE id=$1`, [id]);
-        await query(`UPDATE campaign_recipients SET status='pending' WHERE campaign_id=$1 AND status='pending'`, [id]);
+        // Atomic: only cancel if still sending/scheduled — if the last batch
+        // finished meanwhile and marked the campaign 'sent', don't clobber it.
+        const cancelled = await query(
+          `UPDATE campaigns SET status='draft', sent_at=NULL
+           WHERE id=$1 AND status IN ('sending','scheduled') RETURNING id`, [id]
+        );
+        if (!cancelled[0])
+          return res.status(409).json({ error: 'A campanha terminou entretanto — não foi cancelada.' });
+        // Reset retry recipients to pending so a later resend starts fresh.
+        try {
+          await query(
+            `UPDATE campaign_recipients SET status='pending', error_message=NULL
+             WHERE campaign_id=$1 AND status='retry'`, [id]
+          );
+        } catch (e) {
+          if (e.code === '42703') {
+            await query(
+              `UPDATE campaign_recipients SET status='pending'
+               WHERE campaign_id=$1 AND status='retry'`, [id]
+            );
+          } else { throw e; }
+        }
         try {
           await query(
             `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
@@ -358,10 +403,9 @@ module.exports = async function handler(req, res) {
         );
         if (!campCheck[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
         try {
-          const { total } = await initCampaignSend(id);
+          const { total, campaign: c2 } = await initCampaignSend(id);
           // log campaign_started with user
           try {
-            const [c2] = await query('SELECT brand_id FROM campaigns WHERE id=$1', [id]);
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by) VALUES ($1,$2,$3,'campaign_started',$4)`,
               [c2.brand_id, id, `${total} destinatários`, user.id]
@@ -370,6 +414,7 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, total, queued: true });
         } catch (err) {
           if (err.message === 'Sem destinatários activos') return res.status(400).json({ error: err.message });
+          if (err.code === 'already_sending') return res.status(200).json({ ok: true, total: 0, queued: true, already_sending: true });
           throw err;
         }
       }
@@ -392,27 +437,93 @@ module.exports = async function handler(req, res) {
         if (camp[0].status !== 'sending')
           return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
 
+        // Honour suppressions added after the recipients were built (mid-send
+        // unsubscribes, direct imports) — never send to a suppressed address.
+        try {
+          await query(
+            `UPDATE campaign_recipients cr
+             SET status='failed', error_message='Endereço na lista de supressão', attempted_at=NOW()
+             WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
+               AND EXISTS (
+                 SELECT 1 FROM suppression s
+                 WHERE lower(s.email)=lower(cr.email)
+                    OR (s.email LIKE '@%' AND lower(s.email)='@'||split_part(lower(cr.email),'@',2))
+               )`,
+            [id]
+          );
+        } catch (e) {
+          if (e.code === '42703') {
+            await query(
+              `UPDATE campaign_recipients cr SET status='failed'
+               WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
+                 AND EXISTS (
+                   SELECT 1 FROM suppression s
+                   WHERE lower(s.email)=lower(cr.email)
+                      OR (s.email LIKE '@%' AND lower(s.email)='@'||split_part(lower(cr.email),'@',2))
+                 )`,
+              [id]
+            );
+          } else { throw e; }
+        }
+
         const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
-        // Pick up both fresh pending contacts and soft-bounce retries
-        const pending = await query(
-          `SELECT cr.contact_id, cr.email, con.name, con.phone, con.company, cr.retry_count,
-                  COALESCE((
-                    SELECT jsonb_object_agg(key, value)
-                    FROM (
-                      SELECT key, value
-                      FROM list_members lm2
-                      JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
-                      CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
-                      WHERE lm2.contact_id = cr.contact_id
-                    ) ed
-                  ), '{}'::jsonb) AS extra_data
-           FROM campaign_recipients cr
-           JOIN contacts con ON con.id = cr.contact_id
-           WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
-           ORDER BY cr.status DESC, cr.contact_id ASC
-           LIMIT $2`,
-          [id, BATCH]
-        );
+        // Claim atomically — see sendCampaign.js runBatch for the full rationale.
+        let claimedRows;
+        try {
+          claimedRows = await query(
+            `WITH claimed AS (
+               UPDATE campaign_recipients
+               SET attempted_at = NOW()
+               WHERE campaign_id = $1
+                 AND ctid IN (
+                   SELECT ctid FROM campaign_recipients
+                   WHERE campaign_id = $1 AND status IN ('pending','retry')
+                   ORDER BY status DESC, contact_id ASC
+                   LIMIT $2
+                   FOR UPDATE SKIP LOCKED
+                 )
+               RETURNING contact_id, email, retry_count
+             )
+             SELECT c.contact_id, c.email, c.retry_count,
+                    con.name, con.phone, con.company,
+                    COALESCE((
+                      SELECT jsonb_object_agg(key, value)
+                      FROM (
+                        SELECT key, value
+                        FROM list_members lm2
+                        JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
+                        CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
+                        WHERE lm2.contact_id = c.contact_id
+                      ) ed
+                    ), '{}'::jsonb) AS extra_data
+             FROM claimed c
+             JOIN contacts con ON con.id = c.contact_id`,
+            [id, BATCH]
+          );
+        } catch (e) {
+          if (e.code !== '42703') throw e;
+          claimedRows = await query(
+            `SELECT cr.contact_id, cr.email, cr.retry_count,
+                    con.name, con.phone, con.company,
+                    COALESCE((
+                      SELECT jsonb_object_agg(key, value)
+                      FROM (
+                        SELECT key, value
+                        FROM list_members lm2
+                        JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
+                        CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
+                        WHERE lm2.contact_id = cr.contact_id
+                      ) ed
+                    ), '{}'::jsonb) AS extra_data
+             FROM campaign_recipients cr
+             JOIN contacts con ON con.id = cr.contact_id
+             WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
+             ORDER BY cr.status DESC, cr.contact_id ASC
+             LIMIT $2`,
+            [id, BATCH]
+          );
+        }
+        const pending = claimedRows;
 
         if (!pending.length) {
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
@@ -431,6 +542,24 @@ module.exports = async function handler(req, res) {
         const c = camp[0];
         const sesClient = getSESClient();
 
+        // Pre-flight quota check — same logic as runBatch in sendCampaign.js
+        let quotaRemaining = Infinity;
+        try {
+          const quotaInfo = await sesClient.send(new GetSendQuotaCommand({}));
+          quotaRemaining = Math.max(0, Math.floor(quotaInfo.Max24HourSend - quotaInfo.SentLast24Hours));
+          if (quotaRemaining < 1) {
+            const [{ remaining }] = await query(
+              "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
+              [id]
+            );
+            return res.status(200).json({ done: false, sent: 0, failed: 0, remaining, quotaExhausted: true });
+          }
+        } catch (e) {
+          console.warn('send_batch: quota pre-check failed, proceeding:', e.message);
+        }
+
+        const toSend = quotaRemaining < pending.length ? pending.slice(0, quotaRemaining) : pending;
+
         const fromName   = c.from_name  || c.brand_from_name  || 'PrimeMail';
         const fromEmail  = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo    = c.reply_to   || c.brand_reply_to   || undefined;
@@ -439,7 +568,6 @@ module.exports = async function handler(req, res) {
         const utmStr = Object.entries(utmParams).filter(([, v]) => v)
           .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
-        // Wraps every external link with a click-tracking redirect, then appends UTM params
         function injectTracking(html, campaignId, contactId) {
           return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, rawUrl) => {
             // Decode HTML entities that esc() may have introduced (& → &amp;, etc.)
@@ -465,9 +593,12 @@ module.exports = async function handler(req, res) {
 
         const RATE = parseInt(process.env.SES_RATE || '14', 10);
         let sent = 0, failed = 0;
+        const batchState = { quotaHit: false };
 
-        for (let i = 0; i < pending.length; i += RATE) {
-          await Promise.all(pending.slice(i, i + RATE).map(async contact => {
+        for (let i = 0; i < toSend.length; i += RATE) {
+          if (batchState.quotaHit) break;
+          await Promise.all(toSend.slice(i, i + RATE).map(async contact => {
+            if (batchState.quotaHit) return;
             try {
               const token = unsubToken(contact.email, c.brand_id);
               const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
@@ -547,7 +678,12 @@ module.exports = async function handler(req, res) {
             } catch (err) {
               console.error('SES send error:', err?.message);
               const errMsg = (err?.message || 'unknown').slice(0, 500);
-              // Classify error: transient SES/network errors get a retry (up to 3 attempts)
+              const isQuotaError = /Daily message quota exceeded|quota.*exceeded|DailyQuota/i.test(errMsg)
+                || err?.name === 'LimitExceededException';
+              if (isQuotaError) {
+                batchState.quotaHit = true;
+                return; // leave recipient as 'pending'
+              }
               const isTransient = /Throttling|ServiceUnavailable|RequestTimeout|ECONNRESET|ETIMEDOUT/i.test(errMsg);
               const currentRetry = contact.retry_count || 0;
               const newStatus = (isTransient && currentRetry < 2) ? 'retry' : 'failed';
@@ -577,7 +713,8 @@ module.exports = async function handler(req, res) {
               failed++;
             }
           }));
-          if (i + RATE < pending.length) await new Promise(r => setTimeout(r, 1000));
+          if (batchState.quotaHit) break;
+          if (i + RATE < toSend.length) await new Promise(r => setTimeout(r, 1000));
         }
 
         const [{ remaining }] = await query(
@@ -587,6 +724,17 @@ module.exports = async function handler(req, res) {
 
         if (remaining === 0) {
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
+          try {
+            await query(
+              `DELETE FROM contacts
+               WHERE id IN (
+                 SELECT cr.contact_id FROM campaign_recipients cr
+                 WHERE cr.campaign_id = $1 AND cr.is_temp = true
+                   AND NOT EXISTS (SELECT 1 FROM list_members lm WHERE lm.contact_id = cr.contact_id)
+               )`,
+              [id]
+            );
+          } catch (e) { if (e.code !== '42703') console.error('temp contact cleanup:', e); }
           try {
             const [totals] = await query(
               `SELECT COUNT(*) FILTER (WHERE status='sent')::int AS total_sent,
@@ -601,6 +749,9 @@ module.exports = async function handler(req, res) {
           } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
         }
 
+        if (batchState.quotaHit) {
+          return res.status(200).json({ ok: true, sent, failed, remaining, done: false, quotaExhausted: true });
+        }
         return res.status(200).json({ ok: true, sent, failed, remaining, done: remaining === 0 });
       }
 

@@ -63,7 +63,7 @@ module.exports = async function handler(req, res) {
 
       // Validate list ownership if list_id provided
       if (list_id) {
-        const listRows = await query('SELECT id FROM lists WHERE id=$1 AND brand_id=$2', [list_id, brandId]);
+        const listRows = await query('SELECT id FROM lists WHERE id=$1', [list_id]);
         if (!listRows[0]) return res.status(404).json({ error: 'Lista não encontrada' });
       }
 

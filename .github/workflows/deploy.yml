@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - claude/email-marketing-saas-M2qZP
+      - claude/resume-login-error-FVgtn
 
 jobs:
   deploy:

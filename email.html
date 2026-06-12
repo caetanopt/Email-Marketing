@@ -46,6 +46,10 @@
     });
     // ── HTML escape helper ─────────────────────────────
     function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    // ── Session cache (stale-while-revalidate) ─────────
+    function _cacheSet(key, data) { try { sessionStorage.setItem('pm_' + key, JSON.stringify(data)); } catch (_) {} }
+    function _cacheGet(key) { try { return JSON.parse(sessionStorage.getItem('pm_' + key) || 'null'); } catch (_) { return null; } }
+    function _cacheClear(prefix) { try { Object.keys(sessionStorage).filter(k => k.startsWith('pm_' + prefix)).forEach(k => sessionStorage.removeItem(k)); } catch (_) {} }
     // ── Debounce helper ────────────────────────────────
     function _debounce(fn, ms = 250) {
         let t;
@@ -58,7 +62,7 @@
     const _dbFilterCampaigns = _debounce(() => filterCampaigns(), 220);
     const _dbFilterContacts  = _debounce(() => filterContacts(),  220);
     const _dbFilterLists     = _debounce(() => filterLists(),     220);
-    const _dbMediaGrid       = _debounce(() => _renderMediaGrid(),220);
+    const _dbMediaGrid       = _debounce(() => { _mediaRowsShown = 2; _renderMediaGrid(); }, 220);
     // ── Helpers ────────────────────────────────────────
     function _isValidEmail(e) {
       const s = String(e || '').trim().toLowerCase();
@@ -89,7 +93,7 @@
     const API_BASE = 'https://email-marketing-eta.vercel.app';
     const getToken  = () => localStorage.getItem('pm_token');
     const setToken  = t  => localStorage.setItem('pm_token', t);
-    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); };
+    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); localStorage.removeItem('pm_user_role'); document.documentElement.classList.remove('is-viewer'); };
 
     // ── Hash-based routing ───────────────────────────────
     const _ROUTE_TO_SCREEN = {
@@ -116,7 +120,8 @@
         const token = getToken();
         const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) };
         const res = await fetch(API_BASE + path, { ...options, headers });
-        const data = await res.json();
+        let data;
+        try { data = await res.json(); } catch { throw new Error(`Erro de servidor (${res.status})`); }
         if (res.status === 401 && path !== '/api/auth') {
             localStorage.removeItem('pm_token');
             localStorage.removeItem('pm_user');
@@ -206,8 +211,11 @@
     function _applyStatsFilter() {
         if (!_statsBrandsData) return;
         const d = _statsBrandsData;
-        const filteredBrand = _statsBrandFilter ? d.brands.find(b => b.id === _statsBrandFilter) : null;
-        const t = filteredBrand || d.totals;
+        // Group view = admin on Caetano; all other brands = single-brand view
+        const isGroupView = _isStatsAdmin() && _currentBrand?.id === 'caetano';
+        const filteredBrand = (isGroupView && _statsBrandFilter) ? d.brands.find(b => b.id === _statsBrandFilter) : null;
+        const currentBrandData = d.brands.find(b => b.id === _currentBrand?.id);
+        const t = filteredBrand || (isGroupView ? d.totals : (currentBrandData || d.totals));
         const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         const setW  = (id, p) => { const el = document.getElementById(id); if (el) el.style.width = Math.min(p,100)+'%'; };
         setEl('statsTotalSent',   t.sent.toLocaleString('pt-PT'));
@@ -226,18 +234,18 @@
         const label   = document.getElementById('statsGroupLabel');
         const backBtn = document.getElementById('statsBackBtn');
         if (label) {
-            if (!_isStatsAdmin()) {
-                label.textContent = `${_currentBrand.name} — Estatísticas`;
-            } else {
+            if (isGroupView) {
                 label.textContent = filteredBrand ? `${filteredBrand.name} — Estatísticas` : 'Grupo Caetano — todos os envios';
+            } else {
+                label.textContent = `${_currentBrand.name} — Estatísticas`;
             }
         }
-        // Back button only visible for admins when drilled into a brand
-        if (backBtn) backBtn.classList.toggle('hidden', !_statsBrandFilter || !_isStatsAdmin());
+        // Back button only in group view when drilled into a specific brand
+        if (backBtn) backBtn.classList.toggle('hidden', !filteredBrand || !isGroupView);
         // Table rows
         const tbody = document.getElementById('statsBrandsTbody');
         if (!tbody) return;
-        const brands = filteredBrand ? [filteredBrand] : (_isStatsAdmin() ? d.brands : d.brands.filter(b => b.id === _currentBrand.id));
+        const brands = filteredBrand ? [filteredBrand] : (isGroupView ? d.brands : (currentBrandData ? [currentBrandData] : []));
         const maxOpen = Math.max(...d.brands.map(x => x.openRate), 1);
         const bar = (v, max, color) => `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0"><div class="h-1.5 rounded-full ${color}" style="width:${Math.min(v/Math.max(max,1)*100,100).toFixed(0)}%"></div></div><span>${v}%</span></div>`;
         tbody.innerHTML = brands.map(b => {
@@ -245,9 +253,9 @@
             const logo = brandMeta.logo
                 ? `<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${brandMeta.bg||'#fff'}"><img src="${brandMeta.logo}" class="w-6 h-6 object-contain${brandMeta.invert?' brightness-0 invert':''}" onerror="this.style.display='none'"></div>`
                 : `<span class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style="background:${b.color||'#64748b'}">${(b.name||'?')[0]}</span>`;
-            const verBtn = (_statsBrandFilter || !_isStatsAdmin())
-                ? ''
-                : `<button onclick="_viewBrandStats('${b.id}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button>`;
+            const verBtn = isGroupView && !filteredBrand
+                ? `<button onclick="_viewBrandStats('${b.id}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button>`
+                : '';
             return `<tr class="hover:bg-slate-50 border-b border-slate-100 last:border-0">
                 <td class="px-4 py-3"><div class="flex items-center gap-2.5">${logo}<span class="font-medium text-slate-900">${b.name}</span></div></td>
                 <td class="px-4 py-3 text-slate-600 text-right">${b.campaigns}</td>
@@ -266,6 +274,16 @@
         _applyStatsFilter();
     }
 
+    function _applyStatisticsData(d) {
+        _statsBrandsData = d;
+        if (_currentBrand?.id !== 'caetano') {
+            _statsBrandFilter = null;
+        } else if (_statsBrandFilter && !d.brands.find(b => b.id === _statsBrandFilter)) {
+            _statsBrandFilter = null;
+        }
+        _applyStatsFilter();
+    }
+
     async function _loadStatistics(range) {
         if (range) _statsRange = range;
         // Update range button styles
@@ -274,27 +292,26 @@
             btn.className = `stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
         });
         const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        setEl('statsTotalSent','…'); setEl('statsCampaigns','…');
         const tbody = document.getElementById('statsBrandsTbody');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `stats_${_currentBrand?.id}_${_statsRange}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) {
+            _applyStatisticsData(cached);
+        } else {
+            setEl('statsTotalSent','…'); setEl('statsCampaigns','…');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        }
         try {
-            const qs = new URLSearchParams({ action:'global_stats', ...(_statsRange !== 'all' ? { range: _statsRange } : {}) });
+            const qs = new URLSearchParams({ action:'global_stats', brand_id: _currentBrand.id, ...(_statsRange !== 'all' ? { range: _statsRange } : {}) });
             const d = await apiFetch(`/api/campaigns?${qs}`);
             if (!d.brands?.length) { if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem dados para o período seleccionado.</td></tr>`; return; }
-            _statsBrandsData = d;
-            if (!_isStatsAdmin()) {
-                // Non-admin: always locked to the current brand
-                _statsBrandFilter = _currentBrand.id;
-            } else {
-                // Admin: preserve drill-down filter across range changes (unless brand no longer in data)
-                if (_statsBrandFilter && !d.brands.find(b => b.id === _statsBrandFilter)) {
-                    _statsBrandFilter = null;
-                }
-            }
-            _applyStatsFilter();
+            _cacheSet(cacheKey, d);
+            _applyStatisticsData(d);
         } catch(e) {
-            setEl('statsTotalSent','—');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
+            if (!cached) {
+                setEl('statsTotalSent','—');
+                if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
+            }
         }
     }
 
@@ -488,7 +505,33 @@
         _contactsUpdateBulkBar();
         const el = document.getElementById('contactsTbody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `contacts_${brandId}_p${page}`;
+        const cached = page === 1 ? _cacheGet(cacheKey) : null;
+        if (!cached) {
+            el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+            _setText('dash-contacts', '…');
+        }
+        if (cached) {
+            window._contactsCache = cached.data;
+            _contactsApiTotal = cached.total || 0;
+            const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Ativo</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Cancelado</span>', bounced:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Rejeitado</span>', complained:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700">Marcado como spam</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Suprimido</span>' };
+            const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
+            el.innerHTML = cached.data.map((c, i) => `
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-email="${escHtml(c.email)}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
+                    <td class="px-4 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="contact-row-cb rounded border-slate-300" data-id="${c.id}" onchange="_toggleContactCheck(${c.id},this)" /></td>
+                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(c.name)||'—'}</td>
+                    <td class="px-4 py-3 text-slate-600">${escHtml(c.email)}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${escHtml(c.company)||'—'}</span></td>
+                    <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
+                    <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
+                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+                        <button onclick="showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button>
+                        <button onclick="doDeleteContact(${c.id},(_contactsCache[${i}]||{}).name||(_contactsCache[${i}]||{}).email||'')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
+                    </td>
+                </tr>`).join('');
+            _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
+            _updateContactsPagination();
+        }
         try {
             const { data, total } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=${_contactsPerPage}&page=${page}`);
             _contactsApiTotal = total || 0;
@@ -501,24 +544,25 @@
                 _setText('dash-contacts', '0');
                 return;
             }
+            if (page === 1) _cacheSet(cacheKey, { data, total });
             window._contactsCache = data;
             const allCb = document.getElementById('contactsCheckAll'); if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
             el.innerHTML = data.map((c, i) => `
-                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-email="${c.email}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
+                <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-email="${escHtml(c.email)}" data-status="${c.status}" onclick="showContact('view',_contactsCache[${i}])">
                     <td class="px-4 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="contact-row-cb rounded border-slate-300" data-id="${c.id}" onchange="_toggleContactCheck(${c.id},this)" /></td>
-                    <td class="px-4 py-3 font-medium text-slate-900">${c.name||'—'}</td>
-                    <td class="px-4 py-3 text-slate-600">${c.email}</td>
-                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${c.company||'—'}</span></td>
+                    <td class="px-4 py-3 font-medium text-slate-900">${escHtml(c.name)||'—'}</td>
+                    <td class="px-4 py-3 text-slate-600">${escHtml(c.email)}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${escHtml(c.company)||'—'}</span></td>
                     <td class="px-4 py-3">${sBadge[c.status]||c.status}</td>
                     <td class="px-4 py-3 text-slate-500">${_fmtDate(c.created_at)}</td>
                     <td class="px-4 py-3 text-right flex items-center justify-end gap-2" onclick="event.stopPropagation()">
                         <button onclick="showContact('edit',_contactsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Editar</button>
-                        <button onclick="doDeleteContact(${c.id},'${(c.name||c.email).replace(/'/g,"\\'")}')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
+                        <button onclick="doDeleteContact(${c.id},(_contactsCache[${i}]||{}).name||(_contactsCache[${i}]||{}).email||'')" class="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600">Apagar</button>
                     </td>
                 </tr>`).join('');
             _setText('dash-contacts', _contactsApiTotal.toLocaleString('pt-PT'));
             _updateContactsPagination();
-        } catch (e) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _updateContactsPagination() {
@@ -575,11 +619,16 @@
         el.innerHTML = pageItems.map(({ c, i }) => {
             const deletable = ['draft','scheduled'].includes(c.status);
             return `
-            <tr class="hover:bg-slate-50 cursor-pointer" data-name="${(c.name||'').toLowerCase()}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
-                <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${(c.name||'').replace(/"/g,'')}" onchange="_updateCampBulkBar()">` : ''}</td>
+            <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
+                <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${escHtml(c.name||'')}" onchange="_updateCampBulkBar()">` : ''}</td>
                 <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
                 <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
-                <td class="px-4 py-3">${_statusBadge[c.status]||c.status}</td>
+                <td class="px-4 py-3">
+                    ${_statusBadge[c.status]||c.status}
+                    ${_currentUserRole !== 'viewer' ? `<span id="camp-import-badge-${c.id}" class="${(_wizImporting && _wizImportingCampaignId == c.id) ? '' : 'hidden'}">
+                        ${(_wizImporting && _wizImportingCampaignId == c.id) ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-600 whitespace-nowrap"><svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>${_wizImportTotal ? Math.round(_wizImportDone/_wizImportTotal*100)+'%' : 'A importar…'}</span>` : ''}
+                    </span>` : ''}
+                </td>
                 <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
                 <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
                 <td class="px-4 py-3 text-right">
@@ -587,7 +636,7 @@
                         ${c.status === 'draft' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" class="text-xs px-3 py-1 border border-indigo-200 text-indigo-600 rounded hover:bg-indigo-50">Editar</button>` : ''}
                         ${deletable ? `<button onclick="event.stopPropagation();_deleteCampaignItem(${i})" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>` : ''}
                         ${c.status === 'sending' || c.status === 'scheduled' ? `<button onclick="event.stopPropagation();_cancelCampaignSend(${i})" class="text-xs px-3 py-1 border border-orange-200 text-orange-600 rounded hover:bg-orange-50">Interromper</button>` : ''}
-                        <button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>
+                        ${_currentUserRole !== 'viewer' ? `<button onclick="event.stopPropagation();_duplicateCampaignItem(${i})" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600">Duplicar</button>` : ''}
                         <a onclick="event.stopPropagation();showCampaign(null, _campaignsCache[${i}])" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-600 cursor-pointer">Ver</a>
                     </div>
                 </td>
@@ -615,66 +664,81 @@
         _updateCampBulkBar();
     }
 
+    function _applyCampaignsData(data) {
+        window._campaignsCache = data;
+        _renderCampaignsPage();
+        _setText('dash-campaigns', data.length.toString());
+        const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
+        _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
+        const sent   = data.reduce((s,c) => s + (c.sent_count||0), 0);
+        const opens  = data.reduce((s,c) => s + (c.open_count||0), 0);
+        const clicks = data.reduce((s,c) => s + (c.click_count||0), 0);
+        const openRate  = sent ? ((opens/sent)*100).toFixed(1) : 0;
+        const clickRate = sent ? ((clicks/sent)*100).toFixed(1) : 0;
+        _setText('dash-openrate', openRate + '%');
+        _setText('dash-open-val', openRate + '%');
+        _setText('dash-click-val', clickRate + '%');
+        _setBarWidth('dash-open-bar', parseFloat(openRate));
+        _setBarWidth('dash-click-bar', parseFloat(clickRate));
+        _setText('dash-bounce-val', '0%');
+        _setBarWidth('dash-bounce-bar', 0);
+    }
+
     async function _loadCampaigns(brandId) {
         const el = document.getElementById('campaignsTbody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `campaigns_${brandId}`;
+        const cached = _cacheGet(cacheKey);
+        if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         _campaignsPage = 1;
+        if (cached) _applyCampaignsData(cached);
         try {
             const { data } = await apiFetch(`/api/campaigns?brand_id=${brandId}&limit=200`);
-            if (!data.length) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; return; }
-            window._campaignsCache = data;
-            _renderCampaignsPage();
-            // Dashboard stats (full dataset)
-            _setText('dash-campaigns', data.length.toString());
-            const totalEmails = data.reduce((s,c) => s + (c.sent_count||0), 0);
-            _setText('dash-emails', totalEmails.toLocaleString('pt-PT'));
-            const sent   = data.reduce((s,c) => s + (c.sent_count||0), 0);
-            const opens  = data.reduce((s,c) => s + (c.open_count||0), 0);
-            const clicks = data.reduce((s,c) => s + (c.click_count||0), 0);
-            const openRate  = sent ? ((opens/sent)*100).toFixed(1) : 0;
-            const clickRate = sent ? ((clicks/sent)*100).toFixed(1) : 0;
-            _setText('dash-openrate', openRate + '%');
-            _setText('dash-open-val', openRate + '%');
-            _setText('dash-click-val', clickRate + '%');
-            _setBarWidth('dash-open-bar', parseFloat(openRate));
-            _setBarWidth('dash-click-bar', parseFloat(clickRate));
-            _setText('dash-bounce-val', '0%');
-            _setBarWidth('dash-bounce-bar', 0);
-        } catch (e) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+            if (!data.length) { el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">Sem campanhas para esta marca.</td></tr>`; _cacheSet(cacheKey, []); return; }
+            _cacheSet(cacheKey, data);
+            _applyCampaignsData(data);
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+    }
+
+    function _applyListsData(el, data) {
+        const wizLists = document.getElementById('wizListsContainer');
+        if (!data.length) {
+            el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas criadas.</td></tr>`;
+            if (wizLists) wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis.</p>`;
+            return;
+        }
+        el.innerHTML = data.map(l => `
+            <tr class="hover:bg-slate-50" data-name="${escHtml((l.name||'').toLowerCase())}" data-list-id="${l.id}">
+                <td class="px-4 py-3 font-medium text-slate-900"><span class="list-name-text">${escHtml(l.name)}</span></td>
+                <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
+                <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
+                <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
+                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                    <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
+                    <button onclick="apiClearListContacts(${l.id}, this)" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Remover contactos</button>
+                </td>
+            </tr>`).join('');
+        _markListImportRow();
+        if (wizLists) wizLists.innerHTML = data.map((l) => `
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" class="rounded" data-contacts="${l.total_contacts||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
+                <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
+                <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
+            </label>`).join('');
     }
 
     async function _loadLists(brandId) {
         const el = document.getElementById('listsTableBody');
         if (!el) return;
-        el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `lists_${brandId}`;
+        const cached = _cacheGet(cacheKey);
+        if (!cached) el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        if (cached) _applyListsData(el, cached);
         try {
             const { data } = await apiFetch(`/api/lists?brand_id=${brandId}&limit=50`);
-            const wizLists = document.getElementById('wizListsContainer');
-            if (!data.length) {
-                el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">Sem listas criadas.</td></tr>`;
-                if (wizLists) wizLists.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem listas disponíveis.</p>`;
-                return;
-            }
-                el.innerHTML = data.map(l => `
-                <tr class="hover:bg-slate-50" data-name="${(l.name||'').toLowerCase()}" data-list-id="${l.id}">
-                    <td class="px-4 py-3 font-medium text-slate-900"><span class="list-name-text">${escHtml(l.name)}</span></td>
-                    <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
-                    <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
-                    <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
-                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
-                        <button onclick="mockEditList(this)" class="text-xs px-3 py-1 border border-slate-200 rounded hover:bg-slate-50">Editar</button>
-                        <button onclick="apiDeleteList(this,'${l.id}')" class="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50">Apagar</button>
-                    </td>
-                </tr>`).join('');
-            _markListImportRow();
-            if (wizLists) wizLists.innerHTML = data.map((l, i) => `
-                <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" class="rounded" data-contacts="${l.total_contacts||0}" data-list-id="${l.id}" onchange="wizUpdateListsTotal()" />
-                    <div class="flex-1"><p class="text-sm font-medium text-slate-900">${escHtml(l.name)}</p><p class="text-xs text-slate-400">${l.total_contacts||0} contactos</p></div>
-                    <span class="text-xs font-semibold text-slate-500">${l.total_contacts||0}</span>
-                </label>`).join('');
-        } catch (e) { el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+            _cacheSet(cacheKey, data);
+            _applyListsData(el, data);
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _markListImportRow(pct, sub) {
@@ -942,6 +1006,19 @@
         } catch (e) { showToast(e.message, 'error'); }
     }
 
+    async function apiClearListContacts(listId, btn) {
+        const name = btn?.closest('tr')?.querySelector('.list-name-text')?.textContent.trim() || 'esta lista';
+        if (!confirm(`Remover todos os contactos da lista "${name}"?\n\nATENÇÃO: os contactos serão ELIMINADOS PERMANENTEMENTE da base de dados (em todas as marcas e listas), incluindo os respectivos históricos de envio.`)) return;
+        if (!confirm('Esta acção é irreversível. Confirmas a eliminação definitiva dos contactos?')) return;
+        try {
+            const r = await apiFetch(`/api/lists/${listId}?action=clear_contacts`, { method: 'DELETE' });
+            _cacheClear('lists_');
+            _cacheClear('contacts_');
+            showToast(`${r.deleted || 0} contacto(s) eliminados da base de dados.`);
+            if (_currentBrand?.id) _loadLists(_currentBrand.id);
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
     async function apiDeleteCampaign() {
         if (!_currentCampaign?.id) return;
         if (!confirm('Apagar esta campanha permanentemente?')) return;
@@ -1091,49 +1168,61 @@
         document.querySelectorAll(sel).forEach(i => i.checked = val);
     }
 
+    function _renderTeamData(data) {
+        window._teamCache = data || [];
+        const tbody = document.getElementById('teamMembersBody');
+        if (!tbody) return;
+        const roleBadge = { owner:'bg-purple-100 text-purple-700', viewer:'bg-slate-100 text-slate-600' };
+        const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600','bg-blue-600','bg-green-600'];
+        const _currentUserId = JSON.parse(localStorage.getItem('pm_user')||'{}').id;
+        tbody.innerHTML = (data||[]).map((m, i) => {
+            const initials = (m.name||m.email||'?')[0].toUpperCase();
+            const col = colors[i % colors.length];
+            const badge = roleBadge[m.role] || 'bg-slate-100 text-slate-600';
+            const isMe = m.id === _currentUserId;
+            const since = m.last_login ? new Date(m.last_login).toLocaleDateString('pt-PT') : '—';
+            const roleLabel = { owner:'Administrador', viewer:'Marketing Account' };
+            const canManage = _canSeeRolesPanel();
+            const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},(_teamCache[${i}]||{}).name||'','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
+            const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},(_teamCache[${i}]||{}).name||'','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
+            const actions = isMe
+                ? `<span class="text-xs text-slate-300">—</span>`
+                : (m.role === 'owner'
+                    ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}${brandsBtn}</div>` : `<span class="text-xs text-slate-400">Administrador</span>`)
+                    : `<div class="flex items-center justify-end gap-2">
+                        ${editBtn}
+                        ${brandsBtn}
+                        <button onclick="openPermissionsModal(this)" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Permissões</button>
+                        <button onclick="doRemoveMember(this,${m.id})" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors">Remover</button>
+                      </div>`);
+            return `<tr class="hover:bg-slate-50" data-member-id="${m.id}" data-member-name="${(m.name||'').replace(/"/g,'&quot;')}">
+                <td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${col} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${m.name||'—'}</p><p class="text-xs text-slate-400">${m.email}</p></div></div></td>
+                <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${badge}">${roleLabel[m.role]||m.role}</span></td>
+                <td class="px-4 py-3 text-xs text-slate-500">${_canSeeRolesPanel() && !isMe ? `<button onclick="doToggleActive(this,${m.id},${!!m.active})" class="flex items-center gap-1.5 group" title="${m.active ? 'Clica para desactivar' : 'Clica para activar'}"><span class="relative inline-block w-8 h-4 rounded-full transition-colors ${m.active ? 'bg-green-500' : 'bg-slate-300'}"><span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${m.active ? 'translate-x-4' : 'translate-x-0'}"></span></span><span class="${m.active ? 'text-green-600' : 'text-slate-400'}">${m.active ? 'Activo' : 'Inactivo'}</span></button>` : (m.active ? '<span class="text-green-600">Activo</span>' : '<span class="text-slate-400">Inactivo</span>')}</td>
+                <td class="px-4 py-3 text-slate-500 text-xs">${since}</td>
+                <td class="px-4 py-3 text-right">${actions}</td>
+            </tr>`;
+        }).join('') || `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Sem membros.</td></tr>`;
+    }
+
     async function _loadTeamMembers() {
         if (!_currentBrand?.id) return;
         const tbody = document.getElementById('teamMembersBody');
         if (!tbody) return;
-        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        const cacheKey = `team_${_currentBrand.id}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) {
+            _renderTeamData(cached);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        }
         try {
             const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=team`);
-            const roleBadge = { owner:'bg-purple-100 text-purple-700', viewer:'bg-slate-100 text-slate-600' };
-            const colors = ['bg-teal-600','bg-violet-600','bg-rose-600','bg-amber-600','bg-blue-600','bg-green-600'];
-            const _currentUserId = JSON.parse(localStorage.getItem('pm_user')||'{}').id;
-            tbody.innerHTML = (data||[]).map((m, i) => {
-                const initials = (m.name||m.email||'?')[0].toUpperCase();
-                const col = colors[i % colors.length];
-                const badge = roleBadge[m.role] || 'bg-slate-100 text-slate-600';
-                const isMe = m.id === _currentUserId;
-                const since = m.last_login ? new Date(m.last_login).toLocaleDateString('pt-PT') : '—';
-                const roleLabel = { owner:'Administrador', viewer:'Marketing Account' };
-                const roleOptions = ['owner','viewer'].map(r =>
-                    `<option value="${r}"${r===m.role?' selected':''}>${roleLabel[r]||r}</option>`
-                ).join('');
-                const canManage = _canSeeRolesPanel();
-                const editBtn    = canManage ? `<button onclick="openEditMemberModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Editar</button>` : '';
-                const brandsBtn  = (canManage && m.role !== 'owner') ? `<button onclick="openBrandAccessModal(${m.id},'${(m.name||'').replace(/'/g,"\\'")}','${m.role}')" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Marcas</button>` : '';
-                const actions = isMe
-                    ? `<span class="text-xs text-slate-300">—</span>`
-                    : (m.role === 'owner'
-                        ? (canManage ? `<div class="flex items-center justify-end gap-2">${editBtn}${brandsBtn}</div>` : `<span class="text-xs text-slate-400">Administrador</span>`)
-                        : `<div class="flex items-center justify-end gap-2">
-                            ${editBtn}
-                            ${brandsBtn}
-                            <button onclick="openPermissionsModal(this)" class="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">Permissões</button>
-                            <button onclick="doRemoveMember(this,${m.id})" class="px-2.5 py-1 text-xs font-medium border border-red-200 rounded-md text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors">Remover</button>
-                          </div>`);
-                return `<tr class="hover:bg-slate-50" data-member-id="${m.id}" data-member-name="${(m.name||'').replace(/"/g,'&quot;')}">
-                    <td class="px-4 py-3"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full ${col} text-white text-xs font-semibold flex items-center justify-center">${initials}</div><div><p class="font-medium text-slate-900">${m.name||'—'}</p><p class="text-xs text-slate-400">${m.email}</p></div></div></td>
-                    <td class="px-4 py-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${badge}">${roleLabel[m.role]||m.role}</span></td>
-                    <td class="px-4 py-3 text-xs text-slate-500">${_canSeeRolesPanel() && !isMe ? `<button onclick="doToggleActive(this,${m.id},${!!m.active})" class="flex items-center gap-1.5 group" title="${m.active ? 'Clica para desactivar' : 'Clica para activar'}"><span class="relative inline-block w-8 h-4 rounded-full transition-colors ${m.active ? 'bg-green-500' : 'bg-slate-300'}"><span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${m.active ? 'translate-x-4' : 'translate-x-0'}"></span></span><span class="${m.active ? 'text-green-600' : 'text-slate-400'}">${m.active ? 'Activo' : 'Inactivo'}</span></button>` : (m.active ? '<span class="text-green-600">Activo</span>' : '<span class="text-slate-400">Inactivo</span>')}</td>
-                    <td class="px-4 py-3 text-slate-500 text-xs">${since}</td>
-                    <td class="px-4 py-3 text-right">${actions}</td>
-                </tr>`;
-            }).join('') || `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Sem membros.</td></tr>`;
+            _cacheSet(cacheKey, data || []);
+            _renderTeamData(data || []);
         } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400 text-sm">Erro ao carregar membros.</td></tr>`;
+            console.error('_loadTeamMembers error:', e);
+            if (!cached) tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400 text-sm">Erro ao carregar membros: ${e.message}</td></tr>`;
         }
     }
 
@@ -3565,7 +3654,7 @@ ${bodyRows}
     async function _loadSegments() {
         if (!_currentListId) return;
         try {
-            const { data } = await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments`);
+            const { data } = await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments&brand_id=${_currentBrand.id}`);
             _segments = data || [];
         } catch(_) { _segments = []; }
         _renderSegments();
@@ -3822,7 +3911,7 @@ ${bodyRows}
                 await apiFetch(`/api/lists?segment_id=${_segEditId}`, { method: 'PUT', body: JSON.stringify(body) });
                 showToast('Segmento actualizado');
             } else {
-                await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments`, { method: 'POST', body: JSON.stringify(body) });
+                await apiFetch(`/api/lists?list_id=${_currentListId}&action=segments&brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(body) });
                 showToast('Segmento criado');
             }
             closeSegmentModal();
@@ -4433,6 +4522,66 @@ ${bodyRows}
         }
     }
 
+    // ── Brand audit ───────────────────────────────────────────────
+    async function _runBrandAudit() {
+        const btn    = document.getElementById('brandAuditBtn');
+        const result = document.getElementById('brandAuditResult');
+        const empty  = document.getElementById('brandAuditEmpty');
+        const tbody  = document.getElementById('brandAuditTbody');
+        const sumEl  = document.getElementById('brandAuditSummary');
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = 'A verificar…';
+        try {
+            const { summary, brands } = await apiFetch('/api/brands?action=audit');
+            const allOk = summary.with_issues === 0;
+            sumEl.innerHTML = [
+                allOk
+                    ? `<span class="flex items-center gap-1.5 text-green-700 font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Todas as marcas OK</span>`
+                    : `<span class="flex items-center gap-1.5 text-amber-700 font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z"/></svg>${summary.with_issues} marca(s) com alertas</span>`,
+                `<span class="text-slate-400">•</span>`,
+                `<span class="text-slate-600">${summary.total} marcas no total</span>`,
+                `<span class="text-slate-400">•</span>`,
+                `<span class="text-green-700">${summary.ok} OK</span>`,
+            ].join('');
+            tbody.innerHTML = brands.map(b => {
+                const dot = b.ok
+                    ? `<span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-2"></span>`
+                    : `<span class="inline-block w-2 h-2 rounded-full bg-amber-400 mr-2"></span>`;
+                const cell = (n, zero) => n === 0
+                    ? `<td class="px-4 py-3 text-center font-semibold ${zero ? 'text-red-500' : 'text-slate-400'}">${n}</td>`
+                    : `<td class="px-4 py-3 text-center text-slate-700">${n.toLocaleString('pt-PT')}</td>`;
+                const warnings = b.warnings.length
+                    ? b.warnings.map(w => `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800 mr-1">${escHtml(w)}</span>`).join('')
+                    : `<span class="text-green-600 text-xs">Sem alertas</span>`;
+                return `<tr class="hover:bg-slate-50 ${!b.active ? 'opacity-50' : ''}">
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            ${dot}
+                            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${escHtml(b.color||'#94a3b8')}"></span>
+                            <div>
+                                <p class="font-medium text-slate-900 text-sm">${escHtml(b.name)}</p>
+                                <p class="text-xs text-slate-400 font-mono">${escHtml(b.id)}${b.active ? '' : ' · inactiva'}</p>
+                            </div>
+                        </div>
+                    </td>
+                    ${cell(b.users_count, b.users_count === 0)}
+                    ${cell(b.admins_count, b.active && b.admins_count === 0)}
+                    ${cell(b.contacts_count, false)}
+                    <td class="px-4 py-3 text-center text-slate-700">${b.campaigns_count.toLocaleString('pt-PT')} <span class="text-xs text-slate-400">(${b.campaigns_sent} env.)</span></td>
+                    <td class="px-4 py-3">${warnings}</td>
+                </tr>`;
+            }).join('');
+            result.classList.remove('hidden');
+            empty.classList.add('hidden');
+        } catch (e) {
+            showToast('Erro na auditoria: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> Executar auditoria`;
+        }
+    }
+
     // ── Global typography settings ─────────────────────────────────
     async function _loadGlobalTypography() {
         try {
@@ -4614,6 +4763,8 @@ ${bodyRows}
         };
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            // Invalidate brand settings cache so next visit reflects the new values
+            _cacheClear(`bsettings_${_currentBrand.id}`);
             // Update _currentBrand and refresh sidebar
             if (payload.name)    _currentBrand.name  = payload.name;
             if (payload.color)   _currentBrand.color = payload.color;
@@ -4623,21 +4774,27 @@ ${bodyRows}
         } catch (e) { showToast(e.message, 'error'); }
     }
 
+    function _applyBrandSettingsData(b) {
+        const fields = { bsName: b.name||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
+        Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
+        const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
+        const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
+        const logoUrl = document.getElementById('bsLogoUrl'); if (logoUrl) logoUrl.value = b.logo_url || '';
+        _bsLogoRefreshPreview(b.logo_url || '');
+        const vars = b.variables || {};
+        if (_currentBrand) _currentBrand.variables = b.variables || null;
+        _BS_VAR_KEYS.forEach(k => { const el = document.getElementById('bsVar_'+k); if (el) el.value = vars[k] || (k === 'company_address' ? 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia' : ''); });
+    }
+
     async function _loadBrandSettings() {
         if (!_currentBrand?.id) return;
+        const cacheKey = `bsettings_${_currentBrand.id}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) _applyBrandSettingsData(cached);
         try {
             const b = await apiFetch(`/api/brands?id=${_currentBrand.id}`);
-            const fields = { bsName: b.name||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
-            Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
-            const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
-            const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
-            // Logo preview
-            const logoUrl = document.getElementById('bsLogoUrl'); if (logoUrl) logoUrl.value = b.logo_url || '';
-            _bsLogoRefreshPreview(b.logo_url || '');
-            // Variables
-            const vars = b.variables || {};
-            if (_currentBrand) _currentBrand.variables = b.variables || null;
-            _BS_VAR_KEYS.forEach(k => { const el = document.getElementById('bsVar_'+k); if (el) el.value = vars[k] || (k === 'company_address' ? 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia' : ''); });
+            _cacheSet(cacheKey, b);
+            _applyBrandSettingsData(b);
         } catch (err) { console.error(err); }
         _loadBlocks();
         _bsLoadApiKey();
@@ -4788,19 +4945,27 @@ ${bodyRows}
     // _teMode and _blockReturnTo are declared earlier (before _teExit)
     let _teBlockType = 'header';
 
+    function _applyBlocksData(data) {
+        _blocksData = { header: [], footer: [] };
+        (data || []).forEach(b => { _blocksData[b.type].push(b); });
+        const ch = document.getElementById('blocksCountHeader'); if (ch) ch.textContent = `(${_blocksData.header.length})`;
+        const cf = document.getElementById('blocksCountFooter'); if (cf) cf.textContent = `(${_blocksData.footer.length})`;
+        const bsch = document.getElementById('bsBlocksCountHeader'); if (bsch) bsch.textContent = `(${_blocksData.header.length})`;
+        const bscf = document.getElementById('bsBlocksCountFooter'); if (bscf) bscf.textContent = `(${_blocksData.footer.length})`;
+        _renderBlocksList();
+        _bsRenderBlocksList();
+    }
+
     async function _loadBlocks() {
         if (!_currentBrand?.id) return;
+        const cacheKey = `blocks_${_currentBrand.id}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) _applyBlocksData(cached);
         try {
             const { data } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=blocks`);
-            _blocksData = { header: [], footer: [] };
-            (data || []).forEach(b => { _blocksData[b.type].push(b); });
-            const ch = document.getElementById('blocksCountHeader'); if (ch) ch.textContent = `(${_blocksData.header.length})`;
-            const cf = document.getElementById('blocksCountFooter'); if (cf) cf.textContent = `(${_blocksData.footer.length})`;
-            const bsch = document.getElementById('bsBlocksCountHeader'); if (bsch) bsch.textContent = `(${_blocksData.header.length})`;
-            const bscf = document.getElementById('bsBlocksCountFooter'); if (bscf) bscf.textContent = `(${_blocksData.footer.length})`;
-            _renderBlocksList();
-            _bsRenderBlocksList();
-        } catch (e) { showToast('Erro ao carregar blocos.', 'error'); }
+            _cacheSet(cacheKey, data || []);
+            _applyBlocksData(data || []);
+        } catch (e) { if (!cached) showToast('Erro ao carregar blocos.', 'error'); }
     }
     function _blocksSwitchTab(type) {
         _blocksType = type;
@@ -4954,15 +5119,19 @@ ${bodyRows}
     // ── Biblioteca de Multimédia ────────────────────────
     let _mediaItems = [];
     let _mediaTab = 'all';
+    let _mediaRowsShown = 2; // linhas completas visíveis; "Ver mais" adiciona 2
+    let _mediaPendingFiles = []; // [{dataUrl,mimeType,name,status}]
     let _mediaSource = 'upload';
-    let _mediaPendingDataUrl = null;
+    let _mediaPendingDataUrl = null; // kept for picker/URL mode
     let _mediaPickerCallback = null;
 
     async function _loadMedia() {
         if (!_currentBrand?.id) return;
+        const cacheKey = `media_${_currentBrand.id}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) { _mediaItems = cached; _renderMediaGrid(); }
         try {
             const r = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media`);
-            _mediaItems = r.data || [];
             if (r._migration_pending) {
                 document.getElementById('mediaGrid').innerHTML = '';
                 const empty = document.getElementById('mediaEmpty');
@@ -4970,13 +5139,16 @@ ${bodyRows}
                 document.getElementById('mediaEmptyText').innerHTML = 'Funcionalidade ainda não activada — corre <code class="bg-slate-100 px-1 py-0.5 rounded text-xs">migrations/008_media.sql</code> no Supabase.';
                 return;
             }
-        } catch (e) { showToast(e.message, 'error'); _mediaItems = []; }
+            _mediaItems = r.data || [];
+            _cacheSet(cacheKey, _mediaItems);
+        } catch (e) { if (!cached) { showToast(e.message, 'error'); _mediaItems = []; } }
         _renderMediaGrid();
     }
 
     function _renderMediaGrid() {
         const grid = document.getElementById('mediaGrid');
         const empty = document.getElementById('mediaEmpty');
+        const moreWrap = document.getElementById('mediaShowMoreWrap');
         if (!grid) return;
         const bId = _currentBrand?.id;
         let items = _mediaItems;
@@ -4990,6 +5162,7 @@ ${bodyRows}
         document.getElementById('mediaCountShared').textContent = `(${_mediaItems.filter(i => i.is_shared).length})`;
         if (!items.length) {
             grid.innerHTML = '';
+            if (moreWrap) moreWrap.classList.add('hidden');
             empty.classList.remove('hidden');
             document.getElementById('mediaEmptyText').textContent =
                 _mediaTab === 'shared' ? 'Sem imagens partilhadas.' :
@@ -4998,17 +5171,27 @@ ${bodyRows}
             return;
         }
         empty.classList.add('hidden');
-        const escAttr = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        grid.innerHTML = items.map(m => `
-            <div class="group relative bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                <div class="aspect-square bg-slate-50 flex items-center justify-center overflow-hidden">
-                    <img src="${escAttr(m.url)}" alt="${escAttr(m.name)}" class="w-full h-full object-contain" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'text-xs text-slate-400\\'>Imagem indisponível</span>'">
+        // Colunas reais da grelha (auto-fill minmax(230px,1fr), gap 12px) para
+        // que as linhas visíveis fiquem sempre completas, sem buracos.
+        const cols = Math.max(1, Math.floor((grid.clientWidth + 12) / (230 + 12)));
+        const visible = items.slice(0, cols * _mediaRowsShown);
+        const remaining = items.length - visible.length;
+        const ea = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        grid.innerHTML = visible.map(m => `
+            <div class="group relative bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow flex flex-col" style="height:300px">
+                <div class="flex-1 bg-slate-50 flex items-center justify-center overflow-hidden min-h-0">
+                    <img src="${ea(m.url)}" alt="${ea(m.name)}" class="w-full h-full object-contain" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'text-xs text-slate-400\\'>Imagem indisponível</span>'">
                 </div>
-                <div class="p-2.5 border-t border-slate-100">
-                    <p class="text-xs font-medium text-slate-900 truncate" title="${escAttr(m.name)}">${escHtml(m.name)}</p>
-                    <div class="flex items-center justify-between mt-1">
-                        ${m.is_shared ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Partilhada</span>' : '<span class="text-[10px] text-slate-400">Apenas esta marca</span>'}
-                        <button onclick="_mediaCopyUrl('${escAttr(m.url)}')" class="text-[10px] text-slate-500 hover:text-slate-900">Copiar URL</button>
+                <div class="px-2.5 py-2 border-t border-slate-100 flex-shrink-0">
+                    <p class="text-xs font-medium text-slate-900 truncate mb-1.5" title="${ea(m.name)}">${escHtml(m.name)}</p>
+                    <div class="flex items-center justify-between gap-1">
+                        ${m.is_shared
+                            ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex-shrink-0">Partilhada</span>'
+                            : '<span class="text-[10px] text-slate-400 flex-shrink-0">Esta marca</span>'}
+                        <button onclick="_mediaCopyUrl('${ea(m.url)}')" class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 transition-colors flex-shrink-0">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            Copiar URL
+                        </button>
                     </div>
                 </div>
                 <div class="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -5021,10 +5204,29 @@ ${bodyRows}
                 </div>
             </div>
         `).join('');
+        // "Ver mais" button
+        if (moreWrap) {
+            if (remaining > 0) {
+                moreWrap.classList.remove('hidden');
+                document.getElementById('mediaShowMoreBtn').textContent = remaining === 1 ? 'Ver mais 1 imagem' : `Ver mais ${remaining} imagens`;
+            } else {
+                moreWrap.classList.add('hidden');
+            }
+        }
     }
+    function _mediaShowMore() {
+        _mediaRowsShown += 2;
+        _renderMediaGrid();
+    }
+    // Re-render no resize: o nº de colunas muda e as linhas devem manter-se completas
+    window.addEventListener('resize', _debounce(() => {
+        const grid = document.getElementById('mediaGrid');
+        if (grid && grid.offsetParent !== null) _renderMediaGrid();
+    }, 250));
 
     function _mediaSwitchTab(tab) {
         _mediaTab = tab;
+        _mediaRowsShown = 2;
         ['All','Brand','Shared'].forEach(t => {
             const el = document.getElementById('mediaTab' + t);
             if (!el) return;
@@ -5038,19 +5240,48 @@ ${bodyRows}
     }
 
     function _mediaOpenUpload() {
-        const m = document.getElementById('mediaUploadModal');
-        document.getElementById('mediaName').value = '';
+        _mediaPendingFiles = [];
+        _mediaPendingDataUrl = null;
         document.getElementById('mediaUrl').value = '';
         document.getElementById('mediaShared').checked = false;
         document.getElementById('mediaFile').value = '';
         document.getElementById('mediaPreviewBox').classList.add('hidden');
-        _mediaPendingDataUrl = null;
         _mediaSetSource('upload');
+        _mediaRenderQueue();
+        const m = document.getElementById('mediaUploadModal');
         m.classList.remove('hidden'); m.classList.add('flex');
     }
     function _mediaCloseUpload() {
         const m = document.getElementById('mediaUploadModal');
         m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function _mediaRenderQueue() {
+        const wrap = document.getElementById('mediaQueueList');
+        const footer = document.getElementById('mediaQueueFooter');
+        if (!wrap) return;
+        if (!_mediaPendingFiles.length) { wrap.innerHTML = ''; footer.classList.add('hidden'); return; }
+        footer.classList.remove('hidden');
+        const n = _mediaPendingFiles.filter(f => f.status === 'pending').length;
+        document.getElementById('mediaSaveBtn').textContent = n === 1 ? 'Guardar imagem' : `Guardar ${n} imagens`;
+        wrap.innerHTML = _mediaPendingFiles.map((f, i) => {
+            const icon = f.status === 'done'
+                ? `<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`
+                : f.status === 'error'
+                ? `<svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`
+                : f.status === 'uploading'
+                ? `<svg class="w-4 h-4 text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>`
+                : `<button onclick="_mediaQueueRemove(${i})" class="text-slate-400 hover:text-red-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>`;
+            return `<div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                <img src="${f.dataUrl}" class="w-12 h-12 object-contain rounded bg-slate-50 border border-slate-200 flex-shrink-0">
+                <input type="text" value="${f.name.replace(/"/g,'&quot;')}" onchange="_mediaPendingFiles[${i}].name=this.value"
+                    class="flex-1 text-xs px-2 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-900/10 ${f.status!=='pending'?'opacity-50 pointer-events-none':''}">
+                <span class="flex-shrink-0">${icon}</span>
+            </div>`;
+        }).join('');
+    }
+    function _mediaQueueRemove(i) {
+        _mediaPendingFiles.splice(i, 1);
+        _mediaRenderQueue();
     }
     function _mediaSetSource(src) {
         _mediaSource = src;
@@ -5058,39 +5289,88 @@ ${bodyRows}
         const ub = document.getElementById('mediaUrlBlock');
         const tu = document.getElementById('mediaTabUpload');
         const tr = document.getElementById('mediaTabUrl');
+        const qf = document.getElementById('mediaQueueFooter');
+        const uf = document.getElementById('mediaUrlFooter');
         if (src === 'upload') {
             dz.classList.remove('hidden'); ub.classList.add('hidden');
             tu.classList.add('bg-white','shadow-sm','text-slate-900'); tu.classList.remove('text-slate-500');
             tr.classList.remove('bg-white','shadow-sm','text-slate-900'); tr.classList.add('text-slate-500');
+            if (uf) uf.classList.add('hidden');
+            _mediaRenderQueue(); // shows/hides queue footer
         } else {
             dz.classList.add('hidden'); ub.classList.remove('hidden');
             tr.classList.add('bg-white','shadow-sm','text-slate-900'); tr.classList.remove('text-slate-500');
             tu.classList.remove('bg-white','shadow-sm','text-slate-900'); tu.classList.add('text-slate-500');
+            if (qf) qf.classList.add('hidden');
+            if (uf) uf.classList.remove('hidden');
         }
     }
     function _mediaDrop(ev) {
         ev.preventDefault();
         ev.currentTarget.classList.remove('border-slate-900','bg-slate-50');
-        const file = ev.dataTransfer?.files?.[0];
-        if (file) _mediaReadFile(file);
+        const files = [...(ev.dataTransfer?.files || [])];
+        files.forEach(f => _mediaReadFile(f));
     }
     function _mediaPickFile(ev) {
-        const file = ev.target.files?.[0];
-        if (file) _mediaReadFile(file);
+        const files = [...(ev.target.files || [])];
+        ev.target.value = '';
+        files.forEach(f => _mediaReadFile(f));
+    }
+    // Optimiza uma imagem antes do upload: redimensiona para máx. 1200px de
+    // largura (2× retina dos 600px dos emails) e recomprime. GIFs não são
+    // tocados (o canvas destruiria a animação). Devolve sempre o resultado
+    // mais pequeno entre o original e o optimizado.
+    const MEDIA_MAX_BYTES = 1024 * 1024; // 1 MB
+    const MEDIA_MAX_WIDTH = 1200;
+    function _optimizeImage(dataUrl, mimeType) {
+        return new Promise((resolve) => {
+            if (mimeType === 'image/gif') return resolve(dataUrl);
+            const img = new Image();
+            img.onerror = () => resolve(dataUrl);
+            img.onload = () => {
+                try {
+                    const scale = Math.min(1, MEDIA_MAX_WIDTH / img.naturalWidth);
+                    const w = Math.round(img.naturalWidth * scale);
+                    const h = Math.round(img.naturalHeight * scale);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(img, 0, 0, w, h);
+                    let out;
+                    if (mimeType === 'image/png') {
+                        // PNG só se tiver transparência; caso contrário JPEG comprime muito melhor
+                        const px = ctx.getImageData(0, 0, w, h).data;
+                        let hasAlpha = false;
+                        for (let i = 3; i < px.length; i += 4) { if (px[i] < 255) { hasAlpha = true; break; } }
+                        out = hasAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
+                    } else {
+                        out = canvas.toDataURL('image/jpeg', 0.85);
+                    }
+                    // Mantém o mais pequeno — recomprimir pode aumentar ficheiros já optimizados
+                    resolve(out.length < dataUrl.length ? out : dataUrl);
+                } catch (e) { resolve(dataUrl); }
+            };
+            img.src = dataUrl;
+        });
     }
     function _mediaReadFile(file) {
         const allowed = ['image/png','image/jpeg','image/gif'];
-        if (!allowed.includes(file.type)) { showToast('Formato não suportado. Usa PNG, JPG ou GIF.', 'error'); return; }
-        if (file.size > 2 * 1024 * 1024) { showToast('Ficheiro demasiado grande (máx 2 MB).', 'error'); return; }
+        if (!allowed.includes(file.type)) { showToast(`"${file.name}": formato não suportado. Usa PNG, JPG ou GIF.`, 'error'); return; }
+        if (file.size > MEDIA_MAX_BYTES) {
+            showToast(`"${file.name}": demasiado grande (${(file.size/1024/1024).toFixed(1)} MB). Máximo 1 MB.`, 'error');
+            return;
+        }
         const reader = new FileReader();
-        reader.onload = e => {
-            _mediaPendingDataUrl = e.target.result;
-            const box = document.getElementById('mediaPreviewBox');
-            const img = document.getElementById('mediaPreviewImg');
-            img.src = _mediaPendingDataUrl;
-            box.classList.remove('hidden');
-            const nameEl = document.getElementById('mediaName');
-            if (!nameEl.value) nameEl.value = file.name.replace(/\.[^.]+$/, '');
+        reader.onload = async e => {
+            const original = e.target.result;
+            const optimized = await _optimizeImage(original, file.type);
+            if (optimized.length < original.length * 0.95) {
+                const kb = s => Math.round((s.length * 3 / 4) / 1024);
+                showToast(`"${file.name}" optimizada: ${kb(original)} KB → ${kb(optimized)} KB`, 'info');
+            }
+            _mediaPendingFiles.push({ dataUrl: optimized, mimeType: (optimized.match(/^data:([^;]+)/) || [])[1] || file.type, name: file.name.replace(/\.[^.]+$/, ''), status: 'pending' });
+            _mediaRenderQueue();
         };
         reader.readAsDataURL(file);
     }
@@ -5106,42 +5386,57 @@ ${bodyRows}
         }
     }
     async function _mediaSave() {
-        const name = document.getElementById('mediaName').value.trim();
         const is_shared = document.getElementById('mediaShared').checked;
-        let url, mime_type;
-        if (_mediaSource === 'upload') {
-            if (!_mediaPendingDataUrl) { showToast('Escolhe um ficheiro primeiro.', 'error'); return; }
-            mime_type = (_mediaPendingDataUrl.match(/^data:([^;]+)/) || [])[1] || null;
-            const base64 = _mediaPendingDataUrl.split(',')[1];
-            // Upload to Vercel Blob for a real URL (avoids storing base64 in DB)
-            try {
-                const up = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media-upload`, {
-                    method: 'POST',
-                    body: JSON.stringify({ data_base64: base64, mime_type, filename: name })
-                });
-                url = up.url;
-            } catch (e) {
-                // Fallback to base64 if Blob not configured
-                if (e.message && e.message.includes('BLOB_READ_WRITE_TOKEN')) {
-                    showToast('Upload directo não disponível — configura BLOB_READ_WRITE_TOKEN na Vercel ou usa URL externo.', 'error');
-                    return;
-                }
-                url = _mediaPendingDataUrl;
-            }
-        } else {
-            url = document.getElementById('mediaUrl').value.trim();
+        // URL mode (single)
+        if (_mediaSource === 'url') {
+            const url = document.getElementById('mediaUrl').value.trim();
             if (!url || !/^https?:\/\//i.test(url)) { _setFieldError(document.getElementById('mediaUrl'), false, 'URL inválido (http/https)'); return; }
+            const name = document.getElementById('mediaName').value.trim();
+            if (!name) { _setFieldError(document.getElementById('mediaName'), false, 'Campo obrigatório'); return; }
+            try {
+                await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media`, { method: 'POST', body: JSON.stringify({ name, url, mime_type: null, is_shared }) });
+                showToast('Imagem adicionada.');
+                _mediaCloseUpload();
+                _loadMedia();
+            } catch (e) { showToast(e.message, 'error'); }
+            return;
         }
-        if (!name) { _setFieldError(document.getElementById('mediaName'), false, 'Campo obrigatório'); return; }
-        try {
-            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media`, {
-                method: 'POST',
-                body: JSON.stringify({ name, url, mime_type, is_shared })
-            });
-            showToast('Imagem adicionada.');
-            _mediaCloseUpload();
-            _loadMedia();
-        } catch (e) { showToast(e.message, 'error'); }
+        // Upload mode — process queue
+        const pending = _mediaPendingFiles.filter(f => f.status === 'pending');
+        if (!pending.length) { showToast('Adiciona pelo menos uma imagem.', 'error'); return; }
+        document.getElementById('mediaSaveBtn').disabled = true;
+        let saved = 0, failed = 0;
+        for (const f of _mediaPendingFiles) {
+            if (f.status !== 'pending') continue;
+            f.status = 'uploading';
+            _mediaRenderQueue();
+            try {
+                let url;
+                try {
+                    const up = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media-upload`, {
+                        method: 'POST',
+                        body: JSON.stringify({ data_base64: f.dataUrl.split(',')[1], mime_type: f.mimeType, filename: f.name })
+                    });
+                    url = up.url;
+                } catch (e) {
+                    if (e.message && e.message.includes('BLOB_READ_WRITE_TOKEN')) throw e;
+                    url = f.dataUrl; // fallback to base64
+                }
+                await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media`, {
+                    method: 'POST',
+                    body: JSON.stringify({ name: f.name, url, mime_type: f.mimeType, is_shared })
+                });
+                f.status = 'done'; saved++;
+            } catch (e) {
+                f.status = 'error'; failed++;
+                console.error('media upload error:', e.message);
+            }
+            _mediaRenderQueue();
+        }
+        document.getElementById('mediaSaveBtn').disabled = false;
+        if (saved) showToast(saved === 1 ? '1 imagem adicionada.' : `${saved} imagens adicionadas.`);
+        if (failed) showToast(`${failed} imagem${failed>1?'ns':''} falharam.`, 'error');
+        if (saved) { _mediaCloseUpload(); _loadMedia(); }
     }
 
     // ── Picker modal (para usar dentro do editor) ────
@@ -5688,14 +5983,15 @@ ${bodyRows}
             const tplName = teState.blocks.length ? `${teState.blocks.length} bloco(s)` : 'Nenhum';
             let sendLabel = sendType === 'now' ? 'Enviar agora' : sendType === 'schedule' ? `Agendar: ${schedDate} ${schedTime}` : 'Guardar como rascunho';
             const rev = document.getElementById('wizReviewContent');
+            const replyToVal = _currentBrand?.reply_to || '';
             if (rev) rev.innerHTML = `<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Nome</dt><dd class="font-medium text-slate-900">${name}</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Template</dt><dd class="text-slate-900">${tplName}</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Assunto</dt><dd class="text-slate-900">${subj}</dd></div>
-                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">${listsText}</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Remetente</dt><dd class="text-slate-900">${fn} &lt;${fe}&gt;</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Responder para</dt><dd class="text-slate-900">${replyToVal ? replyToVal : '<span class="text-slate-400 italic">Igual ao remetente</span>'}</dd></div>
+                <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Listas</dt><dd class="text-slate-900">${listsText}</dd></div>
                 <div><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Contactos</dt><dd class="text-slate-900">${totalContacts.toLocaleString('pt-PT')} contactos</dd></div>
-                <div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Envio</dt><dd class="font-medium text-slate-900">${sendLabel}</dd></div>
+                ${prev && prev !== '—' ? `<div class="col-span-2"><dt class="text-slate-400 text-xs uppercase tracking-wide mb-0.5">Pré-visualização</dt><dd class="text-slate-500 text-xs italic">${prev}</dd></div>` : ''}
             </dl>`;
             window._wizLastTotalContacts = totalContacts;
 
@@ -5916,7 +6212,7 @@ ${bodyRows}
         if (_wizStep === 3) {
             const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
             const listTotal = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
-            const directTotal = _wizExistingContacts.length + _wizDirectContacts.length + (_wizExistingContacts.length === 0 ? _wizExistingDirectCount : 0);
+            const directTotal = _wizExistingDirectCount + _wizDirectContactIds.length;
             const total = listTotal + directTotal;
             if (total === 0 && !_wizImporting) {
                 const err = document.getElementById('wizListsError');
@@ -6013,9 +6309,10 @@ ${bodyRows}
             if (_wizDirectContactIds.length && campaignId) {
                 try {
                     await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
-                        method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds })
+                        method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds, temp_contact_ids: _wizTempContactIds })
                     });
                     _wizDirectContactIds = [];
+                    _wizTempContactIds = [];
                     _wizUpdateDirectNotice();
                 } catch (e) { console.error('add_direct_recipients:', e); }
             }
@@ -6030,6 +6327,11 @@ ${bodyRows}
                         totalSent   += r.sent   || 0;
                         totalFailed += r.failed || 0;
                         if (r.done || r.warning) break;
+                        if (r.quotaExhausted) {
+                            showToast(`Quota diária SES atingida — ${totalSent.toLocaleString('pt-PT')} emails enviados. Os restantes (${(r.remaining||0).toLocaleString('pt-PT')}) serão enviados automaticamente quando a quota renovar à meia-noite UTC.`, 'info');
+                            showScreen('campaigns'); _loadCampaigns(_currentBrand.id); _wizClearDraft(); wizShowStep(1);
+                            return;
+                        }
                     }
                     showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
                 } else {
@@ -6219,6 +6521,7 @@ ${bodyRows}
     let _wizImporting = false;
     let _wizImportDone = 0;
     let _wizImportTotal = 0;
+    let _wizImportingCampaignId = null;
 
     function _wizUpdateStep4ImportBanner() {
         const banner = document.getElementById('wizStep4ImportBanner');
@@ -6255,6 +6558,7 @@ ${bodyRows}
         if (nb && _wizStep === 4) { nb.disabled = false; nb.textContent = 'Guardar Rascunho'; }
     }
     let _wizDirectContactIds = [];
+    let _wizTempContactIds = [];
     let _wizDirectContacts = [];
     let _wizExistingContacts = [];
     let _wizExistingDirectCount = 0;
@@ -6326,8 +6630,15 @@ ${bodyRows}
         if (total > 0) document.getElementById('wizListsError')?.classList.add('hidden');
     }
 
-    function _wizClearDirect() {
+    async function _wizClearDirect() {
+        if (_editingCampaignId) {
+            if (!confirm('Remover todos os contactos importados directamente desta campanha?')) return;
+            try {
+                await apiFetch(`/api/campaigns/${_editingCampaignId}?action=remove_direct_recipients`, { method: 'DELETE' });
+            } catch (e) { showToast('Erro ao remover: ' + e.message, 'error'); return; }
+        }
         _wizDirectContactIds = [];
+        _wizTempContactIds = [];
         _wizExistingDirectCount = 0;
         _wizDirectContacts = [];
         _wizExistingContacts = [];
@@ -6344,8 +6655,8 @@ ${bodyRows}
         const allContacts = [..._wizExistingContacts, ..._wizDirectContacts];
         if (!allContacts.length && !_wizExistingDirectCount) { panel.classList.add('hidden'); return; }
         panel.classList.remove('hidden');
-        const total = allContacts.length || _wizExistingDirectCount;
-        if (countEl) countEl.textContent = total;
+        const total = _wizExistingDirectCount + _wizDirectContactIds.length || allContacts.length;
+        if (countEl) countEl.textContent = total.toLocaleString('pt-PT');
         if (!allContacts.length) {
             list.innerHTML = `<div class="px-4 py-3 text-xs text-slate-400 italic">A carregar…</div>`;
             return;
@@ -6361,7 +6672,7 @@ ${bodyRows}
                     <p class="text-xs text-slate-500 truncate">${escHtml(c.email)}</p>
                 </div>
             </div>`;
-        }).join('');
+        }).join('') + (total > allContacts.length ? `<div class="px-4 py-2.5 text-xs text-slate-400 italic text-center">… e mais ${(total - allContacts.length).toLocaleString('pt-PT')} contactos</div>` : '');
     }
 
     async function _wizStartImport(type) {
@@ -6383,6 +6694,9 @@ ${bodyRows}
             // Keep step 4 banner in sync
             _wizImportDone = done; _wizImportTotal = total;
             if (_wizStep === 4) _wizUpdateStep4ImportBanner();
+            // Update campaigns list badge (visible if user navigated away during import)
+            const _cb = _wizImportingCampaignId && document.getElementById(`camp-import-badge-${_wizImportingCampaignId}`);
+            if (_cb) { _cb.className = ''; _cb.innerHTML = `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-600 whitespace-nowrap"><svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>${pct}%</span>`; }
         };
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
@@ -6420,14 +6734,16 @@ ${bodyRows}
             // Import contacts to DB, collect IDs — show live progress per chunk
             let imported = 0, failed = 0;
             const newIds = [];
+            const newTempIds = [];
             const CHUNK = 5;
             _wizImporting = true;
+            _wizImportingCampaignId = _editingCampaignId;
             _wizUpdateProgress(0, rows.length);
             for (let i = 0; i < rows.length; i += CHUNK) {
                 await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
                     try {
                         const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
-                        if (r.id) { newIds.push(r.id); imported++; }
+                        if (r.id) { newIds.push(r.id); if (r.created) newTempIds.push(r.id); imported++; }
                     } catch { failed++; }
                 }));
                 _wizUpdateProgress(imported + failed, rows.length);
@@ -6442,10 +6758,19 @@ ${bodyRows}
             } catch {}
 
             // Store IDs and display data for direct campaign recipients (deduplicated)
+            newTempIds.forEach(id => { if (!_wizTempContactIds.includes(id)) _wizTempContactIds.push(id); });
             newIds.forEach(id => { if (!_wizDirectContactIds.includes(id)) _wizDirectContactIds.push(id); });
             rows.forEach(r => { if (r.email && !_wizDirectContacts.find(c => c.email === r.email.toLowerCase())) _wizDirectContacts.push({ email: r.email.toLowerCase(), name: [r.first_name, r.last_name].filter(Boolean).join(' ') }); });
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
+            // If editing an existing campaign, link contacts immediately (don't wait for submit)
+            if (_editingCampaignId && newIds.length) {
+                try {
+                    await apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
+                        method: 'POST', body: JSON.stringify({ contact_ids: newIds, temp_contact_ids: newTempIds })
+                    });
+                } catch (e) { console.error('add_direct_recipients (immediate):', e); }
+            }
             _wizClearFile(type);
             _wizRecipTab('lists');
             showToast(`${imported} contactos adicionados a esta campanha.${failed ? ` (${failed} falhas)` : ''}`);
@@ -6456,13 +6781,16 @@ ${bodyRows}
             if (progressDiv) progressDiv.classList.add('hidden');
             if (_wizStep === 4) _wizUpdateStep4ImportBanner();
             if (btn) { btn.disabled = false; btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Importar e adicionar à campanha'; }
+            const _cb = _wizImportingCampaignId && document.getElementById(`camp-import-badge-${_wizImportingCampaignId}`);
+            if (_cb) { _cb.className = 'hidden'; _cb.innerHTML = ''; }
+            _wizImportingCampaignId = null;
         }
     }
 
     function wizUpdateListsTotal() {
         const checks = document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked');
         const listTotal = Array.from(checks).reduce((sum, cb) => sum + (parseInt(cb.getAttribute('data-contacts') || '0', 10)), 0);
-        const directTotal = _wizExistingContacts.length + _wizDirectContacts.length + (_wizExistingContacts.length === 0 ? _wizExistingDirectCount : 0);
+        const directTotal = _wizExistingDirectCount + _wizDirectContactIds.length;
         const total = listTotal + directTotal;
         const totalBar = document.getElementById('wizListsTotal');
         const totalCount = document.getElementById('wizListsTotalCount');
@@ -6498,15 +6826,19 @@ ${bodyRows}
                     <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Agendar</button>`;
             } else if (_currentCampStatus === 'scheduled') {
                 act.innerHTML = `<button onclick="apiDeleteCampaign()" class="px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Apagar</button>
-                    ${testBtn}
                     <button onclick="_editCurrentCampaignInWizard()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Editar</button>
-                    <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>
-                    <button onclick="openScheduleModal()" class="px-4 py-2 text-sm border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50">Reagendar</button>`;
+                    <button onclick="openSendNowModal()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">Enviar agora</button>`;
             } else {
                 act.innerHTML = `<button onclick="showScreen('campaignReport')" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Relatório</button>
-                    <button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>`;
+                    ${_currentUserRole !== 'viewer' ? `<button onclick="mockDuplicateCampaign()" class="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Duplicar</button>` : ''}`;
             }
         }
+        // Painéis condicionais: teste e listas só visíveis em draft
+        const _showTestAndLists = (_currentCampStatus === 'draft');
+        const _sendPanelEl = document.getElementById('campSendPanel');
+        const _listsPanelEl = document.getElementById('campListsPanel');
+        if (_sendPanelEl)  _sendPanelEl.classList.toggle('hidden', !_showTestAndLists);
+        if (_listsPanelEl) _listsPanelEl.classList.toggle('hidden', !_showTestAndLists);
         // Badge
         const badge = document.getElementById('campStatusBadge');
         if (badge) {
@@ -6587,6 +6919,7 @@ ${bodyRows}
         _editingTemplateId = c.template_id || null;
         _wizExistingDirectCount = c.direct_count || 0;
         _wizDirectContactIds = [];
+        _wizTempContactIds = [];
         _wizDirectContacts = [];
         _wizExistingContacts = [];
         _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
@@ -6595,11 +6928,12 @@ ${bodyRows}
         _wizRenderDirectPanel();
         if (_wizExistingDirectCount > 0) {
             const _fetchForId = c.id;
-            apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+            apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients, total }) => {
                 // Discard if the user has already navigated to a different campaign
                 if (_editingCampaignId !== _fetchForId) return;
                 _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
-                _wizExistingDirectCount = _wizExistingContacts.length;
+                // Use server total — don't overwrite with the display-limited fetch size
+                _wizExistingDirectCount = total || _wizExistingContacts.length;
                 _wizUpdateDirectNotice();
                 _wizRenderDirectPanel();
             }).catch(() => {});
@@ -6653,6 +6987,7 @@ ${bodyRows}
             _editingTemplateId = c.template_id || null;
             _wizExistingDirectCount = c.direct_count || 0;
             _wizDirectContactIds = [];
+            _wizTempContactIds = [];
             _wizDirectContacts = [];
             _wizExistingContacts = [];
             _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
@@ -6661,10 +6996,10 @@ ${bodyRows}
             _wizRenderDirectPanel();
             if (_wizExistingDirectCount > 0) {
                 const _fetchForId = c.id;
-                apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients }) => {
+                apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients, total }) => {
                     if (_editingCampaignId !== _fetchForId) return;
                     _wizExistingContacts = (recipients || []).map(r => ({ email: r.email, name: r.contact_name || '' }));
-                    _wizExistingDirectCount = _wizExistingContacts.length;
+                    _wizExistingDirectCount = total || _wizExistingContacts.length;
                     _wizUpdateDirectNotice();
                     _wizRenderDirectPanel();
                 }).catch(() => {});
@@ -6779,7 +7114,7 @@ ${bodyRows}
         try {
             const d = await apiFetch('/api/campaigns?action=ses-quota');
             const widget = document.getElementById('sesQuotaWidget');
-            if (!d.configured || !widget) return;
+            if (!d.configured || !widget || _currentUserRole === 'viewer') return;
             if (d.error) { widget.classList.remove('hidden'); document.getElementById('sesRemaining').textContent = 'Erro'; return; }
             widget.classList.remove('hidden');
             const pct = d.max24h > 0 ? Math.round((d.sent24h / d.max24h) * 100) : 0;
@@ -6961,6 +7296,13 @@ function toggleExportMenu() {
                 if (progTxt) progTxt.textContent = `${(totalSent + totalFailed).toLocaleString('pt-PT')} / ${grandTotal.toLocaleString('pt-PT')} enviados`;
                 if (r.done) break;
                 if (r.warning) { showToast(r.warning, 'info'); break; }
+                if (r.quotaExhausted) {
+                    closeSendNowModal();
+                    showScreen('campaigns');
+                    showToast(`Quota diária SES atingida — ${totalSent.toLocaleString('pt-PT')} emails enviados. Os restantes (${(r.remaining||0).toLocaleString('pt-PT')}) serão enviados automaticamente quando a quota renovar à meia-noite UTC.`, 'info');
+                    _loadCampaigns(_currentBrand.id);
+                    return;
+                }
             }
 
             closeSendNowModal();
@@ -7639,9 +7981,15 @@ ${sections.join('\n\n')}
         html.dark .bg-amber-50, html.dark .bg-yellow-50 { background-color: rgba(245,158,11,0.12) !important; }
         html.dark .bg-violet-50, html.dark .bg-purple-50 { background-color: rgba(139,92,246,0.12) !important; }
         html.dark .bg-green-50   { background-color: rgba(16,185,129,0.10) !important; }
+
+        /* ── Viewer role: synchronous hide before first paint ── */
+        html.is-viewer .nav-team,
+        html.is-viewer .nav-globalSettings { display: none !important; }
+        html.is-viewer .viewer-hidden { display: none !important; }
     </style>
 </head>
 <body class="bg-slate-50">
+<script>(function(){var r=localStorage.getItem('pm_user_role');if(r==='viewer')document.documentElement.classList.add('is-viewer');})();</script>
 
 <!-- screenSelector kept hidden for internal JS usage -->
 <select id="screenSelector" class="hidden" onchange="showScreen(this.value)">
@@ -7870,8 +8218,15 @@ ${sections.join('\n\n')}
         const _currentScreen = document.querySelector('.screen.active')?.id;
         // Leaving campaignCreate — reset all wizard state so it doesn't leak into the next open
         if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
+            // Persist any unsaved direct contacts before clearing state
+            if (_editingCampaignId && _wizDirectContactIds.length) {
+                apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
+                    method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds, temp_contact_ids: _wizTempContactIds })
+                }).catch(() => {});
+            }
             _editingCampaignId = null;
             _wizDirectContactIds = [];
+            _wizTempContactIds = [];
             _wizDirectContacts = [];
             _wizExistingContacts = [];
             _wizExistingDirectCount = 0;
@@ -7953,6 +8308,7 @@ ${sections.join('\n\n')}
                 }
                 if (!_editingCampaignId) {
                     _wizDirectContactIds = [];
+                    _wizTempContactIds = [];
                     _wizExistingDirectCount = 0;
                     _wizDirectContacts = [];
                     _wizExistingContacts = [];
@@ -8314,7 +8670,7 @@ ${sections.join('\n\n')}
     }
 
     let _currentBrand = { id:'bmw', name:'BMW', color:'#1C69D4', bg:'#FFFFFF', logo:`https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png`, invert:false };
-    let _currentUserRole = 'admin'; // 'owner' | 'admin' | 'editor' | 'viewer'
+    let _currentUserRole = localStorage.getItem('pm_user_role') || 'admin'; // 'owner' | 'admin' | 'editor' | 'viewer'
     function _canSeeRolesPanel() {
         return ['owner','administrador'].includes(_currentUserRole.toLowerCase());
     }
@@ -8345,9 +8701,12 @@ ${sections.join('\n\n')}
     }
 
     function _applyViewerCampaignRestrictions(isViewer) {
-        // Nova Campanha button
+        // Nova Campanha button (campaigns header)
         const newCampBtn = document.querySelector('#campaigns header button[onclick="_wizStartNew()"]');
         if (newCampBtn) newCampBtn.classList.toggle('hidden', isViewer);
+        // Dashboard "Criar campanha" quick-access link
+        const dashCreateLink = document.querySelector('a[onclick="_wizStartNew()"]');
+        if (dashCreateLink) dashCreateLink.classList.toggle('hidden', isViewer);
         // SES quota widget
         const sesWidget = document.getElementById('sesQuotaWidget');
         if (sesWidget && isViewer) sesWidget.classList.add('hidden');
@@ -8370,7 +8729,11 @@ ${sections.join('\n\n')}
         if (!me?.id) return;
         try {
             const r = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=permissions&member_id=${me.id}`);
-            if (r.role) _currentUserRole = r.role;
+            if (r.role) {
+                _currentUserRole = r.role;
+                localStorage.setItem('pm_user_role', r.role);
+                document.documentElement.classList.toggle('is-viewer', r.role === 'viewer');
+            }
             _syncRolesPanel();
             // Roles that cannot access the team screen
             const restrictedRoles = ['viewer'];
@@ -8405,6 +8768,8 @@ ${sections.join('\n\n')}
     function selectBrand(id, name, color, targetScreen) {
         window._contactsCache  = [];
         window._campaignsCache = [];
+        // Per-brand sessionStorage caches are kept — each loader renders the
+        // new brand's cached data instantly and refreshes in the background.
         _currentContact = null;
         _currentListId  = null;
         const hb = _allBrands.find(x => x.id === id) || {};
@@ -8736,16 +9101,36 @@ ${sections.join('\n\n')}
         _setText('dash-metrics-title', `Métricas globais (${lbl})`);
         _setText('dash-openrate-sub', `Campanhas enviadas (${lbl})`);
         _setText('dash-top-title', `Top campanhas (${lbl})`);
-        ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '…'));
+        // Stale-while-revalidate: paint the cached snapshot for this brand+range
+        // immediately, then refresh quietly when the API responds.
+        const cacheKey = `dash_${brandId}_${range}`;
+        const cached = _cacheGet(cacheKey);
+        if (cached) {
+            _applyDashboardData(cached);
+        } else {
+            ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '…'));
+            ['dash-open-bar','dash-click-bar','dash-bounce-bar'].forEach(id => _setBarWidth(id, 0));
+            const rc = document.getElementById('dashRecentCampaigns');
+            if (rc) rc.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+            const tc = document.getElementById('dashTopCampaigns');
+            if (tc) tc.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        }
         let r;
         try {
             r = await apiFetch(`/api/campaigns?brand_id=${brandId}&action=dashboard&range=${range}`);
         } catch (e) {
             console.error('dashboard fetch:', e);
-            ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '—'));
-            _renderDashTable('dashTopCampaigns', [], null, 4);
+            if (!cached) {
+                ['dash-campaigns','dash-emails','dash-openrate','dash-open-val','dash-click-val','dash-bounce-val'].forEach(id => _setText(id, '—'));
+                _renderDashTable('dashTopCampaigns', [], null, 4);
+            }
             return;
         }
+        _cacheSet(cacheKey, r);
+        _applyDashboardData(r);
+    }
+
+    function _applyDashboardData(r) {
         _setText('dash-campaigns', (r.campaigns||0).toLocaleString('pt-PT'));
         _setText('dash-emails',    (r.emails||0).toLocaleString('pt-PT'));
         _setText('dash-openrate',  r.openRate + '%');
@@ -8788,16 +9173,7 @@ ${sections.join('\n\n')}
             if (feEl && !feEl.value) feEl.value = b.from_email || '';
         }).catch(() => {});
 
-        _setText('dash-campaigns', '…');
-        _setText('dash-emails', '—');
-        _setText('dash-openrate', '—');
-        _setText('dash-open-val', '—');
-        _setText('dash-click-val', '—');
-        _setText('dash-bounce-val', '—');
-
-        const rcEl = document.getElementById('dashRecentCampaigns');
-        if (rcEl) rcEl.innerHTML = `<tr><td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
-
+        // Dashboard placeholders/cached paint are handled inside renderDashboardRange
         const impEl = document.getElementById('importsTbody');
         if (impEl) impEl.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">Sem importações para esta marca.</td></tr>`;
 
@@ -8828,6 +9204,10 @@ ${sections.join('\n\n')}
             teState.blocks = teTemplatePresets.tpl1();
         }
         if (typeof teRender === 'function') teRender();
+        // Warn before unload if import is in progress
+        window.addEventListener('beforeunload', (e) => {
+            if (_wizImporting) { e.preventDefault(); return e.returnValue = ''; }
+        });
         // Sync MJML line numbers with textarea scroll
         document.addEventListener('scroll', (ev) => {
             if (ev.target && (ev.target.id === 'te_mjmlCode' || ev.target.id === 'wiz_te_mjmlCode')) {
@@ -9315,7 +9695,7 @@ ${sections.join('\n\n')}
 
                         <div class="bg-white border border-slate-200 rounded-xl p-5 space-y-2">
                             <h3 class="font-semibold text-slate-900 text-sm mb-3">Acesso rápido</h3>
-                            <a onclick="_wizStartNew()" data-nav class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 text-sm text-slate-700">
+                            <a onclick="_wizStartNew()" data-nav class="viewer-hidden flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 text-sm text-slate-700">
                                 <span class="w-8 h-8 bg-green-100 text-green-700 rounded-lg flex items-center justify-center">📢</span>
                                 Criar campanha
                             </a>
@@ -9361,7 +9741,7 @@ ${sections.join('\n\n')}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Campanhas</h1>
-                <button onclick="_wizStartNew()" class="flex items-center gap-2 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">
+                <button onclick="_wizStartNew()" class="viewer-hidden flex items-center gap-2 px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     Nova Campanha
                 </button>
@@ -9800,7 +10180,7 @@ ${sections.join('\n\n')}
 
                     <!-- Passo 3: Destinatários -->
                     <div id="wizStep3" class="hidden">
-                      <div class="flex gap-6 items-start max-w-4xl">
+                      <div class="flex gap-6 items-start max-w-5xl">
                         <!-- Coluna esquerda: tabs -->
                         <div class="flex-1 min-w-0 space-y-4">
                         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -9958,12 +10338,12 @@ ${sections.join('\n\n')}
                         </div><!-- /coluna esquerda -->
 
                         <!-- Coluna direita: contactos importados -->
-                        <div id="wizDirectPanel" class="hidden w-72 flex-shrink-0 bg-white border border-slate-200 rounded-xl overflow-hidden sticky top-4">
+                        <div id="wizDirectPanel" class="hidden w-96 flex-shrink-0 bg-white border border-slate-200 rounded-xl overflow-hidden sticky top-4">
                             <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                                 <h3 class="text-sm font-semibold text-slate-900">Contactos importados</h3>
                                 <span id="wizDirectPanelCount" class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">0</span>
                             </div>
-                            <div id="wizDirectPanelList" class="max-h-96 overflow-y-auto"></div>
+                            <div id="wizDirectPanelList" class="max-h-[32rem] overflow-y-auto"></div>
                         </div>
 
                       </div><!-- /flex row -->
@@ -10169,7 +10549,7 @@ ${sections.join('\n\n')}
                             </div>
                         </div>
 
-                        <div class="bg-white border border-slate-200 rounded-xl p-5">
+                        <div id="campListsPanel" class="bg-white border border-slate-200 rounded-xl p-5">
                             <h3 class="font-semibold text-slate-900 mb-3 text-sm">Listas destinatárias</h3>
                             <div id="campShowLists" class="space-y-2">
                                 <div class="text-sm text-slate-400 py-2">A carregar…</div>
@@ -10749,7 +11129,11 @@ ${sections.join('\n\n')}
                     <input id="mediaSearch" type="text" placeholder="Pesquisar por nome…" oninput="_dbMediaGrid()" class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
                 </div>
                 <!-- Grid -->
-                <div id="mediaGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                <div id="mediaGrid" class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))"></div>
+                <!-- Ver mais -->
+                <div id="mediaShowMoreWrap" class="hidden mt-5 text-center">
+                    <button id="mediaShowMoreBtn" onclick="_mediaShowMore()" class="px-5 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors">Ver mais</button>
+                </div>
                 <!-- Empty state -->
                 <div id="mediaEmpty" class="hidden text-center py-16">
                     <svg class="w-16 h-16 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
@@ -10763,48 +11147,59 @@ ${sections.join('\n\n')}
 
 <!-- Modal: adicionar imagem -->
 <div id="mediaUploadModal" class="hidden fixed inset-0 z-[60] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)_mediaCloseUpload()">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
-        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-base font-semibold text-slate-900">Adicionar imagem</h3>
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col" style="max-height:90vh">
+        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+            <h3 class="text-base font-semibold text-slate-900">Adicionar imagens</h3>
             <button onclick="_mediaCloseUpload()" class="text-slate-400 hover:text-slate-700">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="p-5 space-y-4">
+        <div class="p-5 space-y-4 overflow-y-auto flex-1">
             <!-- Tabs upload / URL -->
             <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium">
                 <button id="mediaTabUpload" type="button" onclick="_mediaSetSource('upload')" class="px-3 py-1 rounded-md bg-white shadow-sm text-slate-900">Carregar ficheiro</button>
                 <button id="mediaTabUrl" type="button" onclick="_mediaSetSource('url')" class="px-3 py-1 rounded-md text-slate-500 hover:text-slate-700">Colar URL</button>
             </div>
-            <!-- Drop zone -->
+            <!-- Drop zone (upload mode) -->
             <div id="mediaDropZone" ondrop="_mediaDrop(event)" ondragover="event.preventDefault();this.classList.add('border-slate-900','bg-slate-50')" ondragleave="this.classList.remove('border-slate-900','bg-slate-50')" onclick="document.getElementById('mediaFile').click()" class="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
                 <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                <p class="text-sm text-slate-600">Arrasta uma imagem ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
-                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG, GIF · até 2 MB</p>
-                <input id="mediaFile" type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" class="hidden" onchange="_mediaPickFile(event)">
+                <p class="text-sm text-slate-600">Arrasta imagens ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
+                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG, GIF · até 1 MB cada · podes seleccionar várias</p>
+                <input id="mediaFile" type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" class="hidden" onchange="_mediaPickFile(event)" multiple>
             </div>
-            <!-- URL field (hidden by default) -->
-            <div id="mediaUrlBlock" class="hidden">
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">URL da imagem *</label>
-                <input id="mediaUrl" type="url" placeholder="https://…" oninput="_mediaPreview()" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
-                <p class="text-[11px] text-slate-400 mt-1">Cola um URL público (HTTPS).</p>
+            <!-- File queue -->
+            <div id="mediaQueueList" class="divide-y divide-slate-100"></div>
+            <!-- URL mode -->
+            <div id="mediaUrlBlock" class="hidden space-y-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1.5">URL da imagem *</label>
+                    <input id="mediaUrl" type="url" placeholder="https://…" oninput="_mediaPreview()" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+                    <p class="text-[11px] text-slate-400 mt-1">Cola um URL público (HTTPS).</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1.5">Nome *</label>
+                    <input id="mediaName" type="text" placeholder="Ex.: Banner promocional verão" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+                </div>
+                <div id="mediaPreviewBox" class="hidden border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                    <img id="mediaPreviewImg" class="w-full max-h-48 object-contain" alt="Pré-visualização">
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">Nome *</label>
-                <input id="mediaName" type="text" placeholder="Ex.: Banner promocional verão" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10">
-            </div>
-            <div id="mediaPreviewBox" class="hidden border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
-                <img id="mediaPreviewImg" class="w-full max-h-48 object-contain" alt="Pré-visualização">
-            </div>
+            <!-- Shared toggle (always visible) -->
             <label class="flex items-start gap-2.5 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
                 <input id="mediaShared" type="checkbox" class="mt-0.5 w-4 h-4 rounded border-slate-300">
                 <div>
                     <p class="text-sm font-medium text-slate-900">Partilhar com todas as marcas</p>
-                    <p class="text-xs text-slate-500 mt-0.5">A imagem ficará disponível na biblioteca de qualquer marca.</p>
+                    <p class="text-xs text-slate-500 mt-0.5">As imagens ficarão disponíveis na biblioteca de qualquer marca.</p>
                 </div>
             </label>
         </div>
-        <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50">
+        <!-- Footer — só aparece quando há ficheiros na fila -->
+        <div id="mediaQueueFooter" class="hidden px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50 flex-shrink-0">
+            <button onclick="_mediaCloseUpload()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
+            <button id="mediaSaveBtn" onclick="_mediaSave()" class="px-4 py-2 text-sm bg-slate-900 text-white font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">Guardar imagem</button>
+        </div>
+        <!-- Footer para modo URL (sempre visível) -->
+        <div id="mediaUrlFooter" class="hidden px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50 flex-shrink-0">
             <button onclick="_mediaCloseUpload()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
             <button onclick="_mediaSave()" class="px-4 py-2 text-sm bg-slate-900 text-white font-medium rounded-lg hover:bg-slate-700">Guardar</button>
         </div>
@@ -11881,6 +12276,41 @@ ${sections.join('\n\n')}
                     <div id="brandAdminList" class="divide-y divide-slate-100">
                         <p class="px-5 py-6 text-sm text-slate-400 text-center">A carregar…</p>
                     </div>
+                </div>
+
+                <!-- Auditoria de Marcas -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Auditoria de Marcas</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Verifica se todas as marcas têm utilizadores, administradores e email remetente configurados. Repara automaticamente o acesso dos administradores a todas as marcas.</p>
+                        </div>
+                        <button onclick="_runBrandAudit()" id="brandAuditBtn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            Executar auditoria
+                        </button>
+                    </div>
+                    <div id="brandAuditResult" class="hidden">
+                        <!-- Summary bar -->
+                        <div id="brandAuditSummary" class="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-4 text-sm"></div>
+                        <!-- Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Marca</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Utilizadores</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Admins</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Contactos</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Campanhas</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Alertas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="brandAuditTbody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="brandAuditEmpty" class="px-5 py-8 text-center text-sm text-slate-400">Clica em "Executar auditoria" para verificar o estado de todas as marcas.</div>
                 </div>
 
                 <!-- Delete brand confirmation modal -->

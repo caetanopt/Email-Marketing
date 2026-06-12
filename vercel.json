@@ -1,8 +1,17 @@
 {
   "cleanUrls": true,
   "github": { "enabled": false },
+  "crons": [
+    { "path": "/api/cron",        "schedule": "* * * * *" },
+    { "path": "/api/cron/import", "schedule": "* * * * *" }
+  ],
+  "functions": {
+    "api/campaigns/index.js": { "maxDuration": 60 },
+    "api/campaigns/[id].js":  { "maxDuration": 60 }
+  },
   "rewrites": [
     { "source": "/api/webhooks", "destination": "/api/track" },
+    { "source": "/api/campaigns/:id", "destination": "/api/campaigns?id=:id" },
     { "source": "/api/lists/:id", "destination": "/api/lists?id=:id" },
     { "source": "/api/ai/image-to-mjml", "destination": "/api/templates?action=image-to-mjml" },
     { "source": "/api/cron", "destination": "/api/campaigns?action=process-scheduled" },

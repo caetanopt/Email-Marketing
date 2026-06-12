@@ -192,21 +192,46 @@ module.exports = async function handler(req, res) {
       }
 
       if (id && action === 'team') {
+        // Global team: all users across all brands, deduped with highest role
         const rows = await query(
-          `SELECT u.id, u.name, u.email, u.active, u.last_login, ubr.role
-           FROM user_brand_roles ubr JOIN users u ON u.id = ubr.user_id
-           WHERE ubr.brand_id = $1 ORDER BY u.name`,
-          [id]
+          `WITH ranked AS (
+             SELECT user_id, role,
+                    ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY
+                      CASE role WHEN 'owner' THEN 1 WHEN 'editor' THEN 2
+                                ELSE 3 END) AS rn
+             FROM user_brand_roles
+           )
+           SELECT u.id, u.name, u.email, u.active, u.last_login, r.role
+           FROM users u
+           JOIN ranked r ON r.user_id = u.id AND r.rn = 1
+           ORDER BY u.name`
         );
         return res.status(200).json({ data: rows });
       }
       if (id && action === 'permissions' && member_id) {
         try {
+          // Self-heal: um administrador (owner em qualquer marca) tem sempre
+          // owner nesta marca, mesmo que a associação ainda não exista (marca
+          // criada por outro admin). Só para o próprio utilizador autenticado.
+          if (parseInt(member_id) === user.id) {
+            const anyOwner = await query(
+              `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+            );
+            if (anyOwner[0]) {
+              await query(
+                `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,'owner')
+                 ON CONFLICT (user_id, brand_id) DO UPDATE SET role='owner'`,
+                [user.id, id]
+              );
+            }
+          }
           const [areas, roleRow] = await Promise.all([
             query('SELECT area FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
             query('SELECT role FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]),
           ]);
           const role = roleRow[0]?.role || null;
+          // owners nunca têm restrições de áreas — acesso total
+          if (role === 'owner') return res.status(200).json({ areas: [], restricted: false, role });
           // empty areas = full access (no restrictions configured)
           return res.status(200).json({ areas: areas.map(r => r.area), restricted: areas.length > 0, role });
         } catch (e) {
@@ -214,6 +239,61 @@ module.exports = async function handler(req, res) {
           throw e;
         }
       }
+      // ── Brand audit (owner-only) ──────────────────────────────
+      if (action === 'audit') {
+        const ownerRow = await query(
+          `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+        );
+        if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+
+        // Reparação: garantir que todos os administradores (owner em qualquer
+        // marca) têm owner em TODAS as marcas activas, e sem restrições de áreas.
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role)
+           SELECT DISTINCT ubr.user_id, b.id, 'owner'::user_role
+           FROM user_brand_roles ubr CROSS JOIN brands b
+           WHERE ubr.role='owner' AND b.active=TRUE
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role='owner'`
+        );
+        try {
+          await query(
+            `DELETE FROM user_brand_areas
+             WHERE user_id IN (SELECT DISTINCT user_id FROM user_brand_roles WHERE role='owner')`
+          );
+        } catch (e) { if (e.code !== '42P01') throw e; }
+
+        const brands = await query(
+          `SELECT
+              b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, b.active,
+              (SELECT COUNT(*)::int FROM contacts WHERE brand_id=b.id)        AS contacts_count,
+              (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id)       AS campaigns_count,
+              (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id AND status='sent') AS campaigns_sent,
+              (SELECT COUNT(*)::int FROM user_brand_roles WHERE brand_id=b.id) AS users_count,
+              (SELECT COUNT(*)::int FROM user_brand_roles WHERE brand_id=b.id AND role='owner') AS admins_count,
+              (CASE WHEN b.from_email IS NOT NULL AND b.from_email<>'' THEN TRUE ELSE FALSE END) AS has_from_email,
+              (CASE WHEN b.from_name  IS NOT NULL AND b.from_name <>'' THEN TRUE ELSE FALSE END) AS has_from_name
+           FROM brands b
+           ORDER BY b.name`
+        );
+
+        const issues = brands.map(b => {
+          const warnings = [];
+          if (!b.has_from_email) warnings.push('from_email não configurado');
+          if (!b.has_from_name)  warnings.push('from_name não configurado');
+          if (b.users_count    === 0) warnings.push('sem utilizadores');
+          if (b.active && b.admins_count === 0) warnings.push('sem administradores');
+          return { ...b, warnings, ok: warnings.length === 0 };
+        });
+
+        const summary = {
+          total: issues.length,
+          ok:    issues.filter(b => b.ok).length,
+          with_issues: issues.filter(b => !b.ok).length,
+        };
+
+        return res.status(200).json({ summary, brands: issues });
+      }
+
       // ── Global settings GET (owner-only) ─────────────────────
       if (action === 'global_settings') {
         const ownerRow = await query(
@@ -430,6 +510,9 @@ module.exports = async function handler(req, res) {
       const blobName = `m/${id}/${shortId}.${ext}`;
       try {
         const buffer = Buffer.from(data_base64, 'base64');
+        if (buffer.length > 1024 * 1024) {
+          return res.status(413).json({ error: `Imagem demasiado grande (${(buffer.length/1024/1024).toFixed(1)} MB). O máximo permitido é 1 MB.` });
+        }
         const blob = await put(blobName, buffer, { access: 'public', contentType: mime_type });
         return res.status(200).json({ url: blob.url });
       } catch (e) {
@@ -514,11 +597,15 @@ module.exports = async function handler(req, res) {
         );
         userId = r[0].id;
       }
-      await query(
-        `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
-         ON CONFLICT (user_id, brand_id) DO UPDATE SET role=EXCLUDED.role`,
-        [userId, id, safeRole]
-      );
+      // Add to ALL active brands (global team)
+      const allBrands = await query('SELECT id FROM brands WHERE active=TRUE');
+      for (const { id: brandId } of allBrands) {
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role=EXCLUDED.role`,
+          [userId, brandId, safeRole]
+        );
+      }
 
       // Send welcome email via AWS SES API
       let emailSent = false;
@@ -575,6 +662,14 @@ module.exports = async function handler(req, res) {
         [member_id, id]
       );
       const safeRole = accountRoleRow[0]?.role === 'owner' ? 'owner' : 'viewer';
+      // Administradores têm sempre acesso a todas as marcas — não pode ser revogado
+      if (!granted) {
+        const targetIsAdmin = await query(
+          `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [member_id]
+        );
+        if (targetIsAdmin[0])
+          return res.status(400).json({ error: 'Administradores têm acesso a todas as marcas — o acesso não pode ser removido.' });
+      }
       if (granted) {
         await query(
           `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1,$2,$3)
@@ -592,7 +687,21 @@ module.exports = async function handler(req, res) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const { role } = req.body || {};
       if (!['owner','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido' });
-      await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2 AND brand_id=$3', [role, member_id, id]);
+      // Update role across ALL brands (global team)
+      await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2', [role, member_id]);
+      // Promoção a administrador: garantir associação owner a TODAS as marcas
+      // activas (o UPDATE acima só altera linhas existentes) e sem restrições.
+      if (role === 'owner') {
+        await query(
+          `INSERT INTO user_brand_roles (user_id, brand_id, role)
+           SELECT $1, b.id, 'owner'::user_role FROM brands b WHERE b.active=TRUE
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role='owner'`,
+          [member_id]
+        );
+        try {
+          await query('DELETE FROM user_brand_areas WHERE user_id=$1', [member_id]);
+        } catch (e) { if (e.code !== '42P01') throw e; }
+      }
       return res.status(200).json({ ok: true });
     }
 
@@ -622,8 +731,9 @@ module.exports = async function handler(req, res) {
     if (req.method === 'DELETE' && id && action === 'remove_member' && member_id) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes remover-te a ti próprio' });
-      try { await query('DELETE FROM user_brand_areas WHERE user_id=$1 AND brand_id=$2', [member_id, id]); } catch (_) {}
-      await query('DELETE FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2', [member_id, id]);
+      // Remove from ALL brands (global team)
+      try { await query('DELETE FROM user_brand_areas WHERE user_id=$1', [member_id]); } catch (_) {}
+      await query('DELETE FROM user_brand_roles WHERE user_id=$1', [member_id]);
       return res.status(200).json({ ok: true });
     }
 
@@ -716,9 +826,16 @@ module.exports = async function handler(req, res) {
            VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id, name`,
           [slug, name.trim(), color || '#0f172a', from_name?.trim() || null, from_email?.trim() || null]
         );
+        // Todos os administradores (owner em qualquer marca) ficam owner na
+        // marca nova — não apenas o criador.
         await query(
-          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1, $2, 'owner')`,
-          [user.id, brand.id]
+          `INSERT INTO user_brand_roles (user_id, brand_id, role)
+           SELECT u.user_id, $1, 'owner'::user_role FROM (
+             SELECT DISTINCT user_id FROM user_brand_roles WHERE role='owner'
+             UNION SELECT $2::int
+           ) u
+           ON CONFLICT (user_id, brand_id) DO UPDATE SET role='owner'`,
+          [brand.id, user.id]
         );
         return res.status(201).json({ id: brand.id, name: brand.name });
       } catch (e) {
@@ -756,6 +873,7 @@ module.exports = async function handler(req, res) {
 
     res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro de servidor' });
+    console.error('brands handler error:', err?.message, err?.code);
+    res.status(500).json({ error: err?.message || 'Erro de servidor' });
   }
 };
