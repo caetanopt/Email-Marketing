@@ -336,7 +336,11 @@ module.exports = async function handler(req, res) {
         await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
         const tempSet = new Set((temp_contact_ids || []).map(Number));
         const contacts = await query(
-          `SELECT id, email FROM contacts WHERE id = ANY($1::int[]) AND brand_id=$2`,
+          `SELECT id, email FROM contacts
+           WHERE id = ANY($1::int[]) AND brand_id=$2
+             AND status NOT IN ('suppressed','bounced','unsubscribed','complained')
+             AND lower(email) NOT IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
+             AND '@'||split_part(lower(email),'@',2) NOT IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')`,
           [contact_ids, camp.brand_id]
         );
         if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
@@ -420,7 +424,11 @@ module.exports = async function handler(req, res) {
             `UPDATE campaign_recipients cr
              SET status='failed', error_message='Endereço na lista de supressão', attempted_at=NOW()
              WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
-               AND EXISTS (SELECT 1 FROM suppression s WHERE lower(s.email)=lower(cr.email))`,
+               AND EXISTS (
+                 SELECT 1 FROM suppression s
+                 WHERE lower(s.email)=lower(cr.email)
+                    OR (s.email LIKE '@%' AND lower(s.email)='@'||split_part(lower(cr.email),'@',2))
+               )`,
             [id]
           );
         } catch (e) {
@@ -428,7 +436,11 @@ module.exports = async function handler(req, res) {
             await query(
               `UPDATE campaign_recipients cr SET status='failed'
                WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
-                 AND EXISTS (SELECT 1 FROM suppression s WHERE lower(s.email)=lower(cr.email))`,
+                 AND EXISTS (
+                   SELECT 1 FROM suppression s
+                   WHERE lower(s.email)=lower(cr.email)
+                      OR (s.email LIKE '@%' AND lower(s.email)='@'||split_part(lower(cr.email),'@',2))
+                 )`,
               [id]
             );
           } else { throw e; }
