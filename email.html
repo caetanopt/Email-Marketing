@@ -7633,9 +7633,118 @@ function toggleExportMenu() {
         }, { capture: true, once: false });
     }
 
+    let _currentReportData = null;
+
     function mockExportReport(fmt) {
         document.getElementById('exportMenu')?.classList.add('hidden');
-        showToast(`Relatório exportado em ${fmt.toUpperCase()}. O download irá iniciar em breve.`);
+        if (fmt === 'csv') return _exportReportCSV();
+        if (fmt === 'pdf') return _exportReportPDF();
+    }
+
+    function _csvCell(v) {
+        const s = (v === null || v === undefined) ? '' : String(v);
+        return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function _exportReportCSV() {
+        const c = _currentCampaign || {};
+        const r = _currentReportData || {};
+        const dlv = r.delivery || {}, eng = r.engagement || {};
+        const lines = [];
+        // Bloco de resumo
+        lines.push(['Campanha', c.name || ''].map(_csvCell).join(','));
+        lines.push(['Assunto', c.subject || ''].map(_csvCell).join(','));
+        lines.push(['Enviada em', c.sent_at ? new Date(c.sent_at).toLocaleString('pt-PT') : ''].map(_csvCell).join(','));
+        lines.push('');
+        lines.push('Métrica,Valor');
+        const metrics = [
+            ['Enviados', dlv.sent || 0],
+            ['Taxa de entrega (%)', dlv.delivery_rate || 0],
+            ['Falhados', dlv.failed || 0],
+            ['Rejeitados (bounces)', dlv.bounced || 0],
+            ['Suprimidos', dlv.suppressed || 0],
+            ['Taxa de abertura (%)', eng.open_rate || 0],
+            ['Aberturas únicas', eng.unique_opens || 0],
+            ['Taxa de cliques (%)', eng.click_rate || 0],
+            ['Cliques únicos', eng.unique_clicks || 0],
+            ['CTOR (%)', eng.ctor || 0],
+            ['Cancelamentos', eng.unsubscribes || 0],
+            ['Marcações de spam', eng.spam_complaints || 0],
+        ];
+        metrics.forEach(([k, v]) => lines.push([k, v].map(_csvCell).join(',')));
+        // Bloco de links
+        if (r.top_links?.length) {
+            lines.push('');
+            lines.push('Link,Cliques,Cliques únicos');
+            r.top_links.forEach(l => lines.push([l.url, l.clicks || 0, l.unique_clicks || 0].map(_csvCell).join(',')));
+        }
+        // Bloco de log de envio (por destinatário)
+        if (_repLogRecipients?.length) {
+            lines.push('');
+            lines.push('Email,Nome,Estado,Quando,Detalhe');
+            _repLogRecipients.forEach(rec => {
+                const when = rec.sent_at || rec.attempted_at;
+                const detail = rec.error_message || rec.message_id || '';
+                lines.push([
+                    rec.email || '', rec.contact_name || '', rec.status || '',
+                    when ? new Date(when).toLocaleString('pt-PT') : '', detail,
+                ].map(_csvCell).join(','));
+            });
+        }
+        const csv = '﻿' + lines.join('\r\n'); // BOM p/ acentos no Excel
+        const fname = `relatorio-${_slugify(c.name || 'campanha')}-${_todayStamp()}.csv`;
+        _downloadBlob(csv, fname, 'text/csv;charset=utf-8');
+        showToast('Relatório exportado em CSV.');
+    }
+
+    function _exportReportPDF() {
+        const c = _currentCampaign || {};
+        const r = _currentReportData || {};
+        const dlv = r.delivery || {}, eng = r.engagement || {};
+        const esc = s => escHtml(String(s == null ? '' : s));
+        const row = (k, v) => `<tr><td>${esc(k)}</td><td style="text-align:right;font-weight:600">${esc(v)}</td></tr>`;
+        const linkRows = (r.top_links || []).map(l =>
+            `<tr><td style="word-break:break-all">${esc(l.url)}</td><td style="text-align:right">${esc(l.clicks||0)}</td><td style="text-align:right">${esc(l.unique_clicks||0)}</td></tr>`
+        ).join('');
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório — ${esc(c.name||'')}</title>
+            <style>
+              body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1e293b;margin:32px;font-size:13px}
+              h1{font-size:20px;margin:0 0 4px} .sub{color:#64748b;margin:0 0 24px;font-size:12px}
+              h2{font-size:14px;margin:24px 0 8px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+              table{width:100%;border-collapse:collapse;margin-bottom:8px}
+              td,th{padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:left}
+              th{color:#64748b;font-size:11px;text-transform:uppercase}
+              @media print{@page{margin:16mm}}
+            </style></head><body>
+            <h1>Relatório — ${esc(c.name||'')}</h1>
+            <p class="sub">${esc(c.subject||'')}${c.sent_at ? ' · Enviada a '+new Date(c.sent_at).toLocaleString('pt-PT') : ''} · ${esc(_currentBrand?.name||'')}</p>
+            <h2>Entrega</h2><table>
+              ${row('Enviados', dlv.sent||0)}${row('Taxa de entrega', (dlv.delivery_rate||0)+'%')}
+              ${row('Falhados', dlv.failed||0)}${row('Rejeitados (bounces)', dlv.bounced||0)}${row('Suprimidos', dlv.suppressed||0)}
+            </table>
+            <h2>Envolvimento</h2><table>
+              ${row('Taxa de abertura', (eng.open_rate||0)+'%')}${row('Aberturas únicas', eng.unique_opens||0)}
+              ${row('Taxa de cliques', (eng.click_rate||0)+'%')}${row('Cliques únicos', eng.unique_clicks||0)}
+              ${row('CTOR', (eng.ctor||0)+'%')}${row('Cancelamentos', eng.unsubscribes||0)}${row('Marcações de spam', eng.spam_complaints||0)}
+            </table>
+            ${linkRows ? `<h2>Links mais clicados</h2><table><thead><tr><th>Link</th><th style="text-align:right">Cliques</th><th style="text-align:right">Únicos</th></tr></thead><tbody>${linkRows}</tbody></table>` : ''}
+            <script>window.onload=function(){window.print();}<\/script>
+            </body></html>`;
+        const w = window.open('', '_blank');
+        if (!w) { showToast('Permite pop-ups para exportar o PDF.', 'error'); return; }
+        w.document.open(); w.document.write(html); w.document.close();
+        showToast('A preparar PDF — escolhe "Guardar como PDF" na janela de impressão.');
+    }
+
+    function _slugify(s) { return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'campanha'; }
+    function _todayStamp() { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+    function _downloadBlob(content, filename, mime) {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     function openSendNowModal()  {
@@ -8864,6 +8973,7 @@ ${sections.join('\n\n')}
         _setText('repSubtitle', c.sent_at ? `Enviada a ${_fmtDate(c.sent_at)} · ${_currentBrand.name}` : `${_currentBrand.name}`);
         try {
             const r = await apiFetch(`/api/campaigns/${c.id}?action=report`);
+            _currentReportData = r;
             const dlv = r.delivery || {}, eng = r.engagement || {};
             _setText('repTotalSent', (dlv.sent||0).toString());
             _setText('repDeliveryRate', (dlv.delivery_rate||0) + '%');
