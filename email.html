@@ -4144,7 +4144,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const modal = document.getElementById('listContactEditModal');
         if (!modal) return;
         // Clear form and show loading state
-        ['lceEmail','lceName','lcePhone','lceCompany'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        ['lceEmail','lceName'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         const st = document.getElementById('lceStatus'); if (st) st.value = 'active';
         _renderLceExtraFields(_listMembersExtraData[contactId] || {});
         const saveBtn = document.getElementById('lceSubmitBtn');
@@ -4154,8 +4154,6 @@ ${teSerializeBlocksComment(srcBlocks)}
             const c = await apiFetch(`/api/contacts/${contactId}`);
             document.getElementById('lceEmail').value   = c.email   || '';
             document.getElementById('lceName').value    = c.name    || '';
-            document.getElementById('lcePhone').value   = c.phone   || '';
-            document.getElementById('lceCompany').value = c.company || '';
             document.getElementById('lceStatus').value  = c.status  || 'active';
         } catch (e) {
             closeListContactEditModal();
@@ -4175,8 +4173,6 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!_listContactEditId) return;
         const email   = document.getElementById('lceEmail')?.value.trim();
         const name    = document.getElementById('lceName')?.value.trim();
-        const phone   = document.getElementById('lcePhone')?.value.trim();
-        const company = document.getElementById('lceCompany')?.value.trim();
         const status  = document.getElementById('lceStatus')?.value || 'active';
         if (!email) { _setFieldError(document.getElementById('lceEmail'), false, 'Campo obrigatório'); return; }
         if (!_isValidEmail(email)) { _setFieldError(document.getElementById('lceEmail'), false, 'Email inválido'); return; }
@@ -4192,7 +4188,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             });
             await apiFetch(`/api/contacts/${_listContactEditId}`, {
                 method: 'PUT',
-                body: JSON.stringify({ name, email, phone, company, status })
+                body: JSON.stringify({ name, email, status })
             });
             if (_listExtraFields.length && _currentListId) {
                 await apiFetch(`/api/lists/${_currentListId}?action=update_member_data`, {
@@ -7817,32 +7813,30 @@ function toggleExportMenu() {
 
     function fillContactForm(c) {
         c = c || {};
-        const f = { ctName: c.name||'', ctEmail: c.email||'', ctPhone: c.phone||'', ctCompany: c.company||'', ctStatus: c.status||'active' };
+        const f = { ctName: c.name||'', ctEmail: c.email||'', ctStatus: c.status||'active' };
         Object.entries(f).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
     }
 
     function clearContactForm() {
-        ['ctName','ctEmail','ctPhone','ctCompany'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+        ['ctName','ctEmail'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
         const st = document.getElementById('ctStatus'); if (st) st.value='active';
     }
 
     async function apiSaveContact() {
         const name    = document.getElementById('ctName')?.value.trim();
         const email   = document.getElementById('ctEmail')?.value.trim();
-        const phone   = document.getElementById('ctPhone')?.value.trim();
-        const company = document.getElementById('ctCompany')?.value.trim();
         const status  = document.getElementById('ctStatus')?.value || 'active';
         if (!email) { _setFieldError(document.getElementById('ctEmail'), false, 'Campo obrigatório'); return; }
         if (!_isValidEmail(email)) { _setFieldError(document.getElementById('ctEmail'), false, 'Email inválido'); return; }
         try {
             if (_contactMode === 'new' || !_currentContact?.id) {
-                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ email, name, phone, company }) });
+                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ email, name }) });
                 showScreen('contacts');
                 showToast(`Contacto ${name||email} criado com sucesso.`);
                 _loadContacts(_currentBrand.id);
             } else {
-                await apiFetch(`/api/contacts/${_currentContact.id}`, { method: 'PUT', body: JSON.stringify({ name, email, phone, company, status }) });
-                _currentContact = { ..._currentContact, name, email, phone, company, status };
+                await apiFetch(`/api/contacts/${_currentContact.id}`, { method: 'PUT', body: JSON.stringify({ name, email, status }) });
+                _currentContact = { ..._currentContact, name, email, status };
                 showContact('view');
                 showToast('Contacto guardado com sucesso.');
                 _loadContacts(_currentBrand.id);
@@ -11417,14 +11411,6 @@ ${sections.join('\n\n')}
                                     <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Email *</label>
                                     <input id="ctEmail" type="email" placeholder="email@exemplo.pt" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 </div>
-                                <div>
-                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Telefone</label>
-                                    <input id="ctPhone" type="text" placeholder="+351 9XX XXX XXX" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                </div>
-                                <div>
-                                    <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Empresa</label>
-                                    <input id="ctCompany" type="text" placeholder="Nome da empresa" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                                </div>
                             </div>
                             <div>
                                 <label class="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">Estado</label>
@@ -13148,16 +13134,6 @@ ${sections.join('\n\n')}
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Nome</label>
                 <input id="lceName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Nome do contacto" />
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-500 mb-1">Telefone</label>
-                    <input id="lcePhone" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="+351 900 000 000" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-500 mb-1">Empresa</label>
-                    <input id="lceCompany" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" placeholder="Empresa" />
-                </div>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Estado</label>

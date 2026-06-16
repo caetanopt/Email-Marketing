@@ -41,7 +41,8 @@ module.exports = async function handler(req, res) {
       const { email, name, phone, company, status, custom_attributes } = req.body || {};
       await query(
         `UPDATE contacts SET
-           email=COALESCE($1,email), name=$2, phone=$3, company=$4,
+           email=COALESCE($1,email), name=$2,
+           phone=COALESCE($3,phone), company=COALESCE($4,company),
            status=COALESCE($5,status),
            custom_attributes=COALESCE($6,custom_attributes), updated_at=NOW()
          WHERE id=$7 AND brand_id=$8`,
