@@ -789,6 +789,8 @@
     async function _loadLists(brandId) {
         const el = document.getElementById('listsTableBody');
         if (!el) return;
+        const createBtn = document.getElementById('listsCreateBtn');
+        if (createBtn) createBtn.classList.toggle('hidden', !_canSeeRolesPanel());
         const cacheKey = `lists_${brandId}`;
         const cached = _cacheGet(cacheKey);
         if (!cached) el.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
@@ -3251,6 +3253,18 @@ ${teSerializeBlocksComment(srcBlocks)}
 
     // ── Lists ─────────────────────────────────────────────
     let _editingListName = '';
+
+    function openNewListModal() {
+        // Criar listas é uma acção exclusiva de administradores.
+        if (!_canSeeRolesPanel()) { showToast('Apenas administradores podem criar listas.', 'error'); return; }
+        const nameInp = document.getElementById('newListNameInput');
+        const descInp = document.getElementById('newListDescInput');
+        if (nameInp) nameInp.value = '';
+        if (descInp) descInp.value = '';
+        const m = document.getElementById('newListModal');
+        if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+        nameInp?.focus();
+    }
 
     function closeNewListModal() {
         const m = document.getElementById('newListModal');
@@ -12166,6 +12180,10 @@ ${sections.join('\n\n')}
         <div class="flex-1 ml-64 flex flex-col min-h-screen">
             <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-slate-900">Listas</h1>
+                <button id="listsCreateBtn" onclick="openNewListModal()" class="hidden px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 inline-flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Nova lista
+                </button>
             </header>
             <main class="flex-1 px-8 py-6">
                 <div class="mb-4">
