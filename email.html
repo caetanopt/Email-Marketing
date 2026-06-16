@@ -5683,6 +5683,54 @@ ${teSerializeBlocksComment(srcBlocks)}
         m.classList.add('hidden'); m.classList.remove('flex');
         _mediaPickerCallback = null;
     }
+    async function _mediaPickerUpload(ev) {
+        const file = ev.target.files?.[0];
+        ev.target.value = '';
+        if (!file) return;
+        const allowed = ['image/png','image/jpeg','image/gif'];
+        if (!allowed.includes(file.type)) { showToast('Formato não suportado. Usa PNG, JPG ou GIF.', 'error'); return; }
+        if (file.size > MEDIA_MAX_BYTES) { showToast(`Ficheiro demasiado grande (máx. 1 MB).`, 'error'); return; }
+        const list = document.getElementById('mediaPickerList');
+        const prevHtml = list.innerHTML;
+        list.innerHTML = '<p class="text-sm text-slate-400 text-center py-8 col-span-full">A carregar…</p>';
+        try {
+            const dataUrl = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = e => res(e.target.result);
+                r.onerror = rej;
+                r.readAsDataURL(file);
+            });
+            const optimized = await _optimizeImage(dataUrl, file.type);
+            const mimeType = (optimized.match(/^data:([^;]+)/) || [])[1] || file.type;
+            const name = file.name.replace(/\.[^.]+$/, '');
+            let url;
+            try {
+                const up = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media-upload`, {
+                    method: 'POST',
+                    body: JSON.stringify({ data_base64: optimized.split(',')[1], mime_type: mimeType, filename: name })
+                });
+                url = up.url;
+            } catch (e) {
+                if (e.message && e.message.includes('BLOB_READ_WRITE_TOKEN')) throw e;
+                url = optimized;
+            }
+            await apiFetch(`/api/brands?id=${_currentBrand.id}&action=media`, {
+                method: 'POST',
+                body: JSON.stringify({ name, url, mime_type: mimeType, is_shared: false })
+            });
+            showToast('Imagem carregada.');
+            if (typeof _mediaPickerCallback === 'function') {
+                _mediaPickerCallback(url);
+                closeMediaPicker();
+            } else {
+                // Reload picker list so the new image shows
+                openMediaPicker(_mediaPickerCallback);
+            }
+        } catch (e) {
+            showToast(e.message, 'error');
+            list.innerHTML = prevHtml;
+        }
+    }
     async function _mediaDelete(id) {
         if (!confirm('Apagar esta imagem da biblioteca?')) return;
         try {
@@ -11554,7 +11602,14 @@ ${sections.join('\n\n')}
         </div>
         <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50">
             <button onclick="closeMediaPicker();showScreen('media')" class="text-xs text-slate-600 hover:text-slate-900">Gerir biblioteca →</button>
-            <button onclick="closeMediaPicker()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
+            <div class="flex items-center gap-2">
+                <button onclick="document.getElementById('mediaPickerFileInput').click()" class="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    Carregar imagem
+                </button>
+                <input id="mediaPickerFileInput" type="file" accept="image/png,image/jpeg,image/gif,.png,.jpg,.jpeg,.gif" class="hidden" onchange="_mediaPickerUpload(event)">
+                <button onclick="closeMediaPicker()" class="px-4 py-2 text-sm text-slate-700 border border-slate-200 rounded-lg hover:bg-white">Cancelar</button>
+            </div>
         </div>
     </div>
 </div>
