@@ -35,8 +35,11 @@ module.exports = async function handler(req, res) {
       const rows = await query(
         `SELECT c.id, c.email, c.name, c.phone, c.company, c.status, c.custom_attributes, c.created_at,
                 COALESCE(
-                  json_agg(json_build_object('list_id', lm.list_id, 'list_name', l.name))
-                  FILTER (WHERE lm.list_id IS NOT NULL), '[]'
+                  json_agg(json_build_object(
+                    'list_id', lm.list_id,
+                    'list_name', l.name,
+                    'extra_data', lm.extra_data
+                  )) FILTER (WHERE lm.list_id IS NOT NULL), '[]'
                 ) AS lists
          FROM contacts c
          LEFT JOIN list_members lm ON lm.contact_id = c.id
@@ -81,6 +84,8 @@ module.exports = async function handler(req, res) {
             return;
           }
           try {
+            const extraData = (c.extra_data && typeof c.extra_data === 'object' && !Array.isArray(c.extra_data))
+              ? c.extra_data : null;
             const rows = await query(
               `INSERT INTO contacts (brand_id, email, name, phone, company, source, custom_attributes)
                VALUES ($1,$2,$3,$4,$5,'api',$6)
@@ -109,8 +114,15 @@ module.exports = async function handler(req, res) {
             );
             if (list_id && rows[0].id) {
               await query(
-                'INSERT INTO list_members (list_id, contact_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
-                [list_id, rows[0].id]
+                `INSERT INTO list_members (list_id, contact_id, extra_data)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (list_id, contact_id) DO UPDATE
+                   SET extra_data = CASE
+                     WHEN EXCLUDED.extra_data IS NOT NULL
+                     THEN COALESCE(list_members.extra_data, '{}'::jsonb) || EXCLUDED.extra_data
+                     ELSE list_members.extra_data
+                   END`,
+                [list_id, rows[0].id, extraData ? JSON.stringify(extraData) : null]
               );
             }
             synced++;

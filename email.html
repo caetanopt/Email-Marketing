@@ -5005,7 +5005,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const post = document.getElementById('gsApiDocsPost');
         const del  = document.getElementById('gsApiDocsDel');
         const get  = document.getElementById('gsApiDocsGet');
-        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<opcional>",\n    "contacts": [\n      { "email": "user@exemplo.pt", "name": "Nome Apelido" }\n    ]\n  }'`;
+        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<id_da_lista>",\n    "contacts": [\n      {\n        "email": "user@exemplo.pt",\n        "name": "Nome Apelido",\n        "phone": "+351910000000",\n        "company": "Empresa Lda",\n        "extra_data": { "campo1": "valor1", "cargo": "Director" }\n      }\n    ]\n  }'`;
         if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "emails": ["user@exemplo.pt"] }'`;
         if (get)  get.textContent  = `curl "${base}/api/sync?email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${key}"`;
     }
@@ -5054,9 +5054,15 @@ ${teSerializeBlocksComment(srcBlocks)}
   -H "Authorization: Bearer ${key}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "list_id": "<opcional>",
+    "list_id": "<id_da_lista>",
     "contacts": [
-      { "email": "user@exemplo.pt", "name": "Nome Apelido" }
+      {
+        "email": "user@exemplo.pt",
+        "name": "Nome Apelido",
+        "phone": "+351910000000",
+        "company": "Empresa Lda",
+        "extra_data": { "campo1": "valor1", "cargo": "Director" }
+      }
     ]
   }'`;
         if (del) del.textContent =
