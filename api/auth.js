@@ -30,8 +30,11 @@ module.exports = async function handler(req, res) {
         [token]
       );
       const r = rows[0];
-      if (!r || r.used || new Date(r.expires_at) < new Date() || !r.active) {
+      if (!r || r.used || new Date(r.expires_at) < new Date()) {
         return res.status(401).json({ error: 'Link inválido ou expirado. Solicita um novo.' });
+      }
+      if (!r.active) {
+        return res.status(403).json({ error: 'ACCOUNT_INACTIVE' });
       }
 
       await query('UPDATE magic_link_tokens SET used = TRUE WHERE token = $1', [token]);
