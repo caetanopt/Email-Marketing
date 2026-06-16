@@ -50,11 +50,15 @@ module.exports = withAuth(async (req, res, user) => {
       if (!name) return res.status(400).json({ error: 'name obrigatório' });
       if (!data_url) return res.status(400).json({ error: 'data_url obrigatório' });
       if (data_url.length > 400000) return res.status(400).json({ error: 'Ficheiro demasiado grande (máx ~300 KB)' });
+      // SVG não é suportado pela maioria dos clientes de email — rejeitar.
+      if ((mime_type && /svg/i.test(mime_type)) || /^data:image\/svg/i.test(data_url)) {
+        return res.status(400).json({ error: 'SVG não é suportado em emails. Usa PNG, JPG ou WebP.' });
+      }
       const targetBrandId = scope === 'global' ? null : brand_id;
       const rows = await query(
         `INSERT INTO custom_icons (brand_id, name, mime_type, data_url, created_by)
          VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
-        [targetBrandId, name.substring(0, 255), mime_type || 'image/svg+xml', data_url, user.id]
+        [targetBrandId, name.substring(0, 255), mime_type || 'image/png', data_url, user.id]
       );
       return res.status(201).json({ id: rows[0].id, created_at: rows[0].created_at });
     }

@@ -3210,9 +3210,9 @@ ${teSerializeBlocksComment(srcBlocks)}
         const f = e.dataTransfer.files[0]; if (f) _iconHandleFile(f);
     }
     function _iconHandleFile(file) {
-        const ok = ['image/svg+xml','image/png','image/jpeg','image/webp'];
-        if (!ok.includes(file.type) && !file.name.toLowerCase().endsWith('.svg')) {
-            showToast('Formato não suportado. Usa SVG, PNG, JPG ou WebP.', 'error'); return;
+        const ok = ['image/png','image/jpeg','image/webp'];
+        if (!ok.includes(file.type)) {
+            showToast('Formato não suportado. Usa PNG, JPG ou WebP — SVG não funciona em emails.', 'error'); return;
         }
         if (file.size > 250 * 1024) { showToast('Ficheiro demasiado grande. Máximo 250 KB.', 'error'); return; }
         _iconUploadFile = file;
@@ -3240,7 +3240,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         try {
             await apiFetch(`/api/icons?brand_id=${_currentBrand.id}`, {
                 method: 'POST',
-                body: JSON.stringify({ name, data_url: _iconUploadDataUrl, mime_type: _iconUploadFile?.type || 'image/svg+xml', scope })
+                body: JSON.stringify({ name, data_url: _iconUploadDataUrl, mime_type: _iconUploadFile?.type || 'image/png', scope })
             });
             showToast('Ícone carregado com sucesso.');
             closeIconUploadModal();
@@ -11746,9 +11746,9 @@ ${sections.join('\n\n')}
             <!-- Drop zone -->
             <div id="iconDropZone" ondrop="_iconHandleFileDrop(event)" ondragover="event.preventDefault();this.classList.add('border-slate-900','bg-slate-50')" ondragleave="this.classList.remove('border-slate-900','bg-slate-50')" onclick="document.getElementById('iconFileInput').click()" class="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors">
                 <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                <p class="text-sm text-slate-600">Arrasta um SVG ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
-                <p class="text-[11px] text-slate-400 mt-1">SVG, PNG, JPG · até 250 KB</p>
-                <input id="iconFileInput" type="file" accept=".svg,image/svg+xml,image/png,image/jpeg" class="hidden" onchange="_iconPickFile(event)">
+                <p class="text-sm text-slate-600">Arrasta uma imagem ou <span class="text-slate-900 font-medium">clica para escolher</span></p>
+                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG ou WebP · até 250 KB</p>
+                <input id="iconFileInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" onchange="_iconPickFile(event)">
             </div>
             <!-- Preview -->
             <div id="iconPreviewBox" class="hidden flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
