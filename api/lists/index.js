@@ -291,28 +291,29 @@ module.exports = withAuth(async (req, res, user) => {
   // ── List collection operations (?brand_id=X) ─────────────────────────────
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
 
-  // Listas globais — as mesmas duas listas para todas as marcas. Deduplica por
-  // nome (menor id) para instalações onde a migração 037 ainda não correu.
+  // Listas globais — comuns a todas as marcas. Inclui as duas listas fixas
+  // (Marketing/Colaboradores) e quaisquer listas criadas por administradores.
+  // Deduplica por nome (menor id) para instalações onde a migração 037 ainda
+  // não correu.
   const listQuery = `
     SELECT DISTINCT ON (l.name)
            l.id, l.name, l.description, l.created_at, l.extra_fields,
            (SELECT COUNT(*)::int FROM list_members lm WHERE lm.list_id = l.id) AS total_contacts
     FROM lists l
-    WHERE l.name IN ('Marketing','Colaboradores')
     ORDER BY l.name, l.id`;
 
   try {
     if (!await hasAnyRole(user.id)) return res.status(403).json({ error: 'Sem permissão' });
     if (req.method === 'GET') {
       let rows = await query(listQuery);
-      // Auto-criar as duas listas fixas se ainda não existirem
-      if (rows.length < 2) {
-        const defaults = [
-          ['Marketing',     'Lista principal de marketing'],
-          ['Colaboradores', 'Lista de colaboradores internos'],
-        ];
-        for (const [name, description] of defaults) {
-          if (rows.some(r => r.name === name)) continue;
+      // Garante que as duas listas fixas existem sempre.
+      const fixed = [
+        ['Marketing',     'Lista principal de marketing'],
+        ['Colaboradores', 'Lista de colaboradores internos'],
+      ];
+      const missing = fixed.filter(([name]) => !rows.some(r => r.name === name));
+      if (missing.length) {
+        for (const [name, description] of missing) {
           try {
             await query(
               'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
@@ -326,8 +327,23 @@ module.exports = withAuth(async (req, res, user) => {
     }
 
     if (req.method === 'POST') {
-      // Só existem as duas listas fixas — não é possível criar novas
-      return res.status(403).json({ error: 'Só existem as listas Marketing e Colaboradores, comuns a todas as marcas.' });
+      // Criar listas é uma acção exclusiva de administradores (owner/admin).
+      const adm = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role IN ('owner','admin') LIMIT 1`,
+        [user.id]
+      );
+      if (!adm[0]) return res.status(403).json({ error: 'Apenas administradores podem criar listas.' });
+      const { name, description } = req.body || {};
+      const cleanName = (name || '').trim();
+      if (!cleanName) return res.status(400).json({ error: 'Nome obrigatório' });
+      // Evita duplicados (incluindo as listas fixas Marketing/Colaboradores).
+      const existing = await query('SELECT 1 FROM lists WHERE LOWER(name)=LOWER($1) LIMIT 1', [cleanName]);
+      if (existing[0]) return res.status(409).json({ error: 'Já existe uma lista com esse nome.' });
+      const rows = await query(
+        'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) RETURNING id',
+        [brand_id, cleanName, description || null]
+      );
+      return res.status(201).json({ ok: true, id: rows[0].id });
     }
 
     res.status(405).json({ error: 'Método não permitido' });
