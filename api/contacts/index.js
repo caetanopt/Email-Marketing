@@ -202,7 +202,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, processed_jobs });
     } catch (err) {
       console.error('import_process cron error:', err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Erro de servidor' });
     }
   }
 

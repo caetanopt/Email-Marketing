@@ -216,13 +216,13 @@ module.exports = async function handler(req, res) {
         // (status='sent'), para que a população do numerador seja sempre um
         // subconjunto do denominador — evita taxas acima de 100%.
         const [opens] = await query(
-          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT ee.contact_id)::int AS unique_count
+          `SELECT COUNT(DISTINCT ee.contact_id)::int AS total, COUNT(DISTINCT ee.contact_id)::int AS unique_count
            FROM email_events ee
            JOIN campaign_recipients cr ON cr.campaign_id=ee.campaign_id AND cr.contact_id=ee.contact_id AND cr.status='sent'
            WHERE ee.campaign_id=$1 AND ee.type='open'`, [id]
         );
         const [clicks] = await query(
-          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT ee.contact_id)::int AS unique_count
+          `SELECT COUNT(DISTINCT ee.contact_id)::int AS total, COUNT(DISTINCT ee.contact_id)::int AS unique_count
            FROM email_events ee
            JOIN campaign_recipients cr ON cr.campaign_id=ee.campaign_id AND cr.contact_id=ee.contact_id AND cr.status='sent'
            WHERE ee.campaign_id=$1 AND ee.type='click'`, [id]
@@ -234,7 +234,7 @@ module.exports = async function handler(req, res) {
           "SELECT COUNT(DISTINCT contact_id)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
         );
         const top_links = await query(
-          `SELECT ee.url, COUNT(*)::int AS clicks, COUNT(DISTINCT ee.contact_id)::int AS unique_clicks
+          `SELECT ee.url, COUNT(DISTINCT ee.contact_id)::int AS clicks, COUNT(DISTINCT ee.contact_id)::int AS unique_clicks
            FROM email_events ee
            JOIN campaign_recipients cr ON cr.campaign_id=ee.campaign_id AND cr.contact_id=ee.contact_id AND cr.status='sent'
            WHERE ee.campaign_id=$1 AND ee.type='click' AND ee.url IS NOT NULL
@@ -242,8 +242,8 @@ module.exports = async function handler(req, res) {
         );
         const timeseries = await query(
           `SELECT date_trunc('hour', created_at) AS bucket,
-                  COUNT(*) FILTER (WHERE type='open')::int AS opens,
-                  COUNT(*) FILTER (WHERE type='click')::int AS clicks
+                  COUNT(DISTINCT contact_id) FILTER (WHERE type='open')::int AS opens,
+                  COUNT(DISTINCT contact_id) FILTER (WHERE type='click')::int AS clicks
            FROM email_events
            WHERE campaign_id=$1 AND type IN ('open','click')
            GROUP BY bucket ORDER BY bucket LIMIT 168`, [id]

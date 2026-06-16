@@ -71,16 +71,25 @@ module.exports = async (req, res) => {
             if (!email) continue;
 
             if (isTransient) {
-              const rows = await q(
+              // Only re-queue rows not yet delivered (status='retry'). Rows already
+              // recorded as 'sent' were accepted by SES; re-queuing them would send
+              // a duplicate. For those, just log the bounce without changing status.
+              const retryRows = await q(
                 `UPDATE campaign_recipients
                  SET retry_count = COALESCE(retry_count, 0) + 1,
                      error_message = $2,
                      status = CASE WHEN COALESCE(retry_count, 0) >= 2 THEN 'failed' ELSE 'retry' END
-                 WHERE email=$1 AND status IN ('sent','retry')
+                 WHERE email=$1 AND status = 'retry'
                  RETURNING campaign_id, contact_id`,
                 [email, r.diagnosticCode || 'Soft bounce']
               );
-              eventRows.push(...rows);
+              const sentRows = await q(
+                `UPDATE campaign_recipients SET error_message=$2
+                 WHERE email=$1 AND status = 'sent'
+                 RETURNING campaign_id, contact_id`,
+                [email, r.diagnosticCode || 'Soft bounce']
+              );
+              eventRows.push(...retryRows, ...sentRows);
             } else {
               const rows = await q(
                 `UPDATE campaign_recipients SET status='bounced', error_message=$2

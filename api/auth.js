@@ -219,14 +219,15 @@ module.exports = async function handler(req, res) {
         const found = await query('SELECT id, email FROM users WHERE email=$1', [emailNorm]);
         if (!found[0]) return res.status(404).json({ error: 'Utilizador não encontrado' });
         const uid = found[0].id;
-        try { await query('DELETE FROM magic_link_tokens WHERE user_id=$1', [uid]); } catch (e1) { return res.status(500).json({ error: 'magic_link_tokens: ' + e1.message }); }
+        try { await query('DELETE FROM magic_link_tokens WHERE user_id=$1', [uid]); } catch (e1) { console.error('delete_user magic_link_tokens:', e1.message); return res.status(500).json({ error: 'Erro ao apagar tokens' }); }
         try { await query('DELETE FROM user_brand_areas WHERE user_id=$1', [uid]); } catch (_) {}
-        try { await query('DELETE FROM user_brand_roles WHERE user_id=$1', [uid]); } catch (e2) { return res.status(500).json({ error: 'user_brand_roles: ' + e2.message }); }
+        try { await query('DELETE FROM user_brand_roles WHERE user_id=$1', [uid]); } catch (e2) { console.error('delete_user user_brand_roles:', e2.message); return res.status(500).json({ error: 'Erro ao apagar roles' }); }
         try { await query('UPDATE media SET created_by=NULL WHERE created_by=$1', [uid]); } catch (_) {}
-        try { await query('DELETE FROM users WHERE id=$1', [uid]); } catch (e3) { return res.status(500).json({ error: 'users: ' + e3.message }); }
+        try { await query('DELETE FROM users WHERE id=$1', [uid]); } catch (e3) { console.error('delete_user users:', e3.message); return res.status(500).json({ error: 'Erro ao apagar utilizador' }); }
         return res.status(200).json({ ok: true, action: 'deleted', user: found[0] });
       } catch (err) {
-        return res.status(500).json({ error: err.message, stack: err.stack?.split('\n')[0] });
+        console.error('delete_user error:', err);
+        return res.status(500).json({ error: 'Erro de servidor' });
       }
     }
     if (action === 'update_role') {

@@ -75,7 +75,8 @@ module.exports = async function handler(req, res) {
     try {
       return await handleImageToMjml(req, res);
     } catch (err) {
-      return res.status(500).json({ error: err.message || 'Erro de servidor' });
+      console.error('image-to-mjml error:', err.message);
+      return res.status(500).json({ error: 'Erro de servidor' });
     }
   }
 
