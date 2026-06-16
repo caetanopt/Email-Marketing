@@ -179,14 +179,17 @@ module.exports = async (req, res) => {
   const { type, cid, uid, t, url } = req.query;
 
   if (type === 'click') {
-    const dest = url && url.startsWith('http') ? url : '/';
-    // Record click BEFORE redirecting — Vercel terminates the function on res.end()
+    // Validate HMAC token before trusting the url param — prevents open-redirect abuse.
+    let dest = '/';
     try {
       if (cid && uid && t) {
         const expected = trackToken(cid, uid);
         const campaignId = parseInt(cid, 10);
         const contactId  = parseInt(uid, 10);
-        if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
+        const valid = t.length === expected.length
+          && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(expected));
+        if (valid && !isNaN(campaignId) && !isNaN(contactId)) {
+          if (url && url.startsWith('http')) dest = url;
           await query(
             `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
             [campaignId, contactId, url || null]
