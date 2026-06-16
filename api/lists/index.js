@@ -262,8 +262,21 @@ module.exports = withAuth(async (req, res, user) => {
           );
           return res.status(200).json({ ok: true, deleted: del.length });
         }
-        // As duas listas são fixas e comuns a todas as marcas — não podem ser apagadas
-        return res.status(403).json({ error: 'As listas Marketing e Colaboradores são fixas e não podem ser apagadas.' });
+        // Apagar a própria lista — exclusivo de administradores e nunca as
+        // listas fixas (Marketing/Colaboradores). Os contactos permanecem na
+        // base de dados; apenas as associações à lista são removidas.
+        if (['Marketing','Colaboradores'].includes(auth[0].name)) {
+          return res.status(403).json({ error: 'As listas Marketing e Colaboradores são fixas e não podem ser apagadas.' });
+        }
+        const admDel = await query(
+          `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role IN ('owner','admin') LIMIT 1`,
+          [user.id]
+        );
+        if (!admDel[0]) return res.status(403).json({ error: 'Apenas administradores podem apagar listas.' });
+        try { await query('DELETE FROM segments WHERE list_id=$1', [id]); } catch (_) {}
+        await query('DELETE FROM list_members WHERE list_id=$1', [id]);
+        await query('DELETE FROM lists WHERE id=$1', [id]);
+        return res.status(200).json({ ok: true });
       }
 
       if (req.method === 'POST' && action === 'add_contact') {
