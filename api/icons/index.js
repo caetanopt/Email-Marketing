@@ -1,5 +1,5 @@
 const { query } = require('../../lib/db');
-const { withAuth } = require('../../lib/auth');
+const { withAuth, requireBrand } = require('../../lib/auth');
 
 module.exports = withAuth(async (req, res, user) => {
 
@@ -27,6 +27,7 @@ module.exports = withAuth(async (req, res, user) => {
   }
 
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
+  if (!await requireBrand(req, res, user.id, brand_id)) return;
 
   try {
     if (req.method === 'GET') {

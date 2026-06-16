@@ -119,6 +119,7 @@ module.exports = async function handler(req, res) {
 
   // Operations on the collection (brand_id required)
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
+  if (!await authorizeBrand(user.id, brand_id)) return res.status(403).json({ error: 'Acesso negado a esta marca' });
 
   try {
     if (req.method === 'GET') {

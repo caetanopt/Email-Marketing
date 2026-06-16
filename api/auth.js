@@ -177,12 +177,17 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // DELETE — admin setup actions (list_users, upsert_admin, delete_user)
+  // DELETE — admin setup actions (list_users, upsert_admin, delete_user).
+  // Protegido apenas pelo CRON_SECRET (comparação em tempo constante). Sem
+  // token fixo no código.
   if (req.method === 'DELETE') {
-    const TEMP_TOKEN = 'setup-caetano-2026';
-    const auth = req.headers.authorization;
+    const auth = req.headers.authorization || '';
     const secret = process.env.CRON_SECRET;
-    if (auth !== `Bearer ${TEMP_TOKEN}` && (!secret || auth !== `Bearer ${secret}`)) {
+    const expected = secret ? `Bearer ${secret}` : null;
+    const ok = expected
+      && auth.length === expected.length
+      && crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
+    if (!ok) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const { action, email: targetEmail, old_email, name } = req.body || {};

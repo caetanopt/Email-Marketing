@@ -1,5 +1,5 @@
 const { query, transaction } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, cors, requireBrand } = require('../../lib/auth');
 
 const IMPORT_INIT_SQL = `
   CREATE TABLE IF NOT EXISTS import_jobs (
@@ -212,6 +212,7 @@ module.exports = async function handler(req, res) {
 
   const { brand_id, search, status, list_id, page = 1, limit = 50, action, import_id } = req.query;
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
+  if (!await requireBrand(req, res, user.id, brand_id)) return;
 
   try {
     // ── Imports history ─────────────────────────────────────

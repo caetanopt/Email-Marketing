@@ -1,7 +1,7 @@
 const { GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../../lib/db');
 const { getSESClient } = require('../../lib/ses');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, cors, requireBrand } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -251,6 +251,7 @@ module.exports = async function handler(req, res) {
   }
 
   if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
+  if (!await requireBrand(req, res, user.id, brand_id)) return;
 
   try {
     if (action === 'dashboard' && req.method === 'GET') {
