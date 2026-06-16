@@ -4964,10 +4964,70 @@ ${teSerializeBlocksComment(srcBlocks)}
             _applyBrandSettingsData(b);
         } catch (err) { console.error(err); }
         _loadBlocks();
-        _bsLoadApiKey();
     }
 
-    // ── API key management ────────────────────────────────────────
+    // ── Global Settings: API key per brand ───────────────────────
+    let _gsApiKeyBrandId = null;
+
+    async function _gsLoadApiSection() {
+        const sel = document.getElementById('gsApiKeyBrandSelect');
+        if (!sel) return;
+        try {
+            const data = await apiFetch('/api/brands');
+            const brands = data.data || [];
+            sel.innerHTML = brands.map(b => `<option value="${escHtml(b.id)}">${escHtml(b.name)}</option>`).join('');
+            if (brands.length) { _gsApiKeyBrandId = brands[0].id; await _gsLoadApiKey(); }
+        } catch (e) { console.error('gsLoadApiSection:', e); }
+    }
+
+    async function _gsLoadApiKey() {
+        if (!_gsApiKeyBrandId) return;
+        try {
+            const { api_key } = await apiFetch(`/api/brands?id=${_gsApiKeyBrandId}&action=api_key`);
+            _gsShowApiKey(api_key);
+        } catch (e) { console.error('gsLoadApiKey:', e); }
+    }
+
+    function _gsShowApiKey(key) {
+        const empty  = document.getElementById('gsApiKeyEmpty');
+        const filled = document.getElementById('gsApiKeyFilled');
+        const val    = document.getElementById('gsApiKeyValue');
+        const label  = document.getElementById('gsApiKeyGenLabel');
+        if (!key) {
+            empty?.classList.remove('hidden'); filled?.classList.add('hidden');
+            if (label) label.textContent = 'Gerar chave'; return;
+        }
+        empty?.classList.add('hidden'); filled?.classList.remove('hidden');
+        if (val) val.textContent = key;
+        if (label) label.textContent = 'Regenerar';
+        const base = window.location.origin;
+        const post = document.getElementById('gsApiDocsPost');
+        const del  = document.getElementById('gsApiDocsDel');
+        const get  = document.getElementById('gsApiDocsGet');
+        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<opcional>",\n    "contacts": [\n      { "email": "user@exemplo.pt", "name": "Nome Apelido" }\n    ]\n  }'`;
+        if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "emails": ["user@exemplo.pt"] }'`;
+        if (get)  get.textContent  = `curl "${base}/api/sync?email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${key}"`;
+    }
+
+    async function _gsGenerateApiKey() {
+        if (!_gsApiKeyBrandId) return;
+        const btn = document.getElementById('gsApiKeyGenBtn');
+        if (btn) btn.disabled = true;
+        try {
+            const { api_key } = await apiFetch(`/api/brands?id=${_gsApiKeyBrandId}&action=generate_api_key`, { method: 'POST' });
+            _gsShowApiKey(api_key);
+            showToast('Chave API gerada com sucesso. Guarda-a num local seguro.');
+        } catch (e) { showToast('Erro ao gerar chave API.', 'error'); }
+        finally { if (btn) btn.disabled = false; }
+    }
+
+    function _gsCopyApiKey() {
+        const key = document.getElementById('gsApiKeyValue')?.textContent?.trim();
+        if (!key) return;
+        navigator.clipboard.writeText(key).then(() => showToast('Chave copiada.')).catch(() => showToast('Erro ao copiar.', 'error'));
+    }
+
+    // ── Brand Settings: API key management ───────────────────────
     function _bsShowApiKey(key) {
         const empty  = document.getElementById('bsApiKeyEmpty');
         const filled = document.getElementById('bsApiKeyFilled');
@@ -8862,7 +8922,7 @@ ${sections.join('\n\n')}
             }
             if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
             if (id === 'lists' && _currentBrand?.id) _loadLists(_currentBrand.id);
-            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadBrandsAdmin(); }
+            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadBrandsAdmin(); _gsLoadApiSection(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -12886,6 +12946,56 @@ ${sections.join('\n\n')}
                     </div>
                 </div>
 
+                <!-- API de Sincronização -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5">
+                    <div class="flex items-start justify-between mb-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">API de sincronização</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Chave API por marca para integração com sistemas externos (CRM, website, etc.).</p>
+                        </div>
+                        <button onclick="_gsGenerateApiKey()" id="gsApiKeyGenBtn" class="flex-shrink-0 ml-4 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span id="gsApiKeyGenLabel">Gerar chave</span>
+                        </button>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-xs text-slate-500 block mb-1.5">Marca</label>
+                        <select id="gsApiKeyBrandSelect" onchange="_gsApiKeyBrandId=this.value;_gsLoadApiKey()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"></select>
+                    </div>
+                    <div id="gsApiKeyWrap">
+                        <div id="gsApiKeyEmpty" class="flex items-center gap-2 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                            Nenhuma chave gerada. Clica em "Gerar chave" para criar uma.
+                        </div>
+                        <div id="gsApiKeyFilled" class="hidden space-y-3">
+                            <div class="flex items-center gap-2">
+                                <code id="gsApiKeyValue" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 truncate select-all"></code>
+                                <button onclick="_gsCopyApiKey()" title="Copiar" class="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 hover:text-slate-900 transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                </button>
+                            </div>
+                            <details class="text-xs">
+                                <summary class="cursor-pointer text-slate-500 hover:text-slate-800 font-medium select-none">Como usar a API</summary>
+                                <div class="mt-3 space-y-3">
+                                    <div>
+                                        <p class="text-slate-500 mb-1 font-medium">Sincronizar contactos (POST)</p>
+                                        <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="gsApiDocsPost"></code></pre>
+                                    </div>
+                                    <div>
+                                        <p class="text-slate-500 mb-1 font-medium">Cancelar subscrição (DELETE)</p>
+                                        <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="gsApiDocsDel"></code></pre>
+                                    </div>
+                                    <div>
+                                        <p class="text-slate-500 mb-1 font-medium">Consultar contacto (GET)</p>
+                                        <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="gsApiDocsGet"></code></pre>
+                                    </div>
+                                    <p class="text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">Guarda a chave num local seguro. Se a regenerares, a chave anterior deixa de funcionar imediatamente.</p>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+
             </main>
         </div>
     </div>
@@ -13241,54 +13351,6 @@ ${sections.join('\n\n')}
                         </div>
                     </div>
 
-                    <!-- API de sincronização -->
-                    <div class="bg-white border border-slate-200 rounded-xl p-5">
-                        <div class="flex items-start justify-between mb-1">
-                            <div>
-                                <h3 class="font-semibold text-slate-900 text-sm">API de sincronização</h3>
-                                <p class="text-xs text-slate-400 mt-0.5">Usa esta chave para enviar contactos de sistemas externos (CRM, website, etc.) directamente para esta marca.</p>
-                            </div>
-                            <button onclick="_bsGenerateApiKey()" id="bsApiKeyGenBtn" class="flex-shrink-0 ml-4 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-1.5">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                <span id="bsApiKeyGenLabel">Gerar chave</span>
-                            </button>
-                        </div>
-
-                        <!-- Chave actual -->
-                        <div id="bsApiKeyWrap" class="mt-4">
-                            <div id="bsApiKeyEmpty" class="flex items-center gap-2 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400">
-                                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-                                Nenhuma chave gerada. Clica em "Gerar chave" para criar uma.
-                            </div>
-                            <div id="bsApiKeyFilled" class="hidden space-y-3">
-                                <div class="flex items-center gap-2">
-                                    <code id="bsApiKeyValue" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 truncate select-all"></code>
-                                    <button onclick="_bsCopyApiKey()" title="Copiar" class="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 hover:text-slate-900 transition-colors">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                                    </button>
-                                </div>
-                                <!-- Documentação rápida -->
-                                <details class="text-xs">
-                                    <summary class="cursor-pointer text-slate-500 hover:text-slate-800 font-medium select-none">Como usar a API</summary>
-                                    <div class="mt-3 space-y-3">
-                                        <div>
-                                            <p class="text-slate-500 mb-1 font-medium">Sincronizar contactos (POST)</p>
-                                            <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="bsApiDocsPost"></code></pre>
-                                        </div>
-                                        <div>
-                                            <p class="text-slate-500 mb-1 font-medium">Cancelar subscrição (DELETE)</p>
-                                            <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="bsApiDocsDel"></code></pre>
-                                        </div>
-                                        <div>
-                                            <p class="text-slate-500 mb-1 font-medium">Consultar contacto (GET)</p>
-                                            <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="bsApiDocsGet"></code></pre>
-                                        </div>
-                                        <p class="text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">Guarda a chave num local seguro. Se a regenerares, a chave anterior deixa de funcionar imediatamente.</p>
-                                    </div>
-                                </details>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </main>
         </div>
