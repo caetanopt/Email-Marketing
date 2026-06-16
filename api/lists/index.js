@@ -28,8 +28,8 @@ function buildSegmentWhere(rules, match) {
     if (value === undefined || value === null || value === '') return null;
 
     switch (operator) {
-      case 'equals':       return `${col} = ${next(value)}`;
-      case 'not_equals':   return `${col} <> ${next(value)}`;
+      case 'equals':       return `${col} ILIKE ${next(value)}`;
+      case 'not_equals':   return `${col} NOT ILIKE ${next(value)}`;
       case 'contains':     return `${col} ILIKE ${next('%'+value+'%')}`;
       case 'not_contains': return `${col} NOT ILIKE ${next('%'+value+'%')}`;
       case 'starts_with':  return `${col} ILIKE ${next(value+'%')}`;
