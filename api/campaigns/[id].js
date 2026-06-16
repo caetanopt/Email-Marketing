@@ -212,13 +212,20 @@ module.exports = async function handler(req, res) {
                   COUNT(*) FILTER (WHERE status='suppressed')::int AS suppressed
            FROM campaign_recipients WHERE campaign_id=$1`, [id]
         );
+        // Conta apenas eventos de destinatários efectivamente entregues
+        // (status='sent'), para que a população do numerador seja sempre um
+        // subconjunto do denominador — evita taxas acima de 100%.
         const [opens] = await query(
-          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT contact_id)::int AS unique_count
-           FROM email_events WHERE campaign_id=$1 AND type='open'`, [id]
+          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT ee.contact_id)::int AS unique_count
+           FROM email_events ee
+           JOIN campaign_recipients cr ON cr.campaign_id=ee.campaign_id AND cr.contact_id=ee.contact_id AND cr.status='sent'
+           WHERE ee.campaign_id=$1 AND ee.type='open'`, [id]
         );
         const [clicks] = await query(
-          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT contact_id)::int AS unique_count
-           FROM email_events WHERE campaign_id=$1 AND type='click'`, [id]
+          `SELECT COUNT(*)::int AS total, COUNT(DISTINCT ee.contact_id)::int AS unique_count
+           FROM email_events ee
+           JOIN campaign_recipients cr ON cr.campaign_id=ee.campaign_id AND cr.contact_id=ee.contact_id AND cr.status='sent'
+           WHERE ee.campaign_id=$1 AND ee.type='click'`, [id]
         );
         const [unsubs] = await query(
           "SELECT COUNT(DISTINCT contact_id)::int AS total FROM email_events WHERE campaign_id=$1 AND type='unsubscribe'", [id]
@@ -227,9 +234,11 @@ module.exports = async function handler(req, res) {
           "SELECT COUNT(DISTINCT contact_id)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
         );
         const top_links = await query(
-          `SELECT url, COUNT(*)::int AS clicks, COUNT(DISTINCT contact_id)::int AS unique_clicks
-           FROM email_events WHERE campaign_id=$1 AND type='click' AND url IS NOT NULL
-           GROUP BY url ORDER BY clicks DESC LIMIT 10`, [id]
+          `SELECT ee.url, COUNT(*)::int AS clicks, COUNT(DISTINCT ee.contact_id)::int AS unique_clicks
+           FROM email_events ee
+           JOIN campaign_recipients cr ON cr.campaign_id=ee.campaign_id AND cr.contact_id=ee.contact_id AND cr.status='sent'
+           WHERE ee.campaign_id=$1 AND ee.type='click' AND ee.url IS NOT NULL
+           GROUP BY ee.url ORDER BY clicks DESC LIMIT 10`, [id]
         );
         const timeseries = await query(
           `SELECT date_trunc('hour', created_at) AS bucket,
@@ -659,7 +668,7 @@ module.exports = async function handler(req, res) {
             if (batchState.quotaHit) return;
             try {
               const token = unsubToken(contact.email, c.brand_id);
-              const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&email=${encodeURIComponent(contact.email)}&token=${token}`;
+              const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&c=${id}&email=${encodeURIComponent(contact.email)}&token=${token}`;
               const trackTok = trackToken(id, contact.contact_id);
               const pixelUrl = `${APP_URL}/api/track?type=open&cid=${id}&uid=${contact.contact_id}&t=${trackTok}`;
               const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">

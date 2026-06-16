@@ -13,7 +13,7 @@ function verifyToken(email, brandId, token) {
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
-  const { brand_id, search, reason, page = 1, limit = 50, action, email: qEmail, token, type } = req.query;
+  const { brand_id, search, reason, page = 1, limit = 50, action, email: qEmail, token, type, c: campaignParam } = req.query;
 
   const DOMAIN_RE = /^@?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
   function normaliseDomain(v) {
@@ -61,21 +61,39 @@ module.exports = async function handler(req, res) {
       }
       // Mark contact as unsubscribed across all brands
       await query("UPDATE contacts SET status='unsubscribed' WHERE email=$1", [e]);
-      // Track event for reporting
+      // Track event for reporting. Attribute to the exact campaign whose email
+      // carried the unsubscribe link (?c=) when available; caso contrário, recai
+      // na heurística da campanha mais recente que o contacto recebeu.
+      const campaignId = parseInt(campaignParam, 10);
       try {
-        await query(
-          `INSERT INTO email_events (campaign_id, contact_id, type)
-           SELECT cr.campaign_id, c.id, 'unsubscribe' FROM contacts c
-           LEFT JOIN campaign_recipients cr ON cr.contact_id=c.id
-           WHERE c.brand_id=$1 AND c.email=$2
-             AND NOT EXISTS (
-               SELECT 1 FROM email_events ee
-               WHERE ee.contact_id=c.id AND ee.type='unsubscribe'
-                 AND ee.campaign_id IS NOT DISTINCT FROM cr.campaign_id
-             )
-           ORDER BY cr.sent_at DESC NULLS LAST LIMIT 1`,
-          [brand_id, e]
-        );
+        if (!isNaN(campaignId)) {
+          await query(
+            `INSERT INTO email_events (campaign_id, contact_id, type)
+             SELECT $3, c.id, 'unsubscribe' FROM contacts c
+             WHERE c.brand_id=$1 AND c.email=$2
+               AND EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id=$3 AND cr.contact_id=c.id)
+               AND NOT EXISTS (
+                 SELECT 1 FROM email_events ee
+                 WHERE ee.contact_id=c.id AND ee.type='unsubscribe' AND ee.campaign_id=$3
+               )
+             LIMIT 1`,
+            [brand_id, e, campaignId]
+          );
+        } else {
+          await query(
+            `INSERT INTO email_events (campaign_id, contact_id, type)
+             SELECT cr.campaign_id, c.id, 'unsubscribe' FROM contacts c
+             LEFT JOIN campaign_recipients cr ON cr.contact_id=c.id
+             WHERE c.brand_id=$1 AND c.email=$2
+               AND NOT EXISTS (
+                 SELECT 1 FROM email_events ee
+                 WHERE ee.contact_id=c.id AND ee.type='unsubscribe'
+                   AND ee.campaign_id IS NOT DISTINCT FROM cr.campaign_id
+               )
+             ORDER BY cr.sent_at DESC NULLS LAST LIMIT 1`,
+            [brand_id, e]
+          );
+        }
       } catch (err) { console.error('unsubscribe event log:', err); }
       const isJson = (req.headers.accept || '').includes('application/json');
       if (isJson) return res.status(200).json({ ok: true, email: e });
