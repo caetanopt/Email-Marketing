@@ -8906,11 +8906,15 @@ ${sections.join('\n\n')}
     }
 
     let _repLogRecipients = [];
+    let _repLogPage = 1;
+    const _REP_LOG_PAGE_SIZE = 15;
+    function _repLogRender(resetPage) { if (resetPage) _repLogPage = 1; _renderReportLog(); }
+    function _repLogGoPage(p) { _repLogPage = p; _renderReportLog(); }
     async function _loadReportSendLog(campaignId) {
         try {
             const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_log`);
             _repLogRecipients = r.recipients || [];
-            _renderReportLog();
+            _repLogRender(true);
             // Show error panel if there are any failures
             const hasErrors = _repLogRecipients.some(r => ['failed','bounced','retry'].includes(r.status));
             const sec = document.getElementById('repErrorLogSection');
@@ -8964,13 +8968,21 @@ ${sections.join('\n\n')}
         if (!tb) return;
         const status = document.getElementById('repLogFilter')?.value || '';
         const q = (document.getElementById('repLogSearch')?.value || '').trim().toLowerCase();
+        const pag = document.getElementById('repLogPagination');
         let rows = _repLogRecipients;
         if (status) rows = rows.filter(r => r.status === status);
         if (q) rows = rows.filter(r => (r.email||'').toLowerCase().includes(q) || (r.contact_name||'').toLowerCase().includes(q));
         if (!rows.length) {
             tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Sem registos.</td></tr>`;
+            if (pag) pag.innerHTML = '';
             return;
         }
+        const total = rows.length;
+        const pages = Math.ceil(total / _REP_LOG_PAGE_SIZE) || 1;
+        if (_repLogPage > pages) _repLogPage = pages;
+        if (_repLogPage < 1) _repLogPage = 1;
+        const start = (_repLogPage - 1) * _REP_LOG_PAGE_SIZE;
+        const pageRows = rows.slice(start, start + _REP_LOG_PAGE_SIZE);
         const stCfg = {
             sent:       ['bg-green-100 text-green-700',   'Enviado'],
             failed:     ['bg-red-100 text-red-700',       'Falhou'],
@@ -8979,7 +8991,7 @@ ${sections.join('\n\n')}
             suppressed: ['bg-slate-100 text-slate-600',   'Suprimido'],
             pending:    ['bg-slate-100 text-slate-500',   'Pendente'],
         };
-        tb.innerHTML = rows.slice(0, 500).map(r => {
+        tb.innerHTML = pageRows.map(r => {
             const [bg, lbl] = stCfg[r.status] || ['bg-slate-100 text-slate-600', r.status||'—'];
             const when = r.sent_at || r.attempted_at;
             const retryBadge = (r.retry_count > 0) ? ` <span class="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">${r.retry_count}×</span>` : '';
@@ -8990,6 +9002,26 @@ ${sections.join('\n\n')}
                 <td class="px-4 py-2 text-slate-500">${r.error_message ? `<span class="text-red-600" title="${escHtml(r.error_message)}">${escHtml(r.error_message.slice(0, 80))}${r.error_message.length>80?'…':''}</span>` : (r.message_id ? `<span class="text-[10px] font-mono text-slate-400" title="${escHtml(r.message_id)}">msg ${escHtml(r.message_id.slice(0,16))}…</span>` : '—')}</td>
             </tr>`;
         }).join('');
+        if (pag) {
+            if (pages <= 1) {
+                pag.innerHTML = '';
+            } else {
+                const p = _repLogPage;
+                const btn = (label, page, active, disabled) =>
+                    `<button onclick="_repLogGoPage(${page})" ${disabled?'disabled':''} class="px-3 py-1 border border-slate-200 rounded text-xs ${active?'bg-slate-900 text-white':disabled?'opacity-40 cursor-not-allowed':'hover:bg-slate-50'}">${label}</button>`;
+                const range = [], delta = 2;
+                for (let i = Math.max(1, p-delta); i <= Math.min(pages, p+delta); i++) range.push(i);
+                let nav = btn('Anterior', p-1, false, p===1);
+                if (range[0] > 1) { nav += btn(1, 1, false, false); if (range[0] > 2) nav += `<span class="px-1 text-slate-400">…</span>`; }
+                range.forEach(i => { nav += btn(i, i, i===p, false); });
+                if (range[range.length-1] < pages) { if (range[range.length-1] < pages-1) nav += `<span class="px-1 text-slate-400">…</span>`; nav += btn(pages, pages, false, false); }
+                nav += btn('Próxima', p+1, false, p===pages);
+                pag.innerHTML = `<div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                    <span>Mostrando ${start+1}–${Math.min(start+_REP_LOG_PAGE_SIZE,total)} de ${total}</span>
+                    <div class="flex items-center gap-1">${nav}</div>
+                </div>`;
+            }
+        }
     }
 
     function _renderReportSegments(rows) {
@@ -11150,7 +11182,7 @@ ${sections.join('\n\n')}
                     <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
                         <h3 class="text-sm font-semibold text-slate-900">Log de envio</h3>
                         <div class="flex items-center gap-2 text-xs">
-                            <select id="repLogFilter" onchange="_renderReportLog()" class="pl-2 pr-7 py-1 border border-slate-200 rounded text-xs bg-white">
+                            <select id="repLogFilter" onchange="_repLogRender(true)" class="pl-2 pr-7 py-1 border border-slate-200 rounded text-xs bg-white">
                                 <option value="">Todos</option>
                                 <option value="sent">Enviados</option>
                                 <option value="failed">Falhados</option>
@@ -11158,12 +11190,12 @@ ${sections.join('\n\n')}
                                 <option value="retry">Retry</option>
                                 <option value="suppressed">Suprimidos</option>
                             </select>
-                            <input id="repLogSearch" type="search" placeholder="Pesquisar email…" oninput="_renderReportLog()" class="px-2 py-1 border border-slate-200 rounded text-xs w-48">
+                            <input id="repLogSearch" type="search" placeholder="Pesquisar email…" oninput="_repLogRender(true)" class="px-2 py-1 border border-slate-200 rounded text-xs w-48">
                         </div>
                     </div>
-                    <div class="overflow-x-auto" style="max-height:380px">
+                    <div class="overflow-x-auto">
                         <table class="w-full text-xs">
-                            <thead class="bg-slate-50 sticky top-0">
+                            <thead class="bg-slate-50">
                                 <tr class="border-b border-slate-200">
                                     <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Email</th>
                                     <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Estado</th>
@@ -11176,6 +11208,7 @@ ${sections.join('\n\n')}
                             </tbody>
                         </table>
                     </div>
+                    <div id="repLogPagination"></div>
                 </div>
 
                 <!-- ── Log de erros detalhado ─── -->
