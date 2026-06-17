@@ -5285,6 +5285,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (nameEl) nameEl.value = '';
         document.getElementById('te_btnPickHeader')?.classList.add('hidden');
         document.getElementById('te_btnPickFooter')?.classList.add('hidden');
+        document.querySelectorAll('#templateEdit .te-tpl-only').forEach(el => el.classList.add('hidden'));
         if (typeof teRender === 'function') teRender();
     }
     async function _blockEdit(blockId, returnTo = 'blocks') {
