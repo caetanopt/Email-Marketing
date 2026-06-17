@@ -3323,31 +3323,15 @@ ${teSerializeBlocksComment(srcBlocks)}
             el.innerHTML = '<p class="text-xs text-slate-400 py-1">Sem campos definidos.</p>';
             return;
         }
-        const pages = Math.ceil(total / _EXTRA_FIELDS_PER_PAGE);
-        if (_listExtraFieldsPage > pages) _listExtraFieldsPage = pages;
-        if (_listExtraFieldsPage < 1)     _listExtraFieldsPage = 1;
-        const start = (_listExtraFieldsPage - 1) * _EXTRA_FIELDS_PER_PAGE;
-        const rows = _listExtraFields.slice(start, start + _EXTRA_FIELDS_PER_PAGE).map((f, pi) => {
-            const absI = start + pi;
-            return `
+        const rows = _listExtraFields.map((f, absI) => `
             <div class="flex items-center gap-3 py-2">
                 <span class="flex-1 text-sm text-slate-800">${escHtml(f.name)}</span>
                 <span class="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded capitalize">${escHtml(f.type||'texto')}</span>
                 <button onclick="removeListExtraField(${absI})" class="text-red-400 hover:text-red-600 text-xs leading-none px-1">✕</button>
-            </div>`;
-        }).join('');
-        const pagination = pages > 1 ? `
-            <div class="flex items-center justify-between pt-2 mt-1 border-t border-slate-100">
-                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_EXTRA_FIELDS_PER_PAGE,total)} de ${total}</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="_listExtraFieldsPage--;_renderListExtraFieldsDef()" ${_listExtraFieldsPage<=1?'disabled':''}
-                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
-                    <span class="text-xs text-slate-600 px-1">${_listExtraFieldsPage}/${pages}</span>
-                    <button onclick="_listExtraFieldsPage++;_renderListExtraFieldsDef()" ${_listExtraFieldsPage>=pages?'disabled':''}
-                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
-                </div>
-            </div>` : '';
-        el.innerHTML = `<div class="divide-y divide-slate-100">${rows}</div>` + pagination;
+            </div>`).join('');
+        // > 5 registos → scroll vertical (≈5 linhas) em vez de paginação
+        const scroll = total > 5 ? ' style="max-height:200px;overflow-y:auto;"' : '';
+        el.innerHTML = `<div class="divide-y divide-slate-100"${scroll}>${rows}</div>`;
     }
 
     function addListExtraField() {
@@ -3362,14 +3346,14 @@ ${teSerializeBlocksComment(srcBlocks)}
         _listExtraFields.push({ name, type });
         if (inp) inp.value = '';
         if (sel) sel.value = 'text';
-        _listExtraFieldsPage = Math.ceil(_listExtraFields.length / _EXTRA_FIELDS_PER_PAGE);
         _renderListExtraFieldsDef();
+        // scroll até ao fim para mostrar o campo recém-adicionado
+        const box = document.getElementById('listExtraFieldsDef')?.firstElementChild;
+        if (box) box.scrollTop = box.scrollHeight;
     }
 
     function removeListExtraField(i) {
         _listExtraFields.splice(i, 1);
-        const pages = Math.max(1, Math.ceil(_listExtraFields.length / _EXTRA_FIELDS_PER_PAGE));
-        if (_listExtraFieldsPage > pages) _listExtraFieldsPage = pages;
         _renderListExtraFieldsDef();
     }
 
@@ -3842,11 +3826,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             el.innerHTML = '<p class="text-sm text-slate-400 py-2">Sem segmentos criados.</p>';
             return;
         }
-        const pages = Math.ceil(total / _SEGMENTS_PER_PAGE);
-        if (_segmentsPage > pages) _segmentsPage = pages;
-        if (_segmentsPage < 1)     _segmentsPage = 1;
-        const start = (_segmentsPage - 1) * _SEGMENTS_PER_PAGE;
-        const rows = _segments.slice(start, start + _SEGMENTS_PER_PAGE).map(s => `
+        const rows = _segments.map(s => `
             <div class="flex items-center justify-between px-3 py-2">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-slate-900">${escHtml(s.name)}</p>
@@ -3861,18 +3841,9 @@ ${teSerializeBlocksComment(srcBlocks)}
                     </button>
                 </div>
             </div>`).join('');
-        const pagination = pages > 1 ? `
-            <div class="flex items-center justify-between pt-2 mt-1 border-t border-slate-100">
-                <span class="text-xs text-slate-400">${start+1}–${Math.min(start+_SEGMENTS_PER_PAGE,total)} de ${total}</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="_segmentsPage--;_renderSegments()" ${_segmentsPage<=1?'disabled':''}
-                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
-                    <span class="text-xs text-slate-600 px-1">${_segmentsPage}/${pages}</span>
-                    <button onclick="_segmentsPage++;_renderSegments()" ${_segmentsPage>=pages?'disabled':''}
-                        class="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
-                </div>
-            </div>` : '';
-        el.innerHTML = `<div class="divide-y divide-slate-100">${rows}</div>` + pagination;
+        // > 5 registos → scroll vertical (≈5 linhas) em vez de paginação
+        const scroll = total > 5 ? ' style="max-height:300px;overflow-y:auto;"' : '';
+        el.innerHTML = `<div class="divide-y divide-slate-100"${scroll}>${rows}</div>`;
     }
 
     async function openSegmentModal(segId) {
