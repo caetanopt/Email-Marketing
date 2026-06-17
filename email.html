@@ -2905,6 +2905,7 @@ ${body}
 <meta name="supported-color-schemes" content="light">
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 <style>:root{color-scheme:light;supported-color-schemes:light}</style>
+<style>.thin-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}.thin-scroll::-webkit-scrollbar{width:4px}.thin-scroll::-webkit-scrollbar-track{background:transparent}.thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px}.thin-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8}</style>
 <title></title>
 </head>
 <body style="margin:0;padding:0;background:#f5f7fa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
@@ -3330,8 +3331,8 @@ ${teSerializeBlocksComment(srcBlocks)}
                 <button onclick="removeListExtraField(${absI})" class="text-red-400 hover:text-red-600 text-xs leading-none px-1">✕</button>
             </div>`).join('');
         // > 5 registos → scroll vertical (≈5 linhas) em vez de paginação
-        const scroll = total > 5 ? ' style="max-height:200px;overflow-y:auto;"' : '';
-        el.innerHTML = `<div class="divide-y divide-slate-100"${scroll}>${rows}</div>`;
+        const scroll = total > 5 ? ' class="divide-y divide-slate-100 thin-scroll" style="max-height:200px;overflow-y:auto;"' : ' class="divide-y divide-slate-100"';
+        el.innerHTML = `<div${scroll}>${rows}</div>`;
     }
 
     function addListExtraField() {
@@ -3842,8 +3843,8 @@ ${teSerializeBlocksComment(srcBlocks)}
                 </div>
             </div>`).join('');
         // > 5 registos → scroll vertical (≈5 linhas) em vez de paginação
-        const scroll = total > 5 ? ' style="max-height:300px;overflow-y:auto;"' : '';
-        el.innerHTML = `<div class="divide-y divide-slate-100"${scroll}>${rows}</div>`;
+        const scroll = total > 5 ? ' class="divide-y divide-slate-100 thin-scroll" style="max-height:300px;overflow-y:auto;"' : ' class="divide-y divide-slate-100"';
+        el.innerHTML = `<div${scroll}>${rows}</div>`;
     }
 
     async function openSegmentModal(segId) {
