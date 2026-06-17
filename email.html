@@ -6614,7 +6614,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                         if (r.done || r.warning) break;
                         if (r.quotaExhausted) {
                             showToast(`Quota diária SES atingida — ${totalSent.toLocaleString('pt-PT')} emails enviados. Os restantes (${(r.remaining||0).toLocaleString('pt-PT')}) serão enviados automaticamente quando a quota renovar à meia-noite UTC.`, 'info');
-                            showScreen('campaigns'); _loadCampaigns(_currentBrand.id); _wizClearDraft(); wizShowStep(1);
+                            _wizMarkClean(); showScreen('campaigns'); _loadCampaigns(_currentBrand.id); _wizClearDraft(); wizShowStep(1);
                             return;
                         }
                     }
@@ -6628,6 +6628,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 showToast(wasEditing ? 'Campanha guardada.' : 'Rascunho guardado.');
             }
             _wizClearDraft();
+            _wizMarkClean();
             showScreen('campaigns');
             wizShowStep(1);
             _loadCampaigns(_currentBrand.id);
@@ -6749,6 +6750,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 _editingCampaignId = res.id || null; // manter ID — NÃO navegar para não o resetar
             }
             _wizClearDraft();
+            _wizMarkClean();
             _loadCampaigns(_currentBrand.id);
             showToast('Rascunho guardado.');
             // Ficar no wizard — utilizador pode continuar a editar
@@ -6852,13 +6854,18 @@ ${teSerializeBlocksComment(srcBlocks)}
     let _wizPendingScreen = null;
     let _wizSkipUnsavedCheck = false;
 
-    function _wizHasUnsavedChanges() {
-        if (_editingCampaignId) return true;
-        if (typeof _wizStep !== 'undefined' && _wizStep > 1) return true;
-        const name = document.getElementById('wizName')?.value.trim();
-        const subj = document.getElementById('wizSubject')?.value.trim();
-        return !!(name || subj);
-    }
+    // Dirty tracking: só avisar à saída se o utilizador alterou algo que ainda
+    // não foi guardado como rascunho. Edições a campos/destinatários marcam
+    // _wizDirty (listener delegado); edições ao template marcam _teDirty via teRender().
+    let _wizDirty = false;
+    function _wizMarkDirty() { _wizDirty = true; }
+    function _wizMarkClean() { _wizDirty = false; _teMarkClean(); }
+    function _wizHasUnsavedChanges() { return _wizDirty || _teDirty; }
+    ['input', 'change'].forEach(evt => document.addEventListener(evt, (e) => {
+        if (_wizDirty) return;
+        const t = e.target;
+        if (t && t.closest && t.closest('#campaignCreate')) _wizMarkDirty();
+    }, true));
     function wizUnsavedLeave() {
         const m = document.getElementById('wizUnsavedModal');
         if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
@@ -8864,6 +8871,9 @@ ${sections.join('\n\n')}
                     _wizRestoreDraft();
                 }
                 _wizStartAutoSave();
+                // Início limpo: programmatic .value/.checked não disparam input/change,
+                // por isso o aviso só aparece após uma alteração real do utilizador.
+                _wizMarkClean();
             } else {
                 _wizStopAutoSave();
             }
