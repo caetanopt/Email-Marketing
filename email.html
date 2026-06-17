@@ -6743,7 +6743,22 @@ ${teSerializeBlocksComment(srcBlocks)}
             const fromEmail = document.getElementById('wizFromEmail')?.value.trim() || '';
             const listIds   = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked')).map(cb => cb.dataset.listId).filter(Boolean);
             const utm_params = _wizGetUtmParams();
-            const payload = { name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, utm_params };
+            let templateId = _editingTemplateId || null;
+            if (teState.blocks.length) {
+                const emailBlocks = await _tePrepareBlocksForEmail(teState.blocks);
+                const tplHtml = teBuildEmailHtml(emailBlocks);
+                if (templateId) {
+                    await apiFetch(`/api/templates?id=${templateId}`, { method: 'PUT', body: JSON.stringify({ html_content: tplHtml }) });
+                } else {
+                    const tplRes = await apiFetch(`/api/templates?brand_id=${_currentBrand.id}`, {
+                        method: 'POST',
+                        body: JSON.stringify({ name: `${name || 'Campanha'} — Template`, html_content: tplHtml })
+                    });
+                    templateId = tplRes.id || null;
+                    _editingTemplateId = templateId;
+                }
+            }
+            const payload = { name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, utm_params, template_id: templateId };
             if (_editingCampaignId) {
                 await apiFetch(`/api/campaigns/${_editingCampaignId}`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
@@ -8793,7 +8808,8 @@ ${sections.join('\n\n')}
             return;
         }
         // Leaving campaignCreate — reset all wizard state so it doesn't leak into the next open
-        if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate') {
+        // Skip the reset when _wizSkipUnsavedCheck is set (e.g. navigating to media library and back)
+        if (_currentScreen === 'campaignCreate' && id !== 'campaignCreate' && !_wizSkipUnsavedCheck) {
             // Persist any unsaved direct contacts before clearing state
             if (_editingCampaignId && _wizDirectContactIds.length) {
                 apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
