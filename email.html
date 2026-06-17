@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js" defer></script>
     <script>
     // ── DEV BYPASS LOGIN (modo de testes) ───────────────
     // Para desativar: muda DEV_BYPASS_LOGIN para false (e faz commit).
@@ -46,9 +46,10 @@
     });
     // ── HTML escape helper ─────────────────────────────
     function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-    // ── Session cache (stale-while-revalidate) ─────────
-    function _cacheSet(key, data) { try { sessionStorage.setItem('pm_' + key, JSON.stringify(data)); } catch (_) {} }
-    function _cacheGet(key) { try { return JSON.parse(sessionStorage.getItem('pm_' + key) || 'null'); } catch (_) { return null; } }
+    // ── Session cache with TTL ─────────────────────────
+    const _CACHE_TTL = 45_000; // 45 s — skip re-fetch when fresh
+    function _cacheSet(key, data) { try { sessionStorage.setItem('pm_' + key, JSON.stringify({ v: data, ts: Date.now() })); } catch (_) {} }
+    function _cacheGet(key) { try { const r = JSON.parse(sessionStorage.getItem('pm_' + key) || 'null'); if (!r || typeof r.ts !== 'number') return null; if (Date.now() - r.ts > _CACHE_TTL) { sessionStorage.removeItem('pm_' + key); return null; } return r.v; } catch (_) { return null; } }
     function _cacheClear(prefix) { try { Object.keys(sessionStorage).filter(k => k.startsWith('pm_' + prefix)).forEach(k => sessionStorage.removeItem(k)); } catch (_) {} }
     // ── Debounce helper ────────────────────────────────
     function _debounce(fn, ms = 250) {
@@ -59,9 +60,10 @@
         };
     }
     // Debounced filter handlers (used by oninput to avoid filtering on every keystroke)
-    const _dbFilterCampaigns = _debounce(() => filterCampaigns(), 220);
-    const _dbFilterContacts  = _debounce(() => filterContacts(),  220);
-    const _dbFilterLists     = _debounce(() => filterLists(),     220);
+    const _dbFilterCampaigns    = _debounce(() => filterCampaigns(),    220);
+    const _dbFilterContacts     = _debounce(() => filterContacts(),     220);
+    const _dbFilterLists        = _debounce(() => filterLists(),        220);
+    const _dbFilterSuppression  = _debounce(() => filterSuppression(),  300);
     const _dbMediaGrid       = _debounce(() => { _mediaRowsShown = 2; _renderMediaGrid(); }, 220);
     // ── Search clear button helpers ────────────────────────────────────────────
     function _srchToggleClear(inputId) {
@@ -12686,7 +12688,7 @@ ${sections.join('\n\n')}
                         <h3 id="suppCount" class="font-semibold text-slate-900 text-sm">312 endereços suprimidos</h3>
                         <div class="flex items-center gap-2">
                             <div class="relative">
-                                <input id="suppSearch" type="text" placeholder="Filtrar por email…" oninput="filterSuppression();_srchToggleClear('suppSearch')" class="pl-3 pr-7 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 w-56" />
+                                <input id="suppSearch" type="text" placeholder="Filtrar por email…" oninput="_dbFilterSuppression();_srchToggleClear('suppSearch')" class="pl-3 pr-7 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 w-56" />
                                 <button type="button" id="suppSearchClear" onclick="_srchClear('suppSearch',filterSuppression)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 hidden"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>
                             </div>
                             <select id="suppReasonFilter" onchange="filterSuppression()" class="pl-3 pr-8 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
