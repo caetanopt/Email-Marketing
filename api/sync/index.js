@@ -4,6 +4,9 @@ const { cors } = require('../../lib/auth');
 const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Resolve brand from Authorization: Bearer <api_key>
+// Supports two modes:
+//   1. Global key (pmg_…): brand_id must be supplied in body or query
+//   2. Per-brand key (pm_…): brand resolved from brands.api_key
 async function resolveBrand(req, res) {
   const auth = (req.headers.authorization || '').trim();
   if (!auth.startsWith('Bearer ')) {
@@ -11,11 +14,28 @@ async function resolveBrand(req, res) {
     return null;
   }
   const key = auth.slice(7).trim();
-  const rows = await query('SELECT id FROM brands WHERE api_key=$1', [key]);
-  if (!rows[0]) {
-    res.status(401).json({ error: 'API key inválida' });
-    return null;
+
+  // Try global key first
+  try {
+    const gs = await query('SELECT global_api_key FROM global_settings WHERE id=1');
+    if (gs[0]?.global_api_key && gs[0].global_api_key === key) {
+      const brandId = (req.body?.brand_id || req.query?.brand_id || '').toString().trim();
+      if (!brandId) {
+        res.status(400).json({ error: 'brand_id obrigatório ao usar a chave global' });
+        return null;
+      }
+      const br = await query('SELECT id FROM brands WHERE id=$1 AND active=TRUE', [brandId]);
+      if (!br[0]) { res.status(404).json({ error: 'Marca não encontrada' }); return null; }
+      return brandId;
+    }
+  } catch (e) {
+    if (e.code !== '42703' && e.code !== '42P01') throw e;
+    // global_api_key column/table not yet created — fall through
   }
+
+  // Per-brand key
+  const rows = await query('SELECT id FROM brands WHERE api_key=$1', [key]);
+  if (!rows[0]) { res.status(401).json({ error: 'API key inválida' }); return null; }
   return rows[0].id;
 }
 

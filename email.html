@@ -4967,26 +4967,12 @@ ${teSerializeBlocksComment(srcBlocks)}
         _loadBlocks();
     }
 
-    // ── Global Settings: API key per brand ───────────────────────
-    let _gsApiKeyBrandId = null;
-
+    // ── Global Settings: single API key for all brands ───────────
     async function _gsLoadApiSection() {
-        const sel = document.getElementById('gsApiKeyBrandSelect');
-        if (!sel) return;
         try {
-            const data = await apiFetch('/api/brands');
-            const brands = data.data || [];
-            sel.innerHTML = brands.map(b => `<option value="${escHtml(b.id)}">${escHtml(b.name)}</option>`).join('');
-            if (brands.length) { _gsApiKeyBrandId = brands[0].id; await _gsLoadApiKey(); }
-        } catch (e) { console.error('gsLoadApiSection:', e); }
-    }
-
-    async function _gsLoadApiKey() {
-        if (!_gsApiKeyBrandId) return;
-        try {
-            const { api_key } = await apiFetch(`/api/brands?id=${_gsApiKeyBrandId}&action=api_key`);
+            const { api_key } = await apiFetch('/api/brands?action=global_api_key');
             _gsShowApiKey(api_key);
-        } catch (e) { console.error('gsLoadApiKey:', e); }
+        } catch (e) { console.error('gsLoadApiSection:', e); }
     }
 
     function _gsShowApiKey(key) {
@@ -5005,19 +4991,18 @@ ${teSerializeBlocksComment(srcBlocks)}
         const post = document.getElementById('gsApiDocsPost');
         const del  = document.getElementById('gsApiDocsDel');
         const get  = document.getElementById('gsApiDocsGet');
-        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<id_da_lista>",\n    "contacts": [\n      {\n        "email": "user@exemplo.pt",\n        "name": "Nome Apelido",\n        "phone": "+351910000000",\n        "company": "Empresa Lda",\n        "extra_data": { "campo1": "valor1", "cargo": "Director" }\n      }\n    ]\n  }'`;
-        if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "emails": ["user@exemplo.pt"] }'`;
-        if (get)  get.textContent  = `curl "${base}/api/sync?email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${key}"`;
+        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "brand_id": "<id_da_marca>",\n    "list_id": "<id_da_lista>",\n    "contacts": [\n      {\n        "email": "user@exemplo.pt",\n        "name": "Nome Apelido",\n        "phone": "+351910000000",\n        "company": "Empresa Lda",\n        "extra_data": { "campo1": "valor1", "cargo": "Director" }\n      }\n    ]\n  }'`;
+        if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "brand_id": "<id_da_marca>", "emails": ["user@exemplo.pt"] }'`;
+        if (get)  get.textContent  = `curl "${base}/api/sync?brand_id=<id_da_marca>&email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${key}"`;
     }
 
     async function _gsGenerateApiKey() {
-        if (!_gsApiKeyBrandId) return;
         const btn = document.getElementById('gsApiKeyGenBtn');
         if (btn) btn.disabled = true;
         try {
-            const { api_key } = await apiFetch(`/api/brands?id=${_gsApiKeyBrandId}&action=generate_api_key`, { method: 'POST' });
+            const { api_key } = await apiFetch('/api/brands?action=generate_global_api_key', { method: 'POST' });
             _gsShowApiKey(api_key);
-            showToast('Chave API gerada com sucesso. Guarda-a num local seguro.');
+            showToast('Chave API global gerada. Guarda-a num local seguro.');
         } catch (e) { showToast('Erro ao gerar chave API.', 'error'); }
         finally { if (btn) btn.disabled = false; }
     }
@@ -12959,16 +12944,12 @@ ${sections.join('\n\n')}
                     <div class="flex items-start justify-between mb-4">
                         <div>
                             <h3 class="font-semibold text-slate-900 text-sm">API de sincronização</h3>
-                            <p class="text-xs text-slate-400 mt-0.5">Chave API por marca para integração com sistemas externos (CRM, website, etc.).</p>
+                            <p class="text-xs text-slate-400 mt-0.5">Chave única para todas as marcas — inclui <code class="font-mono">brand_id</code> em cada pedido para identificar a marca.</p>
                         </div>
                         <button onclick="_gsGenerateApiKey()" id="gsApiKeyGenBtn" class="flex-shrink-0 ml-4 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             <span id="gsApiKeyGenLabel">Gerar chave</span>
                         </button>
-                    </div>
-                    <div class="mb-4">
-                        <label class="text-xs text-slate-500 block mb-1.5">Marca</label>
-                        <select id="gsApiKeyBrandSelect" onchange="_gsApiKeyBrandId=this.value;_gsLoadApiKey()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"></select>
                     </div>
                     <div id="gsApiKeyWrap">
                         <div id="gsApiKeyEmpty" class="flex items-center gap-2 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400">

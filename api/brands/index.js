@@ -104,6 +104,19 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ api_key: rows[0]?.api_key || null });
       }
 
+      // Global API key — single key for all brands (owner only)
+      if (action === 'global_api_key') {
+        const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
+        if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+        try {
+          const rows = await query('SELECT global_api_key FROM global_settings WHERE id=1');
+          return res.status(200).json({ api_key: rows[0]?.global_api_key || null });
+        } catch (e) {
+          if (e.code === '42703' || e.code === '42P01') return res.status(200).json({ api_key: null });
+          throw e;
+        }
+      }
+
       // DNS health check — SPF / DKIM / DMARC verification for brand's from_email domain
       if (id && action === 'dns_check') {
         const rows = await query('SELECT from_email FROM brands WHERE id=$1', [id]);
@@ -446,6 +459,24 @@ module.exports = async function handler(req, res) {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const newKey = 'pm_' + crypto.randomBytes(32).toString('hex');
       await query('UPDATE brands SET api_key=$1 WHERE id=$2', [newKey, id]);
+      return res.status(200).json({ api_key: newKey });
+    }
+
+    // Generate (or regenerate) global API key — works for all brands (owner only)
+    if (req.method === 'POST' && action === 'generate_global_api_key') {
+      const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+      const newKey = 'pmg_' + crypto.randomBytes(32).toString('hex');
+      try {
+        await query(
+          `ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS global_api_key VARCHAR(72)`,
+        );
+      } catch (_) { /* column may already exist */ }
+      await query(
+        `INSERT INTO global_settings (id, global_api_key) VALUES (1, $1)
+         ON CONFLICT (id) DO UPDATE SET global_api_key=$1`,
+        [newKey]
+      );
       return res.status(200).json({ api_key: newKey });
     }
 
