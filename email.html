@@ -8887,13 +8887,21 @@ ${sections.join('\n\n')}
                                 _sv('wizPreviewText', c.preview_text);
                                 _sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
                                 _sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
-                                // Recarregar os blocos do template se a memória estiver vazia
-                                // (ex.: regresso após gerir a biblioteca de multimédia)
-                                if (!teState.blocks.length && c.html_content && typeof teBlocksFromContent === 'function') {
-                                    const parsed = teBlocksFromContent(c.html_content);
-                                    if (parsed && parsed.length) { teState.blocks = parsed; teState.selected = null; }
-                                }
                                 _wizVarsRender();
+                                // Recarregar os blocos do template guardado no servidor.
+                                // Este bloco só corre num cold load/refresh (editingId vinha
+                                // do rascunho local), por isso teState.blocks contém apenas o
+                                // preset inicial do DOMContentLoaded — nunca edições reais.
+                                // Substituímos sempre pelo conteúdo guardado da campanha.
+                                if (typeof teBlocksFromContent === 'function') {
+                                    const parsed = c.html_content ? teBlocksFromContent(c.html_content) : null;
+                                    teState.blocks = (parsed && parsed.length) ? parsed : [];
+                                    teState.selected = null;
+                                    if (_wizStep === 2 && typeof teRenderCanvas === 'function') {
+                                        teRenderCanvas();
+                                        if (typeof teRenderProperties === 'function') teRenderProperties();
+                                    }
+                                }
                             }).catch(() => {
                                 // API failed — fall back to the saved draft values
                                 const _sv = (eid, v) => { const el = document.getElementById(eid); if (el && v) el.value = v; };
