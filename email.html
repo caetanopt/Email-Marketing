@@ -6694,15 +6694,12 @@ ${teSerializeBlocksComment(srcBlocks)}
                 });
                 campaignId = res.id;
                 _editingCampaignId = campaignId;
-            } else if (templateId) {
-                // Link template to existing campaign (if not already linked)
-                const camp = await apiFetch(`/api/campaigns/${campaignId}`);
-                if (!camp.template_id) {
-                    await apiFetch(`/api/campaigns/${campaignId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ template_id: templateId })
-                    });
-                }
+            } else {
+                // Sync template and attachments into the existing campaign before test
+                await apiFetch(`/api/campaigns/${campaignId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ template_id: templateId || undefined, attachments: _wizAttachments })
+                });
             }
 
             if (btn) btn.textContent = 'A enviar…';

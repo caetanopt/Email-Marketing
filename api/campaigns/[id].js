@@ -1,7 +1,7 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
-const { SendEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
+const { SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
@@ -907,19 +907,34 @@ module.exports = async function handler(req, res) {
         const finalHtml = rawHtml.includes('</body>')
           ? rawHtml.replace('</body>', unsubBlock + '</body>')
           : rawHtml + unsubBlock;
+        const testAttachments = c.attachments || [];
         try {
-          const info = await sesClientTest.send(new SendEmailCommand({
-            Source: `${fromName} <${fromEmail}>`,
-            Destination: { ToAddresses: [to] },
-            Message: {
-              Subject: { Charset: 'UTF-8', Data: `[TESTE] ${c.subject || '(sem assunto)'}` },
-              Body: {
-                Html: { Charset: 'UTF-8', Data: finalHtml },
-                Text: { Charset: 'UTF-8', Data: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml) },
+          let info;
+          if (testAttachments.length > 0) {
+            const rawMsg = buildRawEmail({
+              fromName, fromEmail, toEmail: to, replyTo,
+              subject: `[TESTE] ${c.subject || '(sem assunto)'}`,
+              htmlBody: finalHtml,
+              textBody: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml),
+              attachments: testAttachments,
+            });
+            info = await sesClientTest.send(new SendRawEmailCommand({
+              RawMessage: { Data: Buffer.from(rawMsg) },
+            }));
+          } else {
+            info = await sesClientTest.send(new SendEmailCommand({
+              Source: `${fromName} <${fromEmail}>`,
+              Destination: { ToAddresses: [to] },
+              Message: {
+                Subject: { Charset: 'UTF-8', Data: `[TESTE] ${c.subject || '(sem assunto)'}` },
+                Body: {
+                  Html: { Charset: 'UTF-8', Data: finalHtml },
+                  Text: { Charset: 'UTF-8', Data: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml) },
+                },
               },
-            },
-            ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
-          }));
+              ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
+            }));
+          }
           try {
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, message_id, created_by)
