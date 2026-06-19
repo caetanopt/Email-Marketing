@@ -316,11 +316,12 @@ module.exports = async function handler(req, res) {
           `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
         );
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '' };
+        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '', ses_rate_per_second: 50 };
         try {
-          // Auto-migrate: add notification_emails column if it doesn't exist yet
+          // Auto-migrate: add columns if they don't exist yet
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
-          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails FROM global_settings WHERE id=1');
+          await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS ses_rate_per_second INTEGER NOT NULL DEFAULT 50`).catch(() => {});
+          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second FROM global_settings WHERE id=1');
           return res.status(200).json(rows[0] || DEFAULTS);
         } catch (e) {
           if (e.code === '42P01') return res.status(200).json(DEFAULTS);
@@ -383,17 +384,19 @@ module.exports = async function handler(req, res) {
         `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
       );
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-      const { font_size, font_family, line_height, email_width, notification_emails } = req.body || {};
+      const { font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second } = req.body || {};
       // Sanitise: keep only valid-looking email addresses, comma-separated
       const cleanNotifEmails = (notification_emails || '').split(',')
         .map(e => e.trim()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
+      const cleanRate = Math.max(1, Math.min(1000, parseInt(ses_rate_per_second, 10) || 50));
       try {
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
+        await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS ses_rate_per_second INTEGER NOT NULL DEFAULT 50`).catch(() => {});
         await query(
-          `INSERT INTO global_settings (id, font_size, font_family, line_height, email_width, notification_emails, updated_at)
-           VALUES (1, $1, $2, $3, $4, $5, NOW())
-           ON CONFLICT (id) DO UPDATE SET font_size=$1, font_family=$2, line_height=$3, email_width=$4, notification_emails=$5, updated_at=NOW()`,
-          [font_size || '14px', font_family || 'Arial, sans-serif', line_height || '1.6', email_width || '600px', cleanNotifEmails]
+          `INSERT INTO global_settings (id, font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second, updated_at)
+           VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+           ON CONFLICT (id) DO UPDATE SET font_size=$1, font_family=$2, line_height=$3, email_width=$4, notification_emails=$5, ses_rate_per_second=$6, updated_at=NOW()`,
+          [font_size || '14px', font_family || 'Arial, sans-serif', line_height || '1.6', email_width || '600px', cleanNotifEmails, cleanRate]
         );
         return res.status(200).json({ ok: true });
       } catch (e) {
