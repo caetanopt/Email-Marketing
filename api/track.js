@@ -185,7 +185,61 @@ module.exports = async (req, res) => {
     }
   }
 
-  const { type, cid, uid, t, url } = req.query;
+  const { type, cid, uid, t, url, action, id, token } = req.query;
+
+  // ── Public campaign preview (/api/preview rewrites here) ─────────
+  if (action === 'preview') {
+    function errPage(msg) {
+      return `<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"><title>Erro — PrimeMail</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#f1f5f9;color:#334155;gap:8px}
+p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
+<body><p>${msg}</p><small>PrimeMail</small></body></html>`;
+    }
+    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    if (!id || !token) return res.status(400).send(errPage('Link inválido.'));
+    if (!process.env.JWT_SECRET) return res.status(500).send(errPage('Configuração em falta.'));
+
+    const expected = crypto.createHmac('sha256', process.env.JWT_SECRET).update(`preview:${id}`).digest('hex');
+    let tokOk = false;
+    try { tokOk = crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex')); } catch (_) {}
+    if (!tokOk) return res.status(403).send(errPage('Link inválido ou sem permissão.'));
+
+    try {
+      const rows = await query(
+        `SELECT c.name, c.subject, b.name AS brand_name, t.html_content
+         FROM campaigns c
+         LEFT JOIN templates t ON t.id = c.template_id
+         LEFT JOIN brands b ON b.id = c.brand_id
+         WHERE c.id = $1`, [id]
+      );
+      if (!rows[0]) return res.status(404).send(errPage('Campanha não encontrada.'));
+      const c = rows[0];
+      if (!c.html_content) return res.status(404).send(errPage('Esta campanha não tem um template de email associado.'));
+
+      const emailHtml = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '');
+      const html = `<!DOCTYPE html>
+<html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(c.subject || c.name)} — Pré-visualização</title>
+<meta name="robots" content="noindex,nofollow">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f1f5f9;min-height:100vh;font-family:system-ui,sans-serif}
+.bar{background:#0f172a;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.bar-left{display:flex;align-items:center;gap:10px}.bar-tag{background:#1e293b;color:#94a3b8;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.bar-name{color:#f8fafc;font-weight:600;font-size:13px}.bar-sub{color:#94a3b8;font-size:12px;margin-top:1px}.bar-brand{color:#64748b;font-size:12px}
+.wrap{padding:24px 16px;display:flex;justify-content:center}iframe{border:none;background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.12);border-radius:8px;width:100%;max-width:680px;min-height:500px;display:block}</style>
+</head><body>
+<div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(c.name||'Campanha')}</div>${c.subject?`<div class="bar-sub">${esc(c.subject)}</div>`:''}</div></div><div class="bar-brand">${esc(c.brand_name||'')}</div></div>
+<div class="wrap"><iframe id="f" sandbox="allow-same-origin" title="Pré-visualização do email"></iframe></div>
+<script>(function(){const h=${JSON.stringify(emailHtml)};const f=document.getElementById('f');f.srcdoc=h;f.addEventListener('load',function(){try{const s=f.contentDocument.documentElement.scrollHeight;if(s>100)f.style.height=s+'px';}catch(_){}});})();</script>
+</body></html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'noindex');
+      return res.status(200).send(html);
+    } catch (err) {
+      console.error('preview:', err);
+      return res.status(500).send(errPage('Erro de servidor.'));
+    }
+  }
 
   if (type === 'click') {
     // Validate HMAC token before trusting the url param — prevents open-redirect abuse.
