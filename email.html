@@ -7627,6 +7627,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     function closeCampPreviewModal() {
         const m = document.getElementById('campPreviewModal');
         m.classList.add('hidden'); m.classList.remove('flex');
+        document.body.style.overflow = '';
         const body = document.getElementById('campPreviewModalBody');
         if (body) body.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">A carregar…</p>';
     }
@@ -7635,6 +7636,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!c) return;
         const m = document.getElementById('campPreviewModal');
         m.classList.remove('hidden'); m.classList.add('flex');
+        document.body.style.overflow = 'hidden';
         document.getElementById('campPreviewModalTitle').textContent = c.name || '—';
         document.getElementById('campPreviewModalSubject').textContent = c.subject ? `Assunto: ${c.subject}` : '';
         const body = document.getElementById('campPreviewModalBody');
