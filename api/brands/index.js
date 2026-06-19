@@ -316,9 +316,11 @@ module.exports = async function handler(req, res) {
           `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
         );
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px' };
+        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '' };
         try {
-          const rows = await query('SELECT font_size, font_family, line_height, email_width FROM global_settings WHERE id=1');
+          // Auto-migrate: add notification_emails column if it doesn't exist yet
+          await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
+          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails FROM global_settings WHERE id=1');
           return res.status(200).json(rows[0] || DEFAULTS);
         } catch (e) {
           if (e.code === '42P01') return res.status(200).json(DEFAULTS);
@@ -381,13 +383,17 @@ module.exports = async function handler(req, res) {
         `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
       );
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-      const { font_size, font_family, line_height, email_width } = req.body || {};
+      const { font_size, font_family, line_height, email_width, notification_emails } = req.body || {};
+      // Sanitise: keep only valid-looking email addresses, comma-separated
+      const cleanNotifEmails = (notification_emails || '').split(',')
+        .map(e => e.trim()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
       try {
+        await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
         await query(
-          `INSERT INTO global_settings (id, font_size, font_family, line_height, email_width, updated_at)
-           VALUES (1, $1, $2, $3, $4, NOW())
-           ON CONFLICT (id) DO UPDATE SET font_size=$1, font_family=$2, line_height=$3, email_width=$4, updated_at=NOW()`,
-          [font_size || '14px', font_family || 'Arial, sans-serif', line_height || '1.6', email_width || '600px']
+          `INSERT INTO global_settings (id, font_size, font_family, line_height, email_width, notification_emails, updated_at)
+           VALUES (1, $1, $2, $3, $4, $5, NOW())
+           ON CONFLICT (id) DO UPDATE SET font_size=$1, font_family=$2, line_height=$3, email_width=$4, notification_emails=$5, updated_at=NOW()`,
+          [font_size || '14px', font_family || 'Arial, sans-serif', line_height || '1.6', email_width || '600px', cleanNotifEmails]
         );
         return res.status(200).json({ ok: true });
       } catch (e) {

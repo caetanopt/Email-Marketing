@@ -3,6 +3,7 @@ const { requireAuth, cors } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
 const { SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
+const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
@@ -836,6 +837,12 @@ module.exports = async function handler(req, res) {
                VALUES ($1,$2,$3,'campaign_completed',$4)`,
               [c.brand_id, id, `enviados=${totals.total_sent} falhados=${totals.total_failed}`, user.id]
             );
+            await sendCampaignCompletionNotification({
+              campaignName: c.name || `#${id}`,
+              brandName:    c.brand_id,
+              totalSent:    totals.total_sent,
+              totalFailed:  totals.total_failed,
+            });
           } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
         }
 

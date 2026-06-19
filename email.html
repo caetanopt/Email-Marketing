@@ -4734,6 +4734,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             const ew = el('gsTypoEmailWidth'); if (ew) ew.value = (data.email_width|| '600px').replace('px','');
             const lh = el('gsTypoLineHeight'); if (lh) lh.value = data.line_height || '1.6';
             const ff = el('gsTypoFontFamily'); if (ff) ff.value = data.font_family || 'Arial, sans-serif';
+            const ne = el('gsNotifEmails');    if (ne) ne.value = data.notification_emails || '';
         } catch (e) { /* silent — migration may not be run yet */ }
     }
 
@@ -4758,6 +4759,23 @@ ${teSerializeBlocksComment(srcBlocks)}
             // Refresh cached font-size so new blocks in the editor use the updated value immediately
             if (fs) { const px = parseInt(fs); if (px > 0) _teGlobalFontSize = px; }
             showToast('Definições de tipografia guardadas.');
+        } catch (e) { showToast(e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+    }
+
+    async function _saveNotifEmails() {
+        const raw = document.getElementById('gsNotifEmails')?.value || '';
+        const emails = raw.split(',').map(e => e.trim()).filter(Boolean);
+        const invalid = emails.filter(e => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+        if (invalid.length) { showToast(`Email inválido: ${invalid[0]}`, 'error'); return; }
+        const btn = document.getElementById('gsNotifSaveBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
+        try {
+            await apiFetch('/api/brands?action=global_settings', {
+                method: 'PUT',
+                body: JSON.stringify({ notification_emails: emails.join(',') })
+            });
+            showToast('Emails de notificação guardados.');
         } catch (e) { showToast(e.message, 'error'); }
         finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
     }
@@ -12843,6 +12861,23 @@ ${sections.join('\n\n')}
                                 <p class="text-xs text-slate-400 mt-1">Ex: <span class="font-mono">Arial, sans-serif</span> · <span class="font-mono">'Montserrat', sans-serif</span> · <span class="font-mono">Georgia, serif</span></p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Notificações de envio -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Notificações de conclusão de envio</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Quando uma campanha termina o envio, é enviado um email resumo para os endereços abaixo. Aplica-se a todas as marcas.</p>
+                        </div>
+                        <button onclick="_saveNotifEmails()" id="gsNotifSaveBtn" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50">Guardar</button>
+                    </div>
+                    <div class="px-5 py-5">
+                        <label class="block text-xs font-medium text-slate-700 mb-1.5">Emails de notificação <span class="font-normal text-slate-400">(separados por vírgula)</span></label>
+                        <input id="gsNotifEmails" type="text" placeholder="utilizador@empresa.pt, outro@empresa.pt"
+                               class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                        <p class="text-xs text-slate-400 mt-2">Deixa em branco para desactivar as notificações.</p>
                     </div>
                 </div>
 
