@@ -6618,14 +6618,17 @@ ${teSerializeBlocksComment(srcBlocks)}
                     body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: scheduled_at||null, template_id: templateId, utm_params, attachments: _wizAttachments, status: editStatus })
                 });
                 campaignId = _editingCampaignId;
-                _editingCampaignId = null;
-                _editingTemplateId = null;
+                // Don't clear _editingCampaignId yet — only clear after full success
+                // so a send failure doesn't cause a duplicate on retry
             } else {
                 const res = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}`, {
                     method: 'POST',
                     body: JSON.stringify({ name, subject, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at, template_id: templateId, utm_params, attachments: _wizAttachments })
                 });
                 campaignId = res.id;
+                // Track the newly created ID so retries use it instead of creating another
+                _editingCampaignId = campaignId;
+                _editingTemplateId = templateId;
             }
 
             if (_wizDirectContactIds.length && campaignId) {
@@ -6664,6 +6667,9 @@ ${teSerializeBlocksComment(srcBlocks)}
             } else {
                 showToast(wasEditing ? 'Campanha guardada.' : 'Rascunho guardado.');
             }
+            // Success — now safe to clear the editing state
+            _editingCampaignId = null;
+            _editingTemplateId = null;
             _wizClearDraft();
             _wizMarkClean();
             showScreen('campaigns');
