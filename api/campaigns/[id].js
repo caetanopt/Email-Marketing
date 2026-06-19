@@ -845,6 +845,7 @@ module.exports = async function handler(req, res) {
               [c.brand_id, id, `enviados=${totals.total_sent} falhados=${totals.total_failed}`, user.id]
             );
             await sendCampaignCompletionNotification({
+              campaignId:   id,
               campaignName: c.name || `#${id}`,
               brandName:    c.brand_id,
               totalSent:    totals.total_sent,
