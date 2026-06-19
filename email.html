@@ -7642,7 +7642,14 @@ ${teSerializeBlocksComment(srcBlocks)}
             const detail = await apiFetch(`/api/campaigns/${c.id}`);
             const html = detail.html_content;
             if (html && html.trim()) {
-                body.innerHTML = `<iframe loading="lazy" srcdoc="${html.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" class="w-full bg-white" style="height:560px;border:none;display:block"></iframe>`;
+                body.innerHTML = `<iframe id="campPreviewIframe" loading="lazy" srcdoc="${html.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" class="w-full bg-white" style="height:560px;border:none;display:block"></iframe>`;
+                const ifr = document.getElementById('campPreviewIframe');
+                ifr.addEventListener('load', () => {
+                    try {
+                        const h = ifr.contentDocument.documentElement.scrollHeight;
+                        if (h > 100) ifr.style.height = h + 'px';
+                    } catch (_) {}
+                });
             } else {
                 body.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">Sem template associado a esta campanha.</p>';
             }
