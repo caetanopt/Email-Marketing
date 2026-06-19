@@ -31,18 +31,24 @@ module.exports = async function handler(req, res) {
     //     from a previous cron invocation that was cut short by the function timeout.
     //     Without this second clause they would only be picked up by the stall detector
     //     (10-minute window), making large sends extremely slow.
-    const due = await query(
-      `SELECT id, false AS resuming FROM campaigns
-       WHERE status='scheduled' AND scheduled_at <= NOW()
-       UNION ALL
-       SELECT c.id, true AS resuming FROM campaigns c
-       WHERE c.status='sending'
-         AND EXISTS (
-           SELECT 1 FROM campaign_recipients cr
-           WHERE cr.campaign_id=c.id AND cr.status IN ('pending','retry')
-         )
-       LIMIT 5`
-    );
+    let due;
+    try {
+      due = await query(
+        `SELECT id, false AS resuming FROM campaigns
+         WHERE status='scheduled' AND scheduled_at <= NOW()
+         UNION ALL
+         SELECT c.id, true AS resuming FROM campaigns c
+         WHERE c.status='sending'
+           AND EXISTS (
+             SELECT 1 FROM campaign_recipients cr
+             WHERE cr.campaign_id=c.id AND cr.status IN ('pending','retry')
+           )
+         LIMIT 5`
+      );
+    } catch (err) {
+      console.error('Cron: failed to query due campaigns:', err.message);
+      return res.status(500).json({ ok: false, error: err.message });
+    }
 
     const results = [];
     for (const { id: campId, resuming } of due) {
@@ -60,7 +66,7 @@ module.exports = async function handler(req, res) {
             ({ total } = await initCampaignSend(campId));
           } catch (err) {
             if (err.code === 'already_sending') continue;
-            if (err.message === 'Sem destinatários activos') {
+            if (err.message.startsWith('Sem destinatários activos')) {
               // initCampaignSend already reverted the campaign to 'draft'.
               // Log and skip — the user needs to add recipients before the campaign can send.
               console.warn(`Cron: campaign ${campId} has no active recipients — left as draft`);
