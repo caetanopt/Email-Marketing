@@ -120,6 +120,13 @@ module.exports = async function handler(req, res) {
     const camp = await authorizeCampaign(user.id, id);
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
 
+    if (req.method === 'GET' && action === 'preview_token') {
+      const token = crypto.createHmac('sha256', process.env.JWT_SECRET)
+        .update(`preview:${id}`).digest('hex');
+      const appUrl = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
+      return res.status(200).json({ token, url: `${appUrl}/api/preview?id=${id}&token=${token}` });
+    }
+
     if (req.method === 'GET' && action === 'get_direct_recipients') {
       const [{ total }] = await query(
         `SELECT COUNT(*)::int AS total FROM campaign_recipients WHERE campaign_id=$1`, [id]
