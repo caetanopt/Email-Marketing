@@ -207,7 +207,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 
     try {
       const rows = await query(
-        `SELECT c.name, c.subject, b.name AS brand_name, t.html_content
+        `SELECT c.name, c.subject, b.name AS brand_name, b.logo_url AS brand_logo, t.html_content
          FROM campaigns c
          LEFT JOIN templates t ON t.id = c.template_id
          LEFT JOIN brands b ON b.id = c.brand_id
@@ -218,6 +218,9 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       if (!c.html_content) return res.status(404).send(errPage('Esta campanha não tem um template de email associado.'));
 
       const emailHtml = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '');
+      const brandRight = c.brand_logo
+        ? `<img src="${esc(c.brand_logo)}" alt="${esc(c.brand_name||'')}" class="bar-logo">`
+        : `<span class="bar-brand">${esc(c.brand_name||'')}</span>`;
       const html = `<!DOCTYPE html>
 <html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(c.subject || c.name)} — Pré-visualização</title>
@@ -226,9 +229,10 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 .bar{background:#0f172a;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .bar-left{display:flex;align-items:center;gap:10px}.bar-tag{background:#1e293b;color:#94a3b8;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .bar-name{color:#f8fafc;font-weight:600;font-size:13px}.bar-sub{color:#94a3b8;font-size:12px;margin-top:1px}.bar-brand{color:#64748b;font-size:12px}
+.bar-logo{height:32px;width:auto;object-fit:contain;display:block;filter:brightness(0) invert(1);opacity:.85}
 .wrap{padding:24px 16px;display:flex;justify-content:center}iframe{border:none;background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.12);border-radius:8px;width:100%;max-width:680px;min-height:500px;display:block}</style>
 </head><body>
-<div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(c.name||'Campanha')}</div>${c.subject?`<div class="bar-sub">${esc(c.subject)}</div>`:''}</div></div><div class="bar-brand">${esc(c.brand_name||'')}</div></div>
+<div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(c.name||'Campanha')}</div>${c.subject?`<div class="bar-sub">${esc(c.subject)}</div>`:''}</div></div>${brandRight}</div>
 <div class="wrap"><iframe id="f" sandbox="allow-same-origin" title="Pré-visualização do email"></iframe></div>
 <script>(function(){const h=${JSON.stringify(emailHtml)};const f=document.getElementById('f');f.srcdoc=h;f.addEventListener('load',function(){try{const s=f.contentDocument.documentElement.scrollHeight;if(s>100)f.style.height=s+'px';}catch(_){}});})();</script>
 </body></html>`;
