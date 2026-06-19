@@ -104,9 +104,10 @@
 
     // ── API ──────────────────────────────────────────────
     const API_BASE = 'https://email-marketing-eta.vercel.app';
+    const _todayStr   = () => new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
     const getToken  = () => localStorage.getItem('pm_token');
-    const setToken  = t  => localStorage.setItem('pm_token', t);
-    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); localStorage.removeItem('pm_user_role'); document.documentElement.classList.remove('is-viewer'); };
+    const setToken  = t  => { localStorage.setItem('pm_token', t); localStorage.setItem('pm_token_day', _todayStr()); };
+    const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_token_day'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); localStorage.removeItem('pm_user_role'); document.documentElement.classList.remove('is-viewer'); };
 
     // ── Hash-based routing ───────────────────────────────
     const _ROUTE_TO_SCREEN = {
@@ -9870,6 +9871,12 @@ ${sections.join('\n\n')}
                 const _payload = JSON.parse(atob(token.split('.')[1]));
                 if (_payload.exp * 1000 < Date.now()) { clearAuth(); }
             } catch { clearAuth(); }
+        }
+        // Enforce daily session boundary: if the token was saved on a different calendar
+        // day, expire the session so the user must log in again today.
+        if (getToken()) {
+            const savedDay = localStorage.getItem('pm_token_day');
+            if (!savedDay || savedDay !== _todayStr()) { clearAuth(); }
         }
         const brands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
         if (getToken() && brands.length) {
