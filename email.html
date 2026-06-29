@@ -2040,6 +2040,7 @@
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
     }
     function teUpdateListItem(id, idx, value) {
         const f = teFind(id);
@@ -2047,6 +2048,7 @@
         if (!f.block.items) return;
         f.block.items[idx].text = value;
         teRenderCanvas(); teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
     }
     function teRemoveListItem(id, idx) {
         const f = teFind(id);
@@ -2624,7 +2626,8 @@
         const handler = `oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)"`;
         let input;
         if (f.type === 'textarea') {
-            input = `<textarea rows="6" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${teEscape(v)}</textarea>`;
+            const rows = (b.type === 'button' || b.type === 'linkBlock') ? 2 : 5;
+            input = `<textarea rows="${rows}" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${teEscape(v)}</textarea>`;
         } else if (f.type === 'select') {
             const opts = f.options.map(([val,label]) => `<option value="${val}" ${String(val)===String(v)?'selected':''}>${label}</option>`).join('');
             input = `<select ${handler} class="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs">${opts}</select>`;
@@ -2905,8 +2908,9 @@ ${body}
                     const btnMargin = btnAlign === 'center' ? 'margin:0 auto' : btnAlign === 'right' ? 'margin:0 0 0 auto' : 'margin:0';
                     const btnBorder = b.borderColor ? `2px solid ${esc(b.borderColor)}` : 'none';
                     const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
+                    const btnBgColor = b.bgColor||'#0f172a';
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td style="border-radius:${btnBr}px;background:${b.bgColor||'#0f172a'};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px">${b.text||''}</a></td></tr></table>`,
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td bgcolor="${btnBgColor}" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor}">${b.text||''}</a></td></tr></table>`,
                         b.areaBgColor||'#ffffff', pad(b));
                 }
                 case 'image': {
