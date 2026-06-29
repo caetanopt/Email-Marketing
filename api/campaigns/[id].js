@@ -726,13 +726,30 @@ module.exports = async function handler(req, res) {
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
+              // Personalise subject line
+              let personalizedSubject = c.subject || '(sem assunto)';
+              for (const [k, v] of Object.entries(vars)) {
+                const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                personalizedSubject = personalizedSubject.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => v || '');
+              }
+              personalizedSubject = personalizedSubject
+                .replace(/\{\{name\}\}/g, () => contact.name || contact.email)
+                .replace(/\{\{email\}\}/g, () => contact.email)
+                .replace(/\{\{phone\}\}/g, () => contact.phone || '')
+                .replace(/\{\{company\}\}/g, () => contact.company || '');
+              if (contact.extra_data && typeof contact.extra_data === 'object') {
+                for (const [k, v] of Object.entries(contact.extra_data)) {
+                  const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  personalizedSubject = personalizedSubject.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => v || '');
+                }
+              }
               const campAttachments = c.attachments || [];
               let msgId = null;
               if (campAttachments.length > 0) {
                 const { SendRawEmailCommand } = require('@aws-sdk/client-ses');
                 const rawMsg = buildRawEmail({
                   fromName, fromEmail, toEmail: contact.email, replyTo,
-                  subject: c.subject || '(sem assunto)',
+                  subject: personalizedSubject,
                   htmlBody: finalHtml,
                   textBody: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
                   attachments: campAttachments,
@@ -751,7 +768,7 @@ module.exports = async function handler(req, res) {
                   Source: `${fromName} <${fromEmail}>`,
                   Destination: { ToAddresses: [contact.email] },
                   Message: {
-                    Subject: { Charset: 'UTF-8', Data: c.subject || '(sem assunto)' },
+                    Subject: { Charset: 'UTF-8', Data: personalizedSubject },
                     Body: {
                       Html: { Charset: 'UTF-8', Data: finalHtml },
                       Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
