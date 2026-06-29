@@ -2487,6 +2487,12 @@
     }
 
     // ── Properties panel ────────────────────────────────────────────
+    function teDeselect() {
+        if (!teState.selected) return;
+        teState.selected = null;
+        teRender();
+    }
+
     function teUpdateBodyBg(color) {
         teState.bodyBg = color;
         const list = _teEl('canvasList');
@@ -11111,6 +11117,7 @@ ${sections.join('\n\n')}
                                     </div>
                                     <!-- Canvas -->
                                     <div class="bg-slate-100 border border-slate-200 rounded-xl flex flex-col min-w-0 overflow-hidden" id="wiz_te_canvas"
+                                         onclick="teDeselect()"
                                          ondragover="event.preventDefault();event.dataTransfer.dropEffect=teDrag&&teDrag.kind==='block'?'move':'copy'"
                                          ondrop="event.preventDefault();if(!teDrag)return;if(teDrag.kind==='palette')teInsertBlock(teDrag.type,{kind:'top'});else teMoveTo(teDrag.id,{kind:'top'});teDrag=null;">
                                         <div class="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-center gap-1">
@@ -12583,6 +12590,7 @@ ${sections.join('\n\n')}
 
                                 <!-- Canvas with viewport toggle -->
                                 <div class="bg-slate-100 border border-slate-200 rounded-xl flex flex-col min-w-0 overflow-hidden" id="te_canvas"
+                                     onclick="teDeselect()"
                                      ondragover="event.preventDefault();event.dataTransfer.dropEffect=teDrag&&teDrag.kind==='block'?'move':'copy'"
                                      ondrop="event.preventDefault();if(!teDrag)return;if(teDrag.kind==='palette')teInsertBlock(teDrag.type,{kind:'top'});else teMoveTo(teDrag.id,{kind:'top'});teDrag=null;">
                                     <!-- Viewport toggle bar -->
