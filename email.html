@@ -7602,7 +7602,10 @@ ${teSerializeBlocksComment(srcBlocks)}
         }
         // Pre-fill step 1 fields
         const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-        sv('wizName',        c.name);
+        // Only populate wizName if the user explicitly set a name different from the subject.
+        // When auto-save creates a campaign it falls back to subject as name; loading that
+        // back would incorrectly fill the "optional" name field with the subject text.
+        sv('wizName',        (c.name && c.name !== c.subject) ? c.name : '');
         sv('wizSubject',     c.subject);
         sv('wizPreviewText', c.preview_text);
         sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
@@ -7672,7 +7675,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 }).catch(() => {});
             }
             const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-            sv('wizName',        c.name);
+            sv('wizName',        (c.name && c.name !== c.subject) ? c.name : '');
             sv('wizSubject',     c.subject);
             sv('wizPreviewText', c.preview_text);
             sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
@@ -9128,7 +9131,7 @@ ${sections.join('\n\n')}
                                 if (_editingCampaignId !== _dr.editingId || !c) return;
                                 _editingTemplateId = c.template_id || null;
                                 const _sv = (eid, v) => { const el = document.getElementById(eid); if (el) el.value = v || ''; };
-                                _sv('wizName',        c.name);
+                                _sv('wizName',        (c.name && c.name !== c.subject) ? c.name : '');
                                 _sv('wizSubject',     c.subject);
                                 _sv('wizPreviewText', c.preview_text);
                                 _sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
