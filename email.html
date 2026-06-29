@@ -1598,6 +1598,13 @@
     // ── Block editor state (declared here so _teExit can access them) ──
     var _teMode = 'template';
     var _blockReturnTo = 'blocks';
+    // O editor de blocos guardados (cabeçalhos/rodapés) partilha o objeto global
+    // teState com o wizard de campanhas. Guardamos aqui os blocos que estavam no
+    // teState à entrada do editor de blocos e repomo-los à saída, para que editar
+    // um cabeçalho/rodapé nunca deixe o teState com o conteúdo do bloco — caso
+    // contrário o wizard mostrava o bloco em vez da campanha e o auto-save
+    // sobrescrevia o template da campanha com esse bloco.
+    var _teBlocksStash = null;
 
     function _teExit() {
         if (typeof _teMode !== 'undefined' && _teMode === 'block') {
@@ -5340,6 +5347,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         _blockReturnTo = returnTo;
         _teMode = 'block';
         _teBlockType = returnTo === 'brandSettings' ? _bsBlocksType : _blocksType;
+        if (_teBlocksStash === null) _teBlocksStash = teState.blocks; // preserva os blocos do wizard
         teState.blocks = [];
         teState.selected = null;
         _teCtx = 'te_';
@@ -5362,6 +5370,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             _teBlockType = b.type;
             const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(b.html_content || '') : null;
             teConsumeIds(blocks || []);
+            if (_teBlocksStash === null) _teBlocksStash = teState.blocks; // preserva os blocos do wizard
             teState.blocks = blocks || [];
             teState.selected = null;
             _teCtx = 'te_';
@@ -7091,6 +7100,11 @@ ${teSerializeBlocksComment(srcBlocks)}
 
     async function _wizSaveToApi() {
         if (_wizSubmitting || _wizApiAutoSaveInProgress || _wizSavingDraft) return;
+        // Só guardar quando o wizard de campanha é o ecrã ativo. As funções de
+        // blocos (teMoveTo/teDeleteBlock/pickBlock) são partilhadas com o editor
+        // de cabeçalhos/rodapés; sem este guard, editar um bloco guardado
+        // agendava um auto-save que gravava esse bloco no template da campanha.
+        if (document.querySelector('.screen.active')?.id !== 'campaignCreate') return;
         const subject   = document.getElementById('wizSubject')?.value.trim()   || '';
         const fromName  = document.getElementById('wizFromName')?.value.trim()  || '';
         const fromEmail = document.getElementById('wizFromEmail')?.value.trim() || '';
@@ -7155,6 +7169,9 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
 
     function _wizScheduleApiAutoSave(isBlockChange) {
+        // Não agendar fora do wizard (ex.: ao editar um bloco guardado, que usa as
+        // mesmas funções de manipulação de blocos).
+        if (document.querySelector('.screen.active')?.id !== 'campaignCreate') return;
         clearTimeout(_wizApiAutoSaveTimer);
         _wizApiAutoSaveTimer = setTimeout(_wizSaveToApi, isBlockChange ? 3000 : 1500);
     }
@@ -9102,6 +9119,14 @@ ${sections.join('\n\n')}
             const m = document.getElementById('teUnsavedModal');
             if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
             return;
+        }
+        // Ao sair do editor de blocos, repõe no teState os blocos que lá estavam
+        // antes de o abrir (ver _teBlocksStash). Cobre todas as saídas — botão
+        // voltar, guardar bloco, navegação lateral e o modal "sair sem guardar".
+        if (_currentScreen === 'templateEdit' && id !== 'templateEdit' && _teBlocksStash !== null) {
+            teState.blocks = _teBlocksStash;
+            teState.selected = null;
+            _teBlocksStash = null;
         }
         // Remove fade-in from all screens so re-navigation never triggers the opacity-0 flash
         document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.classList.remove('fade-in'); });
