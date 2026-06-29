@@ -1841,7 +1841,7 @@
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:14, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
@@ -1855,7 +1855,7 @@
         header:  ['text','bgColor','textColor','fontSize','fontWeight','align','lineHeight','padding'],
         heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
-        button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','padding'],
+        button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
         image:   ['src','alt','href','width','align','bgColor','padding'],
         divider: ['color','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
@@ -1890,6 +1890,7 @@
         borderColor:  { label:'Cor da borda',    type:'color' },
         borderRadius: { label:'Border radius (px)', type:'number' },
         areaBgColor:  { label:'Cor de fundo da área', type:'color' },
+        innerPadding: { label:'Padding interno (px)', type:'innerPadding4' },
         title:        { label:'Título',          type:'text' },
         description:  { label:'Descrição',       type:'text' }
     };
@@ -2035,7 +2036,7 @@
         const f = teFind(id);
         if (!f) return;
         // Coerce numbers
-        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','width','height','lineHeight'].includes(key)) value = Number(value);
+        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius'].includes(key)) value = Number(value);
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
@@ -2355,8 +2356,9 @@
             case 'button': {
                 const btnBr = b.borderRadius ?? 6;
                 const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
+                const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;">${teEscape(b.text)}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;">${teEscape(b.text)}</a>`;
                 break;
             }
             case 'image': {
@@ -2611,6 +2613,12 @@
             const PB = b.paddingBottom ?? 0, PL = b.paddingLeft ?? 0;
             const inp4 = (k, lbl, val) => `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" value="${val}" oninput="teUpdateField('${b.id}','${k}',this.value)" onchange="teUpdateField('${b.id}','${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
             return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><div class="grid grid-cols-2 gap-1">${inp4('paddingTop','Topo',PT)}${inp4('paddingRight','Dir.',PR)}${inp4('paddingBottom','Base',PB)}${inp4('paddingLeft','Esq.',PL)}</div></div>`;
+        }
+        if (f.type === 'innerPadding4') {
+            const PT = b.innerPaddingTop  ?? 12, PR = b.innerPaddingRight  ?? 28;
+            const PB = b.innerPaddingBottom ?? 12, PL = b.innerPaddingLeft ?? 28;
+            const inp4 = (k, lbl, val) => `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" value="${val}" oninput="teUpdateField('${b.id}','${k}',this.value)" onchange="teUpdateField('${b.id}','${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
+            return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><div class="grid grid-cols-2 gap-1">${inp4('innerPaddingTop','Topo',PT)}${inp4('innerPaddingRight','Dir.',PR)}${inp4('innerPaddingBottom','Base',PB)}${inp4('innerPaddingLeft','Esq.',PL)}</div></div>`;
         }
         const v = b[key] ?? '';
         const handler = `oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)"`;
@@ -2896,8 +2904,9 @@ ${body}
                     const btnAlign = b.align || 'center';
                     const btnMargin = btnAlign === 'center' ? 'margin:0 auto' : btnAlign === 'right' ? 'margin:0 0 0 auto' : 'margin:0';
                     const btnBorder = b.borderColor ? `2px solid ${esc(b.borderColor)}` : 'none';
+                    const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td style="border-radius:${btnBr}px;background:${b.bgColor||'#0f172a'};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px">${b.text||''}</a></td></tr></table>`,
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td style="border-radius:${btnBr}px;background:${b.bgColor||'#0f172a'};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px">${b.text||''}</a></td></tr></table>`,
                         b.areaBgColor||'#ffffff', pad(b));
                 }
                 case 'image': {
@@ -3010,7 +3019,8 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
-                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}">${b.text}</mj-button>`, ` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
+                const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
+                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}">${b.text}</mj-button>`, ` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
             }
             case 'image': {
                 const mjImgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
@@ -3067,7 +3077,8 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'button': {
                 const mjInBr = b.borderRadius ?? 6;
                 const mjInBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
-                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
+                const mjInInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
+                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" inner-padding="${mjInInPad}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
             }
             case 'image':
                 return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''} />`;
