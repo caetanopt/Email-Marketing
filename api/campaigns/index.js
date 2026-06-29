@@ -357,7 +357,8 @@ module.exports = async function handler(req, res) {
                 COALESCE(rc.total,0) AS total_recipients,
                 COALESCE(rc.sent,0)  AS sent_count,
                 COALESCE(ev.opens,0)  AS open_count,
-                COALESCE(ev.clicks,0) AS click_count
+                COALESCE(ev.clicks,0) AS click_count,
+                COALESCE(li.list_ids, '{}') AS list_ids
          FROM campaigns c
          LEFT JOIN brands b ON b.id=c.brand_id
          LEFT JOIN templates t ON t.id=c.template_id
@@ -372,6 +373,10 @@ module.exports = async function handler(req, res) {
                   COUNT(*) FILTER (WHERE ee.type='click')::int AS clicks
            FROM email_events ee WHERE ee.campaign_id=c.id
          ) ev ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT ARRAY_AGG(cl.list_id) AS list_ids
+           FROM campaign_lists cl WHERE cl.campaign_id=c.id
+         ) li ON TRUE
          ${where}
          ORDER BY c.created_at DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
         params

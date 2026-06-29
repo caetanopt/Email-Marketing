@@ -1,9 +1,6 @@
 {
   "cleanUrls": true,
   "github": { "enabled": false },
-  "crons": [
-    { "path": "/api/cron", "schedule": "* * * * *" }
-  ],
   "functions": {
     "api/campaigns/index.js": { "maxDuration": 60 },
     "api/campaigns/[id].js":  { "maxDuration": 60 }

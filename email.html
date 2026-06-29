@@ -1563,6 +1563,7 @@
                     from_name: c.from_name || '',
                     from_email: c.from_email || '',
                     template_id: c.template_id || null,
+                    list_ids: (c.list_ids || []).filter(Boolean),
                 })
             }).then(() => {
                 if (brand.id === _currentBrand.id) _loadCampaigns(_currentBrand.id);
