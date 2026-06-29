@@ -2334,20 +2334,20 @@
         const d = document.createElement('div');
         switch(b.type) {
             case 'header':
-                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${tePadding(b)};`;
-                d.textContent = b.text;
+                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${tePadding(b)};line-height:1.4;`;
+                d.innerHTML = teNl2br(teEscape(b.text||''));
                 break;
             case 'heading': {
                 d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
                 const h = document.createElement(b.level || 'h2');
-                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;`;
-                h.textContent = b.text;
+                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:1.4;`;
+                h.innerHTML = teNl2br(teEscape(b.text||''));
                 d.appendChild(h);
                 break;
             }
             case 'text':
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${tePadding(b)};white-space:pre-wrap;`;
-                d.textContent = b.text;
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${tePadding(b)};`;
+                d.innerHTML = teNl2br(teEscape(b.text||''));
                 break;
             case 'button':
                 d.style.cssText = `background:#ffffff;padding:${tePadding(b)};text-align:center;`;
@@ -2378,8 +2378,8 @@
                 d.style.cssText = `background:#ffffff;height:${b.height}px;`;
                 break;
             case 'footer':
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};white-space:pre-wrap;`;
-                d.textContent = b.text;
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};`;
+                d.innerHTML = teNl2br(teEscape(b.text||''));
                 break;
             case 'icon': {
                 const sz = b.size || 48;
@@ -2602,7 +2602,7 @@
         const handler = `oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)"`;
         let input;
         if (f.type === 'textarea') {
-            input = `<textarea rows="3" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${teEscape(v)}</textarea>`;
+            input = `<textarea rows="6" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs">${teEscape(v)}</textarea>`;
         } else if (f.type === 'select') {
             const opts = f.options.map(([val,label]) => `<option value="${val}" ${String(val)===String(v)?'selected':''}>${label}</option>`).join('');
             input = `<select ${handler} class="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs">${opts}</select>`;
@@ -2864,17 +2864,17 @@ ${body}
             switch(b.type) {
                 case 'header':
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:1.4">${teNl2br(b.text||'')}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:1.4">${teNl2br(esc(b.text||''))}</p>`,
                         b.bgColor||'#1e293b', pad(b));
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
                     return rowPad(
-                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${teNl2br(b.text||'')}</${hTag}>`,
+                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${teNl2br(esc(b.text||''))}</${hTag}>`,
                         b.bgColor||'#ffffff', pad(b));
                 }
                 case 'text':
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${teNl2br(b.text||'')}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${teNl2br(esc(b.text||''))}</p>`,
                         b.bgColor||'#ffffff', pad(b));
                 case 'button': {
                     const btnHref = b.href||'#';
@@ -2895,7 +2895,7 @@ ${body}
                     return `<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>`;
                 case 'footer':
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:1.6">${teNl2br(b.text||'')}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:1.6">${teNl2br(esc(b.text||''))}</p>`,
                         b.bgColor||'#f8fafc', pad(b));
                 case 'icon': {
                     // Use pre-converted PNG (email-safe) if available, else fall back to SVG data URL
@@ -2980,7 +2980,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
     function teBlockToMjml(b, i) {
         const wrap = (inner, attrs='') => `${i}<mj-section${attrs}>\n${i}  <mj-column>\n${inner}\n${i}  </mj-column>\n${i}</mj-section>`;
-        const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${teNl2brX(text)}</mj-text>`;
+        const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${teNl2brX(teEscape(text))}</mj-text>`;
         switch(b.type) {
             case 'header':
                 return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
@@ -2998,7 +2998,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'spacer':
                 return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
             case 'footer':
-                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${teNl2brX(b.text)}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${teNl2brX(teEscape(b.text||''))}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
