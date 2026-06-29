@@ -4950,13 +4950,14 @@ ${teSerializeBlocksComment(srcBlocks)}
         }
         addrEl?.classList.remove('border-red-400', 'ring-1', 'ring-red-300');
         const payload = {
-            name:        document.getElementById('bsName')?.value.trim() || null,
-            color:       color || null,
-            logo_url:    document.getElementById('bsLogoUrl')?.value.trim() || null,
-            from_name:   document.getElementById('bsFromName')?.value.trim() || null,
-            from_email:  document.getElementById('bsFromEmail')?.value.trim() || null,
-            reply_to:    document.getElementById('bsReplyTo')?.value.trim() || null,
-            variables:   _bsGetVariables(),
+            name:         document.getElementById('bsName')?.value.trim() || null,
+            color:        color || null,
+            logo_url:     document.getElementById('bsLogoUrl')?.value.trim() || null,
+            from_name:    document.getElementById('bsFromName')?.value.trim() || null,
+            from_email:   document.getElementById('bsFromEmail')?.value.trim() || null,
+            reply_to:     document.getElementById('bsReplyTo')?.value.trim() || null,
+            notify_email: document.getElementById('bsNotifyEmail')?.value.trim() || null,
+            variables:    _bsGetVariables(),
         };
         try {
             await apiFetch(`/api/brands?id=${_currentBrand.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -4972,7 +4973,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
 
     function _applyBrandSettingsData(b) {
-        const fields = { bsName: b.name||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'' };
+        const fields = { bsName: b.name||'', bsFromName: b.from_name||'', bsFromEmail: b.from_email||'', bsReplyTo: b.reply_to||'', bsNotifyEmail: b.notify_email||'' };
         Object.entries(fields).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val; });
         const cp = document.getElementById('brandColorPicker'); if (cp) cp.value = b.color || '#1e293b';
         const ct = document.getElementById('brandColorText');   if (ct) ct.value = b.color || '#1e293b';
@@ -13559,6 +13560,11 @@ ${sections.join('\n\n')}
                             <div>
                                 <label class="block text-xs text-slate-500 mb-1">Reply-to</label>
                                 <input id="bsReplyTo" type="email" placeholder="opcional" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs text-slate-500 mb-1">Email de notificação de envio</label>
+                                <input id="bsNotifyEmail" type="email" placeholder="ex: marketing@empresa.pt (opcional)" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                                <p class="text-xs text-slate-400 mt-1">Recebe um email de resumo sempre que uma campanha desta marca terminar o envio.</p>
                             </div>
                         </div>
                     </div>

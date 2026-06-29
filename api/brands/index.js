@@ -835,7 +835,7 @@ module.exports = async function handler(req, res) {
       if (!id) return res.status(400).json({ error: 'id obrigatório' });
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const body = req.body || {};
-      const fields = ['name','color','logo_url','from_name','from_email','reply_to','header_html','footer_html'];
+      const fields = ['name','color','logo_url','from_name','from_email','reply_to','header_html','footer_html','notify_email'];
       const sets = [];
       const params = [];
       for (const f of fields) {

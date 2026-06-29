@@ -1,0 +1,1 @@
+ALTER TABLE brands ADD COLUMN IF NOT EXISTS notify_email TEXT;
