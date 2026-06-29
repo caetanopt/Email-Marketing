@@ -364,8 +364,11 @@ module.exports = async function handler(req, res) {
       const { name, subject, preview_text, from_name, from_email,
               template_id, scheduled_at, status, list_ids, utm_params, attachments } = req.body || {};
       await query(
-        `UPDATE campaigns SET name=COALESCE($1,name), subject=$2, preview_text=$3,
-         from_name=$4, from_email=$5, template_id=COALESCE($6,template_id),
+        `UPDATE campaigns SET
+         name=COALESCE($1,name), subject=COALESCE($2,subject),
+         preview_text=COALESCE($3,preview_text),
+         from_name=COALESCE($4,from_name), from_email=COALESCE($5,from_email),
+         template_id=COALESCE($6,template_id),
          scheduled_at=$7, status=COALESCE($8,status),
          utm_params=COALESCE($9,utm_params),
          attachments=COALESCE($10,attachments),

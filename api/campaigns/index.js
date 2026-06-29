@@ -68,9 +68,10 @@ module.exports = async function handler(req, res) {
             if (err.code === 'already_sending') continue;
             if (err.message.startsWith('Sem destinatários activos')) {
               // initCampaignSend already reverted the campaign to 'draft'.
-              // Log and skip — the user needs to add recipients before the campaign can send.
-              console.warn(`Cron: campaign ${campId} has no active recipients — left as draft`);
-              results.push({ id: campId, total: 0, sent: 0, failed: 0, noRecipients: true });
+              // Log the full message so the reason (suppressed / no lists / no contacts)
+              // appears in Vercel function logs and in the cron response body.
+              console.warn(`Cron: campaign ${campId} reverted to draft — ${err.message}`);
+              results.push({ id: campId, total: 0, sent: 0, failed: 0, noRecipients: true, reason: err.message });
               continue;
             }
             throw err;
