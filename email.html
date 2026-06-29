@@ -1840,7 +1840,7 @@
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:14, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
@@ -1854,7 +1854,7 @@
         header:  ['text','bgColor','textColor','fontSize','fontWeight','align','padding'],
         heading: ['text','level','color','bgColor','fontSize','fontWeight','align','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
-        button:  ['text','href','bgColor','textColor','fontSize','fontWeight','padding'],
+        button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','padding'],
         image:   ['src','alt','href','width','align','bgColor','padding'],
         divider: ['color','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
@@ -1887,6 +1887,8 @@
         author:       { label:'Autor / Fonte',   type:'text' },
         authorColor:  { label:'Cor do autor',    type:'color' },
         borderColor:  { label:'Cor da borda',    type:'color' },
+        borderRadius: { label:'Border radius (px)', type:'number' },
+        areaBgColor:  { label:'Cor de fundo da área', type:'color' },
         title:        { label:'Título',          type:'text' },
         description:  { label:'Descrição',       type:'text' }
     };
@@ -2349,10 +2351,13 @@
                 d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${tePadding(b)};`;
                 d.innerHTML = teNl2br(teEscape(b.text||''));
                 break;
-            case 'button':
-                d.style.cssText = `background:#ffffff;padding:${tePadding(b)};text-align:center;`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:6px;text-decoration:none;">${teEscape(b.text)}</a>`;
+            case 'button': {
+                const btnBr = b.borderRadius ?? 6;
+                const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
+                d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;">${teEscape(b.text)}</a>`;
                 break;
+            }
             case 'image': {
                 const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
                 d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${imgPad};text-align:${b.align};`;
@@ -2886,9 +2891,13 @@ ${body}
                         b.bgColor||'#ffffff', pad(b));
                 case 'button': {
                     const btnHref = b.href||'#';
+                    const btnBr = b.borderRadius ?? 6;
+                    const btnAlign = b.align || 'center';
+                    const btnMargin = btnAlign === 'center' ? 'margin:0 auto' : btnAlign === 'right' ? 'margin:0 0 0 auto' : 'margin:0';
+                    const btnBorder = b.borderColor ? `2px solid ${esc(b.borderColor)}` : 'none';
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td style="border-radius:6px;background:${b.bgColor||'#0f172a'}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:6px">${b.text||''}</a></td></tr></table>`,
-                        b.bgColor2||'#ffffff', pad(b));
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td style="border-radius:${btnBr}px;background:${b.bgColor||'#0f172a'};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px">${b.text||''}</a></td></tr></table>`,
+                        b.areaBgColor||'#ffffff', pad(b));
                 }
                 case 'image': {
                     const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
@@ -2997,8 +3006,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'text':
                 return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
-            case 'button':
-                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}">${b.text}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
+            case 'button': {
+                const mjBtnBr = b.borderRadius ?? 6;
+                const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
+                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}">${b.text}</mj-button>`, ` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
+            }
             case 'image': {
                 const mjImgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
                 return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align}"${b.href ? ` href="${b.href}"` : ''} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`);
@@ -3050,8 +3062,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const c = b.color || b.textColor || '#000';
                 return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" padding="${teMjmlPad(b)}">${teNl2brX(b.text)}</mj-text>`;
             }
-            case 'button':
-                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
+            case 'button': {
+                const mjInBr = b.borderRadius ?? 6;
+                const mjInBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
+                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
+            }
             case 'image':
                 return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''} />`;
             case 'divider':
