@@ -2354,7 +2354,7 @@
                 d.innerHTML = `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:6px;text-decoration:none;">${teEscape(b.text)}</a>`;
                 break;
             case 'image':
-                d.style.cssText = `background:#ffffff;padding:8px;text-align:${b.align};`;
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align};`;
                 if (b.href) {
                     d.innerHTML = `<a href="${teEscape(b.href)}" target="_blank" rel="noopener" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;" /></a>`;
                 } else {
@@ -2864,7 +2864,7 @@ ${body}
                 case 'image': {
                     const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}" style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`;
                     const imgContent = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener" style="display:block">${imgTag}</a>` : imgTag;
-                    return rowPad(imgContent, '#ffffff', pad(b));
+                    return rowPad(imgContent, b.bgColor||'#ffffff', pad(b));
                 }
                 case 'divider':
                     return rowPad(
