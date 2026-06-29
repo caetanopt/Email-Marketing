@@ -2857,10 +2857,10 @@ ${body}
     function teBuildEmailHtml(overrideBlocks) {
         const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const pad = b => {
-            const t = b.paddingTop    ?? b.padding ?? 16;
-            const r = b.paddingRight  ?? b.padding ?? 24;
-            const bo= b.paddingBottom ?? b.padding ?? 16;
-            const l = b.paddingLeft   ?? b.padding ?? 24;
+            const t = b.paddingTop    ?? b.padding ?? 20;
+            const r = b.paddingRight  ?? b.padding ?? 20;
+            const bo= b.paddingBottom ?? b.padding ?? 20;
+            const l = b.paddingLeft   ?? b.padding ?? 20;
             return `${t}px ${r}px ${bo}px ${l}px`;
         };
         const row = (inner, bg='#ffffff', extraStyle='') =>
