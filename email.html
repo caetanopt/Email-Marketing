@@ -2485,11 +2485,32 @@
     }
 
     // ── Properties panel ────────────────────────────────────────────
+    function teUpdateBodyBg(color) {
+        teState.bodyBg = color;
+        const list = _teEl('canvasList');
+        if (list) list.style.background = color || '#f5f7fa';
+        teRenderMjml();
+        _wizScheduleApiAutoSave(true);
+    }
+
     function teRenderProperties() {
         const root = _teEl('props');
         if (!root) return;
         if (!teState.selected) {
-            root.innerHTML = '<p class="text-xs text-slate-400 italic text-center mt-8 px-2">Clica num bloco para editar as propriedades.</p>';
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Template</p>
+                <p class="text-[10px] text-slate-400 mb-3">Definições gerais</p>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
+                        <input type="color" value="${teState.bodyBg || '#f5f7fa'}"
+                            oninput="teUpdateBodyBg(this.value)"
+                            onchange="teUpdateBodyBg(this.value)"
+                            class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400 italic text-center mt-6 px-2">Clica num bloco para editar as suas propriedades.</p>
+            `;
             return;
         }
         const found = teFind(teState.selected);
