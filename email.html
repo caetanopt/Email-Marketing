@@ -1935,7 +1935,8 @@
     const teState = {
         selected: null,
         viewport: 'desktop',
-        blocks: []
+        blocks: [],
+        bodyBg: '#f5f7fa'
     };
 
     // ── Tree helpers ─────────────────────────────────────────────────
@@ -2669,6 +2670,8 @@
                 console.error('MJML XML parse error:', doc.querySelector('parsererror').textContent);
                 return null;
             }
+            const mjBody = doc.querySelector('mj-body');
+            if (mjBody?.getAttribute('background-color')) teState.bodyBg = mjBody.getAttribute('background-color');
             const blocks = [];
             doc.querySelectorAll('mj-body > mj-section').forEach(section => {
                 const cols = [...section.querySelectorAll(':scope > mj-column')];
@@ -2802,7 +2805,7 @@
       <mj-all font-family="Helvetica, Arial, sans-serif" />
     </mj-attributes>
   </mj-head>
-  <mj-body background-color="#f5f7fa">
+  <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
 ${body}
   </mj-body>
 </mjml>`;
