@@ -1842,7 +1842,7 @@
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
-        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
+        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', fluidOnMobile:false, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
         footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
@@ -1856,7 +1856,7 @@
         heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
         button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
-        image:   ['src','alt','href','width','align','bgColor','padding'],
+        image:   ['src','alt','href','width','align','bgColor','fluidOnMobile','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
         footer:  ['text','color','bgColor','fontSize','lineHeight','padding'],
@@ -1888,7 +1888,8 @@
         author:       { label:'Autor / Fonte',   type:'text' },
         authorColor:  { label:'Cor do autor',    type:'color' },
         borderColor:  { label:'Cor da borda',    type:'color' },
-        showDividers: { label:'Linhas separadoras', type:'select', options:[['0','Não'],['1','Sim']] },
+        showDividers:  { label:'Linhas separadoras',  type:'select', options:[['0','Não'],['1','Sim']] },
+        fluidOnMobile: { label:'Fluid em mobile',     type:'select', options:[['0','Não'],['1','Sim']] },
         borderRadius: { label:'Border radius (px)', type:'number' },
         areaBgColor:  { label:'Cor de fundo da área', type:'color' },
         innerPadding: { label:'Padding interno (px)', type:'innerPadding4' },
@@ -2924,7 +2925,9 @@ ${body}
                 }
                 case 'image': {
                     const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
-                    const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}" style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`;
+                    const imgFluid = b.fluidOnMobile === true || b.fluidOnMobile === '1';
+                    const imgClass = imgFluid ? ' class="te-fluid"' : '';
+                    const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}"${imgClass} style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`;
                     const imgContent = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener" style="display:block">${imgTag}</a>` : imgTag;
                     return rowPad(imgContent, b.bgColor||'#ffffff', imgPad);
                 }
@@ -3005,7 +3008,7 @@ ${body}
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
-<style>:root{color-scheme:light;supported-color-schemes:light}</style>
+<style>:root{color-scheme:light;supported-color-schemes:light}@media only screen and (max-width:480px){.te-fluid{width:100%!important;max-width:100%!important;height:auto!important}}</style>
 <style>.thin-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}.thin-scroll::-webkit-scrollbar{width:6px;height:6px}.thin-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.thin-scroll::-webkit-scrollbar-track{background:transparent}.thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px;min-height:24px}.thin-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8}</style>
 <title></title>
 </head>
@@ -3039,7 +3042,8 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
             case 'image': {
                 const mjImgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
-                return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align}"${b.href ? ` href="${b.href}"` : ''} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`);
+                const mjFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
+                return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`);
             }
             case 'divider': {
                 const mjDs = b.borderStyle === 'rounded' ? 'solid' : (b.borderStyle || 'solid');
@@ -3097,8 +3101,10 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const mjInInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" inner-padding="${mjInInPad}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
             }
-            case 'image':
-                return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''} />`;
+            case 'image': {
+                const mjInFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
+                return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''}${mjInFluid} />`;
+            }
             case 'divider':
                 return `${i}<mj-divider border-color="${b.color||'#e2e8f0'}" container-background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}" />`;
             case 'spacer':
