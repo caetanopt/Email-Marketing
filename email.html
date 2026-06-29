@@ -6846,6 +6846,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const subject = document.getElementById('wizSubject')?.value.trim();
         const name    = document.getElementById('wizName')?.value.trim() || subject;
         _wizSavingDraft = true;
+        await _wizWaitForAutoSave(); // evita duplicar a campanha por race com o auto-save
         const btn = document.getElementById('wizSaveDraftBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
         try {
@@ -6886,7 +6887,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     _wizUpdateDirectNotice();
                 } catch (e) { console.error('add_direct_recipients (draft save):', e); }
             }
-            _wizClearDraft();
+            _wizSaveDraft(); // mantém o editingId persistido para o restauro após refresh
             _wizMarkClean();
             _loadCampaigns(_currentBrand.id);
             showToast('Rascunho guardado.');
@@ -6905,6 +6906,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     // wizard (ex.: gerir biblioteca de multimédia) e voltar pela lista perdia os blocos.
     async function _wizPersistDraftWithTemplate() {
         if (!_currentBrand?.id) return;
+        await _wizWaitForAutoSave(); // evita duplicar a campanha por race com o auto-save
         const subject = document.getElementById('wizSubject')?.value.trim();
         const name    = document.getElementById('wizName')?.value.trim() || subject || 'Campanha';
         const fromName  = document.getElementById('wizFromName')?.value.trim() || '';
@@ -7088,7 +7090,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
 
     async function _wizSaveToApi() {
-        if (_wizSubmitting || _wizApiAutoSaveInProgress) return;
+        if (_wizSubmitting || _wizApiAutoSaveInProgress || _wizSavingDraft) return;
         const subject   = document.getElementById('wizSubject')?.value.trim()   || '';
         const fromName  = document.getElementById('wizFromName')?.value.trim()  || '';
         const fromEmail = document.getElementById('wizFromEmail')?.value.trim() || '';
@@ -7137,6 +7139,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 });
                 _editingCampaignId = r.id;
                 _editingTemplateId = templateId;
+                _wizSaveDraft(); // persiste o editingId para sobreviver a refresh e evitar duplicados
                 // Refresh the campaigns list so the new draft appears immediately
                 if (_currentBrand?.id) _loadCampaigns(_currentBrand.id);
             }
@@ -7154,6 +7157,17 @@ ${teSerializeBlocksComment(srcBlocks)}
     function _wizScheduleApiAutoSave(isBlockChange) {
         clearTimeout(_wizApiAutoSaveTimer);
         _wizApiAutoSaveTimer = setTimeout(_wizSaveToApi, isBlockChange ? 3000 : 1500);
+    }
+    // Cancela qualquer auto-save agendado e espera que um em curso termine (até 5s)
+    // antes de uma gravação manual decidir criar a campanha. Sem isto, os dois
+    // caminhos podiam fazer POST em simultâneo e gerar campanhas duplicadas.
+    async function _wizWaitForAutoSave() {
+        clearTimeout(_wizApiAutoSaveTimer);
+        _wizApiAutoSaveTimer = null;
+        let guard = 0;
+        while (_wizApiAutoSaveInProgress && guard++ < 200) {
+            await new Promise(r => setTimeout(r, 25));
+        }
     }
     function wizUnsavedLeave() {
         const m = document.getElementById('wizUnsavedModal');
