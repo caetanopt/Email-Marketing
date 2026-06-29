@@ -271,21 +271,29 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
     return res.status(302).end();
   }
 
-  // Open pixel — record BEFORE returning the image
-  try {
-    if (cid && uid && t) {
-      const expected = trackToken(cid, uid);
-      const campaignId = parseInt(cid, 10);
-      const contactId  = parseInt(uid, 10);
-      if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
-        await query(
-          `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1, $2, 'open', NOW())`,
-          [campaignId, contactId]
-        );
+  // Open pixel — record BEFORE returning the image.
+  // Skip known mail proxy / security scanner user-agents that pre-fetch images
+  // without the user opening the email (e.g. Gmail Image Proxy, Yahoo Mail,
+  // Proofpoint, Barracuda, Apple Mail Privacy Protection prefetch, etc.).
+  const ua = (req.headers['user-agent'] || '').toLowerCase();
+  const isMailBot = /googleimageproxy|ggpht\.com|yahooimageproxy|yahoo.*mail.*proxy|preview\.mail\.icloud|mail-proxy|mimecast|proofpoint|barracuda|cloudmark|symantec.*email|messagelabs|sophos|ironport|postfix|spamassassin|url.*scanner|link.*scanner|phishtank|avira|kaspersky.*mail/i.test(ua);
+
+  if (!isMailBot) {
+    try {
+      if (cid && uid && t) {
+        const expected = trackToken(cid, uid);
+        const campaignId = parseInt(cid, 10);
+        const contactId  = parseInt(uid, 10);
+        if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
+          await query(
+            `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1, $2, 'open', NOW())`,
+            [campaignId, contactId]
+          );
+        }
       }
+    } catch (e) {
+      console.error('track open error:', e.message);
     }
-  } catch (e) {
-    console.error('track open error:', e.message);
   }
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
