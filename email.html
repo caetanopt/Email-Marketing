@@ -1661,6 +1661,7 @@
                 if (h1El && t.name) h1El.textContent = `Editar — ${t.name}`;
                 const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(t.html_content || '') : null;
                 if (blocks && blocks.length) {
+                    teConsumeIds(blocks);
                     teState.blocks = blocks;
                     teState.selected = null;
                     teRender();
@@ -1885,6 +1886,20 @@
 
     let teNextId = 100;
     const teId   = () => 'b' + (++teNextId);
+
+    // After loading blocks from saved HTML or merging from the block picker,
+    // advance teNextId past any existing numeric IDs to prevent collisions
+    // (e.g. loaded block b101 + first teId() = b101 → two blocks with same ID).
+    function teConsumeIds(blocks) {
+        if (!Array.isArray(blocks)) return;
+        for (const b of blocks) {
+            const m = String(b.id || '').match(/^b(\d+)$/);
+            if (m) { const n = parseInt(m[1], 10); if (n > teNextId) teNextId = n; }
+            if (b.type === 'columns' && Array.isArray(b.children)) {
+                for (const col of b.children) teConsumeIds(col);
+            }
+        }
+    }
 
     // Per-template isolated state
     let teTemplateId = 'tpl1';
@@ -2767,6 +2782,7 @@
             if (!silent) showToast('MJML inválido ou formato não reconhecido.', 'error');
             return;
         }
+        teConsumeIds(blocks);
         teState.blocks = blocks;
         teState.selected = null;
         teRenderCanvas();
@@ -5332,6 +5348,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             _teMode = 'block';
             _teBlockType = b.type;
             const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(b.html_content || '') : null;
+            teConsumeIds(blocks || []);
             teState.blocks = blocks || [];
             teState.selected = null;
             _teCtx = 'te_';
@@ -6589,7 +6606,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const wizMjml = document.getElementById('wiz_te_mjmlCode')?.value?.trim();
                 if (wizMjml && typeof teParseMjmlToBlocks === 'function') {
                     const parsed = teParseMjmlToBlocks(wizMjml);
-                    if (parsed?.length) teState.blocks = parsed;
+                    if (parsed?.length) { teConsumeIds(parsed); teState.blocks = parsed; }
                 }
             }
             if (teState.blocks.length) {
@@ -7506,6 +7523,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         // uma sessão anterior, senão o submit sobrescreve o template com conteúdo errado.
         if (c.html_content && typeof teBlocksFromContent === 'function') {
             const parsed = teBlocksFromContent(c.html_content);
+            if (parsed?.length) teConsumeIds(parsed);
             teState.blocks = (parsed && parsed.length) ? parsed : [];
             teState.selected = null;
         } else {
@@ -8320,9 +8338,17 @@ function toggleExportMenu() {
             }
             const parsed = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(b.html_content || '') : null;
             if (!parsed || !parsed.length) { showToast('Bloco vazio ou em formato não reconhecido. Abre o bloco em "Blocos" e volta a guardá-lo.', 'error'); return; }
+            // Reassign IDs in the incoming block so they never collide with blocks
+            // already on the canvas (both may have been saved starting from b101).
+            teConsumeIds(teState.blocks);
+            const reIndexed = parsed.map(function remap(bl) {
+                const nb = { ...bl, id: teId() };
+                if (nb.type === 'columns' && Array.isArray(nb.children)) nb.children = nb.children.map(col => col.map(remap));
+                return nb;
+            });
             // Insert at top for header, bottom for footer
-            if (b.type === 'header') teState.blocks = [...parsed, ...teState.blocks];
-            else teState.blocks = [...teState.blocks, ...parsed];
+            if (b.type === 'header') teState.blocks = [...reIndexed, ...teState.blocks];
+            else teState.blocks = [...teState.blocks, ...reIndexed];
             teState.selected = null;
             if (typeof teRender === 'function') teRender();
             closeBlockPicker();
@@ -9002,6 +9028,7 @@ ${sections.join('\n\n')}
                                 // Substituímos sempre pelo conteúdo guardado da campanha.
                                 if (typeof teBlocksFromContent === 'function') {
                                     const parsed = c.html_content ? teBlocksFromContent(c.html_content) : null;
+                                    if (parsed?.length) teConsumeIds(parsed);
                                     teState.blocks = (parsed && parsed.length) ? parsed : [];
                                     teState.selected = null;
                                     if (_wizStep === 2 && typeof teRenderCanvas === 'function') {
