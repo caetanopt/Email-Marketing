@@ -2280,6 +2280,7 @@
             mBtn.classList.toggle('text-slate-500', teState.viewport !== 'mobile');
         }
         list.innerHTML = '';
+        list.style.background = teState.bodyBg || '#f5f7fa';
         if (teState.blocks.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'text-center text-slate-400 text-sm italic py-12';
@@ -2628,6 +2629,16 @@
         if (parts.length === 3) return { paddingTop:parts[0], paddingRight:parts[1], paddingBottom:parts[2], paddingLeft:parts[1] };
         return { paddingTop:parts[0], paddingRight:parts[1], paddingBottom:parts[2], paddingLeft:parts[3] };
     }
+    function teMjmlInnerText(el) {
+        const inner = el.innerHTML || '';
+        const withNewlines = inner.replace(/<br\s*\/>/gi, '\n').replace(/<[^>]+>/g, '');
+        return withNewlines
+            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#160;/g, ' ');
+    }
+    function teNl2br(t) { return String(t||'').replace(/\n/g, '<br>'); }
+    function teNl2brX(t) { return String(t||'').replace(/\n/g, '<br/>'); }
+
     function teParseMjmlEl(el, sectionBg, sectionPad) {
         const tag = el.tagName.toLowerCase();
         const id = teId();
@@ -2640,9 +2651,9 @@
                 // Heuristic: detect heading vs text
                 const isDark = bgColor !== '#ffffff' && bgColor !== '#f8fafc';
                 if (isDark) {
-                    return { id, type:'header', text:el.textContent, bgColor, textColor:el.getAttribute('color')||'#ffffff', fontSize, fontWeight, align:el.getAttribute('align')||'center', ...pad };
+                    return { id, type:'header', text:teMjmlInnerText(el), bgColor, textColor:el.getAttribute('color')||'#ffffff', fontSize, fontWeight, align:el.getAttribute('align')||'center', ...pad };
                 }
-                return { id, type:'text', text:el.textContent, bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, ...pad };
+                return { id, type:'text', text:teMjmlInnerText(el), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, ...pad };
             }
             case 'mj-button':
                 return { id, type:'button', text:el.textContent, bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
@@ -2800,11 +2811,6 @@
     function teBuildMjml() {
         const body = teState.blocks.map(b => teBlockToMjml(b, '    ')).join('\n');
         return `<mjml>
-  <mj-head>
-    <mj-attributes>
-      <mj-all font-family="Helvetica, Arial, sans-serif" />
-    </mj-attributes>
-  </mj-head>
   <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
 ${body}
   </mj-body>
@@ -2830,22 +2836,22 @@ ${body}
             switch(b.type) {
                 case 'header':
                     return rowPad(
-                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:1.4">${b.text||''}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:1.4">${teNl2br(b.text||'')}</p>`,
                         b.bgColor||'#1e293b', pad(b));
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
                     return rowPad(
-                        `<${hTag} style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${b.text||''}</${hTag}>`,
+                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:1.4">${teNl2br(b.text||'')}</${hTag}>`,
                         b.bgColor||'#ffffff', pad(b));
                 }
                 case 'text':
                     return rowPad(
-                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${b.text||''}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${teNl2br(b.text||'')}</p>`,
                         b.bgColor||'#ffffff', pad(b));
                 case 'button': {
                     const btnHref = b.href||'#';
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td style="border-radius:6px;background:${b.bgColor||'#0f172a'}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:6px">${b.text||''}</a></td></tr></table>`,
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr><td style="border-radius:6px;background:${b.bgColor||'#0f172a'}"><a href="${esc(btnHref)}" style="display:inline-block;padding:12px 28px;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:6px">${b.text||''}</a></td></tr></table>`,
                         b.bgColor2||'#ffffff', pad(b));
                 }
                 case 'image': {
@@ -2861,7 +2867,7 @@ ${body}
                     return `<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>`;
                 case 'footer':
                     return rowPad(
-                        `<p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:1.6">${b.text||''}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:1.6">${teNl2br(b.text||'')}</p>`,
                         b.bgColor||'#f8fafc', pad(b));
                 case 'icon': {
                     // Use pre-converted PNG (email-safe) if available, else fall back to SVG data URL
@@ -2899,18 +2905,18 @@ ${body}
                 }
                 case 'quote':
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>`,
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${teNl2br(b.text||'')}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>`,
                         '#ffffff', pad(b));
                 case 'linkBlock': {
                     const lbDesc = b.description ? `<br><span style="font-size:12px;opacity:0.8">${b.description}</span>` : '';
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="background:${b.bgColor||'#0f172a'};border-radius:8px;text-align:${b.align||'center'}"><a href="${esc(b.href||'#')}" style="display:block;padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||15}px;font-weight:700;color:${b.textColor||'#ffffff'};text-decoration:none">${b.title||''}${lbDesc}</a></td></tr></table>`,
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="background:${b.bgColor||'#0f172a'};border-radius:8px;text-align:${b.align||'center'}"><a href="${esc(b.href||'#')}" style="display:block;padding:16px 24px;font-size:${b.fontSize||15}px;font-weight:700;color:${b.textColor||'#ffffff'};text-decoration:none">${b.title||''}${lbDesc}</a></td></tr></table>`,
                         '#ffffff', pad(b));
                 }
                 case 'listItems': {
                     const liHtml = (b.items||[]).map(it => `<li style="margin-bottom:6px">${it.text||''}</li>`).join('');
                     return rowPad(
-                        `<ul style="margin:0;padding-left:20px;font-family:Helvetica,Arial,sans-serif;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>`,
+                        `<ul style="margin:0;padding-left:20px;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>`,
                         b.bgColor||'#ffffff', pad(b));
                 }
                 default: return '';
@@ -2932,8 +2938,8 @@ ${body}
 <style>.thin-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}.thin-scroll::-webkit-scrollbar{width:6px;height:6px}.thin-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.thin-scroll::-webkit-scrollbar-track{background:transparent}.thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px;min-height:24px}.thin-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8}</style>
 <title></title>
 </head>
-<body style="margin:0;padding:0;background:#f5f7fa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f7fa;color-scheme:light">
+<body style="margin:0;padding:0;background:${teState.bodyBg||'#f5f7fa'};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${teState.bodyBg||'#f5f7fa'};color-scheme:light">
 <tr><td align="center" style="padding:20px 0">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%">
 ${bodyRows}
@@ -2946,7 +2952,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
     function teBlockToMjml(b, i) {
         const wrap = (inner, attrs='') => `${i}<mj-section${attrs}>\n${i}  <mj-column>\n${inner}\n${i}  </mj-column>\n${i}</mj-section>`;
-        const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${b.text}</mj-text>`;
+        const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${teNl2brX(text)}</mj-text>`;
         switch(b.type) {
             case 'header':
                 return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
@@ -2964,7 +2970,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'spacer':
                 return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
             case 'footer':
-                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${b.text}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center">${teNl2brX(b.text)}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -2987,7 +2993,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return `${i}<mj-section>\n${cols}\n${i}</mj-section>`;
             }
             case 'quote':
-                return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
+                return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
             case 'linkBlock': {
                 const lbDesc = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
                 return wrap(`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
@@ -3003,7 +3009,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         switch(b.type) {
             case 'text': case 'header': case 'heading': case 'footer': {
                 const c = b.color || b.textColor || '#000';
-                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" padding="${teMjmlPad(b)}">${b.text}</mj-text>`;
+                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" padding="${teMjmlPad(b)}">${teNl2brX(b.text)}</mj-text>`;
             }
             case 'button':
                 return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
@@ -3028,7 +3034,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return `${i}<mj-image src="${dataUrl2}" alt="" width="${b.size||48}px" padding="${teMjmlPad(b)}"${attrs2} />`;
             }
             case 'quote':
-                return `${i}<mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6" padding="${teMjmlPad(b)}">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`;
+                return `${i}<mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6" padding="${teMjmlPad(b)}">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`;
             case 'linkBlock': {
                 const lbDesc2 = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
                 return `${i}<mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" padding="${teMjmlPad(b)}">${b.title||''}${lbDesc2}</mj-button>`;
