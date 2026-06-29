@@ -6633,12 +6633,19 @@ ${teSerializeBlocksComment(srcBlocks)}
 
             if (_wizDirectContactIds.length && campaignId) {
                 try {
-                    await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
+                    const addRes = await apiFetch(`/api/campaigns/${campaignId}?action=add_direct_recipients`, {
                         method: 'POST', body: JSON.stringify({ contact_ids: _wizDirectContactIds, temp_contact_ids: _wizTempContactIds })
                     });
                     _wizDirectContactIds = [];
                     _wizTempContactIds = [];
                     _wizUpdateDirectNotice();
+                    // Warn if imported contacts were excluded — otherwise the campaign
+                    // silently ends up with fewer (or zero) destinatários than expected.
+                    if (addRes && addRes.added === 0 && (addRes.excluded_suppressed || addRes.not_found)) {
+                        showToast('Atenção: nenhum dos contactos importados pôde ser adicionado (cancelaram subscrição, devolveram ou estão na lista de supressão).', 'error');
+                    } else if (addRes && addRes.excluded_suppressed) {
+                        showToast(`${addRes.excluded_suppressed} contacto(s) importado(s) foram excluídos (supressão/cancelamento).`, 'info');
+                    }
                 } catch (e) { console.error('add_direct_recipients:', e); }
             }
 
@@ -7279,16 +7286,27 @@ ${teSerializeBlocksComment(srcBlocks)}
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
             // If editing an existing campaign, link contacts immediately (don't wait for submit)
+            let addResult = null;
             if (_editingCampaignId && newIds.length) {
                 try {
-                    await apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
+                    addResult = await apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
                         method: 'POST', body: JSON.stringify({ contact_ids: newIds, temp_contact_ids: newTempIds })
                     });
                 } catch (e) { console.error('add_direct_recipients (immediate):', e); }
             }
             _wizClearFile(type);
             _wizRecipTab('lists');
-            showToast(`${imported} contactos adicionados a esta campanha.${failed ? ` (${failed} falhas)` : ''}`);
+            if (addResult && typeof addResult.added === 'number') {
+                // Campaign already exists — report what actually landed as recipients.
+                const excl = addResult.excluded_suppressed || 0;
+                let msg = `${addResult.added} contacto(s) adicionado(s) a esta campanha.`;
+                if (excl) msg += ` ${excl} excluído(s) (cancelaram subscrição, devolveram ou estão na lista de supressão).`;
+                if (failed) msg += ` (${failed} falhas de importação)`;
+                showToast(msg, excl ? 'info' : undefined);
+            } else {
+                // New campaign — contacts will be linked when the draft/campaign is saved.
+                showToast(`${imported} contacto(s) importado(s). Serão adicionados à campanha ao guardar.${failed ? ` (${failed} falhas)` : ''}`);
+            }
         } catch (e) {
             showToast('Erro: ' + escHtml(e.message), 'error');
         } finally {

@@ -411,21 +411,32 @@ module.exports = async function handler(req, res) {
           return res.status(400).json({ error: 'contact_ids obrigatório' });
         await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
         const tempSet = new Set((temp_contact_ids || []).map(Number));
-        const contacts = await query(
-          `SELECT id, email FROM contacts
-           WHERE id = ANY($1::int[]) AND brand_id=$2
-             AND status NOT IN ('suppressed','bounced','unsubscribed','complained')
-             AND lower(email) NOT IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
-             AND '@'||split_part(lower(email),'@',2) NOT IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')`,
+        // Fetch every requested contact that belongs to this brand, tagging each
+        // with WHY it would be excluded. This lets us report a precise breakdown
+        // instead of silently returning added:0 — the cause of "0 destinatários"
+        // after importing contacts that were previously suppressed/bounced.
+        const candidates = await query(
+          `SELECT id, email,
+                  (status IN ('suppressed','bounced','unsubscribed','complained')) AS bad_status,
+                  (lower(email) IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
+                   OR '@'||split_part(lower(email),'@',2) IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')) AS suppressed
+           FROM contacts
+           WHERE id = ANY($1::int[]) AND brand_id=$2`,
           [contact_ids, camp.brand_id]
         );
-        if (!contacts.length) return res.status(200).json({ ok: true, added: 0 });
-        const vals = contacts.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},'pending',$${i*4+4})`).join(',');
+        const eligible = candidates.filter(c => !c.bad_status && !c.suppressed);
+        const breakdown = {
+          requested: contact_ids.length,
+          not_found: contact_ids.length - candidates.length,
+          excluded_suppressed: candidates.filter(c => c.suppressed || c.bad_status).length,
+        };
+        if (!eligible.length) return res.status(200).json({ ok: true, added: 0, ...breakdown });
+        const vals = eligible.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},'pending',$${i*4+4})`).join(',');
         await query(
           `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status,is_temp) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
-          contacts.flatMap(ct => [id, ct.id, ct.email, tempSet.has(Number(ct.id))])
+          eligible.flatMap(ct => [id, ct.id, ct.email, tempSet.has(Number(ct.id))])
         );
-        return res.status(200).json({ ok: true, added: contacts.length });
+        return res.status(200).json({ ok: true, added: eligible.length, ...breakdown });
       }
 
       // ── Cancelar/interromper envio ───────────────────────────
