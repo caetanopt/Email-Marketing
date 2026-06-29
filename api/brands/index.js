@@ -850,7 +850,15 @@ module.exports = async function handler(req, res) {
       }
       if (!sets.length) return res.status(200).json({ ok: true });
       params.push(id);
-      await query(`UPDATE brands SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
+      try {
+        await query(`UPDATE brands SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
+      } catch (e) {
+        if (e.code === '42703' && sets.some(s => s.startsWith('notify_email'))) {
+          // Column added by migration 039 — auto-apply if not yet run
+          await query('ALTER TABLE brands ADD COLUMN IF NOT EXISTS notify_email TEXT');
+          await query(`UPDATE brands SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
+        } else { throw e; }
+      }
       return res.status(200).json({ ok: true });
     }
 
