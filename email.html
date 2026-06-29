@@ -2432,7 +2432,7 @@
                 break;
             }
             case 'columns':
-                d.style.cssText = `display:flex;gap:8px;background:#ffffff;padding:8px;`;
+                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
                     col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;border:2px dashed transparent;transition:border-color 0.15s,background 0.15s;';
@@ -2541,6 +2541,13 @@
                 <p class="text-xs font-semibold text-slate-700 mb-1">Colunas (${b.cols})</p>
                 <p class="text-[10px] text-slate-400 mb-3">Layout</p>
                 <p class="text-xs text-slate-500 mb-3">Arrasta blocos da paleta para qualquer coluna.</p>
+                <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
+                    <input type="color" value="${b.bgColor||'#ffffff'}"
+                        oninput="teUpdateField('${b.id}','bgColor',this.value)"
+                        onchange="teUpdateField('${b.id}','bgColor',this.value)"
+                        class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                </div>
                 <button onclick="teDeleteBlock('${b.id}')" class="w-full px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar layout</button>
             `;
             return;
@@ -2961,7 +2968,7 @@ ${body}
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
                     }).join('');
-                    return `<tr><td style="background:#ffffff;padding:${pad(b)}">` +
+                    return `<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)}">` +
                         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">` +
                         `<tr>${cols}</tr></table></td></tr>`;
                 }
@@ -3060,7 +3067,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
                     return `${i}  <mj-column>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
-                return `${i}<mj-section>\n${cols}\n${i}</mj-section>`;
+                return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>`;
             }
             case 'quote':
                 return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
