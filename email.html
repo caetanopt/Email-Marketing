@@ -1843,7 +1843,7 @@
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
-        divider: { color:'#e2e8f0', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
+        divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
         footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         icon:      { iconKey:'star', iconSvg:'', color:'#334155', size:48, align:'center', bgColor:'#ffffff', href:'', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
@@ -1857,7 +1857,7 @@
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
         button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
         image:   ['src','alt','href','width','align','bgColor','padding'],
-        divider: ['color','thickness','dividerWidth','borderStyle','padding'],
+        divider: ['color','bgColor','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
         footer:  ['text','color','bgColor','fontSize','lineHeight','padding'],
         icon:      ['color','size','align','href','bgColor','padding'],
@@ -2375,7 +2375,7 @@
                 break;
             }
             case 'divider': {
-                d.style.cssText = `background:#ffffff;padding:${tePadding(b)};`;
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};`;
                 const divEl = document.createElement('div');
                 const dt = b.thickness || 1, ds2 = b.borderStyle || 'solid';
                 const dw = b.dividerWidth || '100%', dc = b.color || '#e2e8f0';
@@ -2924,7 +2924,7 @@ ${body}
                 case 'divider':
                     return rowPad(
                         `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:0">`,
-                        '#ffffff', pad(b));
+                        b.bgColor||'#ffffff', pad(b));
                 case 'spacer':
                     return `<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>`;
                 case 'footer':
@@ -3036,7 +3036,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
             case 'divider': {
                 const mjDs = b.borderStyle === 'rounded' ? 'solid' : (b.borderStyle || 'solid');
-                return wrap(`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" />`, ` padding="${teMjmlPad(b)}"`);}
+                return wrap(`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);}
             case 'spacer':
                 return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
             case 'footer':
@@ -3093,7 +3093,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'image':
                 return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''} />`;
             case 'divider':
-                return `${i}<mj-divider border-color="${b.color}" padding="${teMjmlPad(b)}" />`;
+                return `${i}<mj-divider border-color="${b.color||'#e2e8f0'}" container-background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}" />`;
             case 'spacer':
                 return `${i}<mj-spacer height="${b.height}px" />`;
             case 'icon': {
