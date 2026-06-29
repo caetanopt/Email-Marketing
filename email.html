@@ -7128,6 +7128,8 @@ ${teSerializeBlocksComment(srcBlocks)}
                 });
                 _editingCampaignId = r.id;
                 _editingTemplateId = templateId;
+                // Refresh the campaigns list so the new draft appears immediately
+                if (_currentBrand?.id) _loadCampaigns(_currentBrand.id);
             }
 
             _wizMarkClean();
@@ -9185,6 +9187,16 @@ ${sections.join('\n\n')}
                     const utmMed = document.getElementById('wizUtmMedium'); if (utmMed) utmMed.value = _bVars.utm_medium || 'email';
                     const fnEl = document.getElementById('wizFromName'); if (fnEl) fnEl.value = _currentBrand?.from_name  || '';
                     const feEl = document.getElementById('wizFromEmail'); if (feEl) feEl.value = _currentBrand?.from_email || '';
+                    // If brand from_email isn't cached yet, fetch brand settings to populate the fields
+                    if (!feEl?.value && _currentBrand?.id) {
+                        apiFetch(`/api/brands?id=${_currentBrand.id}`).then(b => {
+                            if (_currentBrand) { _currentBrand.from_name = b.from_name || ''; _currentBrand.from_email = b.from_email || ''; }
+                            const fn2 = document.getElementById('wizFromName');
+                            const fe2 = document.getElementById('wizFromEmail');
+                            if (fn2 && !fn2.value) fn2.value = b.from_name  || '';
+                            if (fe2 && !fe2.value) fe2.value = b.from_email || '';
+                        }).catch(() => {});
+                    }
                     _wizSelectedTemplateId = null;
                     _teCtx = 'te_';
                     teState.blocks = [];
