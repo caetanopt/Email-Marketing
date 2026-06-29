@@ -2351,13 +2351,13 @@
                 break;
             case 'button':
                 d.style.cssText = `background:#ffffff;padding:${tePadding(b)};text-align:center;`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:6px;text-decoration:none;">${teEscape(b.text)}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:12px 28px;border-radius:6px;text-decoration:none;">${teEscape(b.text)}</a>`;
                 break;
             case 'image': {
                 const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
                 d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${imgPad};text-align:${b.align};`;
                 if (b.href) {
-                    d.innerHTML = `<a href="${teEscape(b.href)}" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;" /></a>`;
+                    d.innerHTML = `<a href="${teEscape(b.href)}" onclick="event.preventDefault()" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;" /></a>`;
                 } else {
                     d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;" />`;
                 }
@@ -2397,7 +2397,7 @@
                     svgStr = svgStr.replace('<svg ', `<svg width="${sz}" height="${sz}" `);
                     iconHtml = `<span style="display:inline-block;width:${sz}px;height:${sz}px;line-height:0;">${svgStr}</span>`;
                 }
-                d.innerHTML = b.href ? `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:inline-block;">${iconHtml}</a>` : iconHtml;
+                d.innerHTML = b.href ? `<a href="#" onclick="event.preventDefault()" style="display:inline-block;">${iconHtml}</a>` : iconHtml;
                 break;
             }
             case 'quote': {
@@ -2409,7 +2409,7 @@
             case 'linkBlock': {
                 d.style.cssText = `background:${b.bgColor||'#0f172a'};padding:${tePadding(b)};text-align:${b.align||'center'};cursor:pointer;`;
                 const desc = b.description ? `<div style="font-size:12px;color:${b.textColor||'#ffffff'};opacity:0.75;margin-top:4px;">${teEscape(b.description)}</div>` : '';
-                d.innerHTML = `<a href="#" onclick="event.preventDefault();event.stopPropagation()" style="display:block;text-decoration:none;"><div style="font-size:${b.fontSize||15}px;color:${b.textColor||'#ffffff'};font-weight:700;">${teEscape(b.title||'')}</div>${desc}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:block;text-decoration:none;"><div style="font-size:${b.fontSize||15}px;color:${b.textColor||'#ffffff'};font-weight:700;">${teEscape(b.title||'')}</div>${desc}</a>`;
                 break;
             }
             case 'listItems': {
