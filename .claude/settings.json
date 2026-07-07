@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "latest=$(npm view mjml version 2>/dev/null || echo ''); installed=$(node -e \"try{process.stdout.write(require('./node_modules/mjml/package.json').version)}catch(e){}\" 2>/dev/null || echo ''); if [ -n \"$latest\" ]; then if [ -z \"$installed\" ]; then echo \"{\\\"systemMessage\\\":\\\"ℹ️ MJML $latest disponível no npm (não instalado neste projecto). Instalar: npm install mjml@latest\\\"}\"; elif [ \"$installed\" != \"$latest\" ]; then echo \"{\\\"systemMessage\\\":\\\"⚠️ MJML desatualizado: $installed → $latest. Actualizar: npm install mjml@latest\\\"}\"; fi; fi",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
