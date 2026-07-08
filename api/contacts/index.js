@@ -150,7 +150,7 @@ async function processImportQueue({ jobId = null, brandId = null, deadlineMs = 8
        WHERE id = (
          SELECT id FROM import_chunks
          WHERE job_id=$1 AND (status='pending' OR (status='claimed' AND claimed_at < NOW() - INTERVAL '2 minutes'))
-         ORDER BY seq FOR UPDATE SKIP LOCKED LIMIT 1
+         ORDER BY seq LIMIT 1 FOR UPDATE SKIP LOCKED
        )
        RETURNING id, contacts`,
       [job.id]
