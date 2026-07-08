@@ -3697,6 +3697,13 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (_importPollTimer) clearTimeout(_importPollTimer);
         const poll = async () => {
             try {
+                // Drive the import forward from this tab too — don't rely solely
+                // on the external cron, which may be infrequent or misconfigured.
+                try {
+                    await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_process_now`, {
+                        method: 'POST', body: JSON.stringify({ job_id: jobId })
+                    });
+                } catch (_) {}
                 const s = await apiFetch(`/api/contacts?brand_id=${brandId}&action=import_status&job_id=${jobId}`);
                 if (!s) {
                     // Job not found — reschedule (don't destroy localStorage)

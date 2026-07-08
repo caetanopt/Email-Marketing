@@ -27,7 +27,8 @@ const IMPORT_INIT_SQL = `
     imported INTEGER DEFAULT 0,
     skipped  INTEGER DEFAULT 0,
     failed   INTEGER DEFAULT 0
-  )`;
+  );
+  ALTER TABLE import_chunks ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`;
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -117,6 +118,101 @@ async function processBatch(brandId, listId, batch) {
   return { imported, skipped, failed };
 }
 
+// Drains pending import_chunks for jobs matching the given filter, until the
+// deadline. Chunk claiming is atomic (SKIP LOCKED) so this is safe to call
+// concurrently from both the external cron and an authenticated browser tab
+// without double-processing the same chunk.
+async function processImportQueue({ jobId = null, brandId = null, deadlineMs = 8000 } = {}) {
+  await query(IMPORT_INIT_SQL);
+  const DEADLINE = Date.now() + deadlineMs;
+  let processed_jobs = 0;
+
+  while (Date.now() < DEADLINE) {
+    const params = [];
+    let where = `status IN ('queued','processing')`;
+    if (jobId)   { params.push(jobId);   where += ` AND id=$${params.length}`; }
+    if (brandId) { params.push(brandId); where += ` AND brand_id=$${params.length}`; }
+    const jobs = await query(
+      `SELECT id, brand_id, list_id FROM import_jobs WHERE ${where} ORDER BY created_at LIMIT 1`,
+      params
+    );
+    if (!jobs[0]) break;
+    const job = jobs[0];
+
+    await query(`UPDATE import_jobs SET status='processing', updated_at=NOW() WHERE id=$1`, [job.id]);
+
+    // Atomically claim the next pending chunk so a concurrent invocation
+    // (cron overlapping a browser-triggered call) can't grab the same one.
+    // A chunk 'claimed' more than 2 minutes ago is treated as abandoned
+    // (its invocation crashed/timed out) and becomes reclaimable again.
+    const claimed = await query(
+      `UPDATE import_chunks SET status='claimed', claimed_at=NOW()
+       WHERE id = (
+         SELECT id FROM import_chunks
+         WHERE job_id=$1 AND (status='pending' OR (status='claimed' AND claimed_at < NOW() - INTERVAL '2 minutes'))
+         ORDER BY seq FOR UPDATE SKIP LOCKED LIMIT 1
+       )
+       RETURNING id, contacts`,
+      [job.id]
+    );
+
+    if (!claimed[0]) {
+      // No claimable chunk right now — either all done, or another
+      // invocation is actively mid-flight on the remaining ones. Check if truly done.
+      const remaining = await query(
+        `SELECT COUNT(*)::int n FROM import_chunks
+         WHERE job_id=$1 AND (status='pending' OR (status='claimed' AND claimed_at >= NOW() - INTERVAL '2 minutes'))`,
+        [job.id]
+      );
+      if (remaining[0].n > 0) break; // still in flight elsewhere, nothing more to do here
+
+      const stats = await query(
+        `SELECT COALESCE(SUM(imported),0)::int imported, COALESCE(SUM(skipped),0)::int skipped,
+                COALESCE(SUM(failed),0)::int failed
+         FROM import_chunks WHERE job_id=$1`,
+        [job.id]
+      );
+      const s = stats[0];
+      const jobRow = await query(
+        `UPDATE import_jobs SET status='done', imported=$1, skipped=$2, failed_cnt=$3,
+         processed=total, updated_at=NOW() WHERE id=$4 AND status != 'done'
+         RETURNING brand_id, list_id, list_name, file_name, total, created_by`,
+        [s.imported, s.skipped, s.failed, job.id]
+      );
+      if (jobRow[0]) {
+        const j = jobRow[0];
+        try {
+          await query(
+            `INSERT INTO imports (brand_id, file_name, list_id, list_name, total_rows, imported, skipped, failed, status, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [j.brand_id, j.file_name, j.list_id, j.list_name, j.total,
+             s.imported, s.skipped, s.failed,
+             s.failed === 0 ? 'completed' : (s.imported > 0 ? 'partial' : 'failed'),
+             j.created_by]
+          );
+        } catch (_) {}
+        processed_jobs++;
+      }
+      continue;
+    }
+
+    const chunk = claimed[0];
+    const contacts = Array.isArray(chunk.contacts) ? chunk.contacts : [];
+    const result = await processBatch(job.brand_id, job.list_id, contacts);
+
+    await query(
+      `UPDATE import_chunks SET status='done', imported=$1, skipped=$2, failed=$3 WHERE id=$4`,
+      [result.imported, result.skipped, result.failed, chunk.id]
+    );
+    await query(
+      `UPDATE import_jobs SET processed=processed+$1, updated_at=NOW() WHERE id=$2`,
+      [contacts.length, job.id]
+    );
+  }
+
+  return processed_jobs;
+}
+
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
@@ -129,76 +225,7 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-      await query(IMPORT_INIT_SQL);
-      const DEADLINE = Date.now() + 8000; // leave 2s buffer for Vercel 10s limit
-      let processed_jobs = 0;
-
-      while (Date.now() < DEADLINE) {
-        // Pick oldest queued job (skip locked to handle concurrent cron runs)
-        const jobs = await query(
-          `SELECT id, brand_id, list_id FROM import_jobs
-           WHERE status IN ('queued','processing')
-           ORDER BY created_at LIMIT 1`
-        );
-        if (!jobs[0]) break;
-        const job = jobs[0];
-
-        await query(`UPDATE import_jobs SET status='processing', updated_at=NOW() WHERE id=$1`, [job.id]);
-
-        // Find next pending chunk
-        const chunks = await query(
-          `SELECT id, contacts FROM import_chunks
-           WHERE job_id=$1 AND status='pending' ORDER BY seq LIMIT 1`,
-          [job.id]
-        );
-
-        if (!chunks[0]) {
-          // All chunks processed — finalise job
-          const stats = await query(
-            `SELECT COALESCE(SUM(imported),0)::int imported, COALESCE(SUM(skipped),0)::int skipped,
-                    COALESCE(SUM(failed),0)::int failed
-             FROM import_chunks WHERE job_id=$1`,
-            [job.id]
-          );
-          const s = stats[0];
-          const jobRow = await query(
-            `UPDATE import_jobs SET status='done', imported=$1, skipped=$2, failed_cnt=$3,
-             processed=total, updated_at=NOW() WHERE id=$4
-             RETURNING brand_id, list_id, list_name, file_name, total, created_by`,
-            [s.imported, s.skipped, s.failed, job.id]
-          );
-          // Record in imports history
-          if (jobRow[0]) {
-            const j = jobRow[0];
-            try {
-              await query(
-                `INSERT INTO imports (brand_id, file_name, list_id, list_name, total_rows, imported, skipped, failed, status, created_by)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-                [j.brand_id, j.file_name, j.list_id, j.list_name, j.total,
-                 s.imported, s.skipped, s.failed,
-                 s.failed === 0 ? 'completed' : (s.imported > 0 ? 'partial' : 'failed'),
-                 j.created_by]
-              );
-            } catch (_) {}
-          }
-          processed_jobs++;
-          continue;
-        }
-
-        const chunk = chunks[0];
-        const contacts = Array.isArray(chunk.contacts) ? chunk.contacts : [];
-        const result = await processBatch(job.brand_id, job.list_id, contacts);
-
-        await query(
-          `UPDATE import_chunks SET status='done', imported=$1, skipped=$2, failed=$3 WHERE id=$4`,
-          [result.imported, result.skipped, result.failed, chunk.id]
-        );
-        await query(
-          `UPDATE import_jobs SET processed=processed+$1, updated_at=NOW() WHERE id=$2`,
-          [contacts.length, job.id]
-        );
-      }
-
+      const processed_jobs = await processImportQueue({ deadlineMs: 8000 });
       return res.status(200).json({ ok: true, processed_jobs });
     } catch (err) {
       console.error('import_process cron error:', err);
@@ -329,6 +356,21 @@ module.exports = async function handler(req, res) {
       } catch (e) {
         if (e.code === '42P01') return res.status(200).json(null);
         throw e;
+      }
+    }
+
+    if (action === 'import_process_now' && req.method === 'POST') {
+      // Lets an authenticated user's own browser tab drive an import forward
+      // while it's open, instead of relying solely on the external cron
+      // hitting /api/contacts?action=import_process on its own schedule.
+      const { job_id } = req.body || {};
+      if (!job_id) return res.status(400).json({ error: 'job_id obrigatório' });
+      try {
+        await processImportQueue({ jobId: Number(job_id), brandId: brand_id, deadlineMs: 8000 });
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        console.error('import_process_now error:', err);
+        return res.status(500).json({ error: 'Erro de servidor' });
       }
     }
 
