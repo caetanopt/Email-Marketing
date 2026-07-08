@@ -69,6 +69,30 @@ async function processBatch(brandId, listId, batch) {
   }
 
   if (validRows.length) {
+    // Dedupe by email WITHIN this chunk. A multi-row
+    // INSERT ... ON CONFLICT (brand_id,email) DO UPDATE throws
+    // "cannot affect row a second time" if the same email appears twice in
+    // one statement — which fails (and loses) the ENTIRE chunk of 500 rows.
+    // Merge non-empty fields so a later row's data isn't discarded.
+    const byEmail = new Map();
+    for (const c of validRows) {
+      const prev = byEmail.get(c.email);
+      if (!prev) { byEmail.set(c.email, c); continue; }
+      byEmail.set(c.email, {
+        ...prev,
+        name:        c.name || prev.name,
+        phone:       c.phone || prev.phone,
+        company:     c.company || prev.company,
+        _extra_data: c._extra_data || prev._extra_data,
+      });
+    }
+    const uniqueRows = [...byEmail.values()];
+    skipped += validRows.length - uniqueRows.length;
+    validRows.length = 0;
+    validRows.push(...uniqueRows);
+  }
+
+  if (validRows.length) {
     try {
       await transaction(async q => {
         const vals = [], params = [];
