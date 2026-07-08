@@ -3410,7 +3410,7 @@ ${teSerializeBlocksComment(srcBlocks)}
 
     async function mockEditList(btn) {
         const tr = btn.closest('tr');
-        const name = tr?.cells[0]?.querySelector('.list-name-text')?.textContent.trim() || tr?.cells[0]?.textContent.trim() || 'Lista';
+        const name = tr?.querySelector('.list-name-text')?.textContent.trim() || 'Lista';
         const count = tr?.cells[1]?.textContent.trim() || '0';
         _currentListId = tr?.dataset.listId || null;
         _editingListName = name;
