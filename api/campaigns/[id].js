@@ -783,18 +783,34 @@ module.exports = async function handler(req, res) {
                 const info = await sesClient.send(sesCmd);
                 msgId = info?.MessageId || null;
               }
-              try {
-                await query(
-                  "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
-                  [msgId, id, contact.contact_id]
-                );
-              } catch (e1) {
-                if (e1.code === '42703') {
+              // ── The email is now genuinely delivered (SES accepted it) ────
+              // Everything below is DB bookkeeping only. A failure here must
+              // NEVER be reclassified as a send failure (that risks a
+              // duplicate send to a real customer on the next retry) — retry
+              // the bookkeeping write a few times against transient DB
+              // blips, and if it still can't be recorded, log loudly but
+              // still count the contact as sent.
+              let recorded = false;
+              for (let attempt = 0; attempt < 3 && !recorded; attempt++) {
+                try {
                   await query(
-                    "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
+                    "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
                     [msgId, id, contact.contact_id]
                   );
-                } else { throw e1; }
+                  recorded = true;
+                } catch (e1) {
+                  if (e1.code === '42703') {
+                    await query(
+                      "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
+                      [msgId, id, contact.contact_id]
+                    );
+                    recorded = true;
+                  } else if (attempt < 2) {
+                    await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+                  } else {
+                    console.error(`Campaign ${id}: contact ${contact.contact_id} — email DELIVERED (SES id ${msgId}) but failed to record status='sent' after retries:`, e1.message);
+                  }
+                }
               }
               try {
                 await query(
