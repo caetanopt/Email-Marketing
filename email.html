@@ -2039,7 +2039,7 @@
         const f = teFind(id);
         if (!f) return;
         // Coerce numbers
-        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius'].includes(key)) value = Number(value);
+        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius','borderWidthTop','borderWidthRight','borderWidthBottom','borderWidthLeft'].includes(key)) value = Number(value);
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
@@ -2235,6 +2235,19 @@
     }
     function teMjmlPad(b) {
         return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
+    }
+    // Shared 4-side border for the "columns" (Layout) block — CSS string for
+    // canvas/email HTML.
+    function teColBorderCss(b) {
+        const c = b.borderColor || 'transparent';
+        const t = b.borderWidthTop||0, r = b.borderWidthRight||0, bo = b.borderWidthBottom||0, l = b.borderWidthLeft||0;
+        return `border-top:${t}px solid ${c};border-right:${r}px solid ${c};border-bottom:${bo}px solid ${c};border-left:${l}px solid ${c};`;
+    }
+    // Same border, as MJML per-side attributes (only sides with width > 0).
+    function teColBorderMjmlAttrs(b) {
+        const c = b.borderColor || '#e2e8f0';
+        const sides = [['borderWidthTop','border-top'],['borderWidthRight','border-right'],['borderWidthBottom','border-bottom'],['borderWidthLeft','border-left']];
+        return sides.filter(([k]) => (b[k]||0) > 0).map(([k,attr]) => ` ${attr}="${b[k]}px solid ${c}"`).join('');
     }
 
     // ── Unsaved changes guard ────────────────────────────────────────
@@ -2436,7 +2449,7 @@
                 break;
             }
             case 'columns':
-                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
+                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;${teColBorderCss(b)}`;
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
                     col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;border:2px dashed transparent;transition:border-color 0.15s,background 0.15s;';
@@ -2551,6 +2564,23 @@
                         oninput="teUpdateField('${b.id}','bgColor',this.value)"
                         onchange="teUpdateField('${b.id}','bgColor',this.value)"
                         class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                </div>
+                <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor da borda</label>
+                    <input type="color" value="${b.borderColor||'#e2e8f0'}"
+                        oninput="teUpdateField('${b.id}','borderColor',this.value)"
+                        onchange="teUpdateField('${b.id}','borderColor',this.value)"
+                        class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                </div>
+                <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Espessura da borda (px)</label>
+                    <div class="grid grid-cols-2 gap-1">
+                        ${['borderWidthTop','borderWidthRight','borderWidthBottom','borderWidthLeft'].map((k,idx) => {
+                            const lbl = ['Topo','Dir.','Base','Esq.'][idx];
+                            const val = b[k] || 0;
+                            return `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" min="0" value="${val}" oninput="teUpdateField('${b.id}','${k}',this.value)" onchange="teUpdateField('${b.id}','${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
+                        }).join('')}
+                    </div>
                 </div>
                 <button onclick="teDeleteBlock('${b.id}')" class="w-full px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar layout</button>
             `;
@@ -2976,7 +3006,7 @@ ${body}
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
                     }).join('');
-                    return `<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)}">` +
+                    return `<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)};${teColBorderCss(b)}">` +
                         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">` +
                         `<tr>${cols}</tr></table></td></tr>`;
                 }
@@ -3078,7 +3108,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
                     return `${i}  <mj-column>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
-                return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>`;
+                return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}"${teColBorderMjmlAttrs(b)}>\n${cols}\n${i}</mj-section>`;
             }
             case 'quote':
                 return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
