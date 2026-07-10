@@ -95,8 +95,32 @@ module.exports = async function handler(req, res) {
           );
         }
       } catch (err) { console.error('unsubscribe event log:', err); }
+      // If this contact is a member of the "Marketing" list and has a
+      // "link" extra field filled in, redirect there after cancelling
+      // instead of showing the generic confirmation page.
+      let redirectLink = null;
+      try {
+        const [row] = await query(
+          `SELECT lm.extra_data
+           FROM list_members lm
+           JOIN lists l ON l.id = lm.list_id
+           JOIN contacts c ON c.id = lm.contact_id
+           WHERE l.name = 'Marketing' AND c.email = $1
+           LIMIT 1`,
+          [e]
+        );
+        const extra = row?.extra_data || {};
+        const linkKey = Object.keys(extra).find(k => k.toLowerCase() === 'link');
+        const candidate = linkKey ? String(extra[linkKey] || '').trim() : '';
+        if (/^https?:\/\/.+/i.test(candidate)) redirectLink = candidate;
+      } catch (err) { console.error('unsubscribe link lookup:', err); }
       const isJson = (req.headers.accept || '').includes('application/json');
-      if (isJson) return res.status(200).json({ ok: true, email: e });
+      if (isJson) return res.status(200).json({ ok: true, email: e, redirect: redirectLink });
+      if (redirectLink) {
+        res.setHeader('Location', redirectLink);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(302).end();
+      }
       res.setHeader('Content-Type', 'text/html');
       return res.status(200).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cancelado</title></head>
         <body style="font-family:sans-serif;text-align:center;padding:60px;color:#334155">
