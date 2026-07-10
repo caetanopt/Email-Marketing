@@ -1901,6 +1901,25 @@
     let teNextId = 100;
     const teId   = () => 'b' + (++teNextId);
 
+    // Which column's border tab is active in the Layout properties panel,
+    // keyed by block id (UI-only state, not persisted with the template).
+    const _teActiveBorderCol = {};
+    function teSetActiveBorderCol(blockId, colIdx) {
+        _teActiveBorderCol[blockId] = colIdx;
+        teRenderProperties();
+    }
+    function teUpdateColBorder(blockId, colIdx, side, value) {
+        const f = teFind(blockId);
+        if (!f) return;
+        const b = f.block;
+        if (!Array.isArray(b.colBorders)) b.colBorders = [];
+        if (!b.colBorders[colIdx]) b.colBorders[colIdx] = {};
+        b.colBorders[colIdx][side] = Number(value) || 0;
+        teRenderCanvas();
+        teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
+
     // After loading blocks from saved HTML or merging from the block picker,
     // advance teNextId past any existing numeric IDs to prevent collisions
     // (e.g. loaded block b101 + first teId() = b101 → two blocks with same ID).
@@ -2039,7 +2058,7 @@
         const f = teFind(id);
         if (!f) return;
         // Coerce numbers
-        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius','borderWidthTop','borderWidthRight','borderWidthBottom','borderWidthLeft'].includes(key)) value = Number(value);
+        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius'].includes(key)) value = Number(value);
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
@@ -2236,18 +2255,25 @@
     function teMjmlPad(b) {
         return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
     }
-    // Shared 4-side border for the "columns" (Layout) block — CSS string for
-    // canvas/email HTML.
-    function teColBorderCss(b) {
+    // Per-column 4-side border for the "columns" (Layout) block — each
+    // column opts in independently via b.colBorders[colIdx], sharing one
+    // border color (b.borderColor) across the whole layout.
+    function teColBorderOf(b, colIdx) {
+        return (b.colBorders && b.colBorders[colIdx]) || {};
+    }
+    function teColBorderCss(b, colIdx) {
+        const cb = teColBorderOf(b, colIdx);
         const c = b.borderColor || 'transparent';
-        const t = b.borderWidthTop||0, r = b.borderWidthRight||0, bo = b.borderWidthBottom||0, l = b.borderWidthLeft||0;
+        const t = cb.top||0, r = cb.right||0, bo = cb.bottom||0, l = cb.left||0;
+        if (!t && !r && !bo && !l) return '';
         return `border-top:${t}px solid ${c};border-right:${r}px solid ${c};border-bottom:${bo}px solid ${c};border-left:${l}px solid ${c};`;
     }
     // Same border, as MJML per-side attributes (only sides with width > 0).
-    function teColBorderMjmlAttrs(b) {
+    function teColBorderMjmlAttrs(b, colIdx) {
+        const cb = teColBorderOf(b, colIdx);
         const c = b.borderColor || '#e2e8f0';
-        const sides = [['borderWidthTop','border-top'],['borderWidthRight','border-right'],['borderWidthBottom','border-bottom'],['borderWidthLeft','border-left']];
-        return sides.filter(([k]) => (b[k]||0) > 0).map(([k,attr]) => ` ${attr}="${b[k]}px solid ${c}"`).join('');
+        const sides = [['top','border-top'],['right','border-right'],['bottom','border-bottom'],['left','border-left']];
+        return sides.filter(([k]) => (cb[k]||0) > 0).map(([k,attr]) => ` ${attr}="${cb[k]}px solid ${c}"`).join('');
     }
 
     // ── Unsaved changes guard ────────────────────────────────────────
@@ -2452,7 +2478,7 @@
                 d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
-                    col.style.cssText = `flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b)}`;
+                    col.style.cssText = `flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
                     const colIdx = c;
                     const childArr = b.children[c] || [];
                     // Column-level drop handler (catches drops not on specific drop zones)
@@ -2573,14 +2599,23 @@
                         class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
                 </div>
                 <div class="mb-3">
-                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Espessura da borda (px)</label>
-                    <div class="grid grid-cols-2 gap-1">
-                        ${['borderWidthTop','borderWidthRight','borderWidthBottom','borderWidthLeft'].map((k,idx) => {
-                            const lbl = ['Topo','Dir.','Base','Esq.'][idx];
-                            const val = b[k] || 0;
-                            return `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" min="0" value="${val}" oninput="teUpdateField('${b.id}','${k}',this.value)" onchange="teUpdateField('${b.id}','${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Espessura da borda (px) — por coluna</label>
+                    <p class="text-[10px] text-slate-400 mb-1.5">Escolhe a coluna e define só nessa a espessura da borda.</p>
+                    <div class="flex gap-1 mb-2">
+                        ${Array.from({length: b.cols}, (_, idx) => idx).map(idx => {
+                            const active = (_teActiveBorderCol[b.id] ?? 0) === idx;
+                            return `<button type="button" onclick="teSetActiveBorderCol('${b.id}',${idx})" class="flex-1 px-2 py-1 text-[10px] rounded border ${active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">Coluna ${idx+1}</button>`;
                         }).join('')}
                     </div>
+                    ${(() => {
+                        const activeIdx = _teActiveBorderCol[b.id] ?? 0;
+                        const cb = teColBorderOf(b, activeIdx);
+                        const sides = [['top','Topo'],['right','Dir.'],['bottom','Base'],['left','Esq.']];
+                        return `<div class="grid grid-cols-2 gap-1">${sides.map(([k,lbl]) => {
+                            const val = cb[k] || 0;
+                            return `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" min="0" value="${val}" oninput="teUpdateColBorder('${b.id}',${activeIdx},'${k}',this.value)" onchange="teUpdateColBorder('${b.id}',${activeIdx},'${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
+                        }).join('')}</div>`;
+                    })()}
                 </div>
                 <button onclick="teDeleteBlock('${b.id}')" class="w-full px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar layout</button>
             `;
@@ -2999,10 +3034,10 @@ ${body}
                 case 'columns': {
                     // Each column's blockToHtml returns <tr><td>...</td></tr> rows.
                     // Wrap them in a nested <table> so the HTML is valid inside a <td>.
-                    const cols = (b.children||[]).map(children => {
+                    const cols = (b.children||[]).map((children, colIdx) => {
                         const innerRows = children.map(c => blockToHtml(c)).join('');
                         const colWidth = Math.floor(100/(b.children.length||1));
-                        return `<td valign="top" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:top;${teColBorderCss(b)}">` +
+                        return `<td valign="top" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:top;${teColBorderCss(b,colIdx)}">` +
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
                     }).join('');
@@ -3104,9 +3139,9 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return wrap(`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
             }
             case 'columns': {
-                const cols = b.children.map((children) => {
+                const cols = b.children.map((children, colIdx) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
-                    return `${i}  <mj-column${teColBorderMjmlAttrs(b)}>\n${inner}\n${i}  </mj-column>`;
+                    return `${i}  <mj-column${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
                 return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>`;
             }
