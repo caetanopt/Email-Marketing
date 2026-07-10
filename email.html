@@ -1840,7 +1840,7 @@
     const teDefaults = {
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', fluidOnMobile:false, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
@@ -1854,7 +1854,7 @@
     const teFieldSchemas = {
         header:  ['text','bgColor','textColor','fontSize','fontWeight','align','lineHeight','padding'],
         heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
-        text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
+        text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
         button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
         image:   ['src','alt','href','width','align','bgColor','fluidOnMobile','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','padding'],
@@ -1890,6 +1890,7 @@
         borderColor:  { label:'Cor da borda',    type:'color' },
         showDividers:  { label:'Linhas separadoras',  type:'select', options:[['0','Não'],['1','Sim']] },
         fluidOnMobile: { label:'Fluid em mobile',     type:'select', options:[['0','Não'],['1','Sim']] },
+        uppercase:     { label:'Maiúsculas',          type:'select', options:[['0','Não'],['1','Sim']] },
         borderRadius: { label:'Border radius (px)', type:'number' },
         areaBgColor:  { label:'Cor de fundo da área', type:'color' },
         innerPadding: { label:'Padding interno (px)', type:'innerPadding4' },
@@ -2353,10 +2354,12 @@
                 d.appendChild(h);
                 break;
             }
-            case 'text':
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};padding:${tePadding(b)};`;
+            case 'text': {
+                const txtUpper = b.uppercase === true || b.uppercase === '1';
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};text-transform:${txtUpper?'uppercase':'none'};padding:${tePadding(b)};`;
                 d.innerHTML = teNl2br(teEscape(b.text||''));
                 break;
+            }
             case 'button': {
                 const btnBr = b.borderRadius ?? 6;
                 const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
@@ -2907,10 +2910,12 @@ ${body}
                         `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}">${teNl2br(esc(b.text||''))}</${hTag}>`,
                         b.bgColor||'#ffffff', pad(b));
                 }
-                case 'text':
+                case 'text': {
+                    const txtUpper = b.uppercase === true || b.uppercase === '1';
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}">${teNl2br(esc(b.text||''))}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''}">${teNl2br(esc(b.text||''))}</p>`,
                         b.bgColor||'#ffffff', pad(b));
+                }
                 case 'button': {
                     const btnHref = b.href||'#';
                     const btnBr = b.borderRadius ?? 6;
@@ -3026,14 +3031,16 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
     function teBlockToMjml(b, i) {
         const wrap = (inner, attrs='') => `${i}<mj-section${attrs}>\n${i}  <mj-column>\n${inner}\n${i}  </mj-column>\n${i}</mj-section>`;
-        const txt = (text,color,size,weight,align,lh) => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}>${teNl2brX(teEscape(text))}</mj-text>`;
+        const txt = (text,color,size,weight,align,lh,extra='') => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}${extra}>${teNl2brX(teEscape(text))}</mj-text>`;
         switch(b.type) {
             case 'header':
                 return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.4), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'heading':
                 return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.4), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
-            case 'text':
-                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.6), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+            case 'text': {
+                const txtUpper = b.uppercase === true || b.uppercase === '1';
+                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.6, txtUpper?' text-transform="uppercase"':''), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+            }
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
