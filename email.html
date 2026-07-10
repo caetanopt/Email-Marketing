@@ -2449,26 +2449,26 @@
                 break;
             }
             case 'columns':
-                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;${teColBorderCss(b)}`;
+                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
-                    col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;border:2px dashed transparent;transition:border-color 0.15s,background 0.15s;';
+                    col.style.cssText = `flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b)}`;
                     const colIdx = c;
                     const childArr = b.children[c] || [];
                     // Column-level drop handler (catches drops not on specific drop zones)
                     col.addEventListener('dragover', (ev) => {
                         ev.preventDefault(); ev.stopPropagation();
                         ev.dataTransfer.dropEffect = teDrag?.kind === 'block' ? 'move' : 'copy';
-                        col.style.borderColor = 'rgb(59,130,246)';
+                        col.style.boxShadow = 'inset 0 0 0 2px rgb(59,130,246)';
                         col.style.background = 'rgba(59,130,246,0.04)';
                     });
                     col.addEventListener('dragleave', () => {
-                        col.style.borderColor = 'transparent';
+                        col.style.boxShadow = 'none';
                         col.style.background = '';
                     });
                     col.addEventListener('drop', (ev) => {
                         ev.preventDefault(); ev.stopPropagation();
-                        col.style.borderColor = 'transparent';
+                        col.style.boxShadow = 'none';
                         col.style.background = '';
                         if (!teDrag) return;
                         const target = { kind:'col', parentId:b.id, colIdx, idx:childArr.length };
@@ -3002,11 +3002,11 @@ ${body}
                     const cols = (b.children||[]).map(children => {
                         const innerRows = children.map(c => blockToHtml(c)).join('');
                         const colWidth = Math.floor(100/(b.children.length||1));
-                        return `<td valign="top" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:top">` +
+                        return `<td valign="top" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:top;${teColBorderCss(b)}">` +
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
                     }).join('');
-                    return `<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)};${teColBorderCss(b)}">` +
+                    return `<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)}">` +
                         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">` +
                         `<tr>${cols}</tr></table></td></tr>`;
                 }
@@ -3106,9 +3106,9 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'columns': {
                 const cols = b.children.map((children) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
-                    return `${i}  <mj-column>\n${inner}\n${i}  </mj-column>`;
+                    return `${i}  <mj-column${teColBorderMjmlAttrs(b)}>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
-                return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}"${teColBorderMjmlAttrs(b)}>\n${cols}\n${i}</mj-section>`;
+                return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>`;
             }
             case 'quote':
                 return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
