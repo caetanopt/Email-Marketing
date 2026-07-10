@@ -869,17 +869,13 @@ module.exports = async function handler(req, res) {
 
         if (remaining === 0) {
           await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          try {
-            await query(
-              `DELETE FROM contacts
-               WHERE id IN (
-                 SELECT cr.contact_id FROM campaign_recipients cr
-                 WHERE cr.campaign_id = $1 AND cr.is_temp = true
-                   AND NOT EXISTS (SELECT 1 FROM list_members lm WHERE lm.contact_id = cr.contact_id)
-               )`,
-              [id]
-            );
-          } catch (e) { if (e.code !== '42703') console.error('temp contact cleanup:', e); }
+          // NOTE: temp contacts (is_temp=true) used to be deleted here after a
+          // completed send. Since campaign_recipients.contact_id has
+          // ON DELETE CASCADE, that silently deleted the very
+          // campaign_recipients rows just written — wiping the send
+          // report/log for that campaign (0 sent, no error log, no activity)
+          // right after it was sent. Removed; temp contacts are now kept so
+          // campaign reports stay intact.
           try {
             const [totals] = await query(
               `SELECT COUNT(*) FILTER (WHERE status='sent')::int AS total_sent,
