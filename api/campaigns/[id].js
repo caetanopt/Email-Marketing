@@ -890,7 +890,7 @@ module.exports = async function handler(req, res) {
             await sendCampaignCompletionNotification({
               campaignId:   id,
               campaignName: c.name || `#${id}`,
-              brandName:    c.brand_id,
+              brandId:      c.brand_id,
               totalSent:    totals.total_sent,
               totalFailed:  totals.total_failed,
             });

@@ -7,6 +7,8 @@ const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
 
+const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 // ── DNS health check (SPF / DKIM / DMARC) ──────────────────────
 const DNS_TIMEOUT_MS = 3000;
 function withDnsTimeout(promise) {
@@ -835,6 +837,13 @@ module.exports = async function handler(req, res) {
       if (!id) return res.status(400).json({ error: 'id obrigatório' });
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const body = req.body || {};
+      // Don't allow clearing/breaking a brand's sender identity.
+      if (Object.prototype.hasOwnProperty.call(body, 'from_email')) {
+        const fe = (body.from_email || '').trim();
+        if (!fe || !EMAIL_RE.test(fe)) {
+          return res.status(400).json({ error: 'Email de remetente válido é obrigatório (ex: newsletter@marca.pt)' });
+        }
+      }
       const fields = ['name','color','logo_url','from_name','from_email','reply_to','header_html','footer_html','notify_email'];
       const sets = [];
       const params = [];
@@ -870,6 +879,12 @@ module.exports = async function handler(req, res) {
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
       const { name, color, from_name, from_email, id: slugInput } = req.body || {};
       if (!name?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
+      // Require a valid sender per brand — without it, campaigns for this brand
+      // would silently fall back to the platform default (info@caetano.pt),
+      // sending under the wrong identity.
+      if (!from_email?.trim() || !EMAIL_RE.test(from_email.trim())) {
+        return res.status(400).json({ error: 'Email de remetente válido é obrigatório (ex: newsletter@marca.pt)' });
+      }
       // Generate slug from provided id or from name (remove accents + non-alphanumeric)
       const slug = (slugInput?.trim() ||
         name.trim().toLowerCase()

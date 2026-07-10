@@ -4813,8 +4813,11 @@ ${teSerializeBlocksComment(srcBlocks)}
         const slugEl    = document.getElementById('brandSlugInput');
         const slug      = slugEl?.value.trim();
         if (!name) { showToast('Nome obrigatório.', 'error'); return; }
+        if (!fromEmail || !/^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(fromEmail)) {
+            showToast('Email de remetente válido é obrigatório (ex: newsletter@marca.pt).', 'error'); return;
+        }
         try {
-            const r = await apiFetch('/api/brands', { method: 'POST', body: JSON.stringify({ name, color, from_email: fromEmail || null, id: slug || undefined }) });
+            const r = await apiFetch('/api/brands', { method: 'POST', body: JSON.stringify({ name, color, from_email: fromEmail, id: slug || undefined }) });
             showToast(`Marca "${r.name}" criada com sucesso.`);
             _toggleBrandForm();
             await _fetchApiBrands();
@@ -7917,7 +7920,12 @@ ${teSerializeBlocksComment(srcBlocks)}
         document.getElementById('editCampSubject').value = c.subject || '';
         document.getElementById('editCampPreview').value = c.preview_text || '';
         document.getElementById('editCampFromName').value = c.from_name || _currentBrand?.name || 'Caetano';
-        const defaultEmail = _currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`;
+        // Prefer the brand's configured sender (loaded from the DB into
+        // _currentBrand.from_email); only fall back to a synthesized guess if
+        // the brand has none set, so non-Caetano brands don't default to an
+        // unverified info@<brand>.caetano.pt address.
+        const defaultEmail = _currentBrand?.from_email
+            || (_currentBrand?.id === 'caetano' ? 'info@caetano.pt' : `info@${_currentBrand?.id}.caetano.pt`);
         document.getElementById('editCampFromEmail').value = c.from_email || defaultEmail;
 
         const currentListIds = new Set((c.lists || []).map(l => String(l.id)));
