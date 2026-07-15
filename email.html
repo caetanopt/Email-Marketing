@@ -1771,6 +1771,113 @@
         return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
+    // ── Rich text (bold/italic/underline/size/color per selection) ─────────
+    // Used only by the "text" block. Strips everything down to a small
+    // whitelist so pasted content (Word/Docs) or hand-edited MJML can't smuggle
+    // in scripts, event handlers, or arbitrary tags — only inline formatting
+    // survives.
+    const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN']);
+    const TE_RICH_ALLOWED_STYLES = ['font-weight','font-size','font-style','text-decoration','color'];
+    function teSanitizeRichText(html) {
+        const root = document.createElement('div');
+        root.innerHTML = html || '';
+        function cleanStyle(el) {
+            const kept = [];
+            TE_RICH_ALLOWED_STYLES.forEach(prop => {
+                const camel = prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+                const val = el.style[camel];
+                if (val) kept.push(`${prop}:${val}`);
+            });
+            return kept.join(';');
+        }
+        function walk(node) {
+            let child = node.firstChild;
+            while (child) {
+                const next = child.nextSibling;
+                if (child.nodeType === Node.ELEMENT_NODE) {
+                    const tag = child.tagName;
+                    if (!TE_RICH_ALLOWED_TAGS.has(tag)) {
+                        // Unwrap disallowed tags (div/p/font/etc) but keep their content —
+                        // continue walking from the first moved-up child so nothing nested
+                        // inside skips sanitisation.
+                        const firstMoved = child.firstChild;
+                        while (child.firstChild) node.insertBefore(child.firstChild, child);
+                        node.removeChild(child);
+                        child = firstMoved || next;
+                        continue;
+                    }
+                    const keptStyle = tag === 'SPAN' ? cleanStyle(child) : '';
+                    [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
+                    if (keptStyle) child.setAttribute('style', keptStyle);
+                    walk(child);
+                } else if (child.nodeType !== Node.TEXT_NODE) {
+                    node.removeChild(child);
+                }
+                child = next;
+            }
+        }
+        walk(root);
+        return root.innerHTML;
+    }
+    // Wrap the current text selection (must be inside containerEl) in a
+    // <span style="prop:value">, used for font-size/color since execCommand
+    // doesn't support arbitrary px sizes or gives inconsistent markup.
+    function teWrapSelectionStyle(containerEl, styleProp, styleValue) {
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        if (range.collapsed || !containerEl.contains(range.commonAncestorContainer)) return;
+        const span = document.createElement('span');
+        span.style[styleProp] = styleValue;
+        try {
+            range.surroundContents(span);
+        } catch (e) {
+            const frag = range.extractContents();
+            span.appendChild(frag);
+            range.insertNode(span);
+        }
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(span);
+        sel.addRange(newRange);
+    }
+    function teRichInput(blockId, el) {
+        const f = teFind(blockId);
+        if (!f) return;
+        f.block.text = el.innerHTML;
+        teRenderCanvas();
+        teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
+    function teRichBlur(blockId, el) {
+        const f = teFind(blockId);
+        if (!f) return;
+        const clean = teSanitizeRichText(el.innerHTML);
+        f.block.text = clean;
+        if (el.innerHTML !== clean) el.innerHTML = clean;
+        teRenderCanvas();
+        teRenderMjml();
+    }
+    function teRichExec(blockId, cmd) {
+        const el = document.getElementById('richtext-' + blockId);
+        if (!el) return;
+        document.execCommand(cmd, false, null);
+        teRichInput(blockId, el);
+    }
+    function teRichFontSize(blockId, px) {
+        if (!px) return;
+        const el = document.getElementById('richtext-' + blockId);
+        if (!el) return;
+        teWrapSelectionStyle(el, 'fontSize', px + 'px');
+        teRichInput(blockId, el);
+    }
+    function teRichColor(blockId, color) {
+        const el = document.getElementById('richtext-' + blockId);
+        if (!el) return;
+        teWrapSelectionStyle(el, 'color', color);
+        teRichInput(blockId, el);
+    }
+
     const TE_ICONS = {
         'Geral': {
             home: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>`,
@@ -2397,7 +2504,10 @@
             case 'text': {
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
                 d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};text-transform:${txtUpper?'uppercase':'none'};padding:${tePadding(b)};`;
-                d.innerHTML = teNl2br(teEscape(b.text||''));
+                // b.text is sanitised rich HTML (bold/italic/underline/size/color
+                // spans) from the rich text editor — not plain text, so no
+                // escaping/nl2br here (real <br> tags are already inline).
+                d.innerHTML = b.text || '';
                 break;
             }
             case 'button': {
@@ -2689,6 +2799,29 @@
     function teRenderField(b, key) {
         const f = teFields[key];
         if (!f) return '';
+        if (b.type === 'text' && key === 'text') {
+            const sizes = [12,13,14,15,16,18,20,22,24,28,32];
+            const sizeOpts = sizes.map(s => `<option value="${s}">${s}px</option>`).join('');
+            const toolBtn = (label, cmd, title) => `<button type="button" title="${title}" onmousedown="event.preventDefault()" onclick="teRichExec('${b.id}','${cmd}')" class="w-6 h-6 flex items-center justify-center text-xs border border-slate-200 rounded hover:bg-slate-100">${label}</button>`;
+            return `<div>
+                <label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label>
+                <div class="flex items-center gap-1 mb-1 p-1 bg-slate-50 border border-slate-200 rounded-t-lg">
+                    ${toolBtn('<b>B</b>','bold','Negrito')}
+                    ${toolBtn('<i>I</i>','italic','Itálico')}
+                    ${toolBtn('<u>U</u>','underline','Sublinhado')}
+                    <select title="Tamanho da seleção" onmousedown="event.preventDefault()" onchange="if(this.value){teRichFontSize('${b.id}',this.value);this.selectedIndex=0;}" class="h-6 text-[10px] border border-slate-200 rounded">
+                        <option value="">Tam.</option>${sizeOpts}
+                    </select>
+                    <input type="color" title="Cor da seleção" onmousedown="event.preventDefault()" onchange="teRichColor('${b.id}',this.value)" class="w-6 h-6 border border-slate-200 rounded cursor-pointer" />
+                </div>
+                <div id="richtext-${b.id}" contenteditable="true"
+                    onfocus="document.execCommand('defaultParagraphSeparator',false,'br')"
+                    oninput="teRichInput('${b.id}',this)"
+                    onblur="teRichBlur('${b.id}',this)"
+                    class="w-full min-h-[90px] px-2 py-1.5 border border-slate-200 border-t-0 rounded-b-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900">${b.text || ''}</div>
+                <p class="text-[9px] text-slate-400 mt-1">Seleciona parte do texto e usa a barra acima para formatar só essa parte.</p>
+            </div>`;
+        }
         if (f.type === 'padding4') {
             const PT = b.paddingTop  ?? 0, PR = b.paddingRight  ?? 0;
             const PB = b.paddingBottom ?? 0, PL = b.paddingLeft ?? 0;
@@ -2785,7 +2918,10 @@
                 if (isDark) {
                     return { id, type:'header', text:teMjmlInnerText(el), bgColor, textColor:el.getAttribute('color')||'#ffffff', fontSize, fontWeight, align:el.getAttribute('align')||'center', ...pad };
                 }
-                return { id, type:'text', text:teMjmlInnerText(el), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, ...pad };
+                // Preserve inline formatting (bold/italic/underline/size/color)
+                // instead of stripping to plain text, so hand-edited or
+                // round-tripped MJML keeps rich formatting in the visual editor.
+                return { id, type:'text', text:teSanitizeRichText(el.innerHTML), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, ...pad };
             }
             case 'mj-button':
                 return { id, type:'button', text:el.textContent, bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
@@ -2978,8 +3114,9 @@ ${body}
                 }
                 case 'text': {
                     const txtUpper = b.uppercase === true || b.uppercase === '1';
+                    // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''}">${teNl2br(esc(b.text||''))}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''}">${b.text||''}</p>`,
                         b.bgColor||'#ffffff', pad(b));
                 }
                 case 'button': {
@@ -3104,8 +3241,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'heading':
                 return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.4), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'text': {
+                // b.text is already sanitised rich HTML (bold/italic/etc spans) —
+                // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.6, txtUpper?' text-transform="uppercase"':''), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                const mjTextTag = `${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}>${b.text||''}</mj-text>`;
+                return wrap(mjTextTag, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             }
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
