@@ -276,7 +276,7 @@
         tbody.innerHTML = brands.map(b => {
             const brandMeta = _allBrands.find(x => x.id === b.id) || {};
             const logo = brandMeta.logo
-                ? `<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${brandMeta.bg||'#fff'}"><img src="${brandMeta.logo}" class="w-6 h-6 object-contain${brandMeta.invert?' brightness-0 invert':''}" onerror="this.style.display='none'"></div>`
+                ? `<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${brandMeta.bg||'#fff'}"><img src="${brandMeta.logo}" class="w-6 h-6 object-contain ${teLogoFilterClass(brandMeta.bg||'#fff')}" onerror="this.style.display='none'"></div>`
                 : `<span class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style="background:${b.color||'#64748b'}">${(b.name||'?')[0]}</span>`;
             const verBtn = isGroupView && !filteredBrand
                 ? `<button onclick="_viewBrandStats('${b.id}')" class="text-xs px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-50 text-slate-500">Ver</button>`
@@ -1127,6 +1127,25 @@
     // ── Team ─────────────────────────────────────────────
     const _W = 'https://upload.wikimedia.org/wikipedia/commons/thumb';
     const _C = 'https://caetano.pt/site/uploads';
+    // Brand logo assets are mostly single-colour art (transparent PNG/SVG)
+    // meant to be recoloured via CSS filter depending on the badge behind
+    // them — not by trusting a per-brand "invert" flag (which silently broke
+    // for brands whose source file is naturally light-coloured: e.g. white
+    // artwork on a light #f1f1f1 badge renders blank). Decide the filter from
+    // the badge's own background luminance instead: always force black via
+    // brightness-0, then add invert (→ white) only when that background is
+    // actually dark.
+    function teIsDarkBg(hex) {
+        if (!hex) return false;
+        const h = hex.replace('#', '');
+        const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+        if (full.length !== 6) return false;
+        const r = parseInt(full.slice(0, 2), 16), g = parseInt(full.slice(2, 4), 16), b = parseInt(full.slice(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+    }
+    function teLogoFilterClass(bgHex) {
+        return `brightness-0${teIsDarkBg(bgHex) ? ' invert' : ''}`;
+    }
     const _allBrands = [
         { id:'caetano',     name:'Caetano',       color:'#002E5D', bg:'#f1f1f1', logo:`${_C}/2026/01/caetano-002e5d.svg`, invert:false },
         { id:'alpine',      name:'Alpine',         color:'#0055A4', bg:'#f1f1f1', logo:'https://media.apps.caetano.pt/assets/img/brands/alpine.png', invert:false },
@@ -9981,7 +10000,7 @@ ${sections.join('\n\n')}
             if (img) {
                 img.style.display = '';
                 img.alt = _currentBrand.name;
-                img.className = `sidebar-brand-logo-img w-9 h-9 object-contain${_currentBrand.invert ? ' brightness-0 invert' : ''}`;
+                img.className = `sidebar-brand-logo-img w-9 h-9 object-contain ${teLogoFilterClass(_currentBrand.bg)}`;
                 img.src = _currentBrand.logo || '';
             }
             if (fb) {
@@ -10095,7 +10114,7 @@ ${sections.join('\n\n')}
 
     function _brandLogoHtml(b) {
         if (b.logo) {
-            return `<img src="${b.logo}" alt="${b.name}" class="h-10 object-contain brightness-0" loading="lazy"
+            return `<img src="${b.logo}" alt="${b.name}" class="h-10 object-contain ${teLogoFilterClass(b.bg||'#f1f1f1')}" loading="lazy"
                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                     <span class="hidden w-12 h-12 rounded-full items-center justify-center text-xs font-bold" style="background:#e2e8f0;color:#000">${b.name.replace('Mercedes-Benz','MB').substring(0,3).toUpperCase()}</span>`;
         }

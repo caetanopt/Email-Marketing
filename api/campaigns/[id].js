@@ -1002,14 +1002,19 @@ module.exports = async function handler(req, res) {
           } catch (e) { if (e.code !== '42P01') console.error('send log test:', e); }
           return res.status(200).json({ ok: true, messageId: info?.MessageId || null });
         } catch (err) {
+          const errMsg = (err?.message || 'Erro desconhecido').slice(0, 500);
           try {
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, error, created_by)
                VALUES ($1,$2,$3,'test_failed',$4,$5)`,
-              [c.brand_id, id, to, (err.message||'').slice(0, 500), user.id]
+              [c.brand_id, id, to, errMsg, user.id]
             );
           } catch (e) { if (e.code !== '42P01') console.error('send log test fail:', e); }
-          return res.status(500).json({ error: 'Falha no envio SES' });
+          // Surface the real SES reason (e.g. "Email address is not verified")
+          // instead of a generic message — this is almost always a sender
+          // identity/domain-verification problem specific to this brand's
+          // from_email, so the vague message made it undiagnosable.
+          return res.status(500).json({ error: `Falha no envio: ${errMsg}` });
         }
       }
 
