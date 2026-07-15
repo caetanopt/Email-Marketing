@@ -2394,11 +2394,22 @@
     }
 
     // ── Padding helpers ─────────────────────────────────────────────
+    // Collapse to the shortest equivalent CSS/MJML box shorthand (same rules
+    // as the "padding" CSS property) instead of always emitting 4 values —
+    // keeps generated MJML/HTML noticeably shorter for the very common case
+    // of equal or symmetric padding.
+    function teCssBoxShorthand(top, right, bottom, left, unit = 'px') {
+        top = top || 0; right = right || 0; bottom = bottom || 0; left = left || 0;
+        if (top === right && right === bottom && bottom === left) return `${top}${unit}`;
+        if (top === bottom && right === left) return `${top}${unit} ${right}${unit}`;
+        if (right === left) return `${top}${unit} ${right}${unit} ${bottom}${unit}`;
+        return `${top}${unit} ${right}${unit} ${bottom}${unit} ${left}${unit}`;
+    }
     function tePadding(b) {
-        return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
+        return teCssBoxShorthand(b.paddingTop, b.paddingRight, b.paddingBottom, b.paddingLeft);
     }
     function teMjmlPad(b) {
-        return `${b.paddingTop||0}px ${b.paddingRight||0}px ${b.paddingBottom||0}px ${b.paddingLeft||0}px`;
+        return teCssBoxShorthand(b.paddingTop, b.paddingRight, b.paddingBottom, b.paddingLeft);
     }
     // Per-column 4-side border for the "columns" (Layout) block — each
     // column opts in independently via b.colBorders[colIdx], sharing one
@@ -3117,7 +3128,22 @@
         if (!silent) showToast('MJML aplicado ao editor visual.');
     }
     function teBuildMjml() {
-        const body = teState.blocks.map(b => teBlockToMjml(b, '    ')).join('\n');
+        const i = '    ';
+        // Fold consecutive blocks that share the exact same section
+        // background/padding (etc) into one <mj-section><mj-column> instead
+        // of one section per block — same visual result, fewer lines.
+        const groups = [];
+        for (const b of teState.blocks) {
+            const p = teBlockToMjmlParts(b, i);
+            if (!p.mergeable) { groups.push({ mergeable:false, full:p.full }); continue; }
+            const last = groups[groups.length - 1];
+            if (last && last.mergeable && last.attrs === p.attrs) last.inners.push(p.inner);
+            else groups.push({ mergeable:true, attrs:p.attrs, inners:[p.inner] });
+        }
+        const body = groups.map(g => g.mergeable
+            ? `${i}<mj-section${g.attrs}>\n${i}  <mj-column>\n${g.inners.join('\n')}\n${i}  </mj-column>\n${i}</mj-section>`
+            : g.full
+        ).join('\n');
         return `<mjml>
   <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
 ${body}
@@ -3133,32 +3159,30 @@ ${body}
             const r = b.paddingRight  ?? b.padding ?? 20;
             const bo= b.paddingBottom ?? b.padding ?? 20;
             const l = b.paddingLeft   ?? b.padding ?? 20;
-            return `${t}px ${r}px ${bo}px ${l}px`;
+            return teCssBoxShorthand(t, r, bo, l);
         };
-        const row = (inner, bg='#ffffff', extraStyle='') =>
-            `<tr><td align="center" style="background:${bg};${extraStyle}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${pad({})}">${inner}</td></tr></table></td></tr>`;
-        const rowPad = (inner, bg='#ffffff', p, extraStyle='') =>
-            `<tr><td align="center" style="background:${bg};${extraStyle}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${p}">${inner}</td></tr></table></td></tr>`;
-
-        const blockToHtml = b => {
+        // Returns { mergeable:true, bg, p, inner } for block types that render
+        // as a single <tr><td bg><table><tr><td padding>inner</td></tr></table>
+        // </td></tr> row — consecutive blocks with the same bg+padding get
+        // folded into one shared row/table by the grouping pass below instead
+        // of one full row (and its table wrapper) each. 'columns' and 'spacer'
+        // have a different row shape and are never merged.
+        const blockToHtmlParts = b => {
             switch(b.type) {
                 case 'header':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
-                    return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4}">${b.text||''}</p>`,
-                        b.bgColor||'#1e293b', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#1e293b', p:pad(b), inner:
+                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4}">${b.text||''}</p>` };
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
-                    return rowPad(
-                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}">${b.text||''}</${hTag}>`,
-                        b.bgColor||'#ffffff', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}">${b.text||''}</${hTag}>` };
                 }
                 case 'text': {
                     const txtUpper = b.uppercase === true || b.uppercase === '1';
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
-                    return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''}">${b.text||''}</p>`,
-                        b.bgColor||'#ffffff', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''}">${b.text||''}</p>` };
                 }
                 case 'button': {
                     const btnHref = b.href||'#';
@@ -3168,29 +3192,26 @@ ${body}
                     const btnBorder = b.borderColor ? `2px solid ${esc(b.borderColor)}` : 'none';
                     const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                     const btnBgColor = b.bgColor||'#0f172a';
-                    return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td bgcolor="${btnBgColor}" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor}">${b.text||''}</a></td></tr></table>`,
-                        b.areaBgColor||'#ffffff', pad(b));
+                    return { mergeable:true, bg:b.areaBgColor||'#ffffff', p:pad(b), inner:
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td bgcolor="${btnBgColor}" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor}">${b.text||''}</a></td></tr></table>` };
                 }
                 case 'image': {
-                    const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
+                    const imgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                     const imgFluid = b.fluidOnMobile === true || b.fluidOnMobile === '1';
                     const imgClass = imgFluid ? ' class="te-fluid"' : '';
                     const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}"${imgClass} style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`;
                     const imgContent = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener" style="display:block">${imgTag}</a>` : imgTag;
-                    return rowPad(imgContent, b.bgColor||'#ffffff', imgPad);
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:imgPad, inner:imgContent };
                 }
                 case 'divider':
-                    return rowPad(
-                        `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:0">`,
-                        b.bgColor||'#ffffff', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:0">` };
                 case 'spacer':
-                    return `<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>`;
+                    return { mergeable:false, full:`<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>` };
                 case 'footer':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
-                    return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:${b.lineHeight||1.6}">${b.text||''}</p>`,
-                        b.bgColor||'#f8fafc', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#f8fafc', p:pad(b), inner:
+                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:${b.lineHeight||1.6}">${b.text||''}</p>` };
                 case 'icon': {
                     // Use pre-converted PNG (email-safe) if available, else fall back to SVG data URL
                     const ic = b.color||'#334155';
@@ -3209,7 +3230,7 @@ ${body}
                         ? `<img src="${iconSrc}" alt="" width="${sz}" height="${sz}" style="display:block;${align==='center'?'margin:0 auto':align==='right'?'margin-left:auto':''}">`
                         : '';
                     const inner = b.href ? `<a href="${esc(b.href)}" style="display:block;text-align:${align}">${imgTag}</a>` : `<div style="text-align:${align}">${imgTag}</div>`;
-                    return rowPad(inner, b.bgColor||'#ffffff', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner };
                 }
                 case 'columns': {
                     // Each column's blockToHtml returns <tr><td>...</td></tr> rows.
@@ -3221,35 +3242,52 @@ ${body}
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
                     }).join('');
-                    return `<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)}">` +
+                    return { mergeable:false, full:`<tr><td style="background:${b.bgColor||'#ffffff'};padding:${pad(b)}">` +
                         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">` +
-                        `<tr>${cols}</tr></table></td></tr>`;
+                        `<tr>${cols}</tr></table></td></tr>` };
                 }
                 case 'quote':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
-                    return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>`,
-                        '#ffffff', pad(b));
+                    return { mergeable:true, bg:'#ffffff', p:pad(b), inner:
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>` };
                 case 'linkBlock': {
                     const lbDesc = b.description ? `<br><span style="font-size:12px;opacity:0.8">${b.description}</span>` : '';
-                    return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="background:${b.bgColor||'#0f172a'};border-radius:8px;text-align:${b.align||'center'}"><a href="${esc(b.href||'#')}" style="display:block;padding:16px 24px;font-size:${b.fontSize||15}px;font-weight:700;color:${b.textColor||'#ffffff'};text-decoration:none">${b.title||''}${lbDesc}</a></td></tr></table>`,
-                        '#ffffff', pad(b));
+                    return { mergeable:true, bg:'#ffffff', p:pad(b), inner:
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="background:${b.bgColor||'#0f172a'};border-radius:8px;text-align:${b.align||'center'}"><a href="${esc(b.href||'#')}" style="display:block;padding:16px 24px;font-size:${b.fontSize||15}px;font-weight:700;color:${b.textColor||'#ffffff'};text-decoration:none">${b.title||''}${lbDesc}</a></td></tr></table>` };
                 }
                 case 'listItems': {
                     const showDivL = b.showDividers === true || b.showDividers === '1';
                     const liStyle = `margin-bottom:6px${showDivL ? ';padding-bottom:6px;border-bottom:1px solid #e2e8f0' : ''}`;
                     const liHtml = (b.items||[]).map(it => `<li style="${liStyle}">${it.text||''}</li>`).join('');
-                    return rowPad(
-                        `<ul style="margin:0;padding-left:20px;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>`,
-                        b.bgColor||'#ffffff', pad(b));
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<ul style="margin:0;padding-left:20px;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>` };
                 }
-                default: return '';
+                default: return { mergeable:false, full:'' };
             }
+        };
+        // Kept for the 'columns' case above, which recurses into child blocks
+        // expecting one full <tr> row per block.
+        const blockToHtml = b => {
+            const p = blockToHtmlParts(b);
+            if (!p.mergeable) return p.full;
+            return `<tr><td align="center" style="background:${p.bg}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${p.p}">${p.inner}</td></tr></table></td></tr>`;
         };
 
         const srcBlocks = overrideBlocks || teState.blocks;
-        const bodyRows = srcBlocks.map(blockToHtml).join('\n');
+        // Fold consecutive top-level blocks sharing the same bg+padding into
+        // one shared row/table instead of one per block (see blockToHtmlParts).
+        const rowGroups = [];
+        for (const b of srcBlocks) {
+            const p = blockToHtmlParts(b);
+            if (!p.mergeable) { rowGroups.push({ mergeable:false, full:p.full }); continue; }
+            const last = rowGroups[rowGroups.length - 1];
+            if (last && last.mergeable && last.bg === p.bg && last.p === p.p) last.inners.push(p.inner);
+            else rowGroups.push({ mergeable:true, bg:p.bg, p:p.p, inners:[p.inner] });
+        }
+        const bodyRows = rowGroups.map(g => g.mergeable
+            ? `<tr><td align="center" style="background:${g.bg}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${g.p}">${g.inners.join('')}</td></tr></table></td></tr>`
+            : g.full
+        ).join('\n');
         return `<!DOCTYPE html>
 <html lang="pt" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -3275,42 +3313,47 @@ ${teSerializeBlocksComment(srcBlocks)}
 </body>
 </html>`;
     }
-    function teBlockToMjml(b, i) {
-        const wrap = (inner, attrs='') => `${i}<mj-section${attrs}>\n${i}  <mj-column>\n${inner}\n${i}  </mj-column>\n${i}</mj-section>`;
+    // Returns { mergeable:true, attrs, inner } for block types that render as
+    // a plain <mj-section attrs><mj-column>inner</mj-column></mj-section> —
+    // consecutive blocks with an identical `attrs` string get folded into one
+    // shared section/column by teBuildMjml() instead of one section each.
+    // 'columns' is its own multi-column layout and never merges with anything.
+    function teBlockToMjmlParts(b, i) {
         const txt = (text,color,size,weight,align,lh,extra='') => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}${extra}>${teNl2brX(teEscape(text))}</mj-text>`;
         switch(b.type) {
             case 'header':
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
-                return wrap(`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>` };
             case 'heading':
-                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>` };
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
                 const mjTextTag = `${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}>${b.text||''}</mj-text>`;
-                return wrap(mjTextTag, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:mjTextTag };
             }
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
-                return wrap(`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}">${b.text}</mj-button>`, ` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}">${b.text}</mj-button>` };
             }
             case 'image': {
-                const mjImgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
+                const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                 const mjFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
-                return wrap(`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`, inner:`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid} />` };
             }
             case 'divider': {
                 const mjDs = b.borderStyle === 'rounded' ? 'solid' : (b.borderStyle || 'solid');
-                return wrap(`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);}
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" />` };
+            }
             case 'spacer':
-                return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
+                return { mergeable:true, attrs:'', inner:`${i}    <mj-spacer height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
-                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}">${b.text||''}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}">${b.text||''}</mj-text>` };
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -3323,30 +3366,36 @@ ${teSerializeBlocksComment(srcBlocks)}
                         .replace(/fill="currentColor"/g, `fill="${ic}"`);
                     dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp)));
                 }
-                return wrap(`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs} />`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs} />` };
             }
             case 'columns': {
                 const cols = b.children.map((children, colIdx) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
                     return `${i}  <mj-column${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
-                return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>`;
+                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>` };
             }
             case 'quote':
                 // b.text is already sanitised rich HTML — do not nl2brX.
-                return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`, inner:`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>` };
             case 'linkBlock': {
                 const lbDesc = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
-                return wrap(`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>` };
             }
             case 'listItems': {
                 const showDivM = b.showDividers === true || b.showDividers === '1';
                 const liStyleM = `padding:4px 0;color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.6;${showDivM ? 'border-bottom:1px solid #e2e8f0;' : ''}`;
                 const liHtml = (b.items||[]).map(item => `<li style="${liStyleM}">${item.text||''}</li>`).join('');
-                return wrap(`${i}    <mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px"><ul style="padding-left:20px;margin:0;">${liHtml}</ul></mj-text>`, ` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`);
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px"><ul style="padding-left:20px;margin:0;">${liHtml}</ul></mj-text>` };
             }
         }
-        return '';
+        return { mergeable:true, attrs:'', inner:'' };
+    }
+    // Kept for any external caller expecting one full <mj-section> per block.
+    function teBlockToMjml(b, i) {
+        const p = teBlockToMjmlParts(b, i);
+        if (!p.mergeable) return p.full;
+        return `${i}<mj-section${p.attrs}>\n${i}  <mj-column>\n${p.inner}\n${i}  </mj-column>\n${i}</mj-section>`;
     }
     function teInnerToMjml(b, i) {
         switch(b.type) {
