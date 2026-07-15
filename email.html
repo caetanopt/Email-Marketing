@@ -2162,6 +2162,24 @@
         teRender();
         if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
     }
+    function teDuplicateBlock(id) {
+        const f = teFind(id);
+        if (!f) return;
+        // Ensure teId() can't hand out an id that already exists anywhere on
+        // the canvas before generating fresh ones for the clone (and its
+        // nested children, if it's a Layout/columns block).
+        teConsumeIds(teState.blocks);
+        const remap = (bl) => {
+            const nb = { ...bl, id: teId() };
+            if (nb.type === 'columns' && Array.isArray(nb.children)) nb.children = nb.children.map(col => col.map(remap));
+            return nb;
+        };
+        const dup = remap(JSON.parse(JSON.stringify(f.block)));
+        f.parent.splice(f.idx + 1, 0, dup);
+        teState.selected = dup.id;
+        teRender();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
     function teUpdateField(id, key, value) {
         const f = teFind(id);
         if (!f) return;
@@ -2482,6 +2500,7 @@
         t.innerHTML = `
             <button type="button" title="Mover para cima"  onclick="event.stopPropagation();teMoveBlock('${b.id}',-1)" class="px-2 py-1 hover:bg-slate-100">▲</button>
             <button type="button" title="Mover para baixo" onclick="event.stopPropagation();teMoveBlock('${b.id}',1)"  class="px-2 py-1 hover:bg-slate-100 border-l border-slate-200">▼</button>
+            <button type="button" title="Duplicar"         onclick="event.stopPropagation();teDuplicateBlock('${b.id}')" class="px-2 py-1 hover:bg-slate-100 border-l border-slate-200">⧉</button>
             <button type="button" title="Apagar"           onclick="event.stopPropagation();teDeleteBlock('${b.id}')"  class="px-2 py-1 hover:bg-red-50 hover:text-red-600 border-l border-slate-200">✕</button>
         `;
         return t;
