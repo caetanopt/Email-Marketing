@@ -2510,13 +2510,14 @@
         switch(b.type) {
             case 'header':
                 d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${tePadding(b)};line-height:${b.lineHeight||1.4};`;
-                d.innerHTML = teNl2br(teEscape(b.text||''));
+                // b.text is sanitised rich HTML — see teSanitizeRichText.
+                d.innerHTML = b.text || '';
                 break;
             case 'heading': {
                 d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
                 const h = document.createElement(b.level || 'h2');
                 h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:${b.lineHeight||1.4};`;
-                h.innerHTML = teNl2br(teEscape(b.text||''));
+                h.innerHTML = b.text || '';
                 d.appendChild(h);
                 break;
             }
@@ -2534,7 +2535,7 @@
                 const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;">${teEscape(b.text)}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;">${b.text||''}</a>`;
                 break;
             }
             case 'image': {
@@ -2565,7 +2566,7 @@
                 break;
             case 'footer':
                 d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};line-height:${b.lineHeight||1.6};`;
-                d.innerHTML = teNl2br(teEscape(b.text||''));
+                d.innerHTML = b.text || '';
                 break;
             case 'icon': {
                 const sz = b.size || 48;
@@ -2587,7 +2588,7 @@
             case 'quote': {
                 const qAlign = b.align || 'center';
                 d.style.cssText = `background:${b.bgColor||'#f1f5f9'};padding:${tePadding(b)};text-align:${qAlign};border-left:4px solid ${b.borderColor||'#6366f1'};`;
-                d.innerHTML = `<div style="font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};line-height:1.6;font-style:italic;margin-bottom:10px;">${teEscape(b.text||'')}</div><div style="font-size:12px;color:${b.authorColor||'#64748b'};font-weight:600;">${teEscape(b.author||'')}</div>`;
+                d.innerHTML = `<div style="font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};line-height:1.6;font-style:italic;margin-bottom:10px;">${b.text||''}</div><div style="font-size:12px;color:${b.authorColor||'#64748b'};font-weight:600;">${teEscape(b.author||'')}</div>`;
                 break;
             }
             case 'linkBlock': {
@@ -2818,7 +2819,8 @@
     function teRenderField(b, key) {
         const f = teFields[key];
         if (!f) return '';
-        if (b.type === 'text' && key === 'text') {
+        const TE_RICH_TEXT_BLOCKS = new Set(['text','header','heading','button','footer','quote']);
+        if (TE_RICH_TEXT_BLOCKS.has(b.type) && key === 'text') {
             const sizes = [12,13,14,15,16,18,20,22,24,28,32];
             const sizeOpts = sizes.map(s => `<option value="${s}">${s}px</option>`).join('');
             const toolBtn = (label, cmd, title) => `<button type="button" title="${title}" onmousedown="event.preventDefault()" onclick="teRichExec('${b.id}','${cmd}')" class="w-6 h-6 flex items-center justify-center text-xs border border-slate-200 rounded hover:bg-slate-100">${label}</button>`;
@@ -2943,7 +2945,7 @@
                 return { id, type:'text', text:teSanitizeRichText(el.innerHTML), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, ...pad };
             }
             case 'mj-button':
-                return { id, type:'button', text:el.textContent, bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
+                return { id, type:'button', text:teSanitizeRichText(el.innerHTML), bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
             case 'mj-image':
                 return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', href:el.getAttribute('href')||'' };
             case 'mj-divider':
@@ -3122,13 +3124,14 @@ ${body}
         const blockToHtml = b => {
             switch(b.type) {
                 case 'header':
+                    // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4}">${teNl2br(esc(b.text||''))}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4}">${b.text||''}</p>`,
                         b.bgColor||'#1e293b', pad(b));
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
                     return rowPad(
-                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}">${teNl2br(esc(b.text||''))}</${hTag}>`,
+                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}">${b.text||''}</${hTag}>`,
                         b.bgColor||'#ffffff', pad(b));
                 }
                 case 'text': {
@@ -3165,8 +3168,9 @@ ${body}
                 case 'spacer':
                     return `<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>`;
                 case 'footer':
+                    // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return rowPad(
-                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:${b.lineHeight||1.6}">${teNl2br(esc(b.text||''))}</p>`,
+                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:${b.lineHeight||1.6}">${b.text||''}</p>`,
                         b.bgColor||'#f8fafc', pad(b));
                 case 'icon': {
                     // Use pre-converted PNG (email-safe) if available, else fall back to SVG data URL
@@ -3203,8 +3207,9 @@ ${body}
                         `<tr>${cols}</tr></table></td></tr>`;
                 }
                 case 'quote':
+                    // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return rowPad(
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${teNl2br(b.text||'')}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>`,
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>`,
                         '#ffffff', pad(b));
                 case 'linkBlock': {
                     const lbDesc = b.description ? `<br><span style="font-size:12px;opacity:0.8">${b.description}</span>` : '';
@@ -3256,9 +3261,11 @@ ${teSerializeBlocksComment(srcBlocks)}
         const txt = (text,color,size,weight,align,lh,extra='') => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}${extra}>${teNl2brX(teEscape(text))}</mj-text>`;
         switch(b.type) {
             case 'header':
-                return wrap(txt(b.text,b.textColor,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.4), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                // b.text is already sanitised rich HTML — bypass the shared
+                // txt() helper since it escapes/nl2brX plain text.
+                return wrap(`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'heading':
-                return wrap(txt(b.text,b.color,b.fontSize,b.fontWeight,b.align,b.lineHeight||1.4), ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
@@ -3283,7 +3290,8 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'spacer':
                 return wrap(`${i}    <mj-spacer height="${b.height}px" />`);
             case 'footer':
-                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}">${teNl2brX(teEscape(b.text||''))}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
+                // b.text is already sanitised rich HTML — do not escape/nl2brX.
+                return wrap(`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}">${b.text||''}</mj-text>`, ` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`);
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -3306,7 +3314,8 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return `${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>`;
             }
             case 'quote':
-                return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
+                // b.text is already sanitised rich HTML — do not nl2brX.
+                return wrap(`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`, ` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`);
             case 'linkBlock': {
                 const lbDesc = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
                 return wrap(`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>`, ` padding="${teMjmlPad(b)}"`);
