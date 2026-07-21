@@ -1969,7 +1969,7 @@
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
-        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', fluidOnMobile:false, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
+        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
         footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
@@ -1983,7 +1983,7 @@
         heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
         button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
-        image:   ['src','alt','href','width','align','bgColor','fluidOnMobile','padding'],
+        image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','padding'],
         spacer:  ['height'],
         footer:  ['text','color','bgColor','fontSize','lineHeight','padding'],
@@ -2005,6 +2005,7 @@
         fontSize:   { label:'Tamanho (px)',  type:'number' },
         fontWeight: { label:'Espessura',     type:'select', options:[['400','Regular'],['500','Medium'],['600','Semibold'],['700','Bold'],['800','Extra-bold']] },
         align:      { label:'Alinhamento',   type:'select', options:[['left','Esquerda'],['center','Centro'],['right','Direita']] },
+        valign:     { label:'Alinhamento vertical', type:'select', options:[['top','Topo'],['middle','Centro'],['bottom','Base']] },
         level:      { label:'Nível',         type:'select', options:[['h1','H1'],['h2','H2'],['h3','H3']] },
         lineHeight: { label:'Altura linha',  type:'number',  step:'0.1' },
         padding:      { label:'Padding (px)',    type:'padding4' },
@@ -2417,6 +2418,13 @@
     function teColBorderOf(b, colIdx) {
         return (b.colBorders && b.colBorders[colIdx]) || {};
     }
+    // A column's own vertical alignment (top/middle/bottom, relevant when
+    // sibling columns end up taller) comes from any child block that exposes
+    // a `valign` — currently only the image block does. Defaults to 'top'
+    // (the previous fixed behaviour) when no child sets one.
+    function teColValign(childArr) {
+        return (childArr || []).find(c => c && c.valign)?.valign || 'top';
+    }
     function teColBorderCss(b, colIdx) {
         const cb = teColBorderOf(b, colIdx);
         const c = b.borderColor || 'transparent';
@@ -2640,9 +2648,10 @@
                 d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
-                    col.style.cssText = `flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
                     const colIdx = c;
                     const childArr = b.children[c] || [];
+                    const colJustify = { top:'flex-start', middle:'center', bottom:'flex-end' }[teColValign(childArr)] || 'flex-start';
+                    col.style.cssText = `flex:1;min-width:0;display:flex;flex-direction:column;justify-content:${colJustify};border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
                     // Column-level drop handler (catches drops not on specific drop zones)
                     col.addEventListener('dragover', (ev) => {
                         ev.preventDefault(); ev.stopPropagation();
@@ -2956,7 +2965,7 @@
     function teNl2br(t) { return String(t||'').replace(/\n/g, '<br>'); }
     function teNl2brX(t) { return String(t||'').replace(/\n/g, '<br/>'); }
 
-    function teParseMjmlEl(el, sectionBg, sectionPad) {
+    function teParseMjmlEl(el, sectionBg, sectionPad, colValign) {
         const tag = el.tagName.toLowerCase();
         const id = teId();
         const pad = sectionPad || teParsePadAttr(el.getAttribute('padding'));
@@ -2978,7 +2987,7 @@
             case 'mj-button':
                 return { id, type:'button', text:teSanitizeRichText(el.innerHTML), bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
             case 'mj-image':
-                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', href:el.getAttribute('href')||'' };
+                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', valign:colValign || 'top', href:el.getAttribute('href')||'' };
             case 'mj-divider':
                 return { id, type:'divider', color:el.getAttribute('border-color')||'#e2e8f0', thickness:parseInt(el.getAttribute('border-width'))||1, borderStyle:el.getAttribute('border-style')||'solid', dividerWidth:el.getAttribute('width')||'100%', ...teParsePadAttr(el.getAttribute('padding')) };
             case 'mj-spacer':
@@ -3012,7 +3021,8 @@
                     const b = { id:teId(), type:'columns', cols:cols.length, children:[] };
                     cols.forEach(col => {
                         const children = [];
-                        [...col.children].forEach(child => { const bl = teParseMjmlEl(child); if (bl) children.push(bl); });
+                        const colValign = col.getAttribute('vertical-align') || 'top';
+                        [...col.children].forEach(child => { const bl = teParseMjmlEl(child, undefined, undefined, colValign); if (bl) children.push(bl); });
                         b.children.push(children);
                     });
                     blocks.push(b);
@@ -3240,7 +3250,8 @@ ${body}
                     const cols = (b.children||[]).map((children, colIdx) => {
                         const innerRows = children.map(c => blockToHtml(c)).join('');
                         const colWidth = Math.floor(100/(b.children.length||1));
-                        return `<td valign="top" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:top;${teColBorderCss(b,colIdx)}">` +
+                        const colValign = teColValign(children);
+                        return `<td valign="${colValign}" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:${colValign};${teColBorderCss(b,colIdx)}">` +
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
                     }).join('');
@@ -3375,7 +3386,8 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'columns': {
                 const cols = b.children.map((children, colIdx) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
-                    return `${i}  <mj-column${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
+                    const colValign = teColValign(children);
+                    return `${i}  <mj-column vertical-align="${colValign}"${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
                 return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>` };
             }
