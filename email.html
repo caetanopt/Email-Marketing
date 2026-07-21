@@ -1966,7 +1966,7 @@
     };
     const teDefaults = {
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', href:'', bgColor:'#ffffff', fluidOnMobile:false, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
@@ -1980,7 +1980,7 @@
     };
     const teFieldSchemas = {
         header:  ['text','bgColor','textColor','fontSize','fontWeight','align','lineHeight','padding'],
-        heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','padding'],
+        heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
         button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
         image:   ['src','alt','href','width','align','bgColor','fluidOnMobile','padding'],
@@ -2544,9 +2544,10 @@
                 d.innerHTML = b.text || '';
                 break;
             case 'heading': {
+                const hdUpper = b.uppercase === true || b.uppercase === '1';
                 d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
                 const h = document.createElement(b.level || 'h2');
-                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:${b.lineHeight||1.4};`;
+                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:${b.lineHeight||1.4};text-transform:${hdUpper?'uppercase':'none'};`;
                 h.innerHTML = b.text || '';
                 d.appendChild(h);
                 break;
@@ -3175,8 +3176,9 @@ ${body}
                         `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4}">${b.text||''}</p>` };
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
+                    const hdUpper = b.uppercase === true || b.uppercase === '1';
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
-                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}">${b.text||''}</${hTag}>` };
+                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}${hdUpper?';text-transform:uppercase':''}">${b.text||''}</${hTag}>` };
                 }
                 case 'text': {
                     const txtUpper = b.uppercase === true || b.uppercase === '1';
@@ -3325,8 +3327,10 @@ ${teSerializeBlocksComment(srcBlocks)}
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
                 return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>` };
-            case 'heading':
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>` };
+            case 'heading': {
+                const hdUpper = b.uppercase === true || b.uppercase === '1';
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}>${b.text||''}</mj-text>` };
+            }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
