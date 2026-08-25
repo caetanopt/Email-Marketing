@@ -11,7 +11,8 @@ const INIT_SQL = `
     expires_at TIMESTAMPTZ NOT NULL,
     used       BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
-  )`;
+  );
+  ALTER TABLE magic_link_tokens ENABLE ROW LEVEL SECURITY;`;
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;

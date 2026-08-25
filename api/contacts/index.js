@@ -28,7 +28,9 @@ const IMPORT_INIT_SQL = `
     skipped  INTEGER DEFAULT 0,
     failed   INTEGER DEFAULT 0
   );
-  ALTER TABLE import_chunks ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`;
+  ALTER TABLE import_chunks ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+  ALTER TABLE import_jobs   ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE import_chunks ENABLE ROW LEVEL SECURITY;`;
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
