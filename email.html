@@ -1962,7 +1962,9 @@
         header:'Cabeçalho', heading:'Título', text:'Texto', button:'Botão',
         image:'Imagem', divider:'Separador', spacer:'Espaço', footer:'Rodapé',
         icon:'Ícone', columns2:'2 Colunas', columns3:'3 Colunas',
-        quote:'Citação', linkBlock:'Bloco Link', listItems:'Lista'
+        quote:'Citação', linkBlock:'Bloco Link', listItems:'Lista',
+        social:'Redes Sociais', hero:'Hero', accordion:'Acordeão',
+        navbar:'Navegação', carousel:'Carrossel'
     };
     const teDefaults = {
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', fontFamily:'', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
@@ -1976,7 +1978,12 @@
         icon:      { iconKey:'star', iconSvg:'', color:'#334155', size:48, align:'center', bgColor:'#ffffff', href:'', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
         quote:     { text:'«Excelente serviço. Recomendo vivamente a todos.»', author:'— Cliente Satisfeito', color:'#1e293b', authorColor:'#64748b', bgColor:'#f1f5f9', borderColor:'#6366f1', fontSize:17, fontFamily:'', align:'center', paddingTop:32, paddingRight:40, paddingBottom:32, paddingLeft:40 },
         linkBlock: { title:'Saber mais', description:'Clica para ver todos os detalhes', href:'https://', textColor:'#ffffff', bgColor:'#0f172a', fontSize:15, align:'center', paddingTop:20, paddingRight:32, paddingBottom:20, paddingLeft:32 },
-        listItems: { items:[{text:'Primeiro item da lista'},{text:'Segundo item da lista'},{text:'Terceiro item da lista'}], color:'#334155', bgColor:'#ffffff', fontSize:14, paddingTop:16, paddingRight:24, paddingBottom:16, paddingLeft:24 }
+        listItems: { items:[{text:'Primeiro item da lista'},{text:'Segundo item da lista'},{text:'Terceiro item da lista'}], color:'#334155', bgColor:'#ffffff', fontSize:14, paddingTop:16, paddingRight:24, paddingBottom:16, paddingLeft:24 },
+        social:  { items:[{network:'facebook',href:'https://facebook.com/'},{network:'instagram',href:'https://instagram.com/'},{network:'linkedin',href:'https://linkedin.com/'}], align:'center', iconSize:24, bgColor:'#ffffff', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
+        hero:    { src:'https://placehold.co/600x300?text=Hero', text:'Título de destaque', bgColor:'#0f172a', color:'#ffffff', fontSize:28, fontWeight:'700', align:'center', height:300, paddingTop:40, paddingRight:40, paddingBottom:40, paddingLeft:40 },
+        accordion: { items:[{title:'Pergunta 1',text:'Resposta à primeira pergunta.'},{title:'Pergunta 2',text:'Resposta à segunda pergunta.'}], bgColor:'#ffffff', borderColor:'#e2e8f0', titleColor:'#0f172a', textColor:'#475569', fontSize:14, paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
+        navbar:  { items:[{text:'Início',href:'https://'},{text:'Produtos',href:'https://'},{text:'Contacto',href:'https://'}], bgColor:'#ffffff', color:'#0f172a', fontSize:13, align:'center', paddingTop:12, paddingRight:16, paddingBottom:12, paddingLeft:16 },
+        carousel:  { images:[{src:'https://placehold.co/600x400?text=1'},{src:'https://placehold.co/600x400?text=2'},{src:'https://placehold.co/600x400?text=3'}], bgColor:'#ffffff', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 }
     };
     const teFieldSchemas = {
         header:  ['text','bgColor','textColor','fontSize','fontWeight','fontFamily','align','lineHeight','padding'],
@@ -1990,7 +1997,12 @@
         icon:      ['color','size','align','href','bgColor','padding'],
         quote:     ['text','author','color','authorColor','bgColor','borderColor','fontSize','fontFamily','align','padding'],
         linkBlock: ['title','description','href','textColor','bgColor','fontSize','align','padding'],
-        listItems: ['color','bgColor','fontSize','showDividers','padding']
+        listItems: ['color','bgColor','fontSize','showDividers','padding'],
+        social:    ['align','iconSize','bgColor','padding'],
+        hero:      ['src','text','color','bgColor','fontSize','fontWeight','align','height','padding'],
+        accordion: ['bgColor','borderColor','titleColor','textColor','fontSize','padding'],
+        navbar:    ['bgColor','color','fontSize','align','padding'],
+        carousel:  ['bgColor','padding']
     };
     const teFields = {
         text:       { label:'Texto',         type:'textarea' },
@@ -2039,6 +2051,8 @@
         imgBorderWidth:  { label:'Moldura (px)',   type:'number' },
         imgBorderColor:  { label:'Cor da moldura', type:'color' },
         imgBorderRadius: { label:'Cantos arredondados (px)', type:'number' },
+        iconSize:   { label:'Tamanho ícone (px)', type:'number' },
+        titleColor: { label:'Cor do título',      type:'color' },
     };
 
     let teNextId = 100;
@@ -2245,6 +2259,33 @@
         if (!f.block.items) f.block.items = [];
         f.block.items.push({ text:'Novo item' });
         teRender();
+    }
+    // Generic array-of-objects item editing, reused by social/accordion/
+    // navbar/carousel panels (arrKey lets carousel use "images" instead of
+    // the default "items").
+    function teUpdateArrayItem(id, arrKey, idx, field, value) {
+        const f = teFind(id);
+        if (!f || !f.block[arrKey]) return;
+        f.block[arrKey][idx][field] = value;
+        teRenderCanvas(); teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
+    function teRemoveArrayItem(id, arrKey, idx) {
+        const f = teFind(id);
+        if (!f || !f.block[arrKey]) return;
+        f.block[arrKey].splice(idx, 1);
+        teRender();
+    }
+    function teAddArrayItem(id, arrKey, newItem) {
+        const f = teFind(id);
+        if (!f) return;
+        if (!f.block[arrKey]) f.block[arrKey] = [];
+        f.block[arrKey].push(newItem);
+        teRender();
+    }
+    const TE_SOCIAL_NETWORKS = ['facebook','x','instagram','linkedin','youtube','pinterest','tumblr','github','vimeo','medium','soundcloud','dribbble','xing','snapchat','web'];
+    function teSocialIconUrl(network) {
+        return `https://www.mailjet.com/images/theme/v1/icons/ico-social/${network||'web'}.png`;
     }
     function teSetViewport(v) {
         teState.viewport = v;
@@ -2694,6 +2735,43 @@
                 ).join('');
                 break;
             }
+            case 'social': {
+                const sz = b.iconSize || 24;
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
+                d.innerHTML = (b.items||[]).map(item =>
+                    `<a href="#" onclick="event.preventDefault()" style="display:inline-block;margin:0 4px;"><img src="${teSocialIconUrl(item.network)}" width="${sz}" height="${sz}" style="display:block;border-radius:3px;" alt="${item.network||''}"></a>`
+                ).join('');
+                break;
+            }
+            case 'hero': {
+                d.style.cssText = `background:${b.bgColor||'#0f172a'} url('${b.src||''}') center/cover no-repeat;height:${b.height||300}px;padding:${tePadding(b)};text-align:${b.align||'center'};display:flex;align-items:center;justify-content:${b.align==='left'?'flex-start':b.align==='right'?'flex-end':'center'};`;
+                d.innerHTML = `<div style="font-size:${b.fontSize||28}px;font-weight:${b.fontWeight||'700'};color:${b.color||'#fff'};">${teEscape(b.text||'')}</div>`;
+                break;
+            }
+            case 'accordion': {
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};border:2px solid ${b.borderColor||'#e2e8f0'};`;
+                d.innerHTML = (b.items||[]).map((item,idx) => `
+                    <div style="${idx>0?`border-top:1px solid ${b.borderColor||'#e2e8f0'};`:''}padding:16px;">
+                        <div style="font-weight:700;color:${b.titleColor||'#0f172a'};font-size:${b.fontSize||14}px;display:flex;justify-content:space-between;">${teEscape(item.title||'')}<span>+</span></div>
+                        <div style="color:${b.textColor||'#475569'};font-size:${b.fontSize||14}px;margin-top:6px;">${teEscape(item.text||'')}</div>
+                    </div>`).join('');
+                break;
+            }
+            case 'navbar': {
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
+                d.innerHTML = (b.items||[]).map(item =>
+                    `<a href="#" onclick="event.preventDefault()" style="display:inline-block;padding:0 10px;color:${b.color||'#0f172a'};font-size:${b.fontSize||13}px;text-decoration:none;text-transform:uppercase;">${teEscape(item.text||'')}</a>`
+                ).join('');
+                break;
+            }
+            case 'carousel': {
+                d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${tePadding(b)};text-align:center;`;
+                const first = (b.images||[])[0];
+                d.innerHTML = first
+                    ? `<img src="${first.src}" style="max-width:100%;display:inline-block;" alt=""><p style="font-size:10px;color:#94a3b8;margin:4px 0 0;">Carrossel — ${(b.images||[]).length} imagens (desliza no email)</p>`
+                    : `<p style="font-size:11px;color:#94a3b8;">Sem imagens no carrossel</p>`;
+                break;
+            }
             case 'columns': {
                 d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
                 const colPercents = teColWidthPercents(b);
@@ -2901,9 +2979,93 @@
             `;
             return;
         }
+        if (b.type === 'social') {
+            const fields = (teFieldSchemas.social || []).map(k => teRenderField(b, k)).join('');
+            const netOpts = (n) => TE_SOCIAL_NETWORKS.map(x => `<option value="${x}" ${n===x?'selected':''}>${x[0].toUpperCase()+x.slice(1)}</option>`).join('');
+            const itemsHtml = (b.items || []).map((item, i) => `
+                <div class="flex items-center gap-1 mb-1">
+                    <select onchange="teUpdateArrayItem('${b.id}','items',${i},'network',this.value)" class="w-24 px-1 py-1 text-xs border border-slate-200 rounded">${netOpts(item.network)}</select>
+                    <input type="url" value="${teEscape(item.href||'')}" oninput="teUpdateArrayItem('${b.id}','items',${i},'href',this.value)" class="flex-1 px-2 py-1 text-xs border border-slate-200 rounded" placeholder="https://…">
+                    <button onclick="teRemoveArrayItem('${b.id}','items',${i})" class="text-red-400 hover:text-red-600 text-base leading-none px-1">×</button>
+                </div>`).join('');
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Redes Sociais</p>
+                <p class="text-[10px] text-slate-400 mb-3">Propriedades do bloco</p>
+                <div class="space-y-3">${fields}</div>
+                <div class="mt-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1.5">Redes</label>
+                    <div>${itemsHtml}</div>
+                    <button onclick="teAddArrayItem('${b.id}','items',{network:'facebook',href:'https://'})" class="mt-1.5 w-full text-xs px-2 py-1 border border-dashed border-slate-300 rounded hover:bg-slate-50 text-slate-500">+ Adicionar rede</button>
+                </div>
+                <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+            `;
+            return;
+        }
+        if (b.type === 'accordion') {
+            const fields = (teFieldSchemas.accordion || []).map(k => teRenderField(b, k)).join('');
+            const itemsHtml = (b.items || []).map((item, i) => `
+                <div class="mb-2 p-2 border border-slate-200 rounded">
+                    <input type="text" value="${teEscape(item.title||'')}" oninput="teUpdateArrayItem('${b.id}','items',${i},'title',this.value)" class="w-full mb-1 px-2 py-1 text-xs border border-slate-200 rounded" placeholder="Pergunta">
+                    <textarea rows="2" oninput="teUpdateArrayItem('${b.id}','items',${i},'text',this.value)" class="w-full px-2 py-1 text-xs border border-slate-200 rounded" placeholder="Resposta">${teEscape(item.text||'')}</textarea>
+                    <button onclick="teRemoveArrayItem('${b.id}','items',${i})" class="mt-1 text-[10px] text-red-500 hover:text-red-700">Remover</button>
+                </div>`).join('');
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Acordeão</p>
+                <p class="text-[10px] text-slate-400 mb-3">Abre/fecha ao clicar apenas em clientes compatíveis (Apple Mail, Outlook mobile) — no Gmail/Outlook desktop aparece sempre aberto.</p>
+                <div class="space-y-3">${fields}</div>
+                <div class="mt-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1.5">Perguntas</label>
+                    <div>${itemsHtml}</div>
+                    <button onclick="teAddArrayItem('${b.id}','items',{title:'Nova pergunta',text:'Resposta…'})" class="mt-1.5 w-full text-xs px-2 py-1 border border-dashed border-slate-300 rounded hover:bg-slate-50 text-slate-500">+ Adicionar pergunta</button>
+                </div>
+                <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+            `;
+            return;
+        }
+        if (b.type === 'navbar') {
+            const fields = (teFieldSchemas.navbar || []).map(k => teRenderField(b, k)).join('');
+            const itemsHtml = (b.items || []).map((item, i) => `
+                <div class="flex items-center gap-1 mb-1">
+                    <input type="text" value="${teEscape(item.text||'')}" oninput="teUpdateArrayItem('${b.id}','items',${i},'text',this.value)" class="w-20 px-2 py-1 text-xs border border-slate-200 rounded" placeholder="Texto">
+                    <input type="url" value="${teEscape(item.href||'')}" oninput="teUpdateArrayItem('${b.id}','items',${i},'href',this.value)" class="flex-1 px-2 py-1 text-xs border border-slate-200 rounded" placeholder="https://…">
+                    <button onclick="teRemoveArrayItem('${b.id}','items',${i})" class="text-red-400 hover:text-red-600 text-base leading-none px-1">×</button>
+                </div>`).join('');
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Navegação</p>
+                <p class="text-[10px] text-slate-400 mb-3">Menu horizontal — vira hamburger no telemóvel.</p>
+                <div class="space-y-3">${fields}</div>
+                <div class="mt-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1.5">Links</label>
+                    <div>${itemsHtml}</div>
+                    <button onclick="teAddArrayItem('${b.id}','items',{text:'Novo link',href:'https://'})" class="mt-1.5 w-full text-xs px-2 py-1 border border-dashed border-slate-300 rounded hover:bg-slate-50 text-slate-500">+ Adicionar link</button>
+                </div>
+                <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+            `;
+            return;
+        }
+        if (b.type === 'carousel') {
+            const fields = (teFieldSchemas.carousel || []).map(k => teRenderField(b, k)).join('');
+            const itemsHtml = (b.images || []).map((item, i) => `
+                <div class="flex items-center gap-1 mb-1">
+                    <input type="url" value="${teEscape(item.src||'')}" oninput="teUpdateArrayItem('${b.id}','images',${i},'src',this.value)" class="flex-1 px-2 py-1 text-xs border border-slate-200 rounded" placeholder="URL da imagem">
+                    <button onclick="teRemoveArrayItem('${b.id}','images',${i})" class="text-red-400 hover:text-red-600 text-base leading-none px-1">×</button>
+                </div>`).join('');
+            root.innerHTML = `
+                <p class="text-xs font-semibold text-slate-700 mb-1">Carrossel</p>
+                <p class="text-[10px] text-slate-400 mb-3">Deslizar entre imagens — suportado nos principais clientes de email.</p>
+                <div class="space-y-3">${fields}</div>
+                <div class="mt-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1.5">Imagens</label>
+                    <div>${itemsHtml}</div>
+                    <button onclick="teAddArrayItem('${b.id}','images',{src:'https://placehold.co/600x400'})" class="mt-1.5 w-full text-xs px-2 py-1 border border-dashed border-slate-300 rounded hover:bg-slate-50 text-slate-500">+ Adicionar imagem</button>
+                </div>
+                <button onclick="teDeleteBlock('${b.id}')" class="w-full mt-4 px-2 py-1.5 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50">Apagar bloco</button>
+            `;
+            return;
+        }
         const fields = teFieldSchemas[b.type] || [];
         const html = fields.map((key) => teRenderField(b, key)).join('');
-        const extra = b.type === 'image'
+        const extra = (b.type === 'image' || b.type === 'hero')
             ? `<button onclick="openMediaPicker(url => teUpdateField('${b.id}','src',url))" class="w-full mt-3 px-2 py-1.5 text-xs font-medium text-slate-700 border border-slate-200 rounded hover:bg-slate-50 flex items-center justify-center gap-1.5">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                   Escolher da biblioteca
@@ -3374,6 +3536,45 @@ ${body}
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
                         `<ul style="margin:0;padding-left:20px;font-size:${b.fontSize||14}px;color:${b.color||'#334155'};line-height:1.6">${liHtml}</ul>` };
                 }
+                // NOTE: social/hero/accordion/navbar/carousel below are only used
+                // by the local-fallback path (teCompileMjmlToHtml falls back to
+                // this builder if the real mjml compile call fails) — the actual
+                // sent HTML normally comes from the real mj-social/mj-hero/
+                // mj-accordion/mj-navbar/mj-carousel compiler, which renders these
+                // properly (interactive accordion, real sliding carousel, mobile
+                // hamburger navbar). Keep these simple, non-interactive but
+                // visually reasonable degraded versions.
+                case 'social': {
+                    const sz = b.iconSize || 24;
+                    const iconsHtml = (b.items||[]).map(item =>
+                        `<a href="${esc(item.href||'#')}" target="_blank" rel="noopener" style="display:inline-block;margin:0 4px;"><img src="${teSocialIconUrl(item.network)}" width="${sz}" height="${sz}" style="display:block;border-radius:3px;" alt="${esc(item.network||'')}"></a>`
+                    ).join('');
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<div style="text-align:${b.align||'center'}">${iconsHtml}</div>` };
+                }
+                case 'hero': {
+                    return { mergeable:true, bg:b.bgColor||'#0f172a', p:'0px', inner:
+                        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" background="${esc(b.src||'')}" style="background-image:url('${esc(b.src||'')}');background-size:cover;background-position:center;"><tr><td height="${b.height||300}" style="padding:${pad(b)};text-align:${b.align||'center'};vertical-align:middle;"><div style="font-size:${b.fontSize||28}px;font-weight:${b.fontWeight||'700'};color:${b.color||'#fff'}">${esc(b.text||'')}</div></td></tr></table>` };
+                }
+                case 'accordion': {
+                    const itemsHtml = (b.items||[]).map((item,idx) =>
+                        `<div style="${idx>0?`border-top:1px solid ${b.borderColor||'#e2e8f0'};`:''}padding:16px;"><div style="font-weight:700;color:${b.titleColor||'#0f172a'};font-size:${b.fontSize||14}px;">${esc(item.title||'')}</div><div style="color:${b.textColor||'#475569'};font-size:${b.fontSize||14}px;margin-top:6px;">${esc(item.text||'')}</div></div>`
+                    ).join('');
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<div style="border:2px solid ${b.borderColor||'#e2e8f0'}">${itemsHtml}</div>` };
+                }
+                case 'navbar': {
+                    const linksHtml = (b.items||[]).map(item =>
+                        `<a href="${esc(item.href||'#')}" target="_blank" rel="noopener" style="display:inline-block;padding:0 10px;color:${b.color||'#0f172a'};font-size:${b.fontSize||13}px;text-decoration:none;text-transform:uppercase;">${esc(item.text||'')}</a>`
+                    ).join('');
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        `<div style="text-align:${b.align||'center'}">${linksHtml}</div>` };
+                }
+                case 'carousel': {
+                    const first = (b.images||[])[0];
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
+                        first ? `<img src="${esc(first.src)}" width="600" style="max-width:100%;display:block;margin:0 auto;" alt="">` : '' };
+                }
                 default: return { mergeable:false, full:'' };
             }
         };
@@ -3505,6 +3706,27 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const liStyleM = `padding:4px 0;color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.6;${showDivM ? 'border-bottom:1px solid #e2e8f0;' : ''}`;
                 const liHtml = (b.items||[]).map(item => `<li style="${liStyleM}">${item.text||''}</li>`).join('');
                 return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px"><ul style="padding-left:20px;margin:0;">${liHtml}</ul></mj-text>` };
+            }
+            case 'social': {
+                const els = (b.items||[]).map(item => `${i}      <mj-social-element name="${item.network||'web'}" href="${item.href||'#'}" />`).join('\n');
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-social align="${b.align||'center'}" icon-size="${b.iconSize||24}px" mode="horizontal">\n${els}\n${i}    </mj-social>` };
+            }
+            case 'hero': {
+                // mj-hero is a direct <mj-body> child (like mj-section), not
+                // wrapped inside one — never merges with neighbouring blocks.
+                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${b.text||''}</mj-text>\n${i}</mj-hero>` };
+            }
+            case 'accordion': {
+                const els = (b.items||[]).map(item => `${i}      <mj-accordion-element>\n${i}        <mj-accordion-title background-color="${b.bgColor||'#ffffff'}" color="${b.titleColor||'#0f172a'}" font-size="${b.fontSize||14}px">${item.title||''}</mj-accordion-title>\n${i}        <mj-accordion-text background-color="${b.bgColor||'#ffffff'}" color="${b.textColor||'#475569'}" font-size="${b.fontSize||14}px">${item.text||''}</mj-accordion-text>\n${i}      </mj-accordion-element>`).join('\n');
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-accordion border="2px solid ${b.borderColor||'#e2e8f0'}">\n${els}\n${i}    </mj-accordion>` };
+            }
+            case 'navbar': {
+                const links = (b.items||[]).map(item => `${i}      <mj-navbar-link href="${item.href||'#'}" color="${b.color||'#0f172a'}" font-size="${b.fontSize||13}px">${item.text||''}</mj-navbar-link>`).join('\n');
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-navbar align="${b.align||'center'}">\n${links}\n${i}    </mj-navbar>` };
+            }
+            case 'carousel': {
+                const imgs = (b.images||[]).map(img => `${i}      <mj-carousel-image src="${img.src||''}" />`).join('\n');
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-carousel>\n${imgs}\n${i}    </mj-carousel>` };
             }
         }
         return { mergeable:true, attrs:'', inner:'' };
@@ -11603,6 +11825,31 @@ ${sections.join('\n\n')}
                                                 <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
                                                 <span class="text-[10px] pointer-events-none">Lista</span>
                                             </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'social')" ondragend="teDragEnd()" onclick="teInsertBlock('social')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.684 13.342a4.986 4.986 0 010-2.684m0 2.684a4.986 4.986 0 010-2.684m9.316-4.658a3 3 0 11-5.632-1.42 3 3 0 015.632 1.42zm0 13.316a3 3 0 11-5.632-1.42 3 3 0 015.632 1.42zm-9.316-4.658a3 3 0 11-5.632-1.42 3 3 0 015.632 1.42z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Redes Sociais</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'hero')" ondragend="teDragEnd()" onclick="teInsertBlock('hero')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5V6a2 2 0 012-2h14a2 2 0 012 2v10.5M3 16.5l4.5-4.5a2 2 0 012.828 0L15 16.5m-3-3l1.5-1.5a2 2 0 012.828 0L21 16.5M3 16.5v1.5a2 2 0 002 2h14a2 2 0 002-2v-1.5"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Hero</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'accordion')" ondragend="teDragEnd()" onclick="teInsertBlock('accordion')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Acordeão</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'navbar')" ondragend="teDragEnd()" onclick="teInsertBlock('navbar')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Navegação</span>
+                                            </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'carousel')" ondragend="teDragEnd()" onclick="teInsertBlock('carousel')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7.5l3-3m0 0l3 3m-3-3v13.5M21 16.5l-3 3m0 0l-3-3m3 3V6M9 6h6M9 18h6"/></svg>
+                                                <span class="text-[10px] pointer-events-none">Carrossel</span>
+                                            </button>
                                         </div>
                                         <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5 mt-3 border-t border-slate-100 pt-3">Layout</p>
                                         <div class="grid grid-cols-2 gap-1.5">
@@ -13074,6 +13321,31 @@ ${sections.join('\n\n')}
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
                                             <span class="text-[10px] pointer-events-none">Lista</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'social')" ondragend="teDragEnd()" onclick="teInsertBlock('social')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.684 13.342a4.986 4.986 0 010-2.684m0 2.684a4.986 4.986 0 010-2.684m9.316-4.658a3 3 0 11-5.632-1.42 3 3 0 015.632 1.42zm0 13.316a3 3 0 11-5.632-1.42 3 3 0 015.632 1.42zm-9.316-4.658a3 3 0 11-5.632-1.42 3 3 0 015.632 1.42z"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Redes Sociais</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'hero')" ondragend="teDragEnd()" onclick="teInsertBlock('hero')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5V6a2 2 0 012-2h14a2 2 0 012 2v10.5M3 16.5l4.5-4.5a2 2 0 012.828 0L15 16.5m-3-3l1.5-1.5a2 2 0 012.828 0L21 16.5M3 16.5v1.5a2 2 0 002 2h14a2 2 0 002-2v-1.5"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Hero</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'accordion')" ondragend="teDragEnd()" onclick="teInsertBlock('accordion')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Acordeão</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'navbar')" ondragend="teDragEnd()" onclick="teInsertBlock('navbar')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Navegação</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'carousel')" ondragend="teDragEnd()" onclick="teInsertBlock('carousel')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7.5l3-3m0 0l3 3m-3-3v13.5M21 16.5l-3 3m0 0l-3-3m3 3V6M9 6h6M9 18h6"/></svg>
+                                            <span class="text-[10px] pointer-events-none">Carrossel</span>
                                         </button>
                                     </div>
                                     <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-2 py-1.5 mt-3 border-t border-slate-100 pt-3">Layout</p>
