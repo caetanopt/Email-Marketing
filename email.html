@@ -1643,7 +1643,7 @@
         const nameEl = document.querySelector('#templateEdit input[type=text]');
         const name = nameEl?.value?.trim() || 'Template';
         const _emailBlocks = (typeof _tePrepareBlocksForEmail === 'function') ? await _tePrepareBlocksForEmail(teState.blocks) : teState.blocks;
-        const html = teBuildEmailHtml ? teBuildEmailHtml(_emailBlocks) : '';
+        const html = await teCompileMjmlToHtml(_emailBlocks);
         teTemplateStates[teTemplateId || '_tmp'] = JSON.parse(JSON.stringify(teState.blocks));
         try {
             if (teTemplateId && !String(teTemplateId).startsWith('tpl')) {
@@ -3138,13 +3138,14 @@
         if (status) { status.textContent = 'Sincronizado'; status.className = 'text-xs text-green-400 flex items-center gap-1'; }
         if (!silent) showToast('MJML aplicado ao editor visual.');
     }
-    function teBuildMjml() {
+    function teBuildMjml(overrideBlocks) {
         const i = '    ';
+        const srcBlocks = overrideBlocks || teState.blocks;
         // Fold consecutive blocks that share the exact same section
         // background/padding (etc) into one <mj-section><mj-column> instead
         // of one section per block — same visual result, fewer lines.
         const groups = [];
-        for (const b of teState.blocks) {
+        for (const b of srcBlocks) {
             const p = teBlockToMjmlParts(b, i);
             if (!p.mergeable) { groups.push({ mergeable:false, full:p.full }); continue; }
             const last = groups[groups.length - 1];
@@ -3160,6 +3161,30 @@
 ${body}
   </mj-body>
 </mjml>`;
+    }
+
+    // Compiles this block set's MJML through the official mjml library
+    // (server-side, via api/templates?action=compile-mjml) — this is what
+    // actually gets saved as a template/campaign's html_content, i.e. what
+    // is sent to real recipients. Falls back to the local hand-rolled
+    // generator if the compile call fails, so a transient network/API issue
+    // never blocks saving or sending a campaign.
+    async function teCompileMjmlToHtml(overrideBlocks) {
+        const mjmlSrc = teBuildMjml(overrideBlocks);
+        try {
+            const { html, errors } = await apiFetch('/api/templates?action=compile-mjml', {
+                method: 'POST', body: JSON.stringify({ mjml: mjmlSrc })
+            });
+            if (errors && errors.length) console.warn('MJML compile warnings:', errors);
+            // The real compiler has no idea about our block-round-trip comment
+            // (teBuildEmailHtml appends it itself) — add it back so re-opening
+            // a saved template in the visual editor still works.
+            if (html) return html + teSerializeBlocksComment(overrideBlocks || teState.blocks);
+            throw new Error('Resposta vazia');
+        } catch (e) {
+            console.error('MJML compile failed, falling back to local HTML builder:', e.message);
+            return teBuildEmailHtml(overrideBlocks);
+        }
     }
 
     // Generates a proper email-client-compatible HTML from blocks (no MJML dependency)
@@ -5818,7 +5843,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const name = nameEl?.value?.trim();
         if (!name) { _setFieldError(nameEl, false, 'Campo obrigatório'); return; }
         const _blkEmailBlocks = (typeof _tePrepareBlocksForEmail === 'function') ? await _tePrepareBlocksForEmail(teState.blocks) : teState.blocks;
-        const html = (typeof teBuildEmailHtml === 'function') ? teBuildEmailHtml(_blkEmailBlocks) : '';
+        const html = await teCompileMjmlToHtml(_blkEmailBlocks);
         try {
             if (_editingBlockId) {
                 await apiFetch(`/api/brands?id=${_currentBrand.id}&action=block&block_id=${_editingBlockId}`, {
@@ -7054,7 +7079,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (teState.blocks.length) {
                 const tplName = `${name} — Template`;
                 const _emailBlocks2 = await _tePrepareBlocksForEmail(teState.blocks);
-                const tplHtml = teBuildEmailHtml(_emailBlocks2);
+                const tplHtml = await teCompileMjmlToHtml(_emailBlocks2);
                 if (templateId) {
                     await apiFetch(`/api/templates?id=${templateId}`, {
                         method: 'PUT', body: JSON.stringify({ html_content: tplHtml })
@@ -7213,7 +7238,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             let templateId = _editingTemplateId || null;
             if (teState.blocks.length) {
                 const _testEmailBlocks = await _tePrepareBlocksForEmail(teState.blocks);
-                const tplHtml = teBuildEmailHtml(_testEmailBlocks);
+                const tplHtml = await teCompileMjmlToHtml(_testEmailBlocks);
                 if (templateId) {
                     await apiFetch(`/api/templates?id=${templateId}`, {
                         method: 'PUT',
@@ -7286,7 +7311,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             let templateId = _editingTemplateId || null;
             if (teState.blocks.length) {
                 const emailBlocks = await _tePrepareBlocksForEmail(teState.blocks);
-                const tplHtml = teBuildEmailHtml(emailBlocks);
+                const tplHtml = await teCompileMjmlToHtml(emailBlocks);
                 if (templateId) {
                     await apiFetch(`/api/templates?id=${templateId}`, { method: 'PUT', body: JSON.stringify({ html_content: tplHtml }) });
                 } else {
@@ -7345,7 +7370,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         let templateId = _editingTemplateId || null;
         if (teState.blocks.length) {
             const emailBlocks = await _tePrepareBlocksForEmail(teState.blocks);
-            const tplHtml = teBuildEmailHtml(emailBlocks);
+            const tplHtml = await teCompileMjmlToHtml(emailBlocks);
             if (templateId) {
                 await apiFetch(`/api/templates?id=${templateId}`, { method: 'PUT', body: JSON.stringify({ html_content: tplHtml }) });
             } else {
@@ -7546,7 +7571,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             let templateId = _editingTemplateId || null;
             if (teState.blocks.length) {
                 const emailBlocks = await _tePrepareBlocksForEmail(teState.blocks);
-                const tplHtml = teBuildEmailHtml(emailBlocks);
+                const tplHtml = await teCompileMjmlToHtml(emailBlocks);
                 const tplName = `${name} — Template`;
                 if (templateId) {
                     await apiFetch(`/api/templates?id=${templateId}`, {

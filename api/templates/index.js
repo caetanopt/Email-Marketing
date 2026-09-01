@@ -1,6 +1,7 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 const Anthropic = require('@anthropic-ai/sdk');
+const mjml2html = require('mjml');
 
 async function authorizeTemplate(userId, templateId) {
   const r = await query(
@@ -62,6 +63,24 @@ module.exports = async function handler(req, res) {
   if (!user) return;
 
   const { brand_id, id, target_brand_id, action } = req.query;
+
+  // Compile MJML source to real, spec-compliant email HTML via the official
+  // mjml library (Outlook/Gmail-safe VML, responsive breakpoints, etc.) —
+  // used instead of the editor's own hand-rolled HTML generator whenever a
+  // template/campaign is actually saved, so what gets sent is produced by
+  // the same compiler millions of other MJML users rely on.
+  if (action === 'compile-mjml') {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
+    const { mjml } = req.body || {};
+    if (!mjml || typeof mjml !== 'string') return res.status(400).json({ error: 'mjml obrigatório' });
+    try {
+      const result = await mjml2html(mjml, { validationLevel: 'soft' });
+      return res.status(200).json({ html: result.html, errors: (result.errors || []).map(e => e.formattedMessage || e.message) });
+    } catch (err) {
+      console.error('compile-mjml error:', err.message);
+      return res.status(500).json({ error: 'Erro ao compilar MJML' });
+    }
+  }
 
   // AI: image → MJML
   if (action === 'image-to-mjml') {
