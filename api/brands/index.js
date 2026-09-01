@@ -9,6 +9,45 @@ const { requireAuth, cors } = require('../../lib/auth');
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
+// ── Atributos MJML por defeito (Definições Globais) ─────────────
+// Componentes aceites dentro de <mj-attributes>. A lista foi extraída dos
+// "componentName" dos pacotes mjml-* instalados; só inclui componentes de
+// corpo (os de <mj-head> não recebem atributos por defeito) mais "mj-all".
+const MJML_ATTR_COMPONENTS = new Set([
+  'mj-all', 'mj-accordion', 'mj-accordion-element', 'mj-accordion-text',
+  'mj-accordion-title', 'mj-body', 'mj-button', 'mj-carousel',
+  'mj-carousel-image', 'mj-column', 'mj-divider', 'mj-group', 'mj-hero',
+  'mj-image', 'mj-navbar', 'mj-navbar-link', 'mj-section', 'mj-social',
+  'mj-social-element', 'mj-spacer', 'mj-table', 'mj-text', 'mj-wrapper',
+]);
+
+// Valida a lista antes de a gravar. O que aqui passa vai ser interpolado em
+// atributos XML (attr="valor") no MJML gerado, por isso rejeitam-se
+// componentes fora da lista, nomes de atributo com formato inválido e valores
+// com caracteres que quebrariam o XML. A apóstrofe é permitida: é válida
+// dentro de atributos delimitados por aspas e é comum em font-family
+// (ex: 'Montserrat', sans-serif).
+function sanitiseMjmlAttributes(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of input.slice(0, 60)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const component = String(raw.component || '').trim().toLowerCase();
+    const attribute = String(raw.attribute || '').trim().toLowerCase();
+    const value     = String(raw.value ?? '').trim();
+    if (!MJML_ATTR_COMPONENTS.has(component)) continue;
+    if (!/^[a-z][a-z0-9-]{0,39}$/.test(attribute)) continue;
+    if (!value || value.length > 200) continue;
+    if (/[<>&"]/.test(value)) continue;
+    const key = `${component}|${attribute}`;
+    if (seen.has(key)) continue; // o último a definir o mesmo atributo venceria; guarda-se só um
+    seen.add(key);
+    out.push({ component, attribute, value });
+  }
+  return out;
+}
+
 // ── DNS health check (SPF / DKIM / DMARC) ──────────────────────
 const DNS_TIMEOUT_MS = 3000;
 function withDnsTimeout(promise) {
@@ -318,12 +357,13 @@ module.exports = async function handler(req, res) {
           `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
         );
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '', ses_rate_per_second: 50 };
+        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '', ses_rate_per_second: 50, mjml_attributes: null };
         try {
           // Auto-migrate: add columns if they don't exist yet
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS ses_rate_per_second INTEGER NOT NULL DEFAULT 50`).catch(() => {});
-          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second FROM global_settings WHERE id=1');
+          await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS mjml_attributes JSONB`).catch(() => {});
+          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second, mjml_attributes FROM global_settings WHERE id=1');
           return res.status(200).json(rows[0] || DEFAULTS);
         } catch (e) {
           if (e.code === '42P01') return res.status(200).json(DEFAULTS);
@@ -386,20 +426,41 @@ module.exports = async function handler(req, res) {
         `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
       );
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-      const { font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second } = req.body || {};
-      // Sanitise: keep only valid-looking email addresses, comma-separated
-      const cleanNotifEmails = (notification_emails || '').split(',')
-        .map(e => e.trim()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
-      const cleanRate = Math.max(1, Math.min(1000, parseInt(ses_rate_per_second, 10) || 50));
+      const body = req.body || {};
       try {
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS ses_rate_per_second INTEGER NOT NULL DEFAULT 50`).catch(() => {});
-        await query(
-          `INSERT INTO global_settings (id, font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second, updated_at)
-           VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
-           ON CONFLICT (id) DO UPDATE SET font_size=$1, font_family=$2, line_height=$3, email_width=$4, notification_emails=$5, ses_rate_per_second=$6, updated_at=NOW()`,
-          [font_size || '14px', font_family || 'Arial, sans-serif', line_height || '1.6', email_width || '600px', cleanNotifEmails, cleanRate]
-        );
+        await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS mjml_attributes JSONB`).catch(() => {});
+
+        // Escrita parcial: só se actualizam os campos presentes no pedido.
+        // Cada cartão das Definições Globais tem o seu próprio botão Guardar e
+        // envia apenas os seus campos — escrever a linha toda punha os
+        // restantes de volta nos valores por defeito (a tipografia era
+        // reposta ao guardar, por exemplo, os emails de notificação).
+        const vals = [];
+        const sets = [];
+        const setCol = (col, val) => { vals.push(val); sets.push(`${col}=$${vals.length}`); };
+
+        if ('font_size' in body)   setCol('font_size',   body.font_size   || '14px');
+        if ('font_family' in body) setCol('font_family', body.font_family || 'Arial, sans-serif');
+        if ('line_height' in body) setCol('line_height', body.line_height || '1.6');
+        if ('email_width' in body) setCol('email_width', body.email_width || '600px');
+        if ('notification_emails' in body) {
+          // Mantém só endereços com aspecto válido, separados por vírgula
+          setCol('notification_emails', String(body.notification_emails || '').split(',')
+            .map(e => e.trim()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(','));
+        }
+        if ('ses_rate_per_second' in body) {
+          setCol('ses_rate_per_second', Math.max(1, Math.min(1000, parseInt(body.ses_rate_per_second, 10) || 50)));
+        }
+        if ('mjml_attributes' in body) {
+          setCol('mjml_attributes', JSON.stringify(sanitiseMjmlAttributes(body.mjml_attributes)));
+        }
+
+        if (!sets.length) return res.status(400).json({ error: 'Nada para actualizar' });
+
+        await query('INSERT INTO global_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING');
+        await query(`UPDATE global_settings SET ${sets.join(', ')}, updated_at=NOW() WHERE id=1`, vals);
         return res.status(200).json({ ok: true });
       } catch (e) {
         if (e.code === '42P01') return res.status(503).json({ error: 'Migração em falta: corre 035_global_settings.sql no Supabase.' });

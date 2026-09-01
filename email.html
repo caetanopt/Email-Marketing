@@ -1963,6 +1963,39 @@
 
     let _teGlobalFontSize = null; // cached from global_settings; applied as default fontSize on new blocks
     let _teGlobalFontFamily = null; // cached from global_settings; emitted as <mj-all font-family> so it's the default for every send, unless a block overrides it
+    let _teGlobalLineHeight = null; // cached from global_settings; applied as default lineHeight on new blocks
+    let _teGlobalMjmlAttrs = null;  // cached from global_settings; null = never configured -> TE_DEFAULT_MJML_ATTRS
+
+    // Componentes que podem receber atributos por defeito em <mj-attributes>.
+    // Extraído dos "componentName" dos pacotes mjml-* instalados (só os de
+    // corpo, mais mj-all). Mantém-se alinhado com MJML_ATTR_COMPONENTS em
+    // api/brands/index.js, que valida o mesmo do lado do servidor.
+    const TE_MJML_ATTR_COMPONENTS = [
+        'mj-all', 'mj-text', 'mj-button', 'mj-image', 'mj-divider', 'mj-spacer',
+        'mj-section', 'mj-column', 'mj-wrapper', 'mj-group', 'mj-body', 'mj-hero',
+        'mj-table', 'mj-social', 'mj-social-element', 'mj-navbar', 'mj-navbar-link',
+        'mj-carousel', 'mj-carousel-image', 'mj-accordion', 'mj-accordion-element',
+        'mj-accordion-title', 'mj-accordion-text',
+    ];
+
+    // Lista usada quando nunca se guardou nada em Definições Globais →
+    // "Atributos MJML por defeito". mj-text/mj-button/mj-image/mj-divider
+    // trazem cada um um padding próprio de 10px 25px da biblioteca mjml, que
+    // se somava ao padding definido no editor; estes quatro resets são o que
+    // faz o email sair com o espaçamento que se vê no editor.
+    const TE_DEFAULT_MJML_ATTRS = [
+        { component: 'mj-text',    attribute: 'padding', value: '0' },
+        { component: 'mj-button',  attribute: 'padding', value: '0' },
+        { component: 'mj-image',   attribute: 'padding', value: '0' },
+        { component: 'mj-divider', attribute: 'padding', value: '0' },
+    ];
+
+    // Os atributos em vigor: a lista guardada, ou a lista por defeito quando
+    // nunca foi configurada. Uma lista vazia guardada é uma escolha explícita
+    // ("nenhum atributo") e é respeitada.
+    function teEffectiveMjmlAttrs() {
+        return Array.isArray(_teGlobalMjmlAttrs) ? _teGlobalMjmlAttrs : TE_DEFAULT_MJML_ATTRS;
+    }
 
     async function _loadTeGlobalSettings() {
         try {
@@ -1970,6 +2003,9 @@
             const px = parseInt(d.font_size);
             if (px > 0) _teGlobalFontSize = px;
             if (d.font_family) _teGlobalFontFamily = d.font_family;
+            const lh = parseFloat(d.line_height);
+            if (lh > 0) _teGlobalLineHeight = lh;
+            if (Array.isArray(d.mjml_attributes)) _teGlobalMjmlAttrs = d.mjml_attributes;
         } catch (e) { /* silent — migration may not be run yet */ }
     }
 
@@ -2172,6 +2208,9 @@
         }
         const block = { id: teId(), type, ...JSON.parse(JSON.stringify(teDefaults[type] || {})) };
         if (_teGlobalFontSize !== null && 'fontSize' in block) block.fontSize = _teGlobalFontSize;
+        // Altura de linha das Definições Globais — antes ficava sempre no 1.6
+        // fixo de teDefaults, ignorando o valor global.
+        if (_teGlobalLineHeight !== null && 'lineHeight' in block) block.lineHeight = _teGlobalLineHeight;
         return block;
     }
 
@@ -3440,19 +3479,27 @@
         // its own "Tipo de letra" — MJML gives per-element attributes
         // priority over mj-all automatically, no extra logic needed here.
         const headParts = [];
-        // mj-text/mj-button/mj-image/mj-divider each carry their own built-in
-        // default padding of "10px 25px" when the tag omits the attribute.
-        // teBlockToMjmlParts always places the *real* padding on the
-        // enclosing mj-section/mj-column (via the merge-group "attrs"), and
-        // deliberately never repeats it on the element itself — so without
-        // this reset, every block silently got its intended padding PLUS
-        // MJML's own 10px 25px default stacked on top (visible even at
-        // padding 0: a heading with padding-top/bottom 0 still rendered
-        // with ~10px of extra space, confirmed against mjml-text's
-        // defaultAttributes and a real computed-style inspection).
-        const attrParts = [`      <mj-text padding="0" />`, `      <mj-button padding="0" />`, `      <mj-image padding="0" />`, `      <mj-divider padding="0" />`];
-        if (_teGlobalFontFamily) attrParts.push(`      <mj-all font-family="${_teGlobalFontFamily}" />`);
-        headParts.push(`    <mj-attributes>\n${attrParts.join('\n')}\n    </mj-attributes>`);
+        // Atributos por defeito de Definições Globais → "Atributos MJML por
+        // defeito" (teEffectiveMjmlAttrs), agrupados por componente para que
+        // cada um saia numa única tag. Por defeito a lista traz os resets de
+        // padding de mj-text/mj-button/mj-image/mj-divider: cada um destes
+        // componentes traz um padding próprio de 10px 25px da biblioteca
+        // mjml, que se somava ao padding definido no editor.
+        const byComponent = new Map();
+        // O font-family global entra como mj-all para ser o defeito de todos
+        // os componentes; a lista de atributos pode sobrepor-se, e os
+        // atributos do próprio elemento ganham sempre (é a MJML que resolve).
+        if (_teGlobalFontFamily) byComponent.set('mj-all', { 'font-family': _teGlobalFontFamily });
+        for (const a of teEffectiveMjmlAttrs()) {
+            if (!a || !a.component || !a.attribute || a.value === '' || a.value == null) continue;
+            if (!byComponent.has(a.component)) byComponent.set(a.component, {});
+            byComponent.get(a.component)[a.attribute] = a.value;
+        }
+        const attrParts = [...byComponent.entries()].map(([component, attrs]) => {
+            const pairs = Object.entries(attrs).map(([k, v]) => `${k}="${teEscape(String(v))}"`).join(' ');
+            return `      <${component} ${pairs} />`;
+        });
+        if (attrParts.length) headParts.push(`    <mj-attributes>\n${attrParts.join('\n')}\n    </mj-attributes>`);
         // mj-button's own % width attribute only resizes the surrounding
         // table, not the link itself (documented mjml-button limitation —
         // "impossible to handle percents, depends on padding/text width").
@@ -5636,9 +5683,156 @@ ${teSerializeBlocksComment(srcBlocks)}
                     font_family: ff || 'Arial, sans-serif'
                 })
             });
-            // Refresh cached font-size so new blocks in the editor use the updated value immediately
+            // Refresh cached values so new blocks in the editor use them immediately
             if (fs) { const px = parseInt(fs); if (px > 0) _teGlobalFontSize = px; }
+            if (lh) { const n = parseFloat(lh); if (n > 0) _teGlobalLineHeight = n; }
+            if (ff) _teGlobalFontFamily = ff;
+            _gsRenderMjmlAttrsPreview(); // o mj-all do font-family aparece na pré-visualização
             showToast('Definições de tipografia guardadas.');
+        } catch (e) { showToast(e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+    }
+
+    // ── Definições Globais: atributos MJML por defeito ─────────────
+    // Cópia de trabalho do ecrã. Só vai para a base de dados em _saveMjmlAttrs.
+    let _gsMjmlAttrs = [];
+    // Há edições ainda não guardadas nesta tabela? Impede que a resposta do
+    // GET das definições globais, que chega de forma assíncrona, apague o que
+    // o utilizador já começou a escrever.
+    let _gsMjmlAttrsDirty = false;
+    // Sequência de carregamentos: uma resposta antiga nunca sobrepõe uma nova.
+    let _gsMjmlAttrsLoadSeq = 0;
+
+    const _GS_ATTR_NAME_RE = /^[a-z][a-z0-9-]{0,39}$/;
+
+    function _gsValidateMjmlAttr(a) {
+        if (!TE_MJML_ATTR_COMPONENTS.includes(a.component)) return 'Componente inválido.';
+        if (!_GS_ATTR_NAME_RE.test(a.attribute)) return `Atributo inválido: "${a.attribute}". Usa apenas minúsculas, dígitos e hífens (ex: padding, font-size).`;
+        if (!a.value) return `Falta o valor do atributo "${a.attribute}".`;
+        if (a.value.length > 200) return `Valor demasiado longo em "${a.attribute}".`;
+        if (/[<>&"]/.test(a.value)) return `O valor de "${a.attribute}" não pode conter < > & ou aspas.`;
+        return null;
+    }
+
+    async function _loadGlobalMjmlAttrs() {
+        const seq = ++_gsMjmlAttrsLoadSeq;
+        // Entrar no ecrã recomeça limpo; mostra já o que está em cache para a
+        // tabela não aparecer vazia enquanto o pedido corre.
+        _gsMjmlAttrsDirty = false;
+        _gsMjmlAttrs = JSON.parse(JSON.stringify(teEffectiveMjmlAttrs()));
+        _gsRenderMjmlAttrs();
+        let loaded;
+        try {
+            const data = await apiFetch('/api/brands?action=global_settings');
+            loaded = Array.isArray(data.mjml_attributes)
+                ? data.mjml_attributes.map(a => ({ component: a.component, attribute: a.attribute, value: String(a.value ?? '') }))
+                : JSON.parse(JSON.stringify(TE_DEFAULT_MJML_ATTRS));
+        } catch (e) {
+            return; // fica o que está em cache; a migração pode ainda não ter corrido
+        }
+        // Não pisar o que o utilizador escreveu enquanto o pedido corria, nem
+        // deixar uma resposta atrasada sobrepor-se a um carregamento posterior.
+        if (seq !== _gsMjmlAttrsLoadSeq || _gsMjmlAttrsDirty) return;
+        _gsMjmlAttrs = loaded;
+        _gsRenderMjmlAttrs();
+    }
+
+    function _gsRenderMjmlAttrs() {
+        const rows = document.getElementById('gsMjmlAttrsRows');
+        if (!rows) return;
+        if (!_gsMjmlAttrs.length) {
+            rows.innerHTML = `<p class="text-sm text-slate-400 py-2">Sem atributos definidos — os componentes usam os valores por defeito da própria biblioteca MJML.</p>`;
+        } else {
+            rows.innerHTML = _gsMjmlAttrs.map((a, i) => `
+                <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-3 items-center">
+                    <select onchange="_gsUpdateMjmlAttr(${i},'component',this.value,true)" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        ${TE_MJML_ATTR_COMPONENTS.map(c => `<option value="${c}"${c === a.component ? ' selected' : ''}>${c}</option>`).join('')}
+                    </select>
+                    <input value="${escHtml(a.attribute)}" oninput="_gsUpdateMjmlAttr(${i},'attribute',this.value)" placeholder="padding" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <input value="${escHtml(a.value)}" oninput="_gsUpdateMjmlAttr(${i},'value',this.value)" placeholder="0" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    <button onclick="_gsRemoveMjmlAttr(${i})" title="Remover" class="w-9 h-9 flex items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </div>`).join('');
+        }
+        _gsRenderMjmlAttrsPreview();
+    }
+
+    // Mostra exactamente o mesmo <mj-attributes> que teBuildMjml vai emitir,
+    // incluindo o mj-all do font-family global, para não haver surpresas.
+    function _gsRenderMjmlAttrsPreview() {
+        const pre = document.getElementById('gsMjmlAttrsPreview');
+        if (!pre) return;
+        const byComponent = new Map();
+        const ffInput = document.getElementById('gsTypoFontFamily')?.value.trim();
+        const ff = ffInput || _teGlobalFontFamily;
+        if (ff) byComponent.set('mj-all', { 'font-family': ff });
+        for (const a of _gsMjmlAttrs) {
+            if (!a.component || !a.attribute || !a.value) continue;
+            if (!byComponent.has(a.component)) byComponent.set(a.component, {});
+            byComponent.get(a.component)[a.attribute] = a.value;
+        }
+        if (!byComponent.size) { pre.textContent = '<mj-head></mj-head>'; return; }
+        const lines = [...byComponent.entries()].map(([c, attrs]) =>
+            `    <${c} ${Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ')} />`);
+        pre.textContent = `<mj-head>\n  <mj-attributes>\n${lines.join('\n')}\n  </mj-attributes>\n</mj-head>`;
+    }
+
+    // rerender=true só no <select>: nos inputs de texto voltar a desenhar as
+    // linhas faria perder o foco a cada tecla.
+    function _gsUpdateMjmlAttr(i, field, value, rerender) {
+        if (!_gsMjmlAttrs[i]) return;
+        _gsMjmlAttrsDirty = true;
+        _gsMjmlAttrs[i][field] = field === 'value' ? value : value.trim().toLowerCase();
+        if (rerender) _gsRenderMjmlAttrs(); else _gsRenderMjmlAttrsPreview();
+    }
+
+    function _gsAddMjmlAttr() {
+        _gsMjmlAttrsDirty = true;
+        _gsMjmlAttrs.push({ component: 'mj-text', attribute: '', value: '' });
+        _gsRenderMjmlAttrs();
+    }
+
+    function _gsRemoveMjmlAttr(i) {
+        _gsMjmlAttrsDirty = true;
+        _gsMjmlAttrs.splice(i, 1);
+        _gsRenderMjmlAttrs();
+    }
+
+    function _gsResetMjmlAttrs() {
+        _gsMjmlAttrsDirty = true;
+        _gsMjmlAttrs = JSON.parse(JSON.stringify(TE_DEFAULT_MJML_ATTRS));
+        _gsRenderMjmlAttrs();
+        showToast('Predefinições restauradas — clica em Guardar para aplicar.', 'info');
+    }
+
+    async function _saveMjmlAttrs() {
+        const cleaned = _gsMjmlAttrs
+            .map(a => ({ component: a.component, attribute: (a.attribute || '').trim().toLowerCase(), value: (a.value || '').trim() }))
+            .filter(a => a.component || a.attribute || a.value);
+        for (const a of cleaned) {
+            const err = _gsValidateMjmlAttr(a);
+            if (err) { showToast(err, 'error'); return; }
+        }
+        const dup = new Set();
+        for (const a of cleaned) {
+            const key = `${a.component}|${a.attribute}`;
+            if (dup.has(key)) { showToast(`Atributo repetido: ${a.component} ${a.attribute}.`, 'error'); return; }
+            dup.add(key);
+        }
+        const btn = document.getElementById('gsMjmlAttrsSaveBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
+        try {
+            await apiFetch('/api/brands?action=global_settings', {
+                method: 'PUT',
+                body: JSON.stringify({ mjml_attributes: cleaned })
+            });
+            // Aplica já ao editor sem precisar de recarregar a página
+            _teGlobalMjmlAttrs = cleaned;
+            _gsMjmlAttrs = JSON.parse(JSON.stringify(cleaned));
+            _gsMjmlAttrsDirty = false;
+            _gsRenderMjmlAttrs();
+            showToast('Atributos MJML guardados.');
         } catch (e) { showToast(e.message, 'error'); }
         finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
     }
@@ -10136,7 +10330,7 @@ ${sections.join('\n\n')}
             }
             if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
             if (id === 'lists' && _currentBrand?.id) _loadLists(_currentBrand.id);
-            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadBrandsAdmin(); _gsLoadApiSection(); }
+            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadGlobalMjmlAttrs(); _loadBrandsAdmin(); _gsLoadApiSection(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -14087,6 +14281,36 @@ ${sections.join('\n\n')}
                                 <input id="gsTypoFontFamily" type="text" placeholder="Arial, sans-serif" class="w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 <p class="text-xs text-slate-400 mt-1">Ex: <span class="font-mono">Arial, sans-serif</span> · <span class="font-mono">'Montserrat', sans-serif</span> · <span class="font-mono">Georgia, serif</span></p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Atributos MJML por defeito -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Atributos MJML por defeito</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Emitidos em <span class="font-mono">&lt;mj-head&gt;&lt;mj-attributes&gt;</span> em todos os envios, sem ser preciso escrevê-los em cada template. Aplicam-se a todas as marcas.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button onclick="_gsResetMjmlAttrs()" class="px-3 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50">Restaurar predefinições</button>
+                            <button onclick="_saveMjmlAttrs()" id="gsMjmlAttrsSaveBtn" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50">Guardar</button>
+                        </div>
+                    </div>
+                    <div class="px-5 py-5">
+                        <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-3 mb-1.5">
+                            <label class="text-xs font-medium text-slate-700">Componente</label>
+                            <label class="text-xs font-medium text-slate-700">Atributo</label>
+                            <label class="text-xs font-medium text-slate-700">Valor</label>
+                            <span class="w-9"></span>
+                        </div>
+                        <div id="gsMjmlAttrsRows" class="space-y-2"></div>
+                        <button onclick="_gsAddMjmlAttr()" class="mt-3 px-3 py-1.5 border border-dashed border-slate-300 text-slate-600 text-xs rounded-lg hover:bg-slate-50">+ Adicionar atributo</button>
+
+                        <div class="mt-5 pt-4 border-t border-slate-100">
+                            <p class="text-xs font-medium text-slate-700 mb-1.5">Código gerado</p>
+                            <pre id="gsMjmlAttrsPreview" class="bg-slate-900 text-slate-100 text-xs font-mono rounded-lg p-3 overflow-x-auto whitespace-pre"></pre>
+                            <p class="text-xs text-slate-400 mt-2">Os atributos definidos aqui são apenas o <strong>valor por defeito</strong>: o que estiver definido no próprio bloco tem sempre prioridade. Os quatro <span class="font-mono">padding="0"</span> das predefinições são o que faz o email sair com o mesmo espaçamento do editor visual — a biblioteca MJML aplica <span class="font-mono">10px 25px</span> a estes componentes se não forem definidos.</p>
                         </div>
                     </div>
                 </div>

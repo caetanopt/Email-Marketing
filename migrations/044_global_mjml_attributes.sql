@@ -1,0 +1,15 @@
+-- Atributos MJML por defeito, definidos em Definições Globais → "Atributos
+-- MJML por defeito" e emitidos em <mj-head><mj-attributes> em todos os envios.
+--
+-- Substitui a lista que estava fixa no código (mj-text/mj-button/mj-image/
+-- mj-divider com padding="0", necessária porque cada um destes componentes
+-- traz um padding próprio de 10px 25px da biblioteca mjml que se somava ao
+-- padding definido no editor).
+--
+-- Guardado como array JSON para preservar a ordem de escrita:
+--   [{"component":"mj-text","attribute":"padding","value":"0"}, ...]
+--
+-- NULL = nunca configurado, e nesse caso a aplicação usa a lista por defeito
+-- do código. Um array vazio ([]) é uma escolha explícita de "nenhum atributo"
+-- e é respeitada como tal.
+ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS mjml_attributes JSONB;
