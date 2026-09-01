@@ -1949,12 +1949,14 @@
     };
 
     let _teGlobalFontSize = null; // cached from global_settings; applied as default fontSize on new blocks
+    let _teGlobalFontFamily = null; // cached from global_settings; emitted as <mj-all font-family> so it's the default for every send, unless a block overrides it
 
     async function _loadTeGlobalSettings() {
         try {
             const d = await apiFetch('/api/brands?action=global_settings');
             const px = parseInt(d.font_size);
             if (px > 0) _teGlobalFontSize = px;
+            if (d.font_family) _teGlobalFontFamily = d.font_family;
         } catch (e) { /* silent — migration may not be run yet */ }
     }
 
@@ -2456,11 +2458,16 @@
     // as the "padding" CSS property) instead of always emitting 4 values —
     // keeps generated MJML/HTML noticeably shorter for the very common case
     // of equal or symmetric padding.
-    // CSS font-family declaration for a block's optional fontFamily field —
-    // empty string when unset, so callers can just splice it into a style
-    // string without an extra empty "font-family:;" fragment.
+    // CSS font-family declaration for a block's optional fontFamily field.
+    // Used by the canvas preview and the local HTML fallback builder, which
+    // (unlike MJML's own <mj-all> cascade) have no concept of an inherited
+    // default, so falls back to the global font (Definições Globais) when
+    // the block doesn't set its own — matching what a real MJML compile
+    // would produce. Empty string when neither is set, so callers can just
+    // splice it into a style string without an extra empty fragment.
     function teFontFamilyCss(b) {
-        return b.fontFamily ? `font-family:${b.fontFamily};` : '';
+        const ff = b.fontFamily || _teGlobalFontFamily;
+        return ff ? `font-family:${ff};` : '';
     }
     function teCssBoxShorthand(top, right, bottom, left, unit = 'px') {
         top = top || 0; right = right || 0; bottom = bottom || 0; left = left || 0;
@@ -3395,8 +3402,15 @@
             ? `${i}<mj-section${g.attrs}>\n${i}  <mj-column>\n${g.inners.join('\n')}\n${i}  </mj-column>\n${i}</mj-section>`
             : g.full
         ).join('\n');
+        // Global default font (Definições Globais → Tipografia) applied via
+        // <mj-all>, so it's the default for every send unless a block sets
+        // its own "Tipo de letra" — MJML gives per-element attributes
+        // priority over mj-all automatically, no extra logic needed here.
+        const head = _teGlobalFontFamily
+            ? `  <mj-head>\n    <mj-attributes>\n      <mj-all font-family="${_teGlobalFontFamily}" />\n    </mj-attributes>\n  </mj-head>\n`
+            : '';
         return `<mjml>
-  <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
+${head}  <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
 ${body}
   </mj-body>
 </mjml>`;
