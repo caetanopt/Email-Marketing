@@ -1965,30 +1965,30 @@
         quote:'Citação', linkBlock:'Bloco Link', listItems:'Lista'
     };
     const teDefaults = {
-        header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
-        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
-        divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
+        header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', fontFamily:'', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', fontFamily:'', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', fontFamily:'', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
+        image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, imgBorderWidth:0, imgBorderColor:'#000000', imgBorderRadius:0, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
+        divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', align:'center', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
-        footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, fontFamily:'', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         icon:      { iconKey:'star', iconSvg:'', color:'#334155', size:48, align:'center', bgColor:'#ffffff', href:'', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
-        quote:     { text:'«Excelente serviço. Recomendo vivamente a todos.»', author:'— Cliente Satisfeito', color:'#1e293b', authorColor:'#64748b', bgColor:'#f1f5f9', borderColor:'#6366f1', fontSize:17, align:'center', paddingTop:32, paddingRight:40, paddingBottom:32, paddingLeft:40 },
+        quote:     { text:'«Excelente serviço. Recomendo vivamente a todos.»', author:'— Cliente Satisfeito', color:'#1e293b', authorColor:'#64748b', bgColor:'#f1f5f9', borderColor:'#6366f1', fontSize:17, fontFamily:'', align:'center', paddingTop:32, paddingRight:40, paddingBottom:32, paddingLeft:40 },
         linkBlock: { title:'Saber mais', description:'Clica para ver todos os detalhes', href:'https://', textColor:'#ffffff', bgColor:'#0f172a', fontSize:15, align:'center', paddingTop:20, paddingRight:32, paddingBottom:20, paddingLeft:32 },
         listItems: { items:[{text:'Primeiro item da lista'},{text:'Segundo item da lista'},{text:'Terceiro item da lista'}], color:'#334155', bgColor:'#ffffff', fontSize:14, paddingTop:16, paddingRight:24, paddingBottom:16, paddingLeft:24 }
     };
     const teFieldSchemas = {
-        header:  ['text','bgColor','textColor','fontSize','fontWeight','align','lineHeight','padding'],
-        heading: ['text','level','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
-        text:    ['text','color','bgColor','fontSize','fontWeight','align','lineHeight','uppercase','padding'],
-        button:  ['text','href','bgColor','textColor','fontSize','fontWeight','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
-        image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','padding'],
-        divider: ['color','bgColor','thickness','dividerWidth','borderStyle','padding'],
+        header:  ['text','bgColor','textColor','fontSize','fontWeight','fontFamily','align','lineHeight','padding'],
+        heading: ['text','level','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
+        text:    ['text','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
+        button:  ['text','href','target','width','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
+        image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','imgBorderWidth','imgBorderColor','imgBorderRadius','padding'],
+        divider: ['color','bgColor','thickness','dividerWidth','borderStyle','align','padding'],
         spacer:  ['height'],
-        footer:  ['text','color','bgColor','fontSize','lineHeight','padding'],
+        footer:  ['text','color','bgColor','fontSize','fontFamily','lineHeight','padding'],
         icon:      ['color','size','align','href','bgColor','padding'],
-        quote:     ['text','author','color','authorColor','bgColor','borderColor','fontSize','align','padding'],
+        quote:     ['text','author','color','authorColor','bgColor','borderColor','fontSize','fontFamily','align','padding'],
         linkBlock: ['title','description','href','textColor','bgColor','fontSize','align','padding'],
         listItems: ['color','bgColor','fontSize','showDividers','padding']
     };
@@ -2023,7 +2023,22 @@
         areaBgColor:  { label:'Cor de fundo da área', type:'color' },
         innerPadding: { label:'Padding interno (px)', type:'innerPadding4' },
         title:        { label:'Título',          type:'text' },
-        description:  { label:'Descrição',       type:'text' }
+        description:  { label:'Descrição',       type:'text' },
+        fontFamily:   { label:'Tipo de letra',   type:'select', options:[
+            ['', 'Padrão do template'],
+            ["Arial, Helvetica, sans-serif", 'Arial'],
+            ["'Helvetica Neue', Helvetica, Arial, sans-serif", 'Helvetica'],
+            ["Georgia, 'Times New Roman', serif", 'Georgia'],
+            ["'Times New Roman', Times, serif", 'Times New Roman'],
+            ["Verdana, Geneva, sans-serif", 'Verdana'],
+            ["'Trebuchet MS', sans-serif", 'Trebuchet MS'],
+            ["'Courier New', Courier, monospace", 'Courier New'],
+            ["Ubuntu, Helvetica, Arial, sans-serif", 'Ubuntu'],
+        ] },
+        target:       { label:'Abrir link em',   type:'select', options:[['_blank','Novo separador'],['_self','Mesmo separador']] },
+        imgBorderWidth:  { label:'Moldura (px)',   type:'number' },
+        imgBorderColor:  { label:'Cor da moldura', type:'color' },
+        imgBorderRadius: { label:'Cantos arredondados (px)', type:'number' },
     };
 
     let teNextId = 100;
@@ -2399,6 +2414,12 @@
     // as the "padding" CSS property) instead of always emitting 4 values —
     // keeps generated MJML/HTML noticeably shorter for the very common case
     // of equal or symmetric padding.
+    // CSS font-family declaration for a block's optional fontFamily field —
+    // empty string when unset, so callers can just splice it into a style
+    // string without an extra empty "font-family:;" fragment.
+    function teFontFamilyCss(b) {
+        return b.fontFamily ? `font-family:${b.fontFamily};` : '';
+    }
     function teCssBoxShorthand(top, right, bottom, left, unit = 'px') {
         top = top || 0; right = right || 0; bottom = bottom || 0; left = left || 0;
         if (top === right && right === bottom && bottom === left) return `${top}${unit}`;
@@ -2572,7 +2593,7 @@
         const d = document.createElement('div');
         switch(b.type) {
             case 'header':
-                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${tePadding(b)};line-height:${b.lineHeight||1.4};`;
+                d.style.cssText = `background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};padding:${tePadding(b)};line-height:${b.lineHeight||1.4};${teFontFamilyCss(b)}`;
                 // b.text is sanitised rich HTML — see teSanitizeRichText.
                 d.innerHTML = b.text || '';
                 break;
@@ -2580,14 +2601,14 @@
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
                 d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
                 const h = document.createElement(b.level || 'h2');
-                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:${b.lineHeight||1.4};text-transform:${hdUpper?'uppercase':'none'};`;
+                h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:${b.lineHeight||1.4};text-transform:${hdUpper?'uppercase':'none'};${teFontFamilyCss(b)}`;
                 h.innerHTML = b.text || '';
                 d.appendChild(h);
                 break;
             }
             case 'text': {
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};text-transform:${txtUpper?'uppercase':'none'};padding:${tePadding(b)};`;
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};text-transform:${txtUpper?'uppercase':'none'};padding:${tePadding(b)};${teFontFamilyCss(b)}`;
                 // b.text is sanitised rich HTML (bold/italic/underline/size/color
                 // spans) from the rich text editor — not plain text, so no
                 // escaping/nl2br here (real <br> tags are already inline).
@@ -2599,16 +2620,18 @@
                 const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;">${b.text||''}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;${b.width?`width:${b.width}px;text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
                 break;
             }
             case 'image': {
                 const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
                 d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${imgPad};text-align:${b.align};`;
+                const imgBorder = b.imgBorderWidth ? `border:${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'};` : '';
+                const imgRadius = b.imgBorderRadius ? `border-radius:${b.imgBorderRadius}px;` : '';
                 if (b.href) {
-                    d.innerHTML = `<a href="${teEscape(b.href)}" onclick="event.preventDefault()" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;" /></a>`;
+                    d.innerHTML = `<a href="${teEscape(b.href)}" onclick="event.preventDefault()" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;${imgBorder}${imgRadius}" /></a>`;
                 } else {
-                    d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;" />`;
+                    d.innerHTML = `<img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:inline-block;${imgBorder}${imgRadius}" />`;
                 }
                 break;
             }
@@ -2617,10 +2640,12 @@
                 const divEl = document.createElement('div');
                 const dt = b.thickness || 1, ds2 = b.borderStyle || 'solid';
                 const dw = b.dividerWidth || '100%', dc = b.color || '#e2e8f0';
+                const dAlign = b.align || 'center';
+                const dMargin = dAlign === 'left' ? '0' : dAlign === 'right' ? '0 0 0 auto' : '0 auto';
                 if (ds2 === 'rounded') {
-                    divEl.style.cssText = `height:${dt}px;background:${dc};width:${dw};margin:0 auto;border-radius:${Math.max(dt*2,4)}px;`;
+                    divEl.style.cssText = `height:${dt}px;background:${dc};width:${dw};margin:${dMargin};border-radius:${Math.max(dt*2,4)}px;`;
                 } else {
-                    divEl.style.cssText = `border-top:${dt}px ${ds2} ${dc};width:${dw};margin:0 auto;`;
+                    divEl.style.cssText = `border-top:${dt}px ${ds2} ${dc};width:${dw};margin:${dMargin};`;
                 }
                 d.appendChild(divEl);
                 break;
@@ -2629,7 +2654,7 @@
                 d.style.cssText = `background:#ffffff;height:${b.height}px;`;
                 break;
             case 'footer':
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};line-height:${b.lineHeight||1.6};`;
+                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};line-height:${b.lineHeight||1.6};${teFontFamilyCss(b)}`;
                 d.innerHTML = b.text || '';
                 break;
             case 'icon': {
@@ -2652,7 +2677,7 @@
             case 'quote': {
                 const qAlign = b.align || 'center';
                 d.style.cssText = `background:${b.bgColor||'#f1f5f9'};padding:${tePadding(b)};text-align:${qAlign};border-left:4px solid ${b.borderColor||'#6366f1'};`;
-                d.innerHTML = `<div style="font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};line-height:1.6;font-style:italic;margin-bottom:10px;">${b.text||''}</div><div style="font-size:12px;color:${b.authorColor||'#64748b'};font-weight:600;">${teEscape(b.author||'')}</div>`;
+                d.innerHTML = `<div style="font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};line-height:1.6;font-style:italic;margin-bottom:10px;${teFontFamilyCss(b)}">${b.text||''}</div><div style="font-size:12px;color:${b.authorColor||'#64748b'};font-weight:600;">${teEscape(b.author||'')}</div>`;
                 break;
             }
             case 'linkBlock': {
@@ -3249,18 +3274,18 @@ ${body}
                 case 'header':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return { mergeable:true, bg:b.bgColor||'#1e293b', p:pad(b), inner:
-                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4}">${b.text||''}</p>` };
+                        `<p style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.textColor||'#ffffff'};text-align:${b.align||'center'};line-height:${b.lineHeight||1.4};${teFontFamilyCss(b)}">${b.text||''}</p>` };
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
                     const hdUpper = b.uppercase === true || b.uppercase === '1';
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
-                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}${hdUpper?';text-transform:uppercase':''}">${b.text||''}</${hTag}>` };
+                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}${hdUpper?';text-transform:uppercase':''};${teFontFamilyCss(b)}">${b.text||''}</${hTag}>` };
                 }
                 case 'text': {
                     const txtUpper = b.uppercase === true || b.uppercase === '1';
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
-                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''}">${b.text||''}</p>` };
+                        `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''};${teFontFamilyCss(b)}">${b.text||''}</p>` };
                 }
                 case 'button': {
                     const btnHref = b.href||'#';
@@ -3270,26 +3295,33 @@ ${body}
                     const btnBorder = b.borderColor ? `2px solid ${esc(b.borderColor)}` : 'none';
                     const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                     const btnBgColor = b.bgColor||'#0f172a';
+                    const btnTarget = b.target === '_self' ? '' : ' target="_blank" rel="noopener"';
+                    const btnWidth = b.width ? ` width="${b.width}"` : '';
                     return { mergeable:true, bg:b.areaBgColor||'#ffffff', p:pad(b), inner:
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td bgcolor="${btnBgColor}" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}" style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor}">${b.text||''}</a></td></tr></table>` };
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td bgcolor="${btnBgColor}"${btnWidth} style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}${b.width?`;width:${b.width}px`:''}"><a href="${esc(btnHref)}"${btnTarget} style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor};${teFontFamilyCss(b)}${b.width?'width:100%;box-sizing:border-box;text-align:center;':''}">${b.text||''}</a></td></tr></table>` };
                 }
                 case 'image': {
                     const imgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                     const imgFluid = b.fluidOnMobile === true || b.fluidOnMobile === '1';
                     const imgClass = imgFluid ? ' class="te-fluid"' : '';
-                    const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}"${imgClass} style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}">`;
+                    const imgBorder = b.imgBorderWidth ? `border:${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'};` : '';
+                    const imgRadius = b.imgBorderRadius ? `border-radius:${b.imgBorderRadius}px;` : '';
+                    const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}"${imgClass} style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}${imgBorder}${imgRadius}">`;
                     const imgContent = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener" style="display:block">${imgTag}</a>` : imgTag;
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:imgPad, inner:imgContent };
                 }
-                case 'divider':
+                case 'divider': {
+                    const dAlign = b.align || 'center';
+                    const dMargin = dAlign === 'left' ? '0' : dAlign === 'right' ? '0 0 0 auto' : '0 auto';
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
-                        `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:0">` };
+                        `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:${dMargin}">` };
+                }
                 case 'spacer':
                     return { mergeable:false, full:`<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>` };
                 case 'footer':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return { mergeable:true, bg:b.bgColor||'#f8fafc', p:pad(b), inner:
-                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:${b.lineHeight||1.6}">${b.text||''}</p>` };
+                        `<p style="margin:0;font-size:${b.fontSize||12}px;color:${b.color||'#94a3b8'};text-align:center;line-height:${b.lineHeight||1.6};${teFontFamilyCss(b)}">${b.text||''}</p>` };
                 case 'icon': {
                     // Use pre-converted PNG (email-safe) if available, else fall back to SVG data URL
                     const ic = b.color||'#334155';
@@ -3329,7 +3361,7 @@ ${body}
                 case 'quote':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return { mergeable:true, bg:'#ffffff', p:pad(b), inner:
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>` };
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid ${b.borderColor||'#6366f1'};background:${b.bgColor||'#f1f5f9'}"><tr><td style="padding:16px 20px"><p style="margin:0;font-size:${b.fontSize||17}px;color:${b.color||'#1e293b'};font-style:italic;line-height:1.6;text-align:${b.align||'center'};${teFontFamilyCss(b)}">${b.text||''}</p>${b.author?`<p style="margin:8px 0 0;font-size:13px;color:${b.authorColor||'#64748b'};font-weight:600">${b.author}</p>`:''}</td></tr></table>` };
                 case 'linkBlock': {
                     const lbDesc = b.description ? `<br><span style="font-size:12px;opacity:0.8">${b.description}</span>` : '';
                     return { mergeable:true, bg:'#ffffff', p:pad(b), inner:
@@ -3404,38 +3436,40 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'header':
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}>${b.text||''}</mj-text>` };
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>` };
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}>${b.text||''}</mj-text>` };
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>` };
             }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                const mjTextTag = `${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}>${b.text||''}</mj-text>`;
+                const mjTextTag = `${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>`;
                 return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:mjTextTag };
             }
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
-                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}">${b.text}</mj-button>` };
+                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}px"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text}</mj-button>` };
             }
             case 'image': {
                 const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                 const mjFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`, inner:`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid} />` };
+                const mjImgBorder = b.imgBorderWidth ? ` border="${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'}"` : '';
+                const mjImgRadius = b.imgBorderRadius ? ` border-radius="${b.imgBorderRadius}px"` : '';
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`, inner:`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid}${mjImgBorder}${mjImgRadius} />` };
             }
             case 'divider': {
                 const mjDs = b.borderStyle === 'rounded' ? 'solid' : (b.borderStyle || 'solid');
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" />` };
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" align="${b.align||'center'}" />` };
             }
             case 'spacer':
                 return { mergeable:true, attrs:'', inner:`${i}    <mj-spacer height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}">${b.text||''}</mj-text>` };
+                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>` };
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -3461,7 +3495,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
             case 'quote':
                 // b.text is already sanitised rich HTML — do not nl2brX.
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`, inner:`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6">${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>` };
+                return { mergeable:true, attrs:` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`, inner:`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6"${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>` };
             case 'linkBlock': {
                 const lbDesc = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
                 return { mergeable:true, attrs:` padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>` };
