@@ -1970,7 +1970,7 @@
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', fontFamily:'', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', fontFamily:'', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', fontFamily:'', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', widthUnit:'px', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, imgBorderWidth:0, imgBorderColor:'#000000', imgBorderRadius:0, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', align:'center', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
@@ -1989,7 +1989,7 @@
         header:  ['text','bgColor','textColor','fontSize','fontWeight','fontFamily','align','lineHeight','padding'],
         heading: ['text','level','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
-        button:  ['text','href','target','width','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
+        button:  ['text','href','target','width','widthUnit','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
         image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','imgBorderWidth','imgBorderColor','imgBorderRadius','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','align','padding'],
         spacer:  ['height'],
@@ -2053,6 +2053,7 @@
         imgBorderRadius: { label:'Cantos arredondados (px)', type:'number' },
         iconSize:   { label:'Tamanho ícone (px)', type:'number' },
         titleColor: { label:'Cor do título',      type:'color' },
+        widthUnit:  { label:'Unidade',            type:'select', options:[['px','Pixels'],['%','Percentagem']] },
     };
 
     let teNextId = 100;
@@ -2661,7 +2662,7 @@
                 const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;${b.width?`width:${b.width}px;text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;box-sizing:border-box;${b.width?`width:${b.width}${b.widthUnit||'px'};text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
                 break;
             }
             case 'image': {
@@ -3468,9 +3469,16 @@ ${body}
                     const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                     const btnBgColor = b.bgColor||'#0f172a';
                     const btnTarget = b.target === '_self' ? '' : ' target="_blank" rel="noopener"';
-                    const btnWidth = b.width ? ` width="${b.width}"` : '';
+                    // Mirrors mj-button's own behaviour: a px width stretches the
+                    // link itself; a % width only sizes the surrounding
+                    // table/cell (MJML doesn't stretch the link for %, since that
+                    // depends on padding/text width — see mjml-button source).
+                    const btnUnit = b.widthUnit || 'px';
+                    const btnWidthAttr = b.width ? `${b.width}${btnUnit === '%' ? '%' : ''}` : '';
+                    const btnWidth = btnWidthAttr ? ` width="${btnWidthAttr}"` : '';
+                    const btnFillLink = (b.width && btnUnit === 'px') ? `width:${b.width}px;box-sizing:border-box;text-align:center;` : '';
                     return { mergeable:true, bg:b.areaBgColor||'#ffffff', p:pad(b), inner:
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}"><tr><td bgcolor="${btnBgColor}"${btnWidth} style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}${b.width?`;width:${b.width}px`:''}"><a href="${esc(btnHref)}"${btnTarget} style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor};${teFontFamilyCss(b)}${b.width?'width:100%;box-sizing:border-box;text-align:center;':''}">${b.text||''}</a></td></tr></table>` };
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}${btnWidthAttr?`;width:${btnWidthAttr}`:''}"><tr><td bgcolor="${btnBgColor}"${btnWidth} align="center" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}"${btnTarget} style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor};${teFontFamilyCss(b)}${btnFillLink}">${b.text||''}</a></td></tr></table>` };
                 }
                 case 'image': {
                     const imgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
@@ -3663,7 +3671,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
-                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}px"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text}</mj-button>` };
+                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text}</mj-button>` };
             }
             case 'image': {
                 const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
