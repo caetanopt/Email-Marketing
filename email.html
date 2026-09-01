@@ -1808,7 +1808,10 @@
     // whitelist so pasted content (Word/Docs) or hand-edited MJML can't smuggle
     // in scripts, event handlers, or arbitrary tags — only inline formatting
     // survives.
-    const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN']);
+    // SUP/SUB incluídos para as chamadas de nota de rodapé (14.950€<sup>(2)</sup>,
+    // m<sup>2</sup>): sem eles o sanitizador desembrulhava a tag e o expoente
+    // ficava texto normal, silenciosamente.
+    const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN','SUP','SUB']);
     const TE_RICH_ALLOWED_STYLES = ['font-weight','font-size','font-style','text-decoration','color'];
     function teSanitizeRichText(html) {
         const root = document.createElement('div');
@@ -1849,7 +1852,11 @@
             }
         }
         walk(root);
-        return root.innerHTML;
+        // innerHTML serializa o BR como "<br>", que é HTML válido mas XML
+        // inválido. Como este texto vai tal e qual para dentro do <mj-text>, o
+        // MJML gerado deixava de poder ser lido de volta pelo "Aplicar no
+        // visual" — bastava um bloco de texto com uma mudança de linha.
+        return root.innerHTML.replace(/<br\s*\/?>/gi, '<br/>');
     }
     // Wrap the current text selection (must be inside containerEl) in a
     // <span style="prop:value">, used for font-size/color since execCommand
@@ -3319,12 +3326,33 @@
             return [...decoded].map(ch => `&#${ch.codePointAt(0)};`).join('');
         });
     }
+    // Elementos vazios do HTML: escritos sem barra final são HTML válido mas
+    // XML inválido, e o parser abaixo é de XML. Aparecem tanto em MJML escrito
+    // à mão como em templates gravados antes de o <br> passar a ser fechado.
+    const TE_HTML_VOID_TAGS = 'br|hr|img|wbr|area|base|col|embed|input|link|meta|param|source|track';
+    function teCloseVoidTags(str) {
+        return String(str || '').replace(
+            new RegExp(`<(${TE_HTML_VOID_TAGS})(\\s[^<>]*?)?\\s*/?>`, 'gi'),
+            (m, tag, attrs) => `<${tag}${attrs || ''} />`
+        );
+    }
+    // Guarda a razão da última falha de leitura, para a mensagem de erro poder
+    // dizer o que está mal em vez de só "formato não reconhecido".
+    let _teMjmlParseError = null;
     function teParseMjmlToBlocks(xmlStr) {
-        const xml = teDecodeHtmlEntitiesForXml(xmlStr);
+        _teMjmlParseError = null;
+        const xml = teCloseVoidTags(teDecodeHtmlEntitiesForXml(xmlStr));
         try {
             const doc = new DOMParser().parseFromString(xml, 'application/xml');
             if (doc.querySelector('parsererror')) {
-                console.error('MJML XML parse error:', doc.querySelector('parsererror').textContent);
+                const detalhe = doc.querySelector('parsererror').textContent.replace(/\s+/g, ' ').trim();
+                console.error('MJML XML parse error:', detalhe);
+                // "error on line 12 at column 40: Opening and ending tag mismatch: sup line 12 and strong"
+                // O DOMParser acrescenta ainda "Below is a rendering of the
+                // page up to the first error." — ruído para quem lê o aviso.
+                const limpo = detalhe.replace(/\s*Below is a rendering.*$/i, '').trim();
+                const m = limpo.match(/error on line (\d+) at column (\d+):\s*(.+)$/i);
+                _teMjmlParseError = m ? { linha: m[1], coluna: m[2], razao: m[3] } : { razao: limpo.slice(0, 160) };
                 return null;
             }
             const mjBody = doc.querySelector('mj-body');
@@ -3448,7 +3476,12 @@
         if (!code) return;
         const blocks = teParseMjmlToBlocks(code.value);
         if (blocks === null) {
-            if (!silent) showToast('MJML inválido ou formato não reconhecido.', 'error');
+            if (!silent) {
+                const e = _teMjmlParseError;
+                showToast(e
+                    ? (e.linha ? `MJML inválido — linha ${e.linha}, coluna ${e.coluna}: ${e.razao}` : `MJML inválido — ${e.razao}`)
+                    : 'MJML inválido ou formato não reconhecido.', 'error');
+            }
             return;
         }
         teConsumeIds(blocks);
