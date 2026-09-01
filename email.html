@@ -1972,7 +1972,7 @@
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', fontFamily:'', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', fontFamily:'', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', fontFamily:'', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', widthUnit:'px', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
+        button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', widthUnit:'px', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', borderWidth:2, paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, imgBorderWidth:0, imgBorderColor:'#000000', imgBorderRadius:0, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', align:'center', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
         spacer:  { height:24 },
@@ -1991,7 +1991,7 @@
         header:  ['text','bgColor','textColor','fontSize','fontWeight','fontFamily','align','lineHeight','padding'],
         heading: ['text','level','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
         text:    ['text','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
-        button:  ['text','href','target','width','widthUnit','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','innerPadding','padding'],
+        button:  ['text','href','target','width','widthUnit','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','borderWidth','innerPadding','padding'],
         image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','imgBorderWidth','imgBorderColor','imgBorderRadius','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','align','padding'],
         spacer:  ['height'],
@@ -2056,6 +2056,7 @@
         iconSize:   { label:'Tamanho ícone (px)', type:'number' },
         titleColor: { label:'Cor do título',      type:'color' },
         widthUnit:  { label:'Unidade',            type:'select', options:[['px','Pixels'],['%','Percentagem']] },
+        borderWidth: { label:'Espessura da borda (px)', type:'number' },
     };
 
     let teNextId = 100;
@@ -2666,7 +2667,7 @@
             }
             case 'button': {
                 const btnBr = b.borderRadius ?? 6;
-                const btnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
+                const btnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
                 d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;box-sizing:border-box;${b.width?`width:${b.width}${b.widthUnit||'px'};text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
@@ -3479,7 +3480,7 @@ ${body}
                     const btnBr = b.borderRadius ?? 6;
                     const btnAlign = b.align || 'center';
                     const btnMargin = btnAlign === 'center' ? 'margin:0 auto' : btnAlign === 'right' ? 'margin:0 0 0 auto' : 'margin:0';
-                    const btnBorder = b.borderColor ? `2px solid ${esc(b.borderColor)}` : 'none';
+                    const btnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${esc(b.borderColor)}` : 'none';
                     const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                     const btnBgColor = b.bgColor||'#0f172a';
                     const btnTarget = b.target === '_self' ? '' : ' target="_blank" rel="noopener"';
@@ -3683,7 +3684,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
-                const mjBtnBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
+                const mjBtnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text}</mj-button>` };
             }
