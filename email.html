@@ -3400,14 +3400,22 @@
         const i = '    ';
         const srcBlocks = overrideBlocks || teState.blocks;
         // Fold consecutive blocks that share the exact same section
-        // background/padding (etc) into one <mj-section><mj-column> instead
-        // of one section per block — same visual result, fewer lines.
+        // background/padding into one <mj-section><mj-column> instead of one
+        // section per block — but ONLY when that's actually lossless. Two
+        // separately-wrapped blocks each contribute their own top/bottom
+        // padding, so the gap between them is paddingBottom(A)+paddingTop(B);
+        // merging removes that gap entirely (no padding between the merged
+        // elements, only around the group). That's invisible when the
+        // padding is 0 (the original motivating case: images stacked with no
+        // gap) but silently shrinks any real spacing otherwise — so only
+        // merge blocks whose own top/bottom padding is zero.
         const groups = [];
         for (const b of srcBlocks) {
             const p = teBlockToMjmlParts(b, i);
             if (!p.mergeable) { groups.push({ mergeable:false, full:p.full }); continue; }
+            const zeroVertPad = !b.paddingTop && !b.paddingBottom;
             const last = groups[groups.length - 1];
-            if (last && last.mergeable && last.attrs === p.attrs) last.inners.push(p.inner);
+            if (zeroVertPad && last && last.mergeable && last.attrs === p.attrs) last.inners.push(p.inner);
             else groups.push({ mergeable:true, attrs:p.attrs, inners:[p.inner] });
         }
         const body = groups.map(g => g.mergeable
@@ -3632,13 +3640,18 @@ ${body}
 
         const srcBlocks = overrideBlocks || teState.blocks;
         // Fold consecutive top-level blocks sharing the same bg+padding into
-        // one shared row/table instead of one per block (see blockToHtmlParts).
+        // one shared row/table instead of one per block (see
+        // blockToHtmlParts) — only when lossless, i.e. the block's own
+        // top/bottom padding is zero (see the matching comment in
+        // teBuildMjml for why non-zero padding can't merge without shrinking
+        // the visual gap between blocks).
         const rowGroups = [];
         for (const b of srcBlocks) {
             const p = blockToHtmlParts(b);
             if (!p.mergeable) { rowGroups.push({ mergeable:false, full:p.full }); continue; }
+            const zeroVertPad = !b.paddingTop && !b.paddingBottom;
             const last = rowGroups[rowGroups.length - 1];
-            if (last && last.mergeable && last.bg === p.bg && last.p === p.p) last.inners.push(p.inner);
+            if (zeroVertPad && last && last.mergeable && last.bg === p.bg && last.p === p.p) last.inners.push(p.inner);
             else rowGroups.push({ mergeable:true, bg:p.bg, p:p.p, inners:[p.inner] });
         }
         const bodyRows = rowGroups.map(g => g.mergeable
