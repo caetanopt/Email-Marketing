@@ -2425,6 +2425,31 @@
     function teColValign(childArr) {
         return (childArr || []).find(c => c && c.valign)?.valign || 'top';
     }
+    // Per-column widths (%) for the Layout block. b.colWidths is an array of
+    // raw numbers the user typed — always normalised here to sum to exactly
+    // 100 so callers never have to worry about validating user input.
+    // Falls back to an equal split when unset/invalid (previous behaviour).
+    function teColWidthPercents(b) {
+        const n = b.cols || (Array.isArray(b.children) ? b.children.length : 2);
+        const raw = Array.isArray(b.colWidths) && b.colWidths.length === n ? b.colWidths.map(Number) : null;
+        if (!raw || raw.some(v => !isFinite(v) || v <= 0)) {
+            return Array.from({ length: n }, () => Math.floor(100 / n));
+        }
+        const total = raw.reduce((a, v) => a + v, 0);
+        return raw.map(v => Math.round((v / total) * 1000) / 10);
+    }
+    function teUpdateColWidth(blockId, colIdx, value) {
+        const f = teFind(blockId);
+        if (!f) return;
+        const b = f.block;
+        if (!Array.isArray(b.colWidths) || b.colWidths.length !== b.cols) {
+            b.colWidths = teColWidthPercents(b);
+        }
+        b.colWidths[colIdx] = Math.max(1, Number(value) || 1);
+        teRenderCanvas();
+        teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
     function teColBorderCss(b, colIdx) {
         const cb = teColBorderOf(b, colIdx);
         const c = b.borderColor || 'transparent';
@@ -2644,14 +2669,15 @@
                 ).join('');
                 break;
             }
-            case 'columns':
+            case 'columns': {
                 d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
+                const colPercents = teColWidthPercents(b);
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
                     const colIdx = c;
                     const childArr = b.children[c] || [];
                     const colJustify = { top:'flex-start', middle:'center', bottom:'flex-end' }[teColValign(childArr)] || 'flex-start';
-                    col.style.cssText = `flex:1;min-width:0;display:flex;flex-direction:column;justify-content:${colJustify};border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
+                    col.style.cssText = `flex:0 0 ${colPercents[c]}%;max-width:${colPercents[c]}%;min-width:0;display:flex;flex-direction:column;justify-content:${colJustify};border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
                     // Column-level drop handler (catches drops not on specific drop zones)
                     col.addEventListener('dragover', (ev) => {
                         ev.preventDefault(); ev.stopPropagation();
@@ -2706,6 +2732,7 @@
                     d.appendChild(col);
                 }
                 break;
+            }
             default:
                 d.textContent = '[bloco desconhecido]';
         }
@@ -2761,6 +2788,15 @@
                         oninput="teUpdateField('${b.id}','bgColor',this.value)"
                         onchange="teUpdateField('${b.id}','bgColor',this.value)"
                         class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
+                </div>
+                <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Largura das colunas (%)</label>
+                    <p class="text-[10px] text-slate-400 mb-1.5">Não precisas de somar 100 — é ajustado automaticamente.</p>
+                    <div class="grid grid-cols-${Math.min(b.cols,3)} gap-1">
+                        ${teColWidthPercents(b).map((pct, idx) => `
+                            <div><label class="block text-[9px] text-slate-400 mb-0.5">Col. ${idx+1}</label><input type="number" min="1" value="${pct}" oninput="teUpdateColWidth('${b.id}',${idx},this.value)" onchange="teUpdateColWidth('${b.id}',${idx},this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>
+                        `).join('')}
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor da borda</label>
@@ -3019,12 +3055,17 @@
                 const sectionPad = teParsePadAttr(section.getAttribute('padding'));
                 if (cols.length > 1) {
                     const b = { id:teId(), type:'columns', cols:cols.length, children:[] };
+                    const parsedWidths = [];
                     cols.forEach(col => {
                         const children = [];
                         const colValign = col.getAttribute('vertical-align') || 'top';
                         [...col.children].forEach(child => { const bl = teParseMjmlEl(child, undefined, undefined, colValign); if (bl) children.push(bl); });
                         b.children.push(children);
+                        parsedWidths.push(parseFloat(col.getAttribute('width')) || null);
                     });
+                    // Only keep explicit widths if every column specified one —
+                    // otherwise fall back to the equal-split default.
+                    if (parsedWidths.every(w => w)) b.colWidths = parsedWidths;
                     blocks.push(b);
                 } else {
                     const col = cols[0]; if (!col) return;
@@ -3272,9 +3313,10 @@ ${body}
                 case 'columns': {
                     // Each column's blockToHtml returns <tr><td>...</td></tr> rows.
                     // Wrap them in a nested <table> so the HTML is valid inside a <td>.
+                    const colPercentsH = teColWidthPercents(b);
                     const cols = (b.children||[]).map((children, colIdx) => {
                         const innerRows = children.map(c => blockToHtml(c)).join('');
-                        const colWidth = Math.floor(100/(b.children.length||1));
+                        const colWidth = colPercentsH[colIdx];
                         const colValign = teColValign(children);
                         return `<td valign="${colValign}" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:${colValign};${teColBorderCss(b,colIdx)}">` +
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
@@ -3409,10 +3451,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs} />` };
             }
             case 'columns': {
+                const colPercentsM = teColWidthPercents(b);
                 const cols = b.children.map((children, colIdx) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
                     const colValign = teColValign(children);
-                    return `${i}  <mj-column vertical-align="${colValign}"${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
+                    return `${i}  <mj-column width="${colPercentsM[colIdx]}%" vertical-align="${colValign}"${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
                 }).join('\n');
                 return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>` };
             }
