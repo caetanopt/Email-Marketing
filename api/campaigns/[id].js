@@ -878,6 +878,17 @@ module.exports = async function handler(req, res) {
           // right after it was sent. Removed; temp contacts are now kept so
           // campaign reports stay intact.
           try {
+            await query(
+              `DELETE FROM contacts
+               WHERE id IN (
+                 SELECT cr.contact_id FROM campaign_recipients cr
+                 WHERE cr.campaign_id = $1 AND cr.is_temp = true
+                   AND NOT EXISTS (SELECT 1 FROM list_members lm WHERE lm.contact_id = cr.contact_id)
+               )`,
+              [id]
+            );
+          } catch (e) { if (e.code !== '42703') console.error('temp contact cleanup:', e); }
+          try {
             const [totals] = await query(
               `SELECT COUNT(*) FILTER (WHERE status='sent')::int AS total_sent,
                       COUNT(*) FILTER (WHERE status='failed')::int AS total_failed
