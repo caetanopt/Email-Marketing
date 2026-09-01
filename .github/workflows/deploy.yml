@@ -2,16 +2,20 @@ name: Deploy to Vercel
 
 on:
   push:
+    # Só o branch de produção publica. Antes o workflow disparava também no
+    # branch de trabalho e, como o mesmo commit vai para os dois, cada
+    # alteração gerava DOIS deploys de produção idênticos na Vercel.
     branches:
       - claude/email-marketing-saas-M2qZP
-      - claude/resume-login-error-FVgtn
   # Permite lançar o deploy à mão no GitHub (Actions → Deploy to Vercel →
   # Run workflow), sem ter de inventar um commit vazio.
   workflow_dispatch:
 
-# Um deploy de produção de cada vez. Dois pushes seguidos — ou o mesmo commit
-# empurrado para os dois branches — lançavam dois "vercel --prod" em paralelo
-# a competir pelo mesmo domínio de produção.
+# Um deploy de produção de cada vez: dois pushes seguidos ao branch de
+# produção ficam em fila em vez de correrem em paralelo a competir pelo mesmo
+# domínio. Não se cancela o que está a correr, porque a Vercel continua a
+# construir do lado dela e um deploy antigo poderia apontar o domínio depois
+# do novo.
 concurrency:
   group: vercel-prod
   cancel-in-progress: false
