@@ -3263,7 +3263,14 @@
     function teParseMjmlEl(el, sectionBg, sectionPad, colValign) {
         const tag = el.tagName.toLowerCase();
         const id = teId();
-        const pad = sectionPad || teParsePadAttr(el.getAttribute('padding'));
+        // O padding do próprio elemento manda quando existe; só se recorre ao
+        // da secção quando o elemento não o traz. É esta ordem que faz o
+        // "Aplicar no visual" funcionar com os dois formatos: o actual (padding
+        // no elemento, secção a "0") e o anterior/hand-edited (padding na
+        // secção). Ao contrário, a secção a "0" zerava todos os paddings.
+        const pad = el.hasAttribute('padding')
+            ? teParsePadAttr(el.getAttribute('padding'))
+            : (sectionPad || teParsePadAttr(null));
         switch(tag) {
             case 'mj-text': {
                 const bgColor = sectionBg || '#ffffff';
@@ -3282,9 +3289,14 @@
             case 'mj-button':
                 return { id, type:'button', text:teSanitizeRichText(el.innerHTML), bgColor:el.getAttribute('background-color')||'#0f172a', textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
             case 'mj-image':
-                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', valign:colValign || 'top', href:el.getAttribute('href')||'' };
+                // ...pad em falta aqui fazia a imagem perder sempre o padding
+                // ao voltar para o editor visual.
+                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', valign:colValign || 'top', href:el.getAttribute('href')||'', ...pad };
             case 'mj-divider':
-                return { id, type:'divider', color:el.getAttribute('border-color')||'#e2e8f0', thickness:parseInt(el.getAttribute('border-width'))||1, borderStyle:el.getAttribute('border-style')||'solid', dividerWidth:el.getAttribute('width')||'100%', ...teParsePadAttr(el.getAttribute('padding')) };
+                // usa o `pad` partilhado (elemento primeiro, secção depois) em
+                // vez de só o atributo do elemento, para ler também o formato
+                // antigo, em que o padding estava na secção.
+                return { id, type:'divider', color:el.getAttribute('border-color')||'#e2e8f0', thickness:parseInt(el.getAttribute('border-width'))||1, borderStyle:el.getAttribute('border-style')||'solid', dividerWidth:el.getAttribute('width')||'100%', ...pad };
             case 'mj-spacer':
                 return { id, type:'spacer', height:parseInt(el.getAttribute('height'))||24 };
         }
@@ -3451,23 +3463,28 @@
     function teBuildMjml(overrideBlocks) {
         const i = '    ';
         const srcBlocks = overrideBlocks || teState.blocks;
-        // Fold consecutive blocks that share the exact same section
-        // background/padding into one <mj-section><mj-column> instead of one
-        // section per block — but ONLY when that's actually lossless. Two
-        // separately-wrapped blocks each contribute their own top/bottom
-        // padding, so the gap between them is paddingBottom(A)+paddingTop(B);
-        // merging removes that gap entirely (no padding between the merged
-        // elements, only around the group). That's invisible when the
-        // padding is 0 (the original motivating case: images stacked with no
-        // gap) but silently shrinks any real spacing otherwise — so only
-        // merge blocks whose own top/bottom padding is zero.
+        // Junta blocos seguidos que partilhem os mesmos atributos de secção
+        // numa única <mj-section><mj-column>, em vez de uma secção por bloco.
+        //
+        // Nos blocos com padOnEl (mj-text/mj-image/mj-button/mj-divider/
+        // mj-spacer — os componentes que aceitam `padding`), o padding vai no
+        // próprio elemento, pelo que a junção é sempre sem perdas: cada
+        // elemento leva o seu espaçamento consigo e a secção só carrega o
+        // fundo. É isto que permite juntar blocos com paddings diferentes.
+        //
+        // Os restantes (mj-social/mj-accordion/mj-navbar/mj-carousel, que não
+        // aceitam `padding`, e a citação, que precisa do border-left na
+        // secção) mantêm o padding na secção. Aí a junção só é sem perdas se o
+        // padding vertical do bloco for zero: dois blocos com secção própria
+        // contribuem cada um com o seu padding superior/inferior, e juntá-los
+        // eliminaria por completo o espaço entre eles.
         const groups = [];
         for (const b of srcBlocks) {
             const p = teBlockToMjmlParts(b, i);
             if (!p.mergeable) { groups.push({ mergeable:false, full:p.full }); continue; }
-            const zeroVertPad = !b.paddingTop && !b.paddingBottom;
+            const lossless = p.padOnEl || (!b.paddingTop && !b.paddingBottom);
             const last = groups[groups.length - 1];
-            if (zeroVertPad && last && last.mergeable && last.attrs === p.attrs) last.inners.push(p.inner);
+            if (lossless && last && last.mergeable && last.attrs === p.attrs) last.inners.push(p.inner);
             else groups.push({ mergeable:true, attrs:p.attrs, inners:[p.inner] });
         }
         const body = groups.map(g => g.mergeable
@@ -3722,12 +3739,17 @@ ${body}
         };
 
         const srcBlocks = overrideBlocks || teState.blocks;
-        // Fold consecutive top-level blocks sharing the same bg+padding into
-        // one shared row/table instead of one per block (see
-        // blockToHtmlParts) — only when lossless, i.e. the block's own
-        // top/bottom padding is zero (see the matching comment in
-        // teBuildMjml for why non-zero padding can't merge without shrinking
-        // the visual gap between blocks).
+        // Junta blocos seguidos com o mesmo fundo+padding numa só linha/tabela
+        // em vez de uma por bloco (ver blockToHtmlParts) — só quando é sem
+        // perdas, isto é, quando o padding vertical do bloco é zero: aqui o
+        // padding fica no <td> partilhado do grupo, pelo que juntar blocos com
+        // padding próprio eliminaria o espaço entre eles.
+        //
+        // Nota: o teBuildMjml já não tem esta limitação, porque passou a pôr o
+        // padding no próprio elemento (mj-text/mj-image/...). Este gerador só
+        // entra em acção se a compilação MJML no servidor falhar, e produz
+        // código mais extenso sem diferença visual — por isso mantém-se a
+        // regra conservadora.
         const rowGroups = [];
         for (const b of srcBlocks) {
             const p = blockToHtmlParts(b);
@@ -3773,21 +3795,29 @@ ${teSerializeBlocksComment(srcBlocks)}
     // 'columns' is its own multi-column layout and never merges with anything.
     function teBlockToMjmlParts(b, i) {
         const txt = (text,color,size,weight,align,lh,extra='') => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}${extra}>${teNl2brX(teEscape(text))}</mj-text>`;
+        // Secção de um bloco cujo padding vai no próprio elemento (padOnEl):
+        // fica só com o fundo, e padding="0" para anular o padding próprio de
+        // mj-section ("20px 0" quando o atributo é omitido). Assim vários
+        // blocos seguidos com paddings diferentes partilham UMA secção, em vez
+        // de forçar uma secção por bloco só por terem paddings distintos.
+        const sec = (bg) => (bg ? ` background-color="${bg}"` : '') + ` padding="0"`;
+        // Padding a colocar no elemento.
+        const elPad = () => ` padding="${teMjmlPad(b)}"`;
         switch(b.type) {
             case 'header':
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor), inner:`${i}    <mj-text color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>` };
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor), inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>` };
             }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                const mjTextTag = `${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>`;
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:mjTextTag };
+                const mjTextTag = `${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>`;
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor), inner:mjTextTag };
             }
             case 'button': {
                 const mjBtnBr = b.borderRadius ?? 6;
@@ -3798,24 +3828,24 @@ ${teSerializeBlocksComment(srcBlocks)}
                 // te-btn-full class + matching <mj-style> rule (added in
                 // teBuildMjml) force the link itself to fill that table.
                 const mjBtnFullClass = (b.width && b.widthUnit === '%') ? ' css-class="te-btn-full"' : '';
-                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${mjBtnFullClass}>${b.text}</mj-button>` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.areaBgColor||'#ffffff'), inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${mjBtnFullClass}${elPad()}>${b.text}</mj-button>` };
             }
             case 'image': {
                 const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                 const mjFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
                 const mjImgBorder = b.imgBorderWidth ? ` border="${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'}"` : '';
                 const mjImgRadius = b.imgBorderRadius ? ` border-radius="${b.imgBorderRadius}px"` : '';
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${mjImgPad}"`, inner:`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid}${mjImgBorder}${mjImgRadius} />` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor||'#ffffff'), inner:`${i}    <mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid}${mjImgBorder}${mjImgRadius} padding="${mjImgPad}" />` };
             }
             case 'divider': {
                 const mjDs = b.borderStyle === 'rounded' ? 'solid' : (b.borderStyle || 'solid');
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" align="${b.align||'center'}" />` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor||'#ffffff'), inner:`${i}    <mj-divider border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" align="${b.align||'center'}"${elPad()} />` };
             }
             case 'spacer':
-                return { mergeable:true, attrs:'', inner:`${i}    <mj-spacer height="${b.height}px" />` };
+                return { mergeable:true, padOnEl:true, attrs:' padding="0"', inner:`${i}    <mj-spacer height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
-                return { mergeable:true, attrs:` background-color="${b.bgColor}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}</mj-text>` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor), inner:`${i}    <mj-text color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>` };
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -3828,7 +3858,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                         .replace(/fill="currentColor"/g, `fill="${ic}"`);
                     dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp)));
                 }
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs} />` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor||'#ffffff'), inner:`${i}    <mj-image src="${dataUrl}" alt="" width="${b.size||48}px" align="${b.align||'center'}"${attrs}${elPad()} />` };
             }
             case 'columns': {
                 const colPercentsM = teColWidthPercents(b);
@@ -3844,13 +3874,13 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, attrs:` background-color="${b.bgColor||'#f1f5f9'}" padding="${teMjmlPad(b)}" border-left="4px solid ${b.borderColor||'#6366f1'}"`, inner:`${i}    <mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6"${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text||''}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>` };
             case 'linkBlock': {
                 const lbDesc = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
-                return { mergeable:true, attrs:` padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%">${b.title||''}${lbDesc}</mj-button>` };
+                return { mergeable:true, padOnEl:true, attrs:' padding="0"', inner:`${i}    <mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" align="${b.align||'center'}" width="100%"${elPad()}>${b.title||''}${lbDesc}</mj-button>` };
             }
             case 'listItems': {
                 const showDivM = b.showDividers === true || b.showDividers === '1';
                 const liStyleM = `padding:4px 0;color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.6;${showDivM ? 'border-bottom:1px solid #e2e8f0;' : ''}`;
                 const liHtml = (b.items||[]).map(item => `<li style="${liStyleM}">${item.text||''}</li>`).join('');
-                return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px"><ul style="padding-left:20px;margin:0;">${liHtml}</ul></mj-text>` };
+                return { mergeable:true, padOnEl:true, attrs:sec(b.bgColor||'#ffffff'), inner:`${i}    <mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px"${elPad()}><ul style="padding-left:20px;margin:0;">${liHtml}</ul></mj-text>` };
             }
             case 'social': {
                 const els = (b.items||[]).map(item => `${i}      <mj-social-element name="${item.network||'web'}" href="${item.href||'#'}" />`).join('\n');
