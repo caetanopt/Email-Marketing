@@ -5,6 +5,16 @@ on:
     branches:
       - claude/email-marketing-saas-M2qZP
       - claude/resume-login-error-FVgtn
+  # Permite lançar o deploy à mão no GitHub (Actions → Deploy to Vercel →
+  # Run workflow), sem ter de inventar um commit vazio.
+  workflow_dispatch:
+
+# Um deploy de produção de cada vez. Dois pushes seguidos — ou o mesmo commit
+# empurrado para os dois branches — lançavam dois "vercel --prod" em paralelo
+# a competir pelo mesmo domínio de produção.
+concurrency:
+  group: vercel-prod
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -12,8 +22,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # A versão do CLI está fixa de propósito. Com "npx vercel" (sem versão)
+      # cada deploy instalava a versão publicada há minutos; quando a Vercel
+      # publica um CLI cujas dependências ainda não estão todas disponíveis no
+      # registry npm, o npm aborta com ETARGET e o deploy nunca chega a
+      # arrancar — foi exactamente isso que travou os deploys
+      # (vercel@59.11.0 → "No matching version found for @vercel/go@9.0.0").
+      # Para actualizar: confirma que a versão nova instala e muda o número aqui.
+      - name: Install Vercel CLI
+        run: |
+          for attempt in 1 2 3; do
+            npm install -g vercel@59.10.0 && exit 0
+            echo "npm install falhou (tentativa $attempt) — nova tentativa em $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "Não foi possível instalar o Vercel CLI após 3 tentativas."
+          exit 1
+
       - name: Deploy to Vercel
-        run: npx vercel --prod --yes
+        run: vercel --prod --yes
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: team_jf00Jpfp6cElvXAfxaxVal0Q
