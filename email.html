@@ -3426,9 +3426,21 @@
         // <mj-all>, so it's the default for every send unless a block sets
         // its own "Tipo de letra" — MJML gives per-element attributes
         // priority over mj-all automatically, no extra logic needed here.
-        const head = _teGlobalFontFamily
-            ? `  <mj-head>\n    <mj-attributes>\n      <mj-all font-family="${_teGlobalFontFamily}" />\n    </mj-attributes>\n  </mj-head>\n`
-            : '';
+        const headParts = [];
+        if (_teGlobalFontFamily) headParts.push(`    <mj-attributes>\n      <mj-all font-family="${_teGlobalFontFamily}" />\n    </mj-attributes>`);
+        // mj-button's own % width attribute only resizes the surrounding
+        // table, not the link itself (documented mjml-button limitation —
+        // "impossible to handle percents, depends on padding/text width").
+        // A "100% width" button therefore visually did nothing without this:
+        // teBlockToMjmlParts tags any %-width button with the te-btn-full
+        // class, and this rule makes its link fill that already-correctly-
+        // sized table (verified against a real render, not just accepted
+        // syntax).
+        const isFullPctButton = b => b.type === 'button' && b.width && b.widthUnit === '%';
+        if (srcBlocks.some(b => isFullPctButton(b) || (b.type === 'columns' && Array.isArray(b.children) && b.children.some(col => col.some(isFullPctButton))))) {
+            headParts.push(`    <mj-style>.te-btn-full a { width:100% !important; box-sizing:border-box !important; text-align:center; }</mj-style>`);
+        }
+        const head = headParts.length ? `  <mj-head>\n${headParts.join('\n')}\n  </mj-head>\n` : '';
         return `<mjml>
 ${head}  <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
 ${body}
@@ -3503,14 +3515,13 @@ ${body}
                     const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                     const btnBgColor = b.bgColor||'#0f172a';
                     const btnTarget = b.target === '_self' ? '' : ' target="_blank" rel="noopener"';
-                    // Mirrors mj-button's own behaviour: a px width stretches the
-                    // link itself; a % width only sizes the surrounding
-                    // table/cell (MJML doesn't stretch the link for %, since that
-                    // depends on padding/text width — see mjml-button source).
+                    // This plain-HTML fallback isn't bound by mj-button's %-width
+                    // limitation (that's an MJML-compiler-only quirk), so both
+                    // units can stretch the link itself directly via inline CSS.
                     const btnUnit = b.widthUnit || 'px';
                     const btnWidthAttr = b.width ? `${b.width}${btnUnit === '%' ? '%' : ''}` : '';
-                    const btnWidth = btnWidthAttr ? ` width="${btnWidthAttr}"` : '';
-                    const btnFillLink = (b.width && btnUnit === 'px') ? `width:${b.width}px;box-sizing:border-box;text-align:center;` : '';
+                    const btnWidth = (btnWidthAttr && btnUnit === 'px') ? ` width="${btnWidthAttr}"` : '';
+                    const btnFillLink = b.width ? `width:${btnUnit === '%' ? '100%' : `${b.width}px`};box-sizing:border-box;text-align:center;` : '';
                     return { mergeable:true, bg:b.areaBgColor||'#ffffff', p:pad(b), inner:
                         `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}${btnWidthAttr?`;width:${btnWidthAttr}`:''}"><tr><td bgcolor="${btnBgColor}"${btnWidth} align="center" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}"${btnTarget} style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor};${teFontFamilyCss(b)}${btnFillLink}">${b.text||''}</a></td></tr></table>` };
                 }
@@ -3710,7 +3721,12 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
-                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}>${b.text}</mj-button>` };
+                // mj-button's own %-width attribute only resizes the outer table,
+                // never the inner link (documented mjml-button limitation) — the
+                // te-btn-full class + matching <mj-style> rule (added in
+                // teBuildMjml) force the link itself to fill that table.
+                const mjBtnFullClass = (b.width && b.widthUnit === '%') ? ' css-class="te-btn-full"' : '';
+                return { mergeable:true, attrs:` background-color="${b.areaBgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${mjBtnFullClass}>${b.text}</mj-button>` };
             }
             case 'image': {
                 const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
@@ -3805,7 +3821,8 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const mjInBr = b.borderRadius ?? 6;
                 const mjInBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
                 const mjInInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
-                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" inner-padding="${mjInInPad}" padding="${teMjmlPad(b)}">${b.text}</mj-button>`;
+                const mjInFullClass = (b.width && b.widthUnit === '%') ? ' css-class="te-btn-full"' : '';
+                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" inner-padding="${mjInInPad}" padding="${teMjmlPad(b)}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${mjInFullClass}>${b.text}</mj-button>`;
             }
             case 'image': {
                 const mjInFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
