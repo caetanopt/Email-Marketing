@@ -3115,6 +3115,17 @@
                 <p class="text-[9px] text-slate-400 mt-1">Seleciona parte do texto e usa a barra acima para formatar só essa parte.</p>
             </div>`;
         }
+        if (b.type === 'button' && key === 'width') {
+            const unit = b.widthUnit === '%' ? '%' : 'px';
+            const v = b.width ?? '';
+            return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">Largura (${unit})</label><input type="number" value="${v}" oninput="teUpdateField('${b.id}','width',this.value)" onchange="teUpdateField('${b.id}','width',this.value)" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" /></div>`;
+        }
+        if (b.type === 'button' && key === 'widthUnit') {
+            // Re-render the panel on change too, not just canvas/MJML — the
+            // "Largura" field's label (px vs %) above depends on this value.
+            const opts = f.options.map(([val,label]) => `<option value="${val}" ${String(val)===String(b.widthUnit||'px')?'selected':''}>${label}</option>`).join('');
+            return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><select onchange="teUpdateField('${b.id}','widthUnit',this.value);teRenderProperties();" class="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs">${opts}</select></div>`;
+        }
         if (f.type === 'padding4') {
             const PT = b.paddingTop  ?? 0, PR = b.paddingRight  ?? 0;
             const PB = b.paddingBottom ?? 0, PL = b.paddingLeft ?? 0;
