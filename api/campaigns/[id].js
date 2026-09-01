@@ -4,7 +4,7 @@ const { getSESClient } = require('../../lib/ses');
 const { SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
-const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
+const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -723,6 +723,7 @@ module.exports = async function handler(req, res) {
                 }
               }
               rawHtml = injectTracking(rawHtml, id, contact.contact_id);
+              rawHtml = injectPreviewText(rawHtml, c.preview_text);
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
@@ -962,6 +963,7 @@ module.exports = async function handler(req, res) {
           .replace(/\{\{company\}\}/g, () => '')
           .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
         rawHtml = injectTrackingTest(rawHtml);
+        rawHtml = injectPreviewText(rawHtml, c.preview_text);
         const finalHtml = rawHtml.includes('</body>')
           ? rawHtml.replace('</body>', unsubBlock + '</body>')
           : rawHtml + unsubBlock;
