@@ -3427,7 +3427,19 @@
         // its own "Tipo de letra" — MJML gives per-element attributes
         // priority over mj-all automatically, no extra logic needed here.
         const headParts = [];
-        if (_teGlobalFontFamily) headParts.push(`    <mj-attributes>\n      <mj-all font-family="${_teGlobalFontFamily}" />\n    </mj-attributes>`);
+        // mj-text/mj-button/mj-image/mj-divider each carry their own built-in
+        // default padding of "10px 25px" when the tag omits the attribute.
+        // teBlockToMjmlParts always places the *real* padding on the
+        // enclosing mj-section/mj-column (via the merge-group "attrs"), and
+        // deliberately never repeats it on the element itself — so without
+        // this reset, every block silently got its intended padding PLUS
+        // MJML's own 10px 25px default stacked on top (visible even at
+        // padding 0: a heading with padding-top/bottom 0 still rendered
+        // with ~10px of extra space, confirmed against mjml-text's
+        // defaultAttributes and a real computed-style inspection).
+        const attrParts = [`      <mj-text padding="0" />`, `      <mj-button padding="0" />`, `      <mj-image padding="0" />`, `      <mj-divider padding="0" />`];
+        if (_teGlobalFontFamily) attrParts.push(`      <mj-all font-family="${_teGlobalFontFamily}" />`);
+        headParts.push(`    <mj-attributes>\n${attrParts.join('\n')}\n    </mj-attributes>`);
         // mj-button's own % width attribute only resizes the surrounding
         // table, not the link itself (documented mjml-button limitation —
         // "impossible to handle percents, depends on padding/text width").
