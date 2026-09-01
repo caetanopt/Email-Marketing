@@ -3218,15 +3218,25 @@
         }
         return null;
     }
+    // XML only recognises 5 predefined entities (&amp; &lt; &gt; &quot;
+    // &apos;) — any other named HTML entity (&nbsp; &sup1; &euro; …) breaks
+    // the XML parser used below. Rather than maintaining a hand-picked list
+    // of the ones we've happened to run into, resolve ANY named entity via
+    // the browser's own full HTML5 entity table and re-encode it as a
+    // numeric reference, which XML always accepts. The 5 XML-valid ones are
+    // left untouched (re-encoding &amp; would corrupt real markup).
+    function teDecodeHtmlEntitiesForXml(str) {
+        return String(str || '').replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (match, name) => {
+            if (/^(amp|lt|gt|quot|apos)$/i.test(name)) return match;
+            const el = document.createElement('textarea');
+            el.innerHTML = match;
+            const decoded = el.value;
+            if (decoded === match) return match; // not a real entity — leave as-is
+            return [...decoded].map(ch => `&#${ch.codePointAt(0)};`).join('');
+        });
+    }
     function teParseMjmlToBlocks(xmlStr) {
-        // Normalise HTML-only named entities that are invalid XML
-        const htmlEntities = { '&nbsp;':'&#160;','&hellip;':'&#8230;','&mdash;':'&#8212;','&ndash;':'&#8211;',
-            '&laquo;':'&#171;','&raquo;':'&#187;','&euro;':'&#8364;','&copy;':'&#169;','&reg;':'&#174;',
-            '&trade;':'&#8482;','&bull;':'&#8226;','&middot;':'&#183;','&times;':'&#215;','&divide;':'&#247;',
-            '&acute;':'&#180;','&agrave;':'&#224;','&aacute;':'&#225;','&eacute;':'&#233;','&iacute;':'&#237;',
-            '&oacute;':'&#243;','&uacute;':'&#250;','&ccedil;':'&#231;','&atilde;':'&#227;','&otilde;':'&#245;' };
-        let xml = xmlStr;
-        for (const [e,r] of Object.entries(htmlEntities)) xml = xml.replaceAll(e, r);
+        const xml = teDecodeHtmlEntitiesForXml(xmlStr);
         try {
             const doc = new DOMParser().parseFromString(xml, 'application/xml');
             if (doc.querySelector('parsererror')) {
