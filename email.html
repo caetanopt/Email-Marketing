@@ -1811,8 +1811,14 @@
     // SUP/SUB incluídos para as chamadas de nota de rodapé (14.950€<sup>(2)</sup>,
     // m<sup>2</sup>): sem eles o sanitizador desembrulhava a tag e o expoente
     // ficava texto normal, silenciosamente.
-    const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN','SUP','SUB']);
+    // A é permitida para o botão de link. O href é validado em
+    // teSafeHref (só http/https/mailto/tel) — um "javascript:" é descartado.
+    const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN','SUP','SUB','A']);
     const TE_RICH_ALLOWED_STYLES = ['font-weight','font-size','font-style','text-decoration','color'];
+    function teSafeHref(url) {
+        const u = String(url || '').trim();
+        return /^(https?:|mailto:|tel:)/i.test(u) ? u : '';
+    }
     // Tags de bloco: não são permitidas no texto final (o email usa <br/>),
     // mas cada uma representa uma mudança de linha. Ao desembrulhá-las é
     // preciso deixar um <br/> no lugar, senão o parágrafo escrito no editor
@@ -1864,8 +1870,23 @@
                         continue;
                     }
                     const keptStyle = tag === 'SPAN' ? cleanStyle(child) : '';
+                    // Guarda o href antes de limpar os atributos; sem um
+                    // endereço aceitável o link é desembrulhado e fica só o texto.
+                    const keptHref = tag === 'A' ? teSafeHref(child.getAttribute('href')) : '';
                     [...child.attributes].forEach(attr => child.removeAttribute(attr.name));
                     if (keptStyle) child.setAttribute('style', keptStyle);
+                    if (tag === 'A') {
+                        if (!keptHref) {
+                            const primeiro = child.firstChild;
+                            while (child.firstChild) node.insertBefore(child.firstChild, child);
+                            node.removeChild(child);
+                            child = primeiro || next;
+                            continue;
+                        }
+                        child.setAttribute('href', keptHref);
+                        child.setAttribute('target', '_blank');
+                        child.setAttribute('rel', 'noopener noreferrer');
+                    }
                     walk(child);
                 } else if (child.nodeType !== Node.TEXT_NODE) {
                     node.removeChild(child);
@@ -3869,6 +3890,9 @@ ${body}
 <meta name="supported-color-schemes" content="light">
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 <style>:root{color-scheme:light;supported-color-schemes:light}@media only screen and (max-width:480px){.te-fluid{width:100%!important;max-width:100%!important;height:auto!important}}</style>
+<style>/* Um contenteditable não tem placeholder nativo. */
+[contenteditable][data-placeholder]:empty:before{content:attr(data-placeholder);color:#94a3b8;pointer-events:none}
+</style>
 <style>.thin-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}.thin-scroll::-webkit-scrollbar{width:6px;height:6px}.thin-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.thin-scroll::-webkit-scrollbar-track{background:transparent}.thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px;min-height:24px}.thin-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8}</style>
 <title></title>
 </head>
@@ -5820,19 +5844,71 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
 
     // ── Definições Globais: rodapé legal ───────────────────────────
+    // O disclaimer é editado num contenteditable (negrito/itálico/sublinhado/
+    // link), pelo que o valor é HTML e não texto de uma textarea.
+    function _gsDiscEl() { return document.getElementById('gsDisclaimer'); }
+    function _gsDiscHtml() { return _gsDiscEl()?.innerHTML || ''; }
+
+    function _gsDiscExec(cmd) {
+        const el = _gsDiscEl();
+        if (!el) return;
+        el.focus();
+        document.execCommand(cmd, false, null);
+        _gsRenderFooterPreview();
+    }
+
+    function _gsDiscLink() {
+        const el = _gsDiscEl();
+        if (!el) return;
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !el.contains(sel.anchorNode)) {
+            showToast('Selecciona primeiro o texto que vai receber o link.', 'info');
+            return;
+        }
+        const url = prompt('Endereço do link:', 'https://');
+        if (url === null) return;
+        const seguro = teSafeHref(url);
+        if (!seguro) {
+            showToast('Endereço inválido. Usa http://, https://, mailto: ou tel:', 'error');
+            return;
+        }
+        el.focus();
+        document.execCommand('createLink', false, seguro);
+        _gsRenderFooterPreview();
+    }
+
+    // Limpa ao sair do campo, com o mesmo sanitizador do editor de blocos:
+    // as tags de bloco viram <br>, o resto da formatação é descartada e os
+    // links ficam só com um href aceitável.
+    function _gsDiscBlur(el) {
+        const limpo = teSanitizeRichText(el.innerHTML);
+        if (el.innerHTML !== limpo) el.innerHTML = limpo;
+        _gsRenderFooterPreview();
+    }
+
     async function _loadFooterSettings() {
         try {
             const d = await apiFetch('/api/brands?action=global_settings');
-            const dis = document.getElementById('gsDisclaimer');
+            const dis = _gsDiscEl();
             const logo = document.getElementById('gsFooterLogo');
-            if (dis) dis.value = d.disclaimer || '';
+            // Valores gravados antes de o campo aceitar formatação são texto
+            // simples: converte-se as mudanças de linha para se manterem.
+            if (dis) {
+                const v = d.disclaimer || '';
+                dis.innerHTML = /<[a-z][\s\S]*>/i.test(v)
+                    ? teSanitizeRichText(v)
+                    : escHtml(v).replace(/\r?\n/g, '<br/>');
+            }
             if (logo) logo.value = d.footer_logo_url || '';
         } catch (e) { /* silencioso — a migração pode ainda não ter corrido */ }
         _gsRenderFooterPreview();
     }
 
     async function _saveFooterSettings() {
-        const disclaimer = document.getElementById('gsDisclaimer')?.value || '';
+        const el = _gsDiscEl();
+        // Sanitiza antes de enviar; o servidor volta a sanitizar por sua conta.
+        const disclaimer = el ? teSanitizeRichText(el.innerHTML) : '';
+        if (el && el.innerHTML !== disclaimer) el.innerHTML = disclaimer;
         const logo = (document.getElementById('gsFooterLogo')?.value || '').trim();
         if (logo && !/^https?:\/\//i.test(logo)) {
             showToast('O endereço do logótipo tem de começar por http:// ou https://', 'error');
@@ -5856,7 +5932,9 @@ ${teSerializeBlocksComment(srcBlocks)}
     function _gsRenderFooterPreview() {
         const alvo = document.getElementById('gsFooterPreview');
         if (!alvo) return;
-        const texto = (document.getElementById('gsDisclaimer')?.value || '').trim();
+        // Já é HTML (vem do editor). Sanitiza-se para a pré-visualização
+        // mostrar exactamente o que vai ser gravado e enviado.
+        const texto = teSanitizeRichText(_gsDiscHtml()).trim();
         const logo = (document.getElementById('gsFooterLogo')?.value || '').trim();
         const vars = _currentBrand?.variables || {};
         const redes = [['facebook','Facebook'],['instagram','Instagram'],['youtube','YouTube'],['linkedin','LinkedIn'],['tiktok','TikTok']]
@@ -5869,7 +5947,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             ? `<table role="presentation" width="100%" style="margin-top:22px"><tr><td align="left">${logoImg}</td><td align="right">${icones}</td></tr></table>` : '';
         const areaCinza = (texto || linhaMarca)
             ? `<div style="background:#f1f1f1;border-radius:10px;padding:26px 28px;margin:0 20px 8px">
-                 ${texto ? `<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8a8a">${escHtml(texto).replace(/\r?\n/g,'<br>')}</div>` : ''}
+                 ${texto ? `<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8a8a">${texto}</div>` : ''}
                  ${linhaMarca}
                </div>` : '';
         alvo.innerHTML = `<div style="background:#ffffff;padding:8px 0">
@@ -14486,8 +14564,25 @@ ${sections.join('\n\n')}
                     <div class="px-5 py-5 space-y-4">
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1.5">Disclaimer global</label>
-                            <textarea id="gsDisclaimer" rows="6" oninput="_gsRenderFooterPreview()" placeholder="Ex: A Caetano agrega as empresas do Grupo Salvador Caetano de distribuição e reparação automóvel…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 resize-y"></textarea>
-                            <p class="text-xs text-slate-400 mt-1">Texto simples. As mudanças de linha são respeitadas; não é interpretado HTML.</p>
+                            <div class="flex items-center gap-1 p-1.5 bg-slate-50 border border-slate-200 rounded-t-lg">
+                                <button type="button" title="Negrito" onmousedown="event.preventDefault()" onclick="_gsDiscExec('bold')" class="w-7 h-7 flex items-center justify-center text-sm font-bold border border-slate-200 bg-white rounded hover:bg-slate-100">B</button>
+                                <button type="button" title="Itálico" onmousedown="event.preventDefault()" onclick="_gsDiscExec('italic')" class="w-7 h-7 flex items-center justify-center text-sm italic border border-slate-200 bg-white rounded hover:bg-slate-100">I</button>
+                                <button type="button" title="Sublinhado" onmousedown="event.preventDefault()" onclick="_gsDiscExec('underline')" class="w-7 h-7 flex items-center justify-center text-sm underline border border-slate-200 bg-white rounded hover:bg-slate-100">U</button>
+                                <span class="w-px h-5 bg-slate-200 mx-1"></span>
+                                <button type="button" title="Inserir link" onmousedown="event.preventDefault()" onclick="_gsDiscLink()" class="h-7 px-2 flex items-center gap-1 text-xs border border-slate-200 bg-white rounded hover:bg-slate-100">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>Link
+                                </button>
+                                <button type="button" title="Remover link" onmousedown="event.preventDefault()" onclick="_gsDiscExec('unlink')" class="h-7 px-2 flex items-center text-xs border border-slate-200 bg-white rounded hover:bg-slate-100">Remover link</button>
+                                <span class="w-px h-5 bg-slate-200 mx-1"></span>
+                                <button type="button" title="Limpar formatação" onmousedown="event.preventDefault()" onclick="_gsDiscExec('removeFormat')" class="h-7 px-2 flex items-center text-xs border border-slate-200 bg-white rounded hover:bg-slate-100">Limpar</button>
+                            </div>
+                            <div id="gsDisclaimer" contenteditable="true"
+                                onfocus="document.execCommand('defaultParagraphSeparator',false,'br')"
+                                oninput="_gsRenderFooterPreview()"
+                                onblur="_gsDiscBlur(this)"
+                                data-placeholder="Ex: A Caetano agrega as empresas do Grupo Salvador Caetano de distribuição e reparação automóvel…"
+                                class="w-full min-h-[120px] px-3 py-2 border border-slate-200 border-t-0 rounded-b-lg text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-slate-900 overflow-auto"></div>
+                            <p class="text-xs text-slate-400 mt-1">Selecciona o texto e usa a barra acima. São mantidos negrito, itálico, sublinhado e links; o resto da formatação é removida por segurança, porque este texto vai para dentro dos emails enviados.</p>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1.5">Logótipo do rodapé <span class="font-normal text-slate-400">(URL, mostrado à esquerda na área cinzenta)</span></label>

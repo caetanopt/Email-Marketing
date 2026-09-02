@@ -6,6 +6,7 @@ const { query } = require('../../lib/db');
 const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
+const { sanitizeDisclaimer } = require('../../lib/emailFooter');
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -460,9 +461,11 @@ module.exports = async function handler(req, res) {
         if ('mjml_attributes' in body) {
           setCol('mjml_attributes', JSON.stringify(sanitiseMjmlAttributes(body.mjml_attributes)));
         }
-        // Disclaimer do rodapé: texto simples. É escapado na montagem do
-        // email (lib/emailFooter.js), por isso não pode injectar marcação.
-        if ('disclaimer' in body) setCol('disclaimer', String(body.disclaimer || '').trim().slice(0, 4000));
+        // Disclaimer do rodapé: aceita formatação (negrito, itálico,
+        // sublinhado, links) e é sanitizado aqui, no servidor — a API pode ser
+        // chamada sem passar pelo editor, e este conteúdo vai para dentro de
+        // todos os emails enviados.
+        if ('disclaimer' in body) setCol('disclaimer', sanitizeDisclaimer(body.disclaimer).slice(0, 8000));
         if ('footer_logo_url' in body) {
           // Só http(s): o valor vai directamente para o src de uma <img>.
           const u = String(body.footer_logo_url || '').trim();
