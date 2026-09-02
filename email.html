@@ -3463,7 +3463,13 @@
                 return null;
             }
             const mjBody = doc.querySelector('mj-body');
-            if (mjBody?.getAttribute('background-color')) teState.bodyBg = mjBody.getAttribute('background-color');
+            // A cor de fundo do template passou a sair como fundo por defeito
+            // das secções (em mj-attributes), para não pintar para fora do
+            // email. Lê-se de lá primeiro e só depois do <mj-body>, que é onde
+            // o código gravado antes desta alteração a tem.
+            const bgDasSeccoes = doc.querySelector('mj-attributes > mj-section')?.getAttribute('background-color');
+            const bgDoBody = mjBody?.getAttribute('background-color');
+            if (bgDasSeccoes || bgDoBody) teState.bodyBg = bgDasSeccoes || bgDoBody;
             const blocks = [];
             doc.querySelectorAll('mj-body > mj-section').forEach(section => {
                 const cols = [...section.querySelectorAll(':scope > mj-column')];
@@ -3679,6 +3685,15 @@
         // its own "Tipo de letra" — MJML gives per-element attributes
         // priority over mj-all automatically, no extra logic needed here.
         const headParts = [];
+        // Sem esta declaração os clientes com modo escuro (Gmail, Apple Mail,
+        // Outlook.com) invertem as cores do email por sua conta: um fundo
+        // claro passa a cinzento escuro e o texto cinzento passa a claro. O
+        // gerador de HTML de recurso já a tinha; o caminho MJML — que é o que
+        // é enviado de facto — não, e por isso os emails apareciam com as
+        // cores trocadas. mj-raw dentro de mj-head escreve directamente no
+        // <head>, que é onde estas meta tags têm de estar.
+        headParts.push(`    <mj-raw>\n      <meta name="color-scheme" content="light" />\n      <meta name="supported-color-schemes" content="light" />\n    </mj-raw>`);
+        headParts.push(`    <mj-style>:root{color-scheme:light;supported-color-schemes:light}</mj-style>`);
         // Atributos por defeito de Definições Globais → "Atributos MJML por
         // defeito" (teEffectiveMjmlAttrs), agrupados por componente para que
         // cada um saia numa única tag. Por defeito a lista traz os resets de
@@ -3690,6 +3705,14 @@
         // os componentes; a lista de atributos pode sobrepor-se, e os
         // atributos do próprio elemento ganham sempre (é a MJML que resolve).
         if (_teGlobalFontFamily) byComponent.set('mj-all', { 'font-family': _teGlobalFontFamily });
+        // A "Cor de fundo" do template entra como fundo por defeito das
+        // secções, não do <mj-body>. No <mj-body> a cor é pintada em toda a
+        // página, para fora da área do email (é o que a MJML faz por
+        // desenho); numa secção fica confinada à largura do conteúdo, que é
+        // onde se espera ver a cor. Cada secção com fundo próprio continua a
+        // sobrepor-se, e um mj-section definido em Definições Globais também
+        // (é carregado depois, no ciclo abaixo).
+        if (teState.bodyBg) byComponent.set('mj-section', { 'background-color': teState.bodyBg });
         for (const a of teEffectiveMjmlAttrs()) {
             if (!a || !a.component || !a.attribute || a.value === '' || a.value == null) continue;
             if (!byComponent.has(a.component)) byComponent.set(a.component, {});
@@ -3714,7 +3737,7 @@
         }
         const head = headParts.length ? `  <mj-head>\n${headParts.join('\n')}\n  </mj-head>\n` : '';
         return `<mjml>
-${head}  <mj-body background-color="${teState.bodyBg || '#f5f7fa'}">
+${head}  <mj-body background-color="#ffffff">
 ${body}
   </mj-body>
 </mjml>`;
@@ -3962,10 +3985,12 @@ ${body}
 <style>.thin-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}.thin-scroll::-webkit-scrollbar{width:6px;height:6px}.thin-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.thin-scroll::-webkit-scrollbar-track{background:transparent}.thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px;min-height:24px}.thin-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8}</style>
 <title></title>
 </head>
-<body style="margin:0;padding:0;background:${teState.bodyBg||'#f5f7fa'};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${teState.bodyBg||'#f5f7fa'};color-scheme:light">
+<body style="margin:0;padding:0;background:#ffffff;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="color-scheme:light">
 <tr><td align="center" style="padding:20px 0">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%">
+<!-- A cor de fundo do template vive na tabela de 600px, não no <body> nem na
+     tabela de 100%: no <body> pintava toda a página, para fora do email. -->
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="${teState.bodyBg||'#ffffff'}" style="max-width:600px;width:100%;background:${teState.bodyBg||'#ffffff'}">
 ${bodyRows}
 </table>
 </td></tr>
