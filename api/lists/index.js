@@ -311,7 +311,13 @@ module.exports = withAuth(async (req, res, user) => {
   const listQuery = `
     SELECT DISTINCT ON (l.name)
            l.id, l.name, l.description, l.created_at, l.extra_fields,
-           (SELECT COUNT(*)::int FROM list_members lm WHERE lm.list_id = l.id) AS total_contacts
+           (SELECT COUNT(*)::int FROM list_members lm WHERE lm.list_id = l.id) AS total_contacts,
+           -- Só os membros cujo contacto está activo. A coluna "Activos" da
+           -- listagem mostrava o total, porque este valor nunca era calculado.
+           (SELECT COUNT(*)::int
+              FROM list_members lm
+              JOIN contacts c ON c.id = lm.contact_id
+             WHERE lm.list_id = l.id AND c.status = 'active') AS total_active
     FROM lists l
     ORDER BY l.name, l.id`;
 

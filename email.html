@@ -825,8 +825,8 @@
                 <td class="px-4 py-3 font-medium text-slate-900">
                     <span class="list-name-text cursor-pointer hover:text-slate-600 hover:underline" title="Abrir os contactos desta lista" onclick="mockEditList(this)">${escHtml(l.name)}</span>
                 </td>
-                <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
-                <td class="px-4 py-3 text-slate-600">${l.total_contacts||0}</td>
+                <td class="px-4 py-3 text-slate-600">${(l.total_contacts||0).toLocaleString('pt-PT')}</td>
+                <td class="px-4 py-3 text-slate-600">${(l.total_active ?? 0).toLocaleString('pt-PT')}</td>
                 <td class="px-4 py-3 text-slate-500">${_fmtDate(l.created_at)}</td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-1">
