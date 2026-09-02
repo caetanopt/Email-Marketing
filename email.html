@@ -5983,7 +5983,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             const src = /^https?:\/\//i.test(ic) ? ic : `https://www.mailjet.com/images/theme/v1/icons/ico-social/${k}.png`;
             return `<img src="${escHtml(src)}" width="22" height="22" alt="${nome}" style="display:inline-block;margin-left:10px;vertical-align:middle">`;
         }).join('');
-        const logoImg = logo ? `<img src="${escHtml(logo)}" alt="Caetano" height="22" style="display:block;max-height:22px">` : '';
+        // O logótipo da marca actual (variável footer_logo) sobrepõe-se ao
+        // global, como no servidor.
+        const logoDaMarca = String(vars.footer_logo || '').trim();
+        const logoEfectivo = /^https?:\/\//i.test(logoDaMarca) ? logoDaMarca : logo;
+        const logoImg = logoEfectivo ? `<img src="${escHtml(logoEfectivo)}" alt="${escHtml(_currentBrand?.name || 'Caetano')}" height="22" style="display:block;max-height:22px">` : '';
         const ano = new Date().getFullYear();
         const barra = (logoImg && icones)
             ? `<td style="padding:0 18px;vertical-align:middle"><div style="height:1px;background:#d8d8d8;font-size:0;line-height:1px">&nbsp;</div></td>` : '';
@@ -5999,7 +6003,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             <div style="text-align:center;padding:18px 28px 6px;font-family:Arial,sans-serif;font-size:12px;line-height:1.2;color:#8a8a8a">Este e-mail foi enviado para <u>[email do destinatário]</u> por © ${ano} Caetano Automotive Portugal, S.A., com sede na Rua do Barreiro 547, 4409-513 Vila Nova de Gaia, matriculada na CRCOM.VNGAIA com o Nº/NIPC 500003165.</div>
             <div style="text-align:center;padding:0 28px 20px;font-family:Arial,sans-serif;font-size:12px;color:#8a8a8a"><u>Política de privacidade</u> <span style="color:#c4c4c4">|</span> <u>Versão web</u> <span style="color:#c4c4c4">|</span> <u>Cancelar subscrição</u></div>
         </div>`;
-        if (!texto && !logo && !redes.length) {
+        if (!texto && !logoEfectivo && !redes.length) {
             alvo.innerHTML = `<p class="text-sm text-slate-400 p-4">Preenche o disclaimer acima para ver a área cinzenta. A frase legal e os links são sempre acrescentados.</p>` + alvo.innerHTML;
         }
     }
@@ -6489,7 +6493,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         'facebook','instagram','linkedin','youtube','tiktok',
         'company_name','company_address','company_phone','company_email','company_nipc',
         'site_url','service_url',
-        'disclaimer',
+        'disclaimer','footer_logo',
         'utm_source','utm_medium','utm_campaign','utm_content'
     ];
 
@@ -15255,7 +15259,14 @@ ${sections.join('\n\n')}
                                     <button onclick="_bsCopyVar('disclaimer')" class="text-left px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-violet-50 hover:text-violet-700 text-xs font-mono transition-colors">{{disclaimer}}</button>
                                     <div>
                                         <textarea id="bsVar_disclaimer" rows="3" placeholder="Ex: Este email foi enviado para {{email}}. Para cancelar a subscrição clique aqui." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none"></textarea>
-                                        <p class="text-[10px] text-slate-400 mt-0.5">Texto de disclaimer legal para usar no rodapé dos emails.</p>
+                                        <p class="text-[10px] text-slate-400 mt-0.5">Texto de disclaimer legal para usar no rodapé dos emails. Se estiver preenchido, sobrepõe-se ao disclaimer global.</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-[minmax(0,180px)_1fr] gap-3 items-start mt-2">
+                                    <span class="px-2.5 py-1.5 rounded-md bg-slate-100 text-xs font-mono text-slate-500">Logótipo do rodapé</span>
+                                    <div>
+                                        <input id="bsVar_footer_logo" type="url" placeholder="https://…/logo-desta-marca.png" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                        <p class="text-[10px] text-slate-400 mt-0.5">Substitui, só nesta marca, o logótipo mostrado à esquerda na área cinzenta do rodapé. Em branco, usa-se o das Definições Globais.</p>
                                     </div>
                                 </div>
                             </div>

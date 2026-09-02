@@ -232,6 +232,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
         globalDisclaimer: footerCfg.disclaimer,
         footerLogoUrl: footerCfg.footer_logo_url,
         footerSocials: footerCfg.footer_socials || {},
+        brandName: c.brand_name,
         variables: c.brand_variables || {},
         // Numa pré-visualização não há destinatário nem link próprio de
         // cancelamento: mostra-se a estrutura, sem endereço inventado.
