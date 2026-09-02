@@ -79,7 +79,7 @@ function previewToken(campaignId) {
 // não tiver corrido, caso em que o rodapé sai sem essas duas partes.
 async function loadFooterConfig() {
   try {
-    const rows = await query('SELECT disclaimer, footer_logo_url FROM global_settings WHERE id=1');
+    const rows = await query('SELECT disclaimer, footer_logo_url, footer_socials FROM global_settings WHERE id=1');
     return rows[0] || {};
   } catch (_) { return {}; }
 }
@@ -714,6 +714,7 @@ module.exports = async function handler(req, res) {
               const unsubBlock = buildLegalFooter({
                 globalDisclaimer: footerCfgBatch.disclaimer,
                 footerLogoUrl: footerCfgBatch.footer_logo_url,
+                footerSocials: footerCfgBatch.footer_socials || {},
                 variables: c.variables || {},
                 email: contact.email,
                 unsubUrl,
@@ -971,6 +972,7 @@ module.exports = async function handler(req, res) {
           + buildLegalFooter({
               globalDisclaimer: footerCfgTest.disclaimer,
               footerLogoUrl: footerCfgTest.footer_logo_url,
+              footerSocials: footerCfgTest.footer_socials || {},
               variables: c.variables || {},
               email: to,
               unsubUrl,

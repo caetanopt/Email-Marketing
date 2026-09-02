@@ -225,12 +225,13 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       // pré-visualização mostrava o email sem ele.
       let footerCfg = {};
       try {
-        const gs = await query('SELECT disclaimer, footer_logo_url FROM global_settings WHERE id=1');
+        const gs = await query('SELECT disclaimer, footer_logo_url, footer_socials FROM global_settings WHERE id=1');
         footerCfg = gs[0] || {};
       } catch (_) {}
       const rodape = buildLegalFooter({
         globalDisclaimer: footerCfg.disclaimer,
         footerLogoUrl: footerCfg.footer_logo_url,
+        footerSocials: footerCfg.footer_socials || {},
         variables: c.brand_variables || {},
         // Numa pré-visualização não há destinatário nem link próprio de
         // cancelamento: mostra-se a estrutura, sem endereço inventado.

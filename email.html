@@ -5886,6 +5886,20 @@ ${teSerializeBlocksComment(srcBlocks)}
         _gsRenderFooterPreview();
     }
 
+    // Redes sociais exclusivas do rodapé (Definições Globais → Rodapé legal).
+    const _GS_SOCIALS = [
+        ['facebook', 'gsSocFacebook'], ['instagram', 'gsSocInstagram'],
+        ['youtube', 'gsSocYoutube'], ['linkedin', 'gsSocLinkedin'], ['tiktok', 'gsSocTiktok'],
+    ];
+    function _gsCollectSocials() {
+        const out = {};
+        for (const [chave, id] of _GS_SOCIALS) {
+            const v = (document.getElementById(id)?.value || '').trim();
+            if (v) out[chave] = v;
+        }
+        return out;
+    }
+
     async function _loadFooterSettings() {
         try {
             const d = await apiFetch('/api/brands?action=global_settings');
@@ -5900,6 +5914,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                     : escHtml(v).replace(/\r?\n/g, '<br/>');
             }
             if (logo) logo.value = d.footer_logo_url || '';
+            const soc = d.footer_socials || {};
+            for (const [chave, id] of _GS_SOCIALS) {
+                const el = document.getElementById(id);
+                if (el) el.value = soc[chave] || '';
+            }
         } catch (e) { /* silencioso — a migração pode ainda não ter corrido */ }
         _gsRenderFooterPreview();
     }
@@ -5914,12 +5933,19 @@ ${teSerializeBlocksComment(srcBlocks)}
             showToast('O endereço do logótipo tem de começar por http:// ou https://', 'error');
             return;
         }
+        for (const [chave, id] of _GS_SOCIALS) {
+            const v = (document.getElementById(id)?.value || '').trim();
+            if (v && !/^https?:\/\//i.test(v)) {
+                showToast(`O link do ${chave} tem de começar por http:// ou https://`, 'error');
+                return;
+            }
+        }
         const btn = document.getElementById('gsFooterSaveBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
         try {
             await apiFetch('/api/brands?action=global_settings', {
                 method: 'PUT',
-                body: JSON.stringify({ disclaimer, footer_logo_url: logo })
+                body: JSON.stringify({ disclaimer, footer_logo_url: logo, footer_socials: _gsCollectSocials() })
             });
             showToast('Rodapé legal guardado.');
         } catch (e) { showToast(e.message, 'error'); }
@@ -5937,8 +5963,11 @@ ${teSerializeBlocksComment(srcBlocks)}
         const texto = teSanitizeRichText(_gsDiscHtml()).trim();
         const logo = (document.getElementById('gsFooterLogo')?.value || '').trim();
         const vars = _currentBrand?.variables || {};
+        const doRodape = _gsCollectSocials();
+        // Mesma precedência do servidor: o link do rodapé ganha; sem ele,
+        // usa-se a variável da marca.
         const redes = [['facebook','Facebook'],['instagram','Instagram'],['youtube','YouTube'],['linkedin','LinkedIn'],['tiktok','TikTok']]
-            .filter(([k]) => /^https?:\/\//i.test(String(vars[k] || '').trim()));
+            .filter(([k]) => /^https?:\/\//i.test(String(doRodape[k] || vars[k] || '').trim()));
         const icones = redes.map(([k, nome]) =>
             `<img src="https://www.mailjet.com/images/theme/v1/icons/ico-social/${k}.png" width="28" height="28" alt="${nome}" style="display:inline-block;margin-left:8px;border-radius:50%;vertical-align:middle">`).join('');
         const logoImg = logo ? `<img src="${escHtml(logo)}" alt="Caetano" height="34" style="display:block;max-height:34px">` : '';
@@ -5946,8 +5975,8 @@ ${teSerializeBlocksComment(srcBlocks)}
         const linhaMarca = (logoImg || icones)
             ? `<table role="presentation" width="100%" style="margin-top:22px"><tr><td align="left">${logoImg}</td><td align="right">${icones}</td></tr></table>` : '';
         const areaCinza = (texto || linhaMarca)
-            ? `<div style="background:#f1f1f1;border-radius:10px;padding:26px 28px;margin:0 20px 8px">
-                 ${texto ? `<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8a8a">${texto}</div>` : ''}
+            ? `<div style="background:#f1f1f1;border-radius:10px;padding:26px 28px;margin:0 0 8px">
+                 ${texto ? `<div style="font-family:Arial,sans-serif;font-size:10px;line-height:1.2;text-align:left;color:#999999">${texto}</div>` : ''}
                  ${linhaMarca}
                </div>` : '';
         alvo.innerHTML = `<div style="background:#ffffff;padding:8px 0">
@@ -14587,7 +14616,33 @@ ${sections.join('\n\n')}
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1.5">Logótipo do rodapé <span class="font-normal text-slate-400">(URL, mostrado à esquerda na área cinzenta)</span></label>
                             <input id="gsFooterLogo" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://…/caetano.png" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
-                            <p class="text-xs text-slate-400 mt-1">É o logótipo do grupo, comum a todas as marcas. Podes copiar o endereço da Biblioteca de media. Os ícones das redes sociais, à direita, vêm das variáveis de cada marca (<span class="font-mono">facebook</span>, <span class="font-mono">instagram</span>, <span class="font-mono">youtube</span>, <span class="font-mono">linkedin</span>, <span class="font-mono">tiktok</span>).</p>
+                            <p class="text-xs text-slate-400 mt-1">É o logótipo do grupo, comum a todas as marcas. Podes copiar o endereço da Biblioteca de media.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Redes sociais do rodapé <span class="font-normal text-slate-400">(usadas só nesta área)</span></label>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-20 shrink-0 text-xs text-slate-500">Facebook</span>
+                                    <input id="gsSocFacebook" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://facebook.com/…" class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-20 shrink-0 text-xs text-slate-500">Instagram</span>
+                                    <input id="gsSocInstagram" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://instagram.com/…" class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-20 shrink-0 text-xs text-slate-500">YouTube</span>
+                                    <input id="gsSocYoutube" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://youtube.com/…" class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-20 shrink-0 text-xs text-slate-500">LinkedIn</span>
+                                    <input id="gsSocLinkedin" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://linkedin.com/company/…" class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-20 shrink-0 text-xs text-slate-500">TikTok</span>
+                                    <input id="gsSocTiktok" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://tiktok.com/@…" class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                                </div>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1.5">Só aparecem os que estiverem preenchidos, pela ordem acima. Estes links são exclusivos do rodapé e não afectam o bloco "Redes Sociais" do editor nem as variáveis <span class="font-mono">{{facebook}}</span> dos templates. Se deixares um em branco, é usado o valor da variável dessa rede na marca, caso exista.</p>
                         </div>
                         <div class="pt-1">
                             <p class="text-xs font-medium text-slate-700 mb-1.5">Pré-visualização</p>

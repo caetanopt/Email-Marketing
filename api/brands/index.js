@@ -6,7 +6,7 @@ const { query } = require('../../lib/db');
 const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
-const { sanitizeDisclaimer } = require('../../lib/emailFooter');
+const { sanitizeDisclaimer, sanitizeFooterSocials } = require('../../lib/emailFooter');
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -358,7 +358,7 @@ module.exports = async function handler(req, res) {
           `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
         );
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '', ses_rate_per_second: 50, mjml_attributes: null, disclaimer: '', footer_logo_url: '' };
+        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '', ses_rate_per_second: 50, mjml_attributes: null, disclaimer: '', footer_logo_url: '', footer_socials: {} };
         try {
           // Auto-migrate: add columns if they don't exist yet
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
@@ -366,7 +366,8 @@ module.exports = async function handler(req, res) {
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS mjml_attributes JSONB`).catch(() => {});
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS disclaimer TEXT`).catch(() => {});
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_logo_url TEXT`).catch(() => {});
-          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second, mjml_attributes, disclaimer, footer_logo_url FROM global_settings WHERE id=1');
+          await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_socials JSONB`).catch(() => {});
+          const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second, mjml_attributes, disclaimer, footer_logo_url, footer_socials FROM global_settings WHERE id=1');
           return res.status(200).json(rows[0] || DEFAULTS);
         } catch (e) {
           if (e.code === '42P01') return res.status(200).json(DEFAULTS);
@@ -436,6 +437,7 @@ module.exports = async function handler(req, res) {
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS mjml_attributes JSONB`).catch(() => {});
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS disclaimer TEXT`).catch(() => {});
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_logo_url TEXT`).catch(() => {});
+        await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_socials JSONB`).catch(() => {});
 
         // Escrita parcial: só se actualizam os campos presentes no pedido.
         // Cada cartão das Definições Globais tem o seu próprio botão Guardar e
@@ -466,6 +468,9 @@ module.exports = async function handler(req, res) {
         // chamada sem passar pelo editor, e este conteúdo vai para dentro de
         // todos os emails enviados.
         if ('disclaimer' in body) setCol('disclaimer', sanitizeDisclaimer(body.disclaimer).slice(0, 8000));
+        if ('footer_socials' in body) {
+          setCol('footer_socials', JSON.stringify(sanitizeFooterSocials(body.footer_socials)));
+        }
         if ('footer_logo_url' in body) {
           // Só http(s): o valor vai directamente para o src de uma <img>.
           const u = String(body.footer_logo_url || '').trim();
