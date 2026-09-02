@@ -966,18 +966,19 @@ module.exports = async function handler(req, res) {
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         const unsubUrl = `${APP_URL}#unsubscribe`;
         const footerCfgTest = await loadFooterConfig();
-        // Mesmo rodapé legal do envio real, para o teste o mostrar tal como
-        // vai sair, mais o aviso de que se trata de um teste.
-        const unsubBlock = `<div style="text-align:center;padding:14px 20px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999">⚠️ Este é um email de teste enviado pelo eMKT.</div>`
-          + buildLegalFooter({
-              globalDisclaimer: footerCfgTest.disclaimer,
-              footerLogoUrl: footerCfgTest.footer_logo_url,
-              footerSocials: footerCfgTest.footer_socials || {},
-              variables: c.variables || {},
-              email: to,
-              unsubUrl,
-              previewUrl: `${APP_URL}/api/preview?id=${id}&token=${previewToken(id)}`,
-            });
+        // Exactamente o mesmo rodapé do envio real, sem nada acrescentado: o
+        // objectivo de um envio de teste é ver o email tal como vai sair, e um
+        // aviso no corpo alterava o que se está a validar. Que é um teste
+        // continua a ser sinalizado no assunto, com o prefixo [TESTE].
+        const unsubBlock = buildLegalFooter({
+          globalDisclaimer: footerCfgTest.disclaimer,
+          footerLogoUrl: footerCfgTest.footer_logo_url,
+          footerSocials: footerCfgTest.footer_socials || {},
+          variables: c.variables || {},
+          email: to,
+          unsubUrl,
+          previewUrl: `${APP_URL}/api/preview?id=${id}&token=${previewToken(id)}`,
+        });
         // Apply UTM params + click tracking (same as real sends so test reflects exact behaviour)
         const utmParamsT = c.utm_params || {};
         const utmStrT = Object.entries(utmParamsT).filter(([, v]) => v)
