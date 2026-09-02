@@ -2057,6 +2057,19 @@
     let _teGlobalLineHeight = null; // cached from global_settings; applied as default lineHeight on new blocks
     let _teGlobalMjmlAttrs = null;  // cached from global_settings; null = never configured -> TE_DEFAULT_MJML_ATTRS
 
+    // Largura total do email. O campo já existia em Definições Globais →
+    // Tipografia e era gravado, mas nada o lia: os 600px estavam escritos à
+    // mão no gerador de MJML, no gerador de HTML de recurso, no rodapé e no
+    // canvas. Passa a ser este o valor usado em todos eles.
+    const TE_EMAIL_WIDTH_DEFAULT = 640;
+    const TE_EMAIL_WIDTH_MIN = 320;
+    const TE_EMAIL_WIDTH_MAX = 900;
+    let _teGlobalEmailWidth = null;
+    function teEmailWidth() {
+        const n = parseInt(_teGlobalEmailWidth, 10);
+        return (n >= TE_EMAIL_WIDTH_MIN && n <= TE_EMAIL_WIDTH_MAX) ? n : TE_EMAIL_WIDTH_DEFAULT;
+    }
+
     // Componentes que podem receber atributos por defeito em <mj-attributes>.
     // Extraído dos "componentName" dos pacotes mjml-* instalados (só os de
     // corpo, mais mj-all). Mantém-se alinhado com MJML_ATTR_COMPONENTS em
@@ -2097,6 +2110,8 @@
             const lh = parseFloat(d.line_height);
             if (lh > 0) _teGlobalLineHeight = lh;
             if (Array.isArray(d.mjml_attributes)) _teGlobalMjmlAttrs = d.mjml_attributes;
+            const ew = parseInt(d.email_width, 10);
+            if (ew > 0) _teGlobalEmailWidth = ew;
         } catch (e) { /* silent — migration may not be run yet */ }
     }
 
@@ -2726,7 +2741,9 @@
         const list = _teEl('canvasList');
         if (!list) return;
         const wrap = _teEl('canvasWrap');
-        if (wrap) wrap.style.maxWidth = teState.viewport === 'mobile' ? '380px' : '640px';
+        // O desktop segue a largura definida em Definições Globais, para o
+        // canvas mostrar a mesma medida que o email enviado.
+        if (wrap) wrap.style.maxWidth = teState.viewport === 'mobile' ? '380px' : `${teEmailWidth()}px`;
         const dBtn = _teEl('btnDesktop');
         const mBtn = _teEl('btnMobile');
         if (dBtn && mBtn) {
@@ -3541,7 +3558,12 @@
     function teHtmlToBlocks(html) {
         try {
             const doc = new DOMParser().parseFromString(html || '', 'text/html');
-            const tbl600 = doc.querySelector('table[width="600"]');
+            // A tabela do conteúdo já não tem sempre 600 de largura: passou a
+            // seguir a largura definida em Definições Globais. Procura-se pela
+            // largura em vigor, com 600 como recurso para o HTML gravado antes
+            // dessa alteração.
+            const tbl600 = doc.querySelector(`table[width="${teEmailWidth()}"]`)
+                || doc.querySelector('table[width="600"]');
             if (!tbl600) return null;
             const bodyRows = Array.from(tbl600.querySelectorAll(':scope > tbody > tr, :scope > tr'));
             if (!bodyRows.length) return null;
@@ -3745,7 +3767,7 @@
         }
         const head = headParts.length ? `  <mj-head>\n${headParts.join('\n')}\n  </mj-head>\n` : '';
         return `<mjml>
-${head}  <mj-body background-color="#ffffff">
+${head}  <mj-body width="${teEmailWidth()}px" background-color="#ffffff">
 ${body}
   </mj-body>
 </mjml>`;
@@ -3998,7 +4020,7 @@ ${body}
 <tr><td align="center" style="padding:20px 0">
 <!-- A cor de fundo do template vive na tabela de 600px, não no <body> nem na
      tabela de 100%: no <body> pintava toda a página, para fora do email. -->
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="${teState.bodyBg||'#ffffff'}" style="max-width:600px;width:100%;background:${teState.bodyBg||'#ffffff'}">
+<table role="presentation" width="${teEmailWidth()}" cellpadding="0" cellspacing="0" border="0" bgcolor="${teState.bodyBg||'#ffffff'}" style="max-width:${teEmailWidth()}px;width:100%;background:${teState.bodyBg||'#ffffff'}">
 ${bodyRows}
 </table>
 </td></tr>
@@ -5931,7 +5953,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             const data = await apiFetch('/api/brands?action=global_settings');
             const el = id => document.getElementById(id);
             const fs = el('gsTypoFontSize');   if (fs) fs.value = (data.font_size  || '14px').replace('px','');
-            const ew = el('gsTypoEmailWidth'); if (ew) ew.value = (data.email_width|| '600px').replace('px','');
+            const ew = el('gsTypoEmailWidth'); if (ew) ew.value = (data.email_width || `${TE_EMAIL_WIDTH_DEFAULT}px`).replace('px','');
             const lh = el('gsTypoLineHeight'); if (lh) lh.value = data.line_height || '1.6';
             const ff = el('gsTypoFontFamily'); if (ff) ff.value = data.font_family || 'Arial, sans-serif';
             const ne = el('gsNotifEmails');    if (ne) ne.value = data.notification_emails || '';
@@ -5952,7 +5974,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 method: 'PUT',
                 body: JSON.stringify({
                     font_size:   fs ? `${fs}px`  : '14px',
-                    email_width: ew ? `${ew}px`  : '600px',
+                    email_width: ew ? `${ew}px`  : `${TE_EMAIL_WIDTH_DEFAULT}px`,
                     line_height: lh || '1.6',
                     font_family: ff || 'Arial, sans-serif'
                 })
@@ -5961,6 +5983,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (fs) { const px = parseInt(fs); if (px > 0) _teGlobalFontSize = px; }
             if (lh) { const n = parseFloat(lh); if (n > 0) _teGlobalLineHeight = n; }
             if (ff) _teGlobalFontFamily = ff;
+            // A largura muda o canvas e o código gerado, por isso o editor é
+            // redesenhado — de outra forma só apanhava o novo valor depois de
+            // recarregar a página.
+            if (ew) { const n = parseInt(ew, 10); if (n > 0) _teGlobalEmailWidth = n; }
+            if (typeof teRenderCanvas === 'function' && _teEl('canvasList')) { teRenderCanvas(); teRenderMjml(); }
             _gsRenderMjmlAttrsPreview(); // o mj-all do font-family aparece na pré-visualização
             showToast('Definições de tipografia guardadas.');
         } catch (e) { showToast(e.message, 'error'); }
@@ -14720,9 +14747,10 @@ ${sections.join('\n\n')}
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1.5">Largura padrão do email <span class="font-mono text-slate-400">max-width</span></label>
                                 <div class="flex items-center gap-2">
-                                    <input id="gsTypoEmailWidth" type="number" min="320" max="900" step="10" placeholder="600" class="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
+                                    <input id="gsTypoEmailWidth" type="number" min="320" max="900" step="10" placeholder="640" class="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900">
                                     <span class="text-sm text-slate-500">px</span>
                                 </div>
+                                <p class="text-[10px] text-slate-400 mt-1.5">Aplica-se ao corpo do email, ao rodapé legal e ao canvas do editor. Entre 320 e 900 px. Os emails já gravados só mudam ao serem gravados de novo.</p>
                             </div>
                             <!-- Line height -->
                             <div>

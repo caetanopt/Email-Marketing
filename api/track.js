@@ -225,13 +225,18 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       // pré-visualização mostrava o email sem ele.
       let footerCfg = {};
       try {
-        const gs = await query('SELECT disclaimer, footer_logo_url, footer_socials FROM global_settings WHERE id=1');
+        const gs = await query('SELECT disclaimer, footer_logo_url, footer_socials, email_width FROM global_settings WHERE id=1');
         footerCfg = gs[0] || {};
       } catch (_) {}
+      // O iframe tem de caber a largura definida em Definições Globais, senão
+      // um email mais largo do que a moldura aparecia cortado na
+      // pré-visualização.
+      const larguraEmail = Math.min(900, Math.max(320, parseInt(footerCfg.email_width, 10) || 640));
       const rodape = buildLegalFooter({
         globalDisclaimer: footerCfg.disclaimer,
         footerLogoUrl: footerCfg.footer_logo_url,
         footerSocials: footerCfg.footer_socials || {},
+        width: footerCfg.email_width,
         brandName: c.brand_name,
         variables: c.brand_variables || {},
         // Numa pré-visualização não há destinatário nem link próprio de
@@ -273,7 +278,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 .bar-left{display:flex;align-items:center;gap:10px}.bar-tag{background:#1e293b;color:#94a3b8;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .bar-name{color:#f8fafc;font-weight:600;font-size:13px}.bar-sub{color:#94a3b8;font-size:12px;margin-top:1px}.bar-brand{color:#64748b;font-size:12px}
 .bar-logo{height:32px;width:auto;object-fit:contain;display:block;filter:brightness(0) invert(1);opacity:.85}
-.wrap{padding:24px 16px;display:flex;justify-content:center}iframe{border:none;background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.12);border-radius:8px;width:100%;max-width:680px;min-height:500px;display:block}</style>
+.wrap{padding:24px 16px;display:flex;justify-content:center}iframe{border:none;background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.12);border-radius:8px;width:100%;max-width:${Math.max(680, larguraEmail + 40)}px;min-height:500px;display:block}</style>
 </head><body>
 <div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(c.name||'Campanha')}</div>${c.subject?`<div class="bar-sub">${esc(c.subject)}</div>`:''}</div></div>${brandRight}</div>
 <div class="wrap"><iframe id="f" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="Pré-visualização do email"></iframe></div>

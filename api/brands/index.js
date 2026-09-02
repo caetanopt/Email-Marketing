@@ -10,6 +10,34 @@ const { sanitizeDisclaimer, sanitizeFooterSocials } = require('../../lib/emailFo
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
+// ── Largura total do email (Definições Globais → Tipografia) ────
+// Guardada como texto ('640px'), que é o formato das outras definições de
+// tipografia. Os mesmos limites que o editor aplica.
+const EMAIL_WIDTH_DEFAULT = 640;
+const EMAIL_WIDTH_MIN = 320;
+const EMAIL_WIDTH_MAX = 900;
+function normalizeEmailWidth(valor) {
+  const n = parseInt(valor, 10);
+  return `${(n >= EMAIL_WIDTH_MIN && n <= EMAIL_WIDTH_MAX) ? n : EMAIL_WIDTH_DEFAULT}px`;
+}
+
+// A largura passou de 600px para 640px, mas a instalação existente tem os
+// 600px gravados na linha (era o valor por defeito da migração 035), pelo que
+// não bastava mudar o defeito no código. Esta actualização corre uma única
+// vez: a coluna email_width_migrated marca-a como feita, e a partir daí a
+// largura é o que estiver gravado — incluindo 600px, se for essa a escolha.
+async function migrateEmailWidthDefault() {
+  try {
+    await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS email_width_migrated BOOLEAN NOT NULL DEFAULT FALSE`);
+    await query(`ALTER TABLE global_settings ALTER COLUMN email_width SET DEFAULT '${EMAIL_WIDTH_DEFAULT}px'`).catch(() => {});
+    await query(
+      `UPDATE global_settings SET email_width=$1, email_width_migrated=TRUE
+        WHERE id=1 AND email_width_migrated=FALSE`,
+      [`${EMAIL_WIDTH_DEFAULT}px`]
+    );
+  } catch (_) { /* tabela/coluna em falta: fica o defeito do código */ }
+}
+
 // ── Atributos MJML por defeito (Definições Globais) ─────────────
 // Componentes aceites dentro de <mj-attributes>. A lista foi extraída dos
 // "componentName" dos pacotes mjml-* instalados; só inclui componentes de
@@ -358,7 +386,7 @@ module.exports = async function handler(req, res) {
           `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
         );
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
-        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: '600px', notification_emails: '', ses_rate_per_second: 50, mjml_attributes: null, disclaimer: '', footer_logo_url: '', footer_socials: {} };
+        const DEFAULTS = { font_size: '14px', font_family: 'Arial, sans-serif', line_height: '1.6', email_width: `${EMAIL_WIDTH_DEFAULT}px`, notification_emails: '', ses_rate_per_second: 50, mjml_attributes: null, disclaimer: '', footer_logo_url: '', footer_socials: {} };
         try {
           // Auto-migrate: add columns if they don't exist yet
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS notification_emails TEXT NOT NULL DEFAULT ''`).catch(() => {});
@@ -367,6 +395,7 @@ module.exports = async function handler(req, res) {
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS disclaimer TEXT`).catch(() => {});
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_logo_url TEXT`).catch(() => {});
           await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_socials JSONB`).catch(() => {});
+          await migrateEmailWidthDefault();
           const rows = await query('SELECT font_size, font_family, line_height, email_width, notification_emails, ses_rate_per_second, mjml_attributes, disclaimer, footer_logo_url, footer_socials FROM global_settings WHERE id=1');
           return res.status(200).json(rows[0] || DEFAULTS);
         } catch (e) {
@@ -438,6 +467,9 @@ module.exports = async function handler(req, res) {
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS disclaimer TEXT`).catch(() => {});
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_logo_url TEXT`).catch(() => {});
         await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS footer_socials JSONB`).catch(() => {});
+        // Antes de gravar, para que uma largura escolhida agora não seja
+        // substituída pela migração pontual num pedido seguinte.
+        await migrateEmailWidthDefault();
 
         // Escrita parcial: só se actualizam os campos presentes no pedido.
         // Cada cartão das Definições Globais tem o seu próprio botão Guardar e
@@ -451,7 +483,10 @@ module.exports = async function handler(req, res) {
         if ('font_size' in body)   setCol('font_size',   body.font_size   || '14px');
         if ('font_family' in body) setCol('font_family', body.font_family || 'Arial, sans-serif');
         if ('line_height' in body) setCol('line_height', body.line_height || '1.6');
-        if ('email_width' in body) setCol('email_width', body.email_width || '600px');
+        // Um valor fora dos limites cairia no defeito no editor mas ficava
+        // gravado como o utilizador o escreveu; normaliza-se ao gravar para o
+        // que está na base de dados ser sempre utilizável.
+        if ('email_width' in body) setCol('email_width', normalizeEmailWidth(body.email_width));
         if ('notification_emails' in body) {
           // Mantém só endereços com aspecto válido, separados por vírgula
           setCol('notification_emails', String(body.notification_emails || '').split(',')
