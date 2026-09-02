@@ -5,6 +5,7 @@ const { SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } = require('
 const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
+const { buildLegalFooter } = require('../../lib/emailFooter');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -66,6 +67,21 @@ function trackToken(campaignId, contactId) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET)
     .update(`track:${campaignId}:${contactId}`)
     .digest('hex');
+}
+
+// Token do link "Versão web" do rodapé — o mesmo que /api/preview valida.
+function previewToken(campaignId) {
+  return crypto.createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(`preview:${campaignId}`).digest('hex');
+}
+
+// Disclaimer global + logótipo do rodapé. Devolve {} se a migração 045 ainda
+// não tiver corrido, caso em que o rodapé sai sem essas duas partes.
+async function loadFooterConfig() {
+  try {
+    const rows = await query('SELECT disclaimer, footer_logo_url FROM global_settings WHERE id=1');
+    return rows[0] || {};
+  } catch (_) { return {}; }
 }
 
 function escHtml(s) {
@@ -521,6 +537,7 @@ module.exports = async function handler(req, res) {
            WHERE c.id=$1`, [id, user.id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
+        const footerCfgBatch = await loadFooterConfig();
         if (camp[0].status === 'sent')
           return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
         if (camp[0].status !== 'sending')
@@ -694,9 +711,14 @@ module.exports = async function handler(req, res) {
               const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&c=${id}&email=${encodeURIComponent(contact.email)}&token=${token}`;
               const trackTok = trackToken(id, contact.contact_id);
               const pixelUrl = `${APP_URL}/api/track?type=open&cid=${id}&uid=${contact.contact_id}&t=${trackTok}`;
-              const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999">
-                <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
-              </div><img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
+              const unsubBlock = buildLegalFooter({
+                globalDisclaimer: footerCfgBatch.disclaimer,
+                footerLogoUrl: footerCfgBatch.footer_logo_url,
+                variables: c.variables || {},
+                email: contact.email,
+                unsubUrl,
+                previewUrl: `${APP_URL}/api/preview?id=${id}&token=${previewToken(id)}`,
+              }) + `<img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
               const rawContent = c.html_content || '';
@@ -942,10 +964,18 @@ module.exports = async function handler(req, res) {
         const fromEmail = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         const unsubUrl = `${APP_URL}#unsubscribe`;
-        const unsubBlock = `<div style="text-align:center;padding:20px;font-family:sans-serif;font-size:11px;color:#999;border-top:1px solid #eee;margin-top:20px">
-          <p style="margin:0 0 6px">⚠️ Este é um email de teste enviado pelo eMKT.</p>
-          <a href="${unsubUrl}" style="color:#999">Cancelar subscrição</a>
-        </div>`;
+        const footerCfgTest = await loadFooterConfig();
+        // Mesmo rodapé legal do envio real, para o teste o mostrar tal como
+        // vai sair, mais o aviso de que se trata de um teste.
+        const unsubBlock = `<div style="text-align:center;padding:14px 20px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#999">⚠️ Este é um email de teste enviado pelo eMKT.</div>`
+          + buildLegalFooter({
+              globalDisclaimer: footerCfgTest.disclaimer,
+              footerLogoUrl: footerCfgTest.footer_logo_url,
+              variables: c.variables || {},
+              email: to,
+              unsubUrl,
+              previewUrl: `${APP_URL}/api/preview?id=${id}&token=${previewToken(id)}`,
+            });
         // Apply UTM params + click tracking (same as real sends so test reflects exact behaviour)
         const utmParamsT = c.utm_params || {};
         const utmStrT = Object.entries(utmParamsT).filter(([, v]) => v)

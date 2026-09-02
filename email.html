@@ -5819,6 +5819,69 @@ ${teSerializeBlocksComment(srcBlocks)}
         finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
     }
 
+    // ── Definições Globais: rodapé legal ───────────────────────────
+    async function _loadFooterSettings() {
+        try {
+            const d = await apiFetch('/api/brands?action=global_settings');
+            const dis = document.getElementById('gsDisclaimer');
+            const logo = document.getElementById('gsFooterLogo');
+            if (dis) dis.value = d.disclaimer || '';
+            if (logo) logo.value = d.footer_logo_url || '';
+        } catch (e) { /* silencioso — a migração pode ainda não ter corrido */ }
+        _gsRenderFooterPreview();
+    }
+
+    async function _saveFooterSettings() {
+        const disclaimer = document.getElementById('gsDisclaimer')?.value || '';
+        const logo = (document.getElementById('gsFooterLogo')?.value || '').trim();
+        if (logo && !/^https?:\/\//i.test(logo)) {
+            showToast('O endereço do logótipo tem de começar por http:// ou https://', 'error');
+            return;
+        }
+        const btn = document.getElementById('gsFooterSaveBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'A guardar…'; }
+        try {
+            await apiFetch('/api/brands?action=global_settings', {
+                method: 'PUT',
+                body: JSON.stringify({ disclaimer, footer_logo_url: logo })
+            });
+            showToast('Rodapé legal guardado.');
+        } catch (e) { showToast(e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } }
+    }
+
+    // Reproduz o rodapé que o servidor monta (lib/emailFooter.js), para se ver
+    // o resultado sem ter de enviar um email. As redes sociais mostradas são
+    // as da marca actual.
+    function _gsRenderFooterPreview() {
+        const alvo = document.getElementById('gsFooterPreview');
+        if (!alvo) return;
+        const texto = (document.getElementById('gsDisclaimer')?.value || '').trim();
+        const logo = (document.getElementById('gsFooterLogo')?.value || '').trim();
+        const vars = _currentBrand?.variables || {};
+        const redes = [['facebook','Facebook'],['instagram','Instagram'],['youtube','YouTube'],['linkedin','LinkedIn'],['tiktok','TikTok']]
+            .filter(([k]) => /^https?:\/\//i.test(String(vars[k] || '').trim()));
+        const icones = redes.map(([k, nome]) =>
+            `<img src="https://www.mailjet.com/images/theme/v1/icons/ico-social/${k}.png" width="28" height="28" alt="${nome}" style="display:inline-block;margin-left:8px;border-radius:50%;vertical-align:middle">`).join('');
+        const logoImg = logo ? `<img src="${escHtml(logo)}" alt="Caetano" height="34" style="display:block;max-height:34px">` : '';
+        const ano = new Date().getFullYear();
+        const linhaMarca = (logoImg || icones)
+            ? `<table role="presentation" width="100%" style="margin-top:22px"><tr><td align="left">${logoImg}</td><td align="right">${icones}</td></tr></table>` : '';
+        const areaCinza = (texto || linhaMarca)
+            ? `<div style="background:#f1f1f1;border-radius:10px;padding:26px 28px;margin:0 20px 8px">
+                 ${texto ? `<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8a8a">${escHtml(texto).replace(/\r?\n/g,'<br>')}</div>` : ''}
+                 ${linhaMarca}
+               </div>` : '';
+        alvo.innerHTML = `<div style="background:#ffffff;padding:8px 0">
+            ${areaCinza}
+            <div style="text-align:center;padding:18px 28px 6px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#8a8a8a">Este e-mail foi enviado para <u>[email do destinatário]</u> por © ${ano} Caetano Automotive Portugal, S.A., com sede na Rua do Barreiro 547, 4409-513 Vila Nova de Gaia, matriculada na CRCOM.VNGAIA com o Nº/NIPC 500003165.</div>
+            <div style="text-align:center;padding:0 28px 20px;font-family:Arial,sans-serif;font-size:12px;color:#8a8a8a"><u>Política de privacidade</u> <span style="color:#c4c4c4">|</span> <u>Versão web</u> <span style="color:#c4c4c4">|</span> <u>Cancelar subscrição</u></div>
+        </div>`;
+        if (!texto && !logo && !redes.length) {
+            alvo.innerHTML = `<p class="text-sm text-slate-400 p-4">Preenche o disclaimer acima para ver a área cinzenta. A frase legal e os links são sempre acrescentados.</p>` + alvo.innerHTML;
+        }
+    }
+
     // ── Definições Globais: atributos MJML por defeito ─────────────
     // Cópia de trabalho do ecrã. Só vai para a base de dados em _saveMjmlAttrs.
     let _gsMjmlAttrs = [];
@@ -10456,7 +10519,7 @@ ${sections.join('\n\n')}
             }
             if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
             if (id === 'lists' && _currentBrand?.id) _loadLists(_currentBrand.id);
-            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadGlobalMjmlAttrs(); _loadBrandsAdmin(); _gsLoadApiSection(); }
+            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadGlobalMjmlAttrs(); _loadFooterSettings(); _loadBrandsAdmin(); _gsLoadApiSection(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -14407,6 +14470,34 @@ ${sections.join('\n\n')}
                                 <input id="gsTypoFontFamily" type="text" placeholder="Arial, sans-serif" class="w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
                                 <p class="text-xs text-slate-400 mt-1">Ex: <span class="font-mono">Arial, sans-serif</span> · <span class="font-mono">'Montserrat', sans-serif</span> · <span class="font-mono">Georgia, serif</span></p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rodapé legal -->
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">Rodapé legal</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Acrescentado automaticamente a todos os envios, depois do conteúdo do template. Aplica-se a todas as marcas; se a marca tiver o campo <span class="font-mono">disclaimer</span> preenchido nas suas definições, esse tem prioridade.</p>
+                        </div>
+                        <button onclick="_saveFooterSettings()" id="gsFooterSaveBtn" class="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50 shrink-0">Guardar</button>
+                    </div>
+                    <div class="px-5 py-5 space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Disclaimer global</label>
+                            <textarea id="gsDisclaimer" rows="6" oninput="_gsRenderFooterPreview()" placeholder="Ex: A Caetano agrega as empresas do Grupo Salvador Caetano de distribuição e reparação automóvel…" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 resize-y"></textarea>
+                            <p class="text-xs text-slate-400 mt-1">Texto simples. As mudanças de linha são respeitadas; não é interpretado HTML.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Logótipo do rodapé <span class="font-normal text-slate-400">(URL, mostrado à esquerda na área cinzenta)</span></label>
+                            <input id="gsFooterLogo" type="url" oninput="_gsRenderFooterPreview()" placeholder="https://…/caetano.png" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                            <p class="text-xs text-slate-400 mt-1">É o logótipo do grupo, comum a todas as marcas. Podes copiar o endereço da Biblioteca de media. Os ícones das redes sociais, à direita, vêm das variáveis de cada marca (<span class="font-mono">facebook</span>, <span class="font-mono">instagram</span>, <span class="font-mono">youtube</span>, <span class="font-mono">linkedin</span>, <span class="font-mono">tiktok</span>).</p>
+                        </div>
+                        <div class="pt-1">
+                            <p class="text-xs font-medium text-slate-700 mb-1.5">Pré-visualização</p>
+                            <div id="gsFooterPreview" class="border border-slate-200 rounded-lg overflow-hidden bg-white"></div>
+                            <p class="text-xs text-slate-400 mt-2">A frase legal, o ano e os três links são fixos e acrescentados sempre. O endereço do destinatário e o link da versão web são preenchidos no envio.</p>
                         </div>
                     </div>
                 </div>

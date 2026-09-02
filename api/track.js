@@ -1,4 +1,6 @@
 const { query, transaction } = require('../lib/db');
+const { buildLegalFooter } = require('../lib/emailFooter');
+const APP_URL_PREVIEW = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
 const crypto = require('crypto');
 
 const PIXEL = Buffer.from(
@@ -207,7 +209,8 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 
     try {
       const rows = await query(
-        `SELECT c.name, c.subject, b.name AS brand_name, b.logo_url AS brand_logo, t.html_content
+        `SELECT c.name, c.subject, b.name AS brand_name, b.logo_url AS brand_logo,
+                b.variables AS brand_variables, t.html_content
          FROM campaigns c
          LEFT JOIN templates t ON t.id = c.template_id
          LEFT JOIN brands b ON b.id = c.brand_id
@@ -217,11 +220,31 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       const c = rows[0];
       if (!c.html_content) return res.status(404).send(errPage('Esta campanha não tem um template de email associado.'));
 
+      // O rodapé legal é acrescentado em tempo de envio, não está gravado no
+      // template — por isso tem de ser montado aqui também, senão a
+      // pré-visualização mostrava o email sem ele.
+      let footerCfg = {};
+      try {
+        const gs = await query('SELECT disclaimer, footer_logo_url FROM global_settings WHERE id=1');
+        footerCfg = gs[0] || {};
+      } catch (_) {}
+      const rodape = buildLegalFooter({
+        globalDisclaimer: footerCfg.disclaimer,
+        footerLogoUrl: footerCfg.footer_logo_url,
+        variables: c.brand_variables || {},
+        // Numa pré-visualização não há destinatário nem link próprio de
+        // cancelamento: mostra-se a estrutura, sem endereço inventado.
+        email: '',
+        unsubUrl: `${APP_URL_PREVIEW}#unsubscribe`,
+        previewUrl: '',
+      });
+
       // Numa pré-visualização todos os links devem abrir noutro separador: é o
       // que permite clicá-los sem perder a página de pré-visualização, e é a
       // única navegação que o sandbox do iframe autoriza (allow-popups). Sem
       // isto, um link com target="_self" ficava simplesmente inerte.
-      const semComentario = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '');
+      const semComentario = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '')
+        .replace(/<\/body>/i, `${rodape}</body>`);
       const emailHtml = /<head[^>]*>/i.test(semComentario)
         ? semComentario.replace(/<head([^>]*)>/i, '<head$1><base target="_blank">')
         : `<base target="_blank">${semComentario}`;
