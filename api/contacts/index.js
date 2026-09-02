@@ -143,7 +143,11 @@ async function processBatch(brandId, listId, batch) {
         const vals = [], params = [];
         let p = 1;
         validRows.forEach(c => {
-          vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import',$${p++}::contact_status,COALESCE($${p++}::timestamptz, NOW()))`);
+          // COALESCE no status é indispensável: passar NULL explícito NÃO
+          // recorre ao DEFAULT da coluna — grava NULL. E um contacto com
+          // status NULL fica fora de todos os envios, porque o envio filtra
+          // por status='active'.
+          vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import',COALESCE($${p++}::contact_status,'active'),COALESCE($${p++}::timestamptz, NOW()))`);
           params.push(brandId, c.email, c.name||null, c.phone||null, c.company||null,
                       normalizeStatus(c.status), normalizeSubscribedAt(c.subscribed_at));
         });
