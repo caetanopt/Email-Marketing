@@ -3693,7 +3693,11 @@
         // cores trocadas. mj-raw dentro de mj-head escreve directamente no
         // <head>, que é onde estas meta tags têm de estar.
         headParts.push(`    <mj-raw>\n      <meta name="color-scheme" content="light" />\n      <meta name="supported-color-schemes" content="light" />\n    </mj-raw>`);
-        headParts.push(`    <mj-style>:root{color-scheme:light;supported-color-schemes:light}</mj-style>`);
+        // "only light" e não apenas "light": é o valor que desliga o modo
+        // escuro automático do Chrome, que de outra forma escurece a página
+        // por sua conta e pinta o fundo por omissão dos links (um quadrado
+        // branco por trás dos ícones das redes ao passar o rato).
+        headParts.push(`    <mj-style>:root{color-scheme:only light;supported-color-schemes:light}</mj-style>`);
         // Atributos por defeito de Definições Globais → "Atributos MJML por
         // defeito" (teEffectiveMjmlAttrs), agrupados por componente para que
         // cada um saia numa única tag. Por defeito a lista traz os resets de
@@ -3978,15 +3982,15 @@ ${body}
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
-<style>:root{color-scheme:light;supported-color-schemes:light}@media only screen and (max-width:480px){.te-fluid{width:100%!important;max-width:100%!important;height:auto!important}}</style>
+<style>:root{color-scheme:only light;supported-color-schemes:light}@media only screen and (max-width:480px){.te-fluid{width:100%!important;max-width:100%!important;height:auto!important}}</style>
 <style>/* Um contenteditable não tem placeholder nativo. */
 [contenteditable][data-placeholder]:empty:before{content:attr(data-placeholder);color:#94a3b8;pointer-events:none}
 </style>
 <style>.thin-scroll{scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}.thin-scroll::-webkit-scrollbar{width:6px;height:6px}.thin-scroll::-webkit-scrollbar-button{display:none;width:0;height:0}.thin-scroll::-webkit-scrollbar-track{background:transparent}.thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px;min-height:24px}.thin-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8}</style>
 <title></title>
 </head>
-<body style="margin:0;padding:0;background:#ffffff;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:light">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="color-scheme:light">
+<body style="margin:0;padding:0;background:#ffffff;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:only light">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="color-scheme:only light">
 <tr><td align="center" style="padding:20px 0">
 <!-- A cor de fundo do template vive na tabela de 600px, não no <body> nem na
      tabela de 100%: no <body> pintava toda a página, para fora do email. -->

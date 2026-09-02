@@ -247,9 +247,15 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       // isto, um link com target="_self" ficava simplesmente inerte.
       const semComentario = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '')
         .replace(/<\/body>/i, `${rodape}</body>`);
+      // Junto com o <base>, entra a recusa do modo escuro automático: as
+      // campanhas gravadas antes de isso passar a sair no MJML não a têm no
+      // seu próprio <head>, e a pré-visualização apareceria escurecida pelo
+      // browser mesmo com a página de fora já corrigida (o iframe é um
+      // documento à parte e é avaliado por si).
+      const cabeca = '<base target="_blank"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><style>:root{color-scheme:only light}</style>';
       const emailHtml = /<head[^>]*>/i.test(semComentario)
-        ? semComentario.replace(/<head([^>]*)>/i, '<head$1><base target="_blank">')
-        : `<base target="_blank">${semComentario}`;
+        ? semComentario.replace(/<head([^>]*)>/i, `<head$1>${cabeca}`)
+        : `${cabeca}${semComentario}`;
       const brandRight = c.brand_logo
         ? `<img src="${esc(c.brand_logo)}" alt="${esc(c.brand_name||'')}" class="bar-logo">`
         : `<span class="bar-brand">${esc(c.brand_name||'')}</span>`;
@@ -257,7 +263,12 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 <html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(c.subject || c.name)} — Pré-visualização</title>
 <meta name="robots" content="noindex,nofollow">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f1f5f9;min-height:100vh;font-family:system-ui,sans-serif}
+<meta name="color-scheme" content="light">
+<!-- "only light" desliga o modo escuro automático do Chrome. Sem isto o
+     browser escurecia a pré-visualização por sua conta: a área clara do
+     rodapé aparecia cinzenta escura e os ícones das redes ficavam dentro de
+     um quadrado branco ao passar o rato (fundo por omissão do link). -->
+<style>:root{color-scheme:only light}*{margin:0;padding:0;box-sizing:border-box}body{background:#f1f5f9;min-height:100vh;font-family:system-ui,sans-serif}
 .bar{background:#0f172a;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .bar-left{display:flex;align-items:center;gap:10px}.bar-tag{background:#1e293b;color:#94a3b8;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .bar-name{color:#f8fafc;font-weight:600;font-size:13px}.bar-sub{color:#94a3b8;font-size:12px;margin-top:1px}.bar-brand{color:#64748b;font-size:12px}
