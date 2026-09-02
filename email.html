@@ -3388,15 +3388,19 @@
                 const bgColor = bg;
                 const fontSize = parseInt(el.getAttribute('font-size')) || 14;
                 const fontWeight = el.getAttribute('font-weight') || '400';
+                // Sem estes dois, "Maiúsculas" e "Tipo de letra" saíam no MJML
+                // mas não voltavam: um "Aplicar no visual" descartava-os.
+                const uppercase = el.getAttribute('text-transform') === 'uppercase';
+                const fontFamily = el.getAttribute('font-family') || '';
                 // Heuristic: detect heading vs text
                 const isDark = bgColor !== '#ffffff' && bgColor !== '#f8fafc';
                 if (isDark) {
-                    return { id, type:'header', text:teMjmlInnerText(el), bgColor, textColor:el.getAttribute('color')||'#ffffff', fontSize, fontWeight, align:el.getAttribute('align')||'center', ...pad };
+                    return { id, type:'header', text:teMjmlInnerText(el), bgColor, textColor:el.getAttribute('color')||'#ffffff', fontSize, fontWeight, align:el.getAttribute('align')||'center', uppercase, fontFamily, ...pad };
                 }
                 // Preserve inline formatting (bold/italic/underline/size/color)
                 // instead of stripping to plain text, so hand-edited or
                 // round-tripped MJML keeps rich formatting in the visual editor.
-                return { id, type:'text', text:teSanitizeRichText(el.innerHTML), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, ...pad };
+                return { id, type:'text', text:teSanitizeRichText(el.innerHTML), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, uppercase, fontFamily, ...pad };
             }
             case 'mj-button':
                 // areaBgColor é o fundo da área à volta do botão; sem ele, o
@@ -4141,7 +4145,12 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'text': case 'header': case 'heading': case 'footer': {
                 const c = b.color || b.textColor || '#000';
                 const lh = b.lineHeight || 1.4;
-                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" line-height="${lh}" padding="${teMjmlPad(b)}">${teNl2brX(b.text)}</mj-text>`;
+                // "Maiúsculas" e "Tipo de letra" tinham de ser repetidos aqui:
+                // um bloco de texto dentro de colunas passa por este caminho e
+                // não pelo teBlockToMjmlParts, por isso as duas opções
+                // apareciam no editor mas não saíam no email enviado.
+                const upper = b.uppercase === true || b.uppercase === '1';
+                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" line-height="${lh}"${upper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''} padding="${teMjmlPad(b)}">${teNl2brX(b.text)}</mj-text>`;
             }
             case 'button': {
                 const mjInBr = b.borderRadius ?? 6;
