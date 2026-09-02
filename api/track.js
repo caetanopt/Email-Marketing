@@ -1,6 +1,6 @@
 const { query, transaction } = require('../lib/db');
 const { buildLegalFooter } = require('../lib/emailFooter');
-const APP_URL_PREVIEW = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
+const APP_URL_PREVIEW = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
 const crypto = require('crypto');
 
 const PIXEL = Buffer.from(

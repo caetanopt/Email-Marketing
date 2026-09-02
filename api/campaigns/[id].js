@@ -59,7 +59,7 @@ function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBod
   return lines.join('\r\n');
 }
 
-const APP_URL = process.env.APP_URL || 'https://email-marketing-eta.vercel.app';
+const APP_URL = process.env.APP_URL || 'https://emkt.caetano.pt';
 const FROM_DOMAIN = process.env.FROM_DOMAIN || 'caetano.pt';
 const DEFAULT_COMPANY_ADDRESS = process.env.COMPANY_ADDRESS || 'Rua do Barreiro, 547 4409-513 Vila Nova de Gaia';
 
@@ -139,7 +139,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && action === 'preview_token') {
       const token = crypto.createHmac('sha256', process.env.JWT_SECRET)
         .update(`preview:${id}`).digest('hex');
-      const appUrl = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
+      const appUrl = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
       return res.status(200).json({ token, url: `${appUrl}/api/preview?id=${id}&token=${token}` });
     }
 

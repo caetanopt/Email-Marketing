@@ -103,7 +103,7 @@ module.exports = async function handler(req, res) {
         [token, userId, expiresAt]
       );
 
-      const appUrl = (process.env.APP_URL || 'https://email-marketing-eta.vercel.app').replace(/\/$/, '');
+      const appUrl = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
       const magicUrl = `${appUrl}/email?magic=${token}`;
       const from = process.env.MAGIC_LINK_FROM || 'Caetano eMKT <info@caetano.pt>';
 

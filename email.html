@@ -103,7 +103,12 @@
     }
 
     // ── API ──────────────────────────────────────────────
-    const API_BASE = 'https://email-marketing-eta.vercel.app';
+    // Mesma origem: o frontend e a API são servidos pelo mesmo projecto Vercel
+    // (ver os rewrites em vercel.json), por isso um caminho relativo funciona
+    // em qualquer domínio. Estava aqui um endereço absoluto para o domínio
+    // antigo, e ao passar a servir a aplicação de emkt.caetano.pt todas as
+    // chamadas iam para fora e falhavam com "Failed to fetch".
+    const API_BASE = '';
     const _todayStr   = () => new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
     const getToken  = () => localStorage.getItem('pm_token');
     const setToken  = t  => { localStorage.setItem('pm_token', t); localStorage.setItem('pm_token_day', _todayStr()); };
