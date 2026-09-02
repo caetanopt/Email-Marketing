@@ -1813,6 +1813,15 @@
     // ficava texto normal, silenciosamente.
     const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN','SUP','SUB']);
     const TE_RICH_ALLOWED_STYLES = ['font-weight','font-size','font-style','text-decoration','color'];
+    // Tags de bloco: não são permitidas no texto final (o email usa <br/>),
+    // mas cada uma representa uma mudança de linha. Ao desembrulhá-las é
+    // preciso deixar um <br/> no lugar, senão o parágrafo escrito no editor
+    // fica todo numa linha — é o que o Enter cria (<div>/<p>) e o que vem
+    // colado do Word/Docs.
+    const TE_RICH_BLOCK_TAGS = new Set([
+        'DIV','P','LI','UL','OL','H1','H2','H3','H4','H5','H6','BLOCKQUOTE',
+        'PRE','SECTION','ARTICLE','HEADER','FOOTER','ADDRESS','FIGURE','TR','DT','DD',
+    ]);
     function teSanitizeRichText(html) {
         const root = document.createElement('div');
         root.innerHTML = html || '';
@@ -1832,9 +1841,22 @@
                 if (child.nodeType === Node.ELEMENT_NODE) {
                     const tag = child.tagName;
                     if (!TE_RICH_ALLOWED_TAGS.has(tag)) {
-                        // Unwrap disallowed tags (div/p/font/etc) but keep their content —
-                        // continue walking from the first moved-up child so nothing nested
-                        // inside skips sanitisation.
+                        // Desembrulha as tags não permitidas (div/p/font/...)
+                        // mantendo o conteúdo — e continua a percorrer a
+                        // partir do primeiro filho movido, para que nada do que
+                        // estava aninhado escape à sanitização.
+                        //
+                        // Sendo uma tag de bloco, deixa um <br> no lugar da
+                        // mudança de linha que ela representava, desde que haja
+                        // conteúdo antes e esse conteúdo ainda não termine numa
+                        // quebra. Sem isto, escrever parágrafos no editor e
+                        // clicar fora juntava tudo numa única linha.
+                        if (TE_RICH_BLOCK_TAGS.has(tag)) {
+                            const antes = child.previousSibling;
+                            const temConteudoAntes = !!antes && !(antes.nodeType === Node.TEXT_NODE && !antes.textContent.trim());
+                            const jaTerminaEmBr = antes && antes.nodeType === Node.ELEMENT_NODE && antes.tagName === 'BR';
+                            if (temConteudoAntes && !jaTerminaEmBr) node.insertBefore(document.createElement('br'), child);
+                        }
                         const firstMoved = child.firstChild;
                         while (child.firstChild) node.insertBefore(child.firstChild, child);
                         node.removeChild(child);
