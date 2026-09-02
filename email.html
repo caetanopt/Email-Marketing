@@ -5897,9 +5897,13 @@ ${teSerializeBlocksComment(srcBlocks)}
         const out = {};
         for (const [chave, id, idIcone] of _GS_SOCIALS) {
             const href = (document.getElementById(id)?.value || '').trim();
-            if (!href) continue;
             const icon = (document.getElementById(idIcone)?.value || '').trim();
-            out[chave] = icon ? { href, icon } : { href };
+            // Basta um dos dois: o endereço do perfil pode já vir das
+            // variáveis da marca, e nesse caso só se quer definir o ícone.
+            if (!href && !icon) continue;
+            out[chave] = {};
+            if (href) out[chave].href = href;
+            if (icon) out[chave].icon = icon;
         }
         return out;
     }
