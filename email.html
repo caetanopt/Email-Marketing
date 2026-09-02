@@ -2889,14 +2889,22 @@
                 break;
             }
             case 'columns': {
-                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;`;
+                // No mobile as colunas empilham, como fazem no email (a MJML
+                // empilha abaixo dos 480px). Sem isto o botão Mobile não
+                // mostrava o efeito da "Ordem no mobile".
+                const empilhado = teState.viewport === 'mobile';
+                const inverter = empilhado && b.mobileOrder === 'reverse';
+                d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;flex-direction:${empilhado ? (inverter ? 'column-reverse' : 'column') : 'row'};`;
                 const colPercents = teColWidthPercents(b);
                 for (let c = 0; c < b.cols; c++) {
                     const col = document.createElement('div');
                     const colIdx = c;
                     const childArr = b.children[c] || [];
                     const colJustify = { top:'flex-start', middle:'center', bottom:'flex-end' }[teColValign(childArr)] || 'flex-start';
-                    col.style.cssText = `flex:0 0 ${colPercents[c]}%;max-width:${colPercents[c]}%;min-width:0;display:flex;flex-direction:column;justify-content:${colJustify};border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
+                    const baseCol = empilhado
+                        ? 'flex:1 1 auto;max-width:100%;'
+                        : `flex:0 0 ${colPercents[c]}%;max-width:${colPercents[c]}%;`;
+                    col.style.cssText = `${baseCol}min-width:0;display:flex;flex-direction:column;justify-content:${colJustify};border-radius:6px;min-height:60px;transition:box-shadow 0.15s,background 0.15s;${teColBorderCss(b,c)}`;
                     // Column-level drop handler (catches drops not on specific drop zones)
                     col.addEventListener('dragover', (ev) => {
                         ev.preventDefault(); ev.stopPropagation();
@@ -3016,6 +3024,14 @@
                             <div><label class="block text-[9px] text-slate-400 mb-0.5">Col. ${idx+1}</label><input type="number" min="1" value="${pct}" oninput="teUpdateColWidth('${b.id}',${idx},this.value)" onchange="teUpdateColWidth('${b.id}',${idx},this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>
                         `).join('')}
                     </div>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Ordem no mobile</label>
+                    <p class="text-[10px] text-slate-400 mb-1.5">No mobile as colunas empilham. "Invertida" faz a última aparecer primeiro, sem alterar o desktop.</p>
+                    <select onchange="teUpdateField('${b.id}','mobileOrder',this.value)" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white">
+                        <option value="normal"${(b.mobileOrder||'normal') === 'normal' ? ' selected' : ''}>Normal (coluna 1 primeiro)</option>
+                        <option value="reverse"${b.mobileOrder === 'reverse' ? ' selected' : ''}>Invertida (última coluna primeiro)</option>
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor da borda</label>
@@ -3430,6 +3446,15 @@
                     // Only keep explicit widths if every column specified one —
                     // otherwise fall back to the equal-split default.
                     if (parsedWidths.every(w => w)) b.colWidths = parsedWidths;
+                    // direction="rtl" é como se escreve a "Ordem no mobile:
+                    // invertida" (ver teBlockToMjmlParts): as colunas estão
+                    // gravadas ao contrário, por isso desfaz-se a inversão para
+                    // o editor as mostrar na ordem do desktop.
+                    if ((section.getAttribute('direction') || '').toLowerCase() === 'rtl') {
+                        b.mobileOrder = 'reverse';
+                        b.children.reverse();
+                        if (b.colWidths) b.colWidths.reverse();
+                    }
                     blocks.push(b);
                 } else {
                     const col = cols[0]; if (!col) return;
@@ -3987,12 +4012,21 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
             case 'columns': {
                 const colPercentsM = teColWidthPercents(b);
-                const cols = b.children.map((children, colIdx) => {
+                const colsMjml = b.children.map((children, colIdx) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
                     const colValign = teColValign(children);
                     return `${i}  <mj-column width="${colPercentsM[colIdx]}%" vertical-align="${colValign}"${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
-                }).join('\n');
-                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}">\n${cols}\n${i}</mj-section>` };
+                });
+                // "Ordem no mobile: invertida" — no mobile as colunas empilham
+                // pela ordem em que estão escritas, e o direction="rtl" da
+                // mj-section inverte apenas o desktop (medido: rtl troca a
+                // ordem no desktop e não toca no empilhamento). Escrevendo as
+                // colunas ao contrário E pondo rtl, o desktop fica igual ao
+                // que se vê no editor e só o mobile empilha invertido.
+                const inverterMobile = b.mobileOrder === 'reverse' && b.cols > 1;
+                const cols = (inverterMobile ? [...colsMjml].reverse() : colsMjml).join('\n');
+                const dirAttr = inverterMobile ? ' direction="rtl"' : '';
+                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}"${dirAttr}>\n${cols}\n${i}</mj-section>` };
             }
             case 'quote':
                 // b.text is already sanitised rich HTML — do not nl2brX.
