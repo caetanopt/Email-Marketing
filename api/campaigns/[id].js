@@ -956,7 +956,14 @@ module.exports = async function handler(req, res) {
             if (url.includes('action=unsubscribe') || url.includes('action=resubscribe') || url.includes('/api/track?')) return match;
             let dest = url;
             if (utmStrT) { const sep = dest.includes('?') ? '&' : '?'; dest = `${dest}${sep}${utmStrT}`; }
-            const redirect = `${APP_URL}/api/track?type=click&cid=${id}&uid=0&t=test&url=${encodeURIComponent(dest)}`;
+            // O token tem de ser o HMAC real: o endpoint de clique compara-o
+            // com trackToken(cid, uid) e, se não bater, ignora o destino e
+            // redirecciona para a raiz da aplicação. Com o "t=test" que aqui
+            // estava, TODOS os links de um email de teste abriam a plataforma
+            // em vez do endereço configurado no bloco.
+            // uid=0 identifica o clique como sendo de teste: o /api/track
+            // redirecciona mas não o registra nas estatísticas da campanha.
+            const redirect = `${APP_URL}/api/track?type=click&cid=${id}&uid=0&t=${trackToken(id, 0)}&url=${encodeURIComponent(dest)}`;
             return `href="${redirect}"`;
           });
         }

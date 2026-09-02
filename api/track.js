@@ -217,7 +217,14 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       const c = rows[0];
       if (!c.html_content) return res.status(404).send(errPage('Esta campanha não tem um template de email associado.'));
 
-      const emailHtml = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '');
+      // Numa pré-visualização todos os links devem abrir noutro separador: é o
+      // que permite clicá-los sem perder a página de pré-visualização, e é a
+      // única navegação que o sandbox do iframe autoriza (allow-popups). Sem
+      // isto, um link com target="_self" ficava simplesmente inerte.
+      const semComentario = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '');
+      const emailHtml = /<head[^>]*>/i.test(semComentario)
+        ? semComentario.replace(/<head([^>]*)>/i, '<head$1><base target="_blank">')
+        : `<base target="_blank">${semComentario}`;
       const brandRight = c.brand_logo
         ? `<img src="${esc(c.brand_logo)}" alt="${esc(c.brand_name||'')}" class="bar-logo">`
         : `<span class="bar-brand">${esc(c.brand_name||'')}</span>`;
@@ -233,7 +240,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 .wrap{padding:24px 16px;display:flex;justify-content:center}iframe{border:none;background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.12);border-radius:8px;width:100%;max-width:680px;min-height:500px;display:block}</style>
 </head><body>
 <div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(c.name||'Campanha')}</div>${c.subject?`<div class="bar-sub">${esc(c.subject)}</div>`:''}</div></div>${brandRight}</div>
-<div class="wrap"><iframe id="f" sandbox="allow-same-origin" title="Pré-visualização do email"></iframe></div>
+<div class="wrap"><iframe id="f" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="Pré-visualização do email"></iframe></div>
 <script>(function(){const h=${JSON.stringify(emailHtml)};const f=document.getElementById('f');f.srcdoc=h;f.addEventListener('load',function(){try{const s=f.contentDocument.documentElement.scrollHeight;if(s>100)f.style.height=s+'px';}catch(_){}});})();</script>
 </body></html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -257,10 +264,15 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
           && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(expected));
         if (valid && !isNaN(campaignId) && !isNaN(contactId)) {
           if (url && url.startsWith('http')) dest = url;
-          await query(
-            `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
-            [campaignId, contactId, url || null]
-          );
+          // uid=0 é o clique de um email de teste: encaminha-se para o
+          // destino, mas não se registra — não há contacto 0 e não deve
+          // contar nas estatísticas da campanha.
+          if (contactId !== 0) {
+            await query(
+              `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
+              [campaignId, contactId, url || null]
+            );
+          }
         }
       }
     } catch (e) {
