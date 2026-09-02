@@ -90,6 +90,40 @@
       if (!/^[a-z]{2,}$/.test(tld)) return false; // TLD: at least 2 alpha chars
       return /^[^\s@,;:]+$/.test(local) && /^[a-zA-Z0-9.-]+$/.test(domain);
     }
+    // ── Importação: estado e data de subscrição ────────
+    // Rótulos aceites nas colunas "estado"/"status" e "subscrito em".
+    // O servidor volta a validar — isto é só para o ficheiro ser lido bem.
+    const _IMP_STATUS = {
+        active:'active', activo:'active', ativo:'active', subscrito:'active', sim:'active', s:'active', '1':'active',
+        unsubscribed:'unsubscribed', cancelado:'unsubscribed', cancelada:'unsubscribed', canceled:'unsubscribed',
+        cancelled:'unsubscribed', dessubscrito:'unsubscribed', nao:'unsubscribed', 'não':'unsubscribed', n:'unsubscribed', '0':'unsubscribed',
+        bounced:'bounced', rejeitado:'bounced', devolvido:'bounced',
+        suppressed:'suppressed', suprimido:'suppressed',
+    };
+    function _impStatus(v) {
+        const t = String(v ?? '').trim().toLowerCase();
+        return t ? (_IMP_STATUS[t] || null) : null;
+    }
+    // Aceita DD/MM/AAAA (o que sai do Excel português) e ISO.
+    function _impDate(v) {
+        const t = String(v ?? '').trim();
+        if (!t) return null;
+        let iso = null;
+        const dm = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+        if (dm) iso = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+        else if (/^\d{4}-\d{2}-\d{2}([T ].*)?$/.test(t)) iso = t;
+        if (!iso) return null;
+        // Recusa dias fora do mês: sem isto, "31/02/2026" passaria e o Date
+        // convertia-o em 03/03/2026, gravando uma data errada.
+        const [ay, am, ad] = iso.slice(0, 10).split('-').map(Number);
+        const d = new Date(Date.UTC(ay, am - 1, ad));
+        if (d.getUTCFullYear() !== ay || d.getUTCMonth() + 1 !== am || d.getUTCDate() !== ad) return null;
+        return iso;
+    }
+    const _IMP_STATUS_HEADERS = ['status','estado','subscription status','estado da subscricao','estado da subscrição'];
+    const _IMP_DATE_HEADERS = ['subscrito em','subscribed_at','subscribed at','data de subscricao','data de subscrição',
+                               'data de subscricao','created_at','criado em','data'];
+
     // ── Toast notification ─────────────────────────────
     function showToast(msg, type) {
         const colors = { success:'bg-green-600', error:'bg-red-600', warning:'bg-amber-500', info:'bg-slate-800' };
@@ -8798,11 +8832,15 @@ ${teSerializeBlocksComment(srcBlocks)}
                               last_name:  headers.findIndex(h => ['last_name','last name','apelido','lastname'].includes(h)),
                               phone:      headers.findIndex(h => ['phone','telefone','telemovel','tel','mobile'].includes(h)),
                               company:    headers.findIndex(h => ['company','empresa','company name'].includes(h)) };
+                const statusIdx = headers.findIndex(h => _IMP_STATUS_HEADERS.includes(h));
+                const dateIdx   = headers.findIndex(h => _IMP_DATE_HEADERS.includes(h));
                 rows = raw.slice(1).map(r => {
                     const email = String(r[emailIdx] || '').trim().toLowerCase();
                     if (!_isValidEmail(email)) return null;
                     const obj = { email };
                     for (const [k, i] of Object.entries(map)) { if (i !== -1 && r[i]) obj[k] = String(r[i]).trim(); }
+                    if (statusIdx !== -1) { const v = _impStatus(r[statusIdx]); if (v) obj.status = v; }
+                    if (dateIdx   !== -1) { const v = _impDate(r[dateIdx]);     if (v) obj.subscribed_at = v; }
                     return obj;
                 }).filter(Boolean);
             } else {
@@ -11796,6 +11834,8 @@ ${sections.join('\n\n')}
         const lastIdx    = headers.findIndex(h => h === 'last_name' || h === 'apelido');
         const phoneIdx   = headers.findIndex(h => h === 'phone' || h === 'telefone');
         const companyIdx = headers.findIndex(h => h === 'company' || h === 'empresa');
+        const statusIdx  = headers.findIndex(h => _IMP_STATUS_HEADERS.includes(h));
+        const subIdx     = headers.findIndex(h => _IMP_DATE_HEADERS.includes(h));
         // Map extra fields by name (case-insensitive)
         const extraIdx = {};
         (extraFields || []).forEach(f => {
@@ -11813,6 +11853,11 @@ ${sections.join('\n\n')}
                 phone:   phoneIdx >= 0 ? (cols[phoneIdx]||null) : null,
                 company: companyIdx >= 0 ? (cols[companyIdx]||null) : null,
             };
+            // Estado e data de subscrição, quando o ficheiro os traz. Sem
+            // coluna (ou valor irreconhecível), fica a cargo do servidor: o
+            // estado por omissão e a data do momento da importação.
+            if (statusIdx >= 0) { const v = _impStatus(cols[statusIdx]); if (v) row.status = v; }
+            if (subIdx    >= 0) { const v = _impDate(cols[subIdx]);      if (v) row.subscribed_at = v; }
             // Capture extra field values
             const extra = {};
             Object.entries(extraIdx).forEach(([name, idx]) => {

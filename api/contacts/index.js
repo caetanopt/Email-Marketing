@@ -35,6 +35,47 @@ const IMPORT_INIT_SQL = `
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 // ── Shared batch processor (used by bulk_import and cron) ──────────────────
+// ── Estado e data de subscrição vindos do ficheiro importado ──────────────
+// Validado aqui, e não só no browser: a API de importação pode ser chamada
+// directamente.
+const CONTACT_STATUS = new Set(['active', 'unsubscribed', 'bounced', 'suppressed']);
+// Rótulos aceites no ficheiro, em português e inglês.
+const STATUS_ALIASES = {
+  active: 'active', activo: 'active', ativo: 'active', subscrito: 'active', sim: 'active', s: 'active', '1': 'active',
+  unsubscribed: 'unsubscribed', cancelado: 'unsubscribed', cancelada: 'unsubscribed', canceled: 'unsubscribed',
+  cancelled: 'unsubscribed', dessubscrito: 'unsubscribed', nao: 'unsubscribed', 'não': 'unsubscribed', n: 'unsubscribed', '0': 'unsubscribed',
+  bounced: 'bounced', rejeitado: 'bounced', devolvido: 'bounced',
+  suppressed: 'suppressed', suprimido: 'suppressed',
+};
+function normalizeStatus(v) {
+  const t = String(v == null ? '' : v).trim().toLowerCase();
+  if (!t) return null;
+  if (CONTACT_STATUS.has(t)) return t;
+  return STATUS_ALIASES[t] || null;
+}
+
+// Aceita ISO (2026-05-13), DD/MM/AAAA e DD-MM-AAAA — o formato que sai do
+// Excel português. Devolve uma data ISO ou null; datas absurdas são recusadas
+// em vez de gravadas.
+function normalizeSubscribedAt(v) {
+  const t = String(v == null ? '' : v).trim();
+  if (!t) return null;
+  let iso = null;
+  const dm = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (dm) iso = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
+  else if (/^\d{4}-\d{2}-\d{2}([T ].*)?$/.test(t)) iso = t;
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  // O Date do JS não recusa dias fora do mês: "2026-02-31" torna-se
+  // 2026-03-03 em silêncio, gravando uma data errada em vez de nenhuma.
+  // Compara-se com o que foi escrito para apanhar esse caso.
+  const [ay, am, ad] = iso.slice(0, 10).split('-').map(Number);
+  if (d.getUTCFullYear() !== ay || d.getUTCMonth() + 1 !== am || d.getUTCDate() !== ad) return null;
+  if (ay < 1990 || d.getTime() > Date.now() + 86400000) return null;
+  return d.toISOString();
+}
+
 async function processBatch(brandId, listId, batch) {
   let imported = 0, skipped = 0, failed = 0;
 
@@ -85,6 +126,8 @@ async function processBatch(brandId, listId, batch) {
         name:        c.name || prev.name,
         phone:       c.phone || prev.phone,
         company:     c.company || prev.company,
+        status:        c.status || prev.status,
+        subscribed_at: c.subscribed_at || prev.subscribed_at,
         _extra_data: c._extra_data || prev._extra_data,
       });
     }
@@ -100,16 +143,27 @@ async function processBatch(brandId, listId, batch) {
         const vals = [], params = [];
         let p = 1;
         validRows.forEach(c => {
-          vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import')`);
-          params.push(brandId, c.email, c.name||null, c.phone||null, c.company||null);
+          vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import',$${p++}::contact_status,COALESCE($${p++}::timestamptz, NOW()))`);
+          params.push(brandId, c.email, c.name||null, c.phone||null, c.company||null,
+                      normalizeStatus(c.status), normalizeSubscribedAt(c.subscribed_at));
         });
         const inserted = await q(
-          `INSERT INTO contacts (brand_id, email, name, phone, company, source)
+          `INSERT INTO contacts (brand_id, email, name, phone, company, source, status, created_at)
            VALUES ${vals.join(',')}
            ON CONFLICT (brand_id, email) DO UPDATE
              SET name=COALESCE(EXCLUDED.name, contacts.name),
                  phone=COALESCE(EXCLUDED.phone, contacts.phone),
                  company=COALESCE(EXCLUDED.company, contacts.company),
+                 -- O ficheiro pode corrigir a data de subscrição; sem valor,
+                 -- mantém-se a que já estava.
+                 created_at=COALESCE(EXCLUDED.created_at, contacts.created_at),
+                 -- O estado do ficheiro só se aplica a quem NÃO cancelou nem
+                 -- foi devolvido/suprimido: um ficheiro não deve reactivar
+                 -- alguém que pediu para sair.
+                 status=CASE
+                   WHEN contacts.status IN ('unsubscribed','bounced','suppressed') THEN contacts.status
+                   ELSE COALESCE(EXCLUDED.status, contacts.status)
+                 END,
                  source=EXCLUDED.source, updated_at=NOW()
            RETURNING id, email`,
           params
@@ -117,10 +171,17 @@ async function processBatch(brandId, listId, batch) {
         imported += inserted.length;
 
         if (listId && inserted.length) {
-          const lvals = inserted.map((_, i) => `($1,$${i+2})`).join(',');
+          // added_at leva a mesma data do ficheiro, quando existe: é o campo
+          // que representa de facto a subscrição naquela lista.
+          const dataPorEmail = new Map(validRows.map(c => [c.email, normalizeSubscribedAt(c.subscribed_at)]));
+          const lparams = [listId];
+          const lvals = inserted.map(r => {
+            lparams.push(r.id, dataPorEmail.get(r.email) || null);
+            return `($1,$${lparams.length - 1},COALESCE($${lparams.length}::timestamptz, NOW()))`;
+          }).join(',');
           await q(
-            `INSERT INTO list_members (list_id, contact_id) VALUES ${lvals} ON CONFLICT DO NOTHING`,
-            [listId, ...inserted.map(r => r.id)]
+            `INSERT INTO list_members (list_id, contact_id, added_at) VALUES ${lvals} ON CONFLICT DO NOTHING`,
+            lparams
           );
           const emailToId = Object.fromEntries(inserted.map(r => [r.email, r.id]));
           for (const c of validRows) {
