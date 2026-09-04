@@ -2096,13 +2096,6 @@
         document.execCommand(cmd, false, null);
         teRichInput(blockId, el);
     }
-    function teRichFontSize(blockId, px) {
-        if (!px) return;
-        const el = teRichComSelecao(blockId);
-        if (!el) { showToast('Selecciona primeiro a parte do texto a redimensionar.', 'info'); return; }
-        teWrapSelectionStyle(el, 'fontSize', px + 'px');
-        teRichInput(blockId, el);
-    }
     function teRichColor(blockId, color) {
         const el = teRichComSelecao(blockId);
         if (!el) { showToast('Selecciona primeiro a parte do texto a colorir.', 'info'); return; }
@@ -3467,8 +3460,6 @@
         if (!f) return '';
         const TE_RICH_TEXT_BLOCKS = new Set(['text','header','heading','button','footer','quote']);
         if (TE_RICH_TEXT_BLOCKS.has(b.type) && key === 'text') {
-            const sizes = [12,13,14,15,16,18,20,22,24,28,32];
-            const sizeOpts = sizes.map(s => `<option value="${s}">${s}px</option>`).join('');
             // shrink-0 e flex-wrap: a barra tem seis controlos e o painel de
             // propriedades é estreito. Sem isto os itens eram encolhidos pelo
             // flex até caberem — o último ficava com uns pixéis de largura e
@@ -3481,9 +3472,6 @@
                     ${toolBtn('<b>B</b>','bold','Negrito')}
                     ${toolBtn('<i>I</i>','italic','Itálico')}
                     ${toolBtn('<u>U</u>','underline','Sublinhado')}
-                    <select title="Tamanho da selecção" onchange="if(this.value){teRichFontSize('${b.id}',this.value);this.selectedIndex=0;}" class="shrink-0 h-6 text-[10px] border border-slate-200 rounded">
-                        <option value="">Tam.</option>${sizeOpts}
-                    </select>
                     <input type="color" title="Cor da selecção" onchange="teRichColor('${b.id}',this.value)" class="shrink-0 w-6 h-6 border border-slate-200 rounded cursor-pointer" />
                     <button type="button" title="Inserir ou editar link na selecção" onmousedown="event.preventDefault()" onclick="teRichLink('${b.id}')" class="shrink-0 w-6 h-6 flex items-center justify-center border border-slate-200 rounded hover:bg-slate-100">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5"/></svg>
