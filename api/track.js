@@ -1,6 +1,7 @@
 const { query, transaction } = require('../lib/db');
 const { buildLegalFooter, detectContentWidth } = require('../lib/emailFooter');
 const { previewTokenValido } = require('../lib/previewLink');
+const { stripEditorMetadata } = require('../lib/emailHtml');
 const APP_URL_PREVIEW = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
 const crypto = require('crypto');
 
@@ -252,7 +253,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       // que permite clicá-los sem perder a página de pré-visualização, e é a
       // única navegação que o sandbox do iframe autoriza (allow-popups). Sem
       // isto, um link com target="_self" ficava simplesmente inerte.
-      const semComentario = c.html_content.replace(/<!--teBlocks:[A-Za-z0-9+/=]+-->/g, '')
+      const semComentario = stripEditorMetadata(c.html_content)
         .replace(/<\/body>/i, `${rodape}</body>`);
       // Junto com o <base>, entra a recusa do modo escuro automático: as
       // campanhas gravadas antes de isso passar a sair no MJML não a têm no

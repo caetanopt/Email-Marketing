@@ -39,6 +39,13 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['metadados do editor fora do email', `const {stripEditorMetadata}=require('./lib/emailHtml');
+    const h='<body>Olá</body></html><!--teBlocks:eyJ2IjoyfQ==-->';
+    const r=stripEditorMetadata(h);
+    if(/teBlocks/.test(r))throw new Error('o marcador dos blocos continua no email: '+r);
+    if(!/Olá/.test(r))throw new Error('o conteúdo foi perdido: '+r);
+    const cond='<!--[if mso | IE]><table><![endif]-->x';
+    if(stripEditorMetadata(cond)!==cond)throw new Error('as condicionais do Outlook não podem ser tocadas — são elas que fazem o layout nesse cliente')`],
   ['contagem de cliques só em <a>', `const {injectTracking}=require('./lib/emailHtml');
     const h='<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet"><a href="https://caetano.pt/x">i</a>';
     const r=injectTracking(h,{appUrl:'https://e.pt',campaignId:1,contactId:2,token:'T',utm:''});

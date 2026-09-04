@@ -7,7 +7,7 @@ const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign')
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
-const { injectTracking: injectarLinks, htmlToText } = require('../../lib/emailHtml');
+const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata } = require('../../lib/emailHtml');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -684,7 +684,9 @@ module.exports = async function handler(req, res) {
               }) + `<img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
-              const rawContent = c.html_content || '';
+              // Fora o marcador dos blocos do editor: pertence à base de
+              // dados, não ao email enviado.
+              const rawContent = stripEditorMetadata(c.html_content || '');
               if (rawContent.trimStart().startsWith('<mjml>')) {
                 console.warn(`Campaign ${id}: template stored as MJML — re-save to convert to HTML.`);
               }
@@ -959,7 +961,7 @@ module.exports = async function handler(req, res) {
           appUrl: APP_URL, campaignId: id, contactId: 0, token: trackToken(id, 0), utm: utmStrT,
         });
         const testVars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
-        let rawHtml = (c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>');
+        let rawHtml = stripEditorMetadata(c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>');
         // Apply brand variables first (use function replacer to avoid $& interpolation issues)
         for (const [k, v] of Object.entries(testVars)) {
           const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
