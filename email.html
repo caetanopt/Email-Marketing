@@ -4178,11 +4178,12 @@ ${teSerializeBlocksComment(srcBlocks)}
     // topo, para não haver duas listas de atributos a divergir.
     //
     // O que muda dentro de uma coluna: não existe uma secção por bloco, por
-    // isso o atributo de fundo da secção não tem onde ser posto. Mantém-se o
-    // comportamento actual — só o separador pinta o seu próprio fundo — porque
-    // mudá-lo alteraria o aspecto dos emails já desenhados. Ver a nota sobre
-    // esta divergência entre o editor e o email enviado.
-    const TE_INNER_PINTA_FUNDO = new Set(['divider']);
+    // isso o fundo do bloco tem de ser pintado pelo próprio elemento, com
+    // container-background-color. Antes só o separador o fazia, e daí vinha
+    // uma diferença real entre o que se desenha e o que se recebe: o editor
+    // pinta o fundo de cada bloco filho, o email mostrava o fundo da coluna.
+    // Agora o email segue o editor.
+    //
     // Tipos suportados dentro de colunas cujo padding e fundo vivem na
     // <mj-section> em vez do elemento. Redes sociais, acordeão, navegação e
     // carrossel também são destes, mas nunca foram suportados dentro de
@@ -4193,16 +4194,18 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!b || b.type === 'columns' || b.type === 'hero') return '';
         const p = teBlockToMjmlParts(b, '');
         if (!p.mergeable || !p.inner) return '';
+        const fundoAttr = (cor) => cor ? ` container-background-color="${cor}"` : '';
         let inner;
         if (p.padOnEl) {
-            const fundo = (TE_INNER_PINTA_FUNDO.has(b.type) && p.bg)
-                ? ` container-background-color="${p.bg}"`
-                : '';
-            inner = p.inner.replace(TE_CBG_SLOT, fundo);
+            // p.bg é o fundo que o editor pinta neste bloco (nos botões, a cor
+            // da área à volta). Blocos sem fundo próprio — espaçador, bloco de
+            // link — continuam a deixar ver o fundo da coluna.
+            inner = p.inner.replace(TE_CBG_SLOT, fundoAttr(p.bg));
         } else if (TE_INNER_SEM_SECCAO.has(b.type)) {
-            // Sem secção própria, o padding passa para o elemento — era o que
-            // a versão anterior desta função fazia.
-            inner = p.inner.replace(/^(\s*<mj-[a-z-]+)/, `$1 padding="${teMjmlPad(b)}"`);
+            // Sem secção própria, o padding e o fundo passam para o elemento.
+            const corDaSeccao = (p.attrs || '').match(/background-color="([^"]*)"/);
+            inner = p.inner.replace(/^(\s*<mj-[a-z-]+)/,
+                `$1 padding="${teMjmlPad(b)}"${fundoAttr(corDaSeccao && corDaSeccao[1])}`);
         } else {
             return '';
         }
