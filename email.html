@@ -1769,6 +1769,7 @@
                 const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(t.html_content || '') : null;
                 if (blocks && blocks.length) {
                     teConsumeIds(blocks);
+                    teAplicarDefinicoesDoTemplate();
                     teState.blocks = blocks;
                     teState.selected = null;
                     teRender();
@@ -3731,25 +3732,55 @@
     // ── Blocks <-> HTML round trip ─────────────────────────────────
     // O HTML de email gerado não é re-parseável de forma fiável, por isso
     // o estado dos blocos é embebido num comentário no próprio HTML.
+    // O marcador guardava só o array de blocos, e a "Cor de fundo" do
+    // template não vive em nenhum bloco — vive em teState.bodyBg. Resultado:
+    // definir a cor, gravar e reabrir a campanha devolvia sempre o valor por
+    // defeito. Passa a guardar-se um objecto com os blocos e as definições do
+    // template. O formato anterior (um array) continua a ser lido.
     function teSerializeBlocksComment(blocks) {
         try {
             const clean = JSON.parse(JSON.stringify(blocks, (k, v) => k === '_pngUrl' ? undefined : v));
-            const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(clean))));
+            const dados = { v: 2, bodyBg: teState.bodyBg || null, blocks: clean };
+            const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
             return `<!--teBlocks:${b64}-->`;
         } catch (e) { return ''; }
+    }
+    // Definições do template lidas do último conteúdo restaurado, ou null se o
+    // conteúdo não as trouxer (formato anterior). Não são aplicadas aqui: quem
+    // está mesmo a abrir o template no editor chama
+    // teAplicarDefinicoesDoTemplate(). Inserir um bloco guardado no meio de um
+    // template não pode mudar a cor de fundo do template que está aberto.
+    let _teTemplateSettings = null;
+    const TE_BODY_BG_DEFAULT = '#f5f7fa';
+    function teAplicarDefinicoesDoTemplate() {
+        teState.bodyBg = _teTemplateSettings?.bodyBg || TE_BODY_BG_DEFAULT;
     }
     function teExtractBlocksFromHtml(html) {
         const m = /<!--teBlocks:([A-Za-z0-9+/=]+)-->/.exec(html || '');
         if (!m) return null;
         try {
-            const blocks = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-            return Array.isArray(blocks) && blocks.length ? blocks : null;
+            const dados = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+            if (Array.isArray(dados)) return dados.length ? dados : null;   // formato anterior
+            if (!dados || !Array.isArray(dados.blocks)) return null;
+            if (dados.bodyBg) _teTemplateSettings = { bodyBg: dados.bodyBg };
+            return dados.blocks.length ? dados.blocks : null;
         } catch (e) { return null; }
     }
     // Restaura blocos a partir de conteúdo guardado: HTML com marcador (novo formato)
     // ou MJML (formato antigo). Devolve null se nenhum formato for reconhecido.
     function teBlocksFromContent(content) {
-        return teExtractBlocksFromHtml(content) || teParseMjmlToBlocks(content) || teHtmlToBlocks(content);
+        _teTemplateSettings = null;
+        const doMarcador = teExtractBlocksFromHtml(content);
+        if (doMarcador) return doMarcador;
+        // teParseMjmlToBlocks escreve a cor directamente em teState.bodyBg (é o
+        // que o "Aplicar no visual" espera). Aqui recolhe-se esse valor para
+        // _teTemplateSettings e repõe-se o estado, para a decisão de aplicar
+        // ficar num só sítio.
+        const anterior = teState.bodyBg;
+        const doMjml = teParseMjmlToBlocks(content);
+        if (teState.bodyBg !== anterior) _teTemplateSettings = { bodyBg: teState.bodyBg };
+        teState.bodyBg = anterior;
+        return doMjml || teHtmlToBlocks(content);
     }
     // Reverse-parses HTML produced by teBuildEmailHtml — backward compat for blocks saved
     // before the <!--teBlocks:--> comment was introduced.
@@ -7051,6 +7082,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             const blocks = (typeof teBlocksFromContent === 'function') ? teBlocksFromContent(b.html_content || '') : null;
             teConsumeIds(blocks || []);
             if (_teBlocksStash === null) _teBlocksStash = teState.blocks; // preserva os blocos do wizard
+            teAplicarDefinicoesDoTemplate();
             teState.blocks = blocks || [];
             teState.selected = null;
             _teCtx = 'te_';
@@ -9367,6 +9399,9 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (c.html_content && typeof teBlocksFromContent === 'function') {
             const parsed = teBlocksFromContent(c.html_content);
             if (parsed?.length) teConsumeIds(parsed);
+            // A cor de fundo é do template que está a ser aberto — nunca a que
+            // ficou da campanha anterior, e por isso é sempre reposta.
+            teAplicarDefinicoesDoTemplate();
             teState.blocks = (parsed && parsed.length) ? parsed : [];
             teState.selected = null;
         } else {
@@ -10899,6 +10934,7 @@ ${sections.join('\n\n')}
                                 if (typeof teBlocksFromContent === 'function') {
                                     const parsed = c.html_content ? teBlocksFromContent(c.html_content) : null;
                                     if (parsed?.length) teConsumeIds(parsed);
+                                    teAplicarDefinicoesDoTemplate();
                                     teState.blocks = (parsed && parsed.length) ? parsed : [];
                                     teState.selected = null;
                                     if (_wizStep === 2 && typeof teRenderCanvas === 'function') {
