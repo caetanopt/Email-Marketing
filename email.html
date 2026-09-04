@@ -706,7 +706,7 @@
             <tr class="hover:bg-slate-50 cursor-pointer" data-name="${escHtml((c.name||'').toLowerCase())}" data-status="${c.status}" onclick="showCampaign(null, _campaignsCache[${i}])">
                 <td class="px-4 py-3" onclick="event.stopPropagation()">${deletable ? `<input type="checkbox" class="camp-bulk-chk rounded border-slate-300 cursor-pointer" data-id="${c.id}" data-name="${escHtml(c.name||'')}" onchange="_updateCampBulkBar()">` : ''}</td>
                 <td class="px-4 py-3 text-xs text-slate-400 font-mono">${String(c.brand_num||0).padStart(2,'0')}-${Math.floor(new Date(c.created_at).getTime()/1000)}</td>
-                <td class="px-4 py-3"><p class="font-medium text-slate-900">${escHtml(c.name)}</p><p class="text-xs text-slate-500">${escHtml(c.subject||'—')}</p></td>
+                <td class="px-4 py-3">${_campTitulo(c)}</td>
                 <td class="px-4 py-3">
                     ${_statusBadge[c.status]||c.status}
                     ${_currentUserRole !== 'viewer' ? `<span id="camp-import-badge-${c.id}" class="${(_wizImporting && _wizImportingCampaignId == c.id) ? '' : 'hidden'}">
@@ -772,6 +772,25 @@
                 _applyCampaignsData(fresh); // re-agenda o próximo poll se ainda houver activas
             } catch (_) { _scheduleCampaignsPoll(data); /* erro transitório — tenta de novo */ }
         }, 8000);
+    }
+
+    // Nome e assunto de uma campanha, sem repetição.
+    //
+    // Quem não preenche o nome fica com ele igual ao assunto (é o que a
+    // gravação faz, e é também como o assistente o lê de volta: um nome igual
+    // ao assunto aparece-lhe como campo vazio). Mostrar os dois punha a mesma
+    // frase duas vezes seguidas. O nome só aparece quando está preenchido e
+    // diz algo diferente do assunto.
+    function _campNomeProprio(c) {
+        const nome = (c?.name || '').trim();
+        const assunto = (c?.subject || '').trim();
+        return (nome && nome !== assunto) ? nome : '';
+    }
+    function _campTitulo(c) {
+        const nome = _campNomeProprio(c);
+        const assunto = (c?.subject || '').trim();
+        if (!nome) return `<p class="font-medium text-slate-900">${escHtml(assunto || '—')}</p>`;
+        return `<p class="font-medium text-slate-900">${escHtml(nome)}</p><p class="text-xs text-slate-500">${escHtml(assunto || '—')}</p>`;
     }
 
     function _applyCampaignsData(data) {
@@ -9512,8 +9531,12 @@ ${teSerializeBlocksComment(srcBlocks)}
         m.classList.remove('hidden'); m.classList.add('flex');
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
-        document.getElementById('campPreviewModalTitle').textContent = c.name || '—';
-        document.getElementById('campPreviewModalSubject').textContent = c.subject ? `Assunto: ${c.subject}` : '';
+        // Mesma regra da listagem: sem nome próprio, o assunto encabeça e não
+        // se repete por baixo.
+        const nomeProprio = _campNomeProprio(c);
+        const assunto = (c.subject || '').trim();
+        document.getElementById('campPreviewModalTitle').textContent = nomeProprio || assunto || '—';
+        document.getElementById('campPreviewModalSubject').textContent = (nomeProprio && assunto) ? `Assunto: ${assunto}` : '';
         const body = document.getElementById('campPreviewModalBody');
         body.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">A carregar…</p>';
         try {

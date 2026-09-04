@@ -263,6 +263,16 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
       const emailHtml = /<head[^>]*>/i.test(semComentario)
         ? semComentario.replace(/<head([^>]*)>/i, `<head$1>${cabeca}`)
         : `${cabeca}${semComentario}`;
+      // Quem não preenche o nome da campanha fica com ele igual ao assunto,
+      // e a barra mostrava a mesma frase duas vezes. O nome só encabeça a
+      // barra quando diz algo diferente do assunto; caso contrário fica só o
+      // assunto, sem segunda linha.
+      const nomeCampanha = (c.name || '').trim();
+      const assuntoCampanha = (c.subject || '').trim();
+      const nomeProprio = (nomeCampanha && nomeCampanha !== assuntoCampanha) ? nomeCampanha : '';
+      const tituloPreview = nomeProprio || assuntoCampanha || 'Campanha';
+      const subtituloPreview = nomeProprio ? assuntoCampanha : '';
+
       const brandRight = c.brand_logo
         ? `<img src="${esc(c.brand_logo)}" alt="${esc(c.brand_name||'')}" class="bar-logo">`
         : `<span class="bar-brand">${esc(c.brand_name||'')}</span>`;
@@ -282,7 +292,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 .bar-logo{height:32px;width:auto;object-fit:contain;display:block;filter:brightness(0) invert(1);opacity:.85}
 .wrap{padding:24px 16px;display:flex;justify-content:center}iframe{border:none;background:#fff;box-shadow:0 4px 32px rgba(0,0,0,.12);border-radius:8px;width:100%;max-width:${Math.max(680, larguraEmail + 40)}px;min-height:500px;display:block}</style>
 </head><body>
-<div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(c.name||'Campanha')}</div>${c.subject?`<div class="bar-sub">${esc(c.subject)}</div>`:''}</div></div>${brandRight}</div>
+<div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(tituloPreview)}</div>${subtituloPreview?`<div class="bar-sub">${esc(subtituloPreview)}</div>`:''}</div></div>${brandRight}</div>
 <div class="wrap"><iframe id="f" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="Pré-visualização do email"></iframe></div>
 <script>(function(){const h=${JSON.stringify(emailHtml)};const f=document.getElementById('f');f.srcdoc=h;f.addEventListener('load',function(){try{const s=f.contentDocument.documentElement.scrollHeight;if(s>100)f.style.height=s+'px';}catch(_){}});})();</script>
 </body></html>`;
