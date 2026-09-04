@@ -4006,7 +4006,9 @@
             headParts.push(`    <mj-style>.te-btn-full a { width:100% !important; box-sizing:border-box !important; text-align:center; }</mj-style>`);
         }
         const head = headParts.length ? `  <mj-head>\n${headParts.join('\n')}\n  </mj-head>\n` : '';
-        return `<mjml>
+        // lang="pt": sem isto a MJML escreve lang="und" ("undetermined") no
+        // <html>, e um leitor de ecrã não sabe em que língua ler o email.
+        return `<mjml lang="pt">
 ${head}  <mj-body width="${teEmailWidth()}px" background-color="#ffffff">
 ${body}
   </mj-body>
@@ -4281,6 +4283,12 @@ ${teSerializeBlocksComment(srcBlocks)}
     // É substituído sempre; se algum escapasse, a MJML acusava o atributo
     // inválido em vez de falhar em silêncio.
     const TE_CBG_SLOT = '{{te-cbg}}';
+    // O texto dos blocos passa pelo sanitizador na geração, não só ao sair do
+    // campo no editor. Um bloco gravado antes de uma correcção do sanitizador
+    // guardava marcação a mais (por exemplo <span> sem estilo, deixado ao
+    // formatar e desformatar) e essa marcação seguia no email até alguém
+    // reeditar aquele bloco. É idempotente: o que já está limpo não muda.
+    const teTextoLimpo = (t) => teSanitizeRichText(t || '');
     function teBlockToMjmlParts(b, i) {
         const txt = (text,color,size,weight,align,lh,extra='') => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}${extra}>${teNl2brX(teEscape(text))}</mj-text>`;
         // Padding a colocar no elemento.
@@ -4289,16 +4297,16 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'header':
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>` };
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>` };
             }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>`;
+                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>`;
                 return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:mjTextTag };
             }
             case 'button': {
@@ -4327,7 +4335,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, padOnEl:true, bg:null, inner:`${i}    <mj-spacer${TE_CBG_SLOT} height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${b.text||''}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>` };
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -4380,7 +4388,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'hero': {
                 // mj-hero is a direct <mj-body> child (like mj-section), not
                 // wrapped inside one — never merges with neighbouring blocks.
-                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${b.text||''}</mj-text>\n${i}</mj-hero>` };
+                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${teTextoLimpo(b.text)}</mj-text>\n${i}</mj-hero>` };
             }
             case 'accordion': {
                 const els = (b.items||[]).map(item => `${i}      <mj-accordion-element>\n${i}        <mj-accordion-title background-color="${b.bgColor||'#ffffff'}" color="${b.titleColor||'#0f172a'}" font-size="${b.fontSize||14}px">${item.title||''}</mj-accordion-title>\n${i}        <mj-accordion-text background-color="${b.bgColor||'#ffffff'}" color="${b.textColor||'#475569'}" font-size="${b.fontSize||14}px">${item.text||''}</mj-accordion-text>\n${i}      </mj-accordion-element>`).join('\n');

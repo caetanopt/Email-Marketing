@@ -7,7 +7,7 @@ const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign')
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
-const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata } = require('../../lib/emailHtml');
+const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle } = require('../../lib/emailHtml');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -711,6 +711,7 @@ module.exports = async function handler(req, res) {
               }
               rawHtml = injectTracking(rawHtml, id, contact.contact_id);
               rawHtml = injectPreviewText(rawHtml, c.preview_text);
+              rawHtml = injectTitle(rawHtml, c.subject);
               const finalHtml = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
@@ -975,6 +976,7 @@ module.exports = async function handler(req, res) {
           .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
         rawHtml = injectTrackingTest(rawHtml);
         rawHtml = injectPreviewText(rawHtml, c.preview_text);
+        rawHtml = injectTitle(rawHtml, c.subject);
         const finalHtml = rawHtml.includes('</body>')
           ? rawHtml.replace('</body>', unsubBlock + '</body>')
           : rawHtml + unsubBlock;
