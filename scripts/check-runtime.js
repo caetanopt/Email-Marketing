@@ -39,6 +39,17 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['contagem de cliques só em <a>', `const {injectTracking}=require('./lib/emailHtml');
+    const h='<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet"><a href="https://caetano.pt/x">i</a>';
+    const r=injectTracking(h,{appUrl:'https://e.pt',campaignId:1,contactId:2,token:'T',utm:''});
+    if(/<link href="https:\\/\\/e\\.pt/.test(r))throw new Error('a folha de estilo foi reescrita — cliques falsos e fonte que não carrega');
+    if(!/<a href="https:\\/\\/e\\.pt\\/api\\/track/.test(r))throw new Error('o link do <a> não foi reescrito')`],
+  ['texto simples sem lixo', `const {htmlToText}=require('./lib/emailHtml');
+    const h='<html><head><title>t</title></head><body><!--[if mso]><xml><o:PixelsPerInch>96</o:PixelsPerInch></xml><![endif]--><div>   </div><div>Olá</div>   \\n   \\n<div>Adeus</div></body></html>';
+    const t=htmlToText(h);
+    if(/96/.test(t))throw new Error('o valor de PixelsPerInch entrou no texto: '+JSON.stringify(t));
+    if(/^\\s+$/m.test(t))throw new Error('linhas só com espaços: '+JSON.stringify(t));
+    if(t!=='Olá\\n\\nAdeus')throw new Error('resultado inesperado: '+JSON.stringify(t))`],
   ['link da versão web', `const p=require('./lib/previewLink');const t=p.previewToken(74);
     if(!p.previewTokenValido(74,t))throw new Error('token novo recusado');
     if(!p.previewTokenValido(74,p.previewTokenLegacy(74)))throw new Error('token antigo recusado — links já enviados deixariam de abrir');

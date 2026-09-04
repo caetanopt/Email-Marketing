@@ -1937,6 +1937,17 @@
                         continue;
                     }
                     const keptStyle = tag === 'SPAN' ? cleanStyle(child) : '';
+                    // Um <span> que não fique com estilo nenhum não pinta nada:
+                    // é só marcação a mais no email (o editor deixa-os para
+                    // trás ao formatar e desformatar texto). Desembrulha-se,
+                    // ficando o conteúdo.
+                    if (tag === 'SPAN' && !keptStyle) {
+                        const primeiroSpan = child.firstChild;
+                        while (child.firstChild) node.insertBefore(child.firstChild, child);
+                        node.removeChild(child);
+                        child = primeiroSpan || next;
+                        continue;
+                    }
                     // Guarda o href antes de limpar os atributos; sem um
                     // endereço aceitável o link é desembrulhado e fica só o texto.
                     const keptHref = tag === 'A' ? teSafeHref(child.getAttribute('href')) : '';

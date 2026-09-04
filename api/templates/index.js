@@ -74,7 +74,14 @@ module.exports = async function handler(req, res) {
     const { mjml } = req.body || {};
     if (!mjml || typeof mjml !== 'string') return res.status(400).json({ error: 'mjml obrigatório' });
     try {
-      const result = await mjml2html(mjml, { validationLevel: 'soft' });
+      // fonts: {} desliga a importação automática de fontes web. A MJML olha
+      // para os nomes usados em font-family e, se reconhecer um dos seus
+      // (Roboto, Ubuntu, ...), acrescenta ao <head> um <link> e um @import do
+      // Google Fonts. O nosso tipo de letra por defeito inclui "Roboto" como
+      // alternativa, e por isso todos os emails saíam com essa importação —
+      // peso e um pedido a um terceiro que não serve para nada, já que a
+      // pilha tem sempre alternativas locais.
+      const result = await mjml2html(mjml, { validationLevel: 'soft', fonts: {} });
       return res.status(200).json({ html: result.html, errors: (result.errors || []).map(e => e.formattedMessage || e.message) });
     } catch (err) {
       console.error('compile-mjml error:', err.message);

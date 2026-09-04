@@ -7,6 +7,7 @@ const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign')
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
+const { injectTracking: injectarLinks, htmlToText } = require('../../lib/emailHtml');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -100,25 +101,6 @@ async function authorizeCampaign(userId, campaignId) {
   return r[0] || null;
 }
 
-function htmlToText(html) {
-  return (html || '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '• ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -668,28 +650,9 @@ module.exports = async function handler(req, res) {
         const utmStr = Object.entries(utmParams).filter(([, v]) => v)
           .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
-        function injectTracking(html, campaignId, contactId) {
-          return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, rawUrl) => {
-            // Decode HTML entities that esc() may have introduced (& → &amp;, etc.)
-            const url = rawUrl
-              .replace(/&amp;/g, '&')
-              .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>')
-              .replace(/&quot;/g, '"');
-            // Never wrap unsubscribe / resubscribe links or already-wrapped tracking links
-            if (url.includes('action=unsubscribe') || url.includes('action=resubscribe')) return match;
-            if (url.includes('/api/track?')) return match; // already wrapped — skip
-            // Build final destination URL (with UTM if configured)
-            let dest = url;
-            if (utmStr) {
-              const sep = dest.includes('?') ? '&' : '?';
-              dest = `${dest}${sep}${utmStr}`;
-            }
-            const tok = trackToken(campaignId, contactId);
-            const redirect = `${APP_URL}/api/track?type=click&cid=${campaignId}&uid=${contactId}&t=${tok}&url=${encodeURIComponent(dest)}`;
-            return `href="${redirect}"`;
-          });
-        }
+        const injectTracking = (html, campaignId, contactId) => injectarLinks(html, {
+          appUrl: APP_URL, campaignId, contactId, token: trackToken(campaignId, contactId), utm: utmStr,
+        });
 
         const RATE = parseInt(process.env.SES_RATE || '14', 10);
         // Largura do rodapé: a do HTML desta campanha, não a definida hoje em
@@ -987,23 +950,14 @@ module.exports = async function handler(req, res) {
         const utmParamsT = c.utm_params || {};
         const utmStrT = Object.entries(utmParamsT).filter(([, v]) => v)
           .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-        function injectTrackingTest(html) {
-          return html.replace(/href="(https?:\/\/[^"]+)"/gi, (match, rawUrl) => {
-            const url = rawUrl.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-            if (url.includes('action=unsubscribe') || url.includes('action=resubscribe') || url.includes('/api/track?')) return match;
-            let dest = url;
-            if (utmStrT) { const sep = dest.includes('?') ? '&' : '?'; dest = `${dest}${sep}${utmStrT}`; }
-            // O token tem de ser o HMAC real: o endpoint de clique compara-o
-            // com trackToken(cid, uid) e, se não bater, ignora o destino e
-            // redirecciona para a raiz da aplicação. Com o "t=test" que aqui
-            // estava, TODOS os links de um email de teste abriam a plataforma
-            // em vez do endereço configurado no bloco.
-            // uid=0 identifica o clique como sendo de teste: o /api/track
-            // redirecciona mas não o registra nas estatísticas da campanha.
-            const redirect = `${APP_URL}/api/track?type=click&cid=${id}&uid=0&t=${trackToken(id, 0)}&url=${encodeURIComponent(dest)}`;
-            return `href="${redirect}"`;
-          });
-        }
+        // uid=0 identifica o clique como sendo de teste: o /api/track
+        // redirecciona para o destino mas não o regista nas estatísticas da
+        // campanha. O token tem de ser o HMAC real — com o "t=test" que aqui
+        // esteve, todos os links de um email de teste abriam a plataforma em
+        // vez do endereço configurado no bloco.
+        const injectTrackingTest = (html) => injectarLinks(html, {
+          appUrl: APP_URL, campaignId: id, contactId: 0, token: trackToken(id, 0), utm: utmStrT,
+        });
         const testVars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
         let rawHtml = (c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>');
         // Apply brand variables first (use function replacer to avoid $& interpolation issues)
