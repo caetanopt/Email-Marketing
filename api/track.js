@@ -1,5 +1,5 @@
 const { query, transaction } = require('../lib/db');
-const { buildLegalFooter } = require('../lib/emailFooter');
+const { buildLegalFooter, detectContentWidth } = require('../lib/emailFooter');
 const APP_URL_PREVIEW = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
 const crypto = require('crypto');
 
@@ -228,15 +228,17 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
         const gs = await query('SELECT disclaimer, footer_logo_url, footer_socials, email_width FROM global_settings WHERE id=1');
         footerCfg = gs[0] || {};
       } catch (_) {}
-      // O iframe tem de caber a largura definida em Definições Globais, senão
-      // um email mais largo do que a moldura aparecia cortado na
-      // pré-visualização.
-      const larguraEmail = Math.min(900, Math.max(320, parseInt(footerCfg.email_width, 10) || 640));
+      // Largura desta campanha: a que está declarada no seu HTML, com a
+      // definição global como recurso. Serve o rodapé (para não sair mais
+      // largo do que o corpo) e a moldura do iframe (para não cortar um email
+      // mais largo do que ela).
+      const larguraEmail = Math.min(900, Math.max(320,
+        detectContentWidth(c.html_content) || parseInt(footerCfg.email_width, 10) || 640));
       const rodape = buildLegalFooter({
         globalDisclaimer: footerCfg.disclaimer,
         footerLogoUrl: footerCfg.footer_logo_url,
         footerSocials: footerCfg.footer_socials || {},
-        width: footerCfg.email_width,
+        width: larguraEmail,
         brandName: c.brand_name,
         variables: c.brand_variables || {},
         // Numa pré-visualização não há destinatário nem link próprio de

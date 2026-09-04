@@ -2317,6 +2317,10 @@
         // Altura de linha das Definições Globais — antes ficava sempre no 1.6
         // fixo de teDefaults, ignorando o valor global.
         if (_teGlobalLineHeight !== null && 'lineHeight' in block) block.lineHeight = _teGlobalLineHeight;
+        // Uma imagem nova ocupa a largura do email. Estava fixa nos 600 de
+        // teDefaults, o que deixava uma folga de cada lado assim que a largura
+        // global deixou de ser 600.
+        if (type === 'image') block.width = teEmailWidth();
         return block;
     }
 
@@ -3339,7 +3343,7 @@
         if (!root) return;
         root.innerHTML = '';
         const card = document.createElement('div');
-        card.style.cssText = 'background:#ffffff;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.1);';
+        card.style.cssText = `background:#ffffff;max-width:${teEmailWidth()}px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.1);`;
         teState.blocks.forEach((b) => card.appendChild(teRenderBlockContent(b)));
         root.appendChild(card);
     }
@@ -4018,8 +4022,9 @@ ${body}
 <body style="margin:0;padding:0;background:#ffffff;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color-scheme:only light">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="color-scheme:only light">
 <tr><td align="center" style="padding:20px 0">
-<!-- A cor de fundo do template vive na tabela de 600px, não no <body> nem na
-     tabela de 100%: no <body> pintava toda a página, para fora do email. -->
+<!-- A cor de fundo do template vive na tabela do conteúdo, não no <body> nem
+     na tabela de 100%: no <body> pintava toda a página, para fora do email.
+     A largura vem de Definições Globais -> Tipografia. -->
 <table role="presentation" width="${teEmailWidth()}" cellpadding="0" cellspacing="0" border="0" bgcolor="${teState.bodyBg||'#ffffff'}" style="max-width:${teEmailWidth()}px;width:100%;background:${teState.bodyBg||'#ffffff'}">
 ${bodyRows}
 </table>
@@ -7897,7 +7902,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 previewBox.innerHTML = '';
                 if (teState.blocks.length) {
                     const card = document.createElement('div');
-                    card.style.cssText = 'background:#ffffff;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:6px;overflow:hidden;';
+                    card.style.cssText = `background:#ffffff;max-width:${teEmailWidth()}px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.1);border-radius:6px;overflow:hidden;`;
                     teState.blocks.forEach(b => card.appendChild(teRenderBlockContent(b)));
                     previewBox.appendChild(card);
                 } else {

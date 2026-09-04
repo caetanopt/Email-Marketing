@@ -5,7 +5,7 @@ const { SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } = require('
 const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
-const { buildLegalFooter } = require('../../lib/emailFooter');
+const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -699,6 +699,11 @@ module.exports = async function handler(req, res) {
         }
 
         const RATE = parseInt(process.env.SES_RATE || '14', 10);
+        // Largura do rodapé: a do HTML desta campanha, não a definida hoje em
+        // Definições Globais — uma campanha gravada com outra largura ficava
+        // com o rodapé mais largo do que o corpo. É igual para todos os
+        // destinatários, por isso calcula-se uma vez.
+        const larguraConteudoBatch = detectContentWidth(c.html_content) || footerCfgBatch.email_width;
         let sent = 0, failed = 0;
         const batchState = { quotaHit: false };
 
@@ -715,7 +720,7 @@ module.exports = async function handler(req, res) {
                 globalDisclaimer: footerCfgBatch.disclaimer,
                 footerLogoUrl: footerCfgBatch.footer_logo_url,
                 footerSocials: footerCfgBatch.footer_socials || {},
-                width: footerCfgBatch.email_width,
+                width: larguraConteudoBatch,
                 variables: c.variables || {},
                 email: contact.email,
                 unsubUrl,
@@ -967,6 +972,10 @@ module.exports = async function handler(req, res) {
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
         const unsubUrl = `${APP_URL}#unsubscribe`;
         const footerCfgTest = await loadFooterConfig();
+        // A largura do rodapé é a do HTML desta campanha — que pode ter sido
+        // gravada com outra largura que não a definida hoje em Definições
+        // Globais, e nesse caso o rodapé saía mais largo do que o email.
+        const larguraConteudoTest = detectContentWidth(c.html_content) || footerCfgTest.email_width;
         // Exactamente o mesmo rodapé do envio real, sem nada acrescentado: o
         // objectivo de um envio de teste é ver o email tal como vai sair, e um
         // aviso no corpo alterava o que se está a validar. Que é um teste
@@ -975,7 +984,7 @@ module.exports = async function handler(req, res) {
           globalDisclaimer: footerCfgTest.disclaimer,
           footerLogoUrl: footerCfgTest.footer_logo_url,
           footerSocials: footerCfgTest.footer_socials || {},
-          width: footerCfgTest.email_width,
+          width: larguraConteudoTest,
           variables: c.variables || {},
           email: to,
           unsubUrl,
