@@ -2056,22 +2056,56 @@
         teRenderCanvas();
         teRenderMjml();
     }
-    function teRichExec(blockId, cmd) {
+    // Última selecção feita dentro de um editor de texto.
+    //
+    // O <select> do tamanho e o selector de cor tinham
+    // onmousedown="event.preventDefault()" para o campo não perder a selecção
+    // ao serem clicados — mas em Chrome isso impede também que o próprio menu
+    // abra, e por isso a lista de tamanhos não fazia nada. Tirado o
+    // preventDefault, é este registo que garante que a selecção não se perde:
+    // guarda-se enquanto se escreve/selecciona no campo e repõe-se antes de
+    // aplicar o comando.
+    let _teRichRange = null;
+    function teRichGuardaSelecao(blockId) {
         const el = document.getElementById('richtext-' + blockId);
-        if (!el) return;
+        const sel = window.getSelection();
+        if (!el || !sel || !sel.rangeCount) return;
+        const r = sel.getRangeAt(0);
+        if (r.collapsed || !el.contains(r.commonAncestorContainer)) return;
+        _teRichRange = { id: blockId, range: r.cloneRange() };
+    }
+    // Devolve o campo com uma selecção válida lá dentro, ou null se não houver
+    // nada seleccionado (nem agora nem guardado).
+    function teRichComSelecao(blockId) {
+        const el = document.getElementById('richtext-' + blockId);
+        if (!el) return null;
+        const sel = window.getSelection();
+        const viva = sel && sel.rangeCount && !sel.isCollapsed
+            && el.contains(sel.getRangeAt(0).commonAncestorContainer);
+        if (viva) return el;
+        const guardada = (_teRichRange && _teRichRange.id === blockId) ? _teRichRange.range : null;
+        if (!guardada || !el.contains(guardada.commonAncestorContainer)) return null;
+        el.focus();
+        sel.removeAllRanges();
+        sel.addRange(guardada);
+        return el;
+    }
+    function teRichExec(blockId, cmd) {
+        const el = teRichComSelecao(blockId);
+        if (!el) { showToast('Selecciona primeiro a parte do texto a formatar.', 'info'); return; }
         document.execCommand(cmd, false, null);
         teRichInput(blockId, el);
     }
     function teRichFontSize(blockId, px) {
         if (!px) return;
-        const el = document.getElementById('richtext-' + blockId);
-        if (!el) return;
+        const el = teRichComSelecao(blockId);
+        if (!el) { showToast('Selecciona primeiro a parte do texto a redimensionar.', 'info'); return; }
         teWrapSelectionStyle(el, 'fontSize', px + 'px');
         teRichInput(blockId, el);
     }
     function teRichColor(blockId, color) {
-        const el = document.getElementById('richtext-' + blockId);
-        if (!el) return;
+        const el = teRichComSelecao(blockId);
+        if (!el) { showToast('Selecciona primeiro a parte do texto a colorir.', 'info'); return; }
         teWrapSelectionStyle(el, 'color', color);
         teRichInput(blockId, el);
     }
@@ -2122,7 +2156,7 @@
         if (typeof aoTerminar === 'function') aoTerminar();
     }
     function teRichLink(blockId) {
-        const el = document.getElementById('richtext-' + blockId);
+        const el = teRichComSelecao(blockId) || document.getElementById('richtext-' + blockId);
         teRichAplicarLink(el, () => teRichInput(blockId, el));
     }
 
@@ -3435,24 +3469,31 @@
         if (TE_RICH_TEXT_BLOCKS.has(b.type) && key === 'text') {
             const sizes = [12,13,14,15,16,18,20,22,24,28,32];
             const sizeOpts = sizes.map(s => `<option value="${s}">${s}px</option>`).join('');
-            const toolBtn = (label, cmd, title) => `<button type="button" title="${title}" onmousedown="event.preventDefault()" onclick="teRichExec('${b.id}','${cmd}')" class="w-6 h-6 flex items-center justify-center text-xs border border-slate-200 rounded hover:bg-slate-100">${label}</button>`;
+            // shrink-0 e flex-wrap: a barra tem seis controlos e o painel de
+            // propriedades é estreito. Sem isto os itens eram encolhidos pelo
+            // flex até caberem — o último ficava com uns pixéis de largura e
+            // não se via. Agora cada um mantém o seu tamanho e a barra passa
+            // para a linha seguinte se for preciso.
+            const toolBtn = (label, cmd, title) => `<button type="button" title="${title}" onmousedown="event.preventDefault()" onclick="teRichExec('${b.id}','${cmd}')" class="shrink-0 w-6 h-6 flex items-center justify-center text-xs border border-slate-200 rounded hover:bg-slate-100">${label}</button>`;
             return `<div>
                 <label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label>
-                <div class="flex items-center gap-1 mb-1 p-1 bg-slate-50 border border-slate-200 rounded-t-lg">
+                <div class="flex flex-wrap items-center gap-1 mb-1 p-1 bg-slate-50 border border-slate-200 rounded-t-lg">
                     ${toolBtn('<b>B</b>','bold','Negrito')}
                     ${toolBtn('<i>I</i>','italic','Itálico')}
                     ${toolBtn('<u>U</u>','underline','Sublinhado')}
-                    <select title="Tamanho da seleção" onmousedown="event.preventDefault()" onchange="if(this.value){teRichFontSize('${b.id}',this.value);this.selectedIndex=0;}" class="h-6 text-[10px] border border-slate-200 rounded">
+                    <select title="Tamanho da selecção" onchange="if(this.value){teRichFontSize('${b.id}',this.value);this.selectedIndex=0;}" class="shrink-0 h-6 text-[10px] border border-slate-200 rounded">
                         <option value="">Tam.</option>${sizeOpts}
                     </select>
-                    <input type="color" title="Cor da seleção" onmousedown="event.preventDefault()" onchange="teRichColor('${b.id}',this.value)" class="w-6 h-6 border border-slate-200 rounded cursor-pointer" />
-                    <button type="button" title="Inserir ou editar link na selecção" onmousedown="event.preventDefault()" onclick="teRichLink('${b.id}')" class="w-6 h-6 flex items-center justify-center border border-slate-200 rounded hover:bg-slate-100">
+                    <input type="color" title="Cor da selecção" onchange="teRichColor('${b.id}',this.value)" class="shrink-0 w-6 h-6 border border-slate-200 rounded cursor-pointer" />
+                    <button type="button" title="Inserir ou editar link na selecção" onmousedown="event.preventDefault()" onclick="teRichLink('${b.id}')" class="shrink-0 w-6 h-6 flex items-center justify-center border border-slate-200 rounded hover:bg-slate-100">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5"/></svg>
                     </button>
                 </div>
                 <div id="richtext-${b.id}" contenteditable="true"
                     onfocus="document.execCommand('defaultParagraphSeparator',false,'br')"
                     oninput="teRichInput('${b.id}',this)"
+                    onmouseup="teRichGuardaSelecao('${b.id}')"
+                    onkeyup="teRichGuardaSelecao('${b.id}')"
                     onblur="teRichBlur('${b.id}',this)"
                     class="w-full min-h-[90px] px-2 py-1.5 border border-slate-200 border-t-0 rounded-b-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900">${b.text || ''}</div>
                 <p class="text-[9px] text-slate-400 mt-1">Selecciona parte do texto e usa a barra acima para formatar só essa parte. O último botão põe um link na selecção — para o tirar, selecciona-o outra vez e deixa o endereço vazio.</p>
