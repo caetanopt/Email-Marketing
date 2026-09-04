@@ -2874,6 +2874,33 @@
     function teColValign(childArr) {
         return (childArr || []).find(c => c && c.valign)?.valign || 'top';
     }
+    // Alinhamento vertical de uma coluna do layout.
+    //
+    // Antes só existia deduzido: era o "Alinhamento vertical" de um bloco de
+    // imagem lá dentro que mandava, o que obrigava a ter uma imagem para
+    // conseguir alinhar a coluna. Passa a poder ser escolhido por coluna,
+    // recorrendo ao valor deduzido quando não foi escolhido nada — para os
+    // layouts já feitos não mudarem de aspecto.
+    const TE_VALIGNS = [['top','Topo'],['middle','Centro'],['bottom','Base']];
+    function teColValignOf(b, idx) {
+        const escolhido = Array.isArray(b?.colValign) ? b.colValign[idx] : null;
+        if (escolhido && TE_VALIGNS.some(([v]) => v === escolhido)) return escolhido;
+        return teColValign(b?.children?.[idx]);
+    }
+    function teUpdateColValign(blockId, idx, valor) {
+        const f = teFind(blockId);
+        if (!f) return;
+        const b = f.block;
+        const n = b.cols || (Array.isArray(b.children) ? b.children.length : 2);
+        if (!Array.isArray(b.colValign) || b.colValign.length !== n) {
+            // Arranca do que estava a ser deduzido, para mudar uma coluna não
+            // alterar as outras.
+            b.colValign = Array.from({ length: n }, (_, i) => teColValignOf(b, i));
+        }
+        b.colValign[idx] = valor;
+        teRender();
+        _wizScheduleApiAutoSave(true);
+    }
     // Per-column widths (%) for the Layout block. b.colWidths is an array of
     // raw numbers the user typed — always normalised here to sum to exactly
     // 100 so callers never have to worry about validating user input.
@@ -3177,7 +3204,7 @@
                     const col = document.createElement('div');
                     const colIdx = c;
                     const childArr = b.children[c] || [];
-                    const colJustify = { top:'flex-start', middle:'center', bottom:'flex-end' }[teColValign(childArr)] || 'flex-start';
+                    const colJustify = { top:'flex-start', middle:'center', bottom:'flex-end' }[teColValignOf(b, c)] || 'flex-start';
                     const baseCol = empilhado
                         ? 'flex:1 1 auto;max-width:100%;'
                         : `flex:0 0 ${colPercents[c]}%;max-width:${colPercents[c]}%;`;
@@ -3309,6 +3336,20 @@
                         <option value="normal"${(b.mobileOrder||'normal') === 'normal' ? ' selected' : ''}>Normal (coluna 1 primeiro)</option>
                         <option value="reverse"${b.mobileOrder === 'reverse' ? ' selected' : ''}>Invertida (última coluna primeiro)</option>
                     </select>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">Alinhamento vertical — por coluna</label>
+                    <p class="text-[10px] text-slate-400 mb-1.5">Onde fica o conteúdo de cada coluna quando as colunas têm alturas diferentes.</p>
+                    <div class="grid grid-cols-${Math.min(b.cols,3)} gap-1">
+                        ${Array.from({length: b.cols}, (_, idx) => idx).map(idx => `
+                            <div>
+                                <label class="block text-[9px] text-slate-400 mb-0.5">Col. ${idx+1}</label>
+                                <select onchange="teUpdateColValign('${b.id}',${idx},this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white">
+                                    ${TE_VALIGNS.map(([v, lbl]) => `<option value="${v}"${teColValignOf(b, idx) === v ? ' selected' : ''}>${lbl}</option>`).join('')}
+                                </select>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor da borda</label>
@@ -3730,13 +3771,20 @@
                 if (cols.length > 1) {
                     const b = { id:teId(), type:'columns', cols:cols.length, children:[] };
                     const parsedWidths = [];
+                    // O alinhamento vertical de cada coluna vem gravado no
+                    // próprio <mj-column>: guarda-se em colValign para voltar
+                    // tal e qual, e continua a ser passado aos filhos (é de lá
+                    // que vinha antes de a opção existir no layout).
+                    const parsedValigns = [];
                     cols.forEach(col => {
                         const children = [];
                         const colValign = col.getAttribute('vertical-align') || 'top';
+                        parsedValigns.push(colValign);
                         [...col.children].forEach(child => { const bl = teParseMjmlEl(child, undefined, undefined, colValign); if (bl) children.push(bl); });
                         b.children.push(children);
                         parsedWidths.push(parseFloat(col.getAttribute('width')) || null);
                     });
+                    b.colValign = parsedValigns;
                     // Only keep explicit widths if every column specified one —
                     // otherwise fall back to the equal-split default.
                     if (parsedWidths.every(w => w)) b.colWidths = parsedWidths;
@@ -3748,6 +3796,10 @@
                         b.mobileOrder = 'reverse';
                         b.children.reverse();
                         if (b.colWidths) b.colWidths.reverse();
+                        // O alinhamento é por coluna: sem inverter também
+                        // aqui, passava a pertencer à coluna errada.
+                        if (b.colValign) b.colValign.reverse();
+                        if (Array.isArray(b.colBorders)) b.colBorders.reverse();
                     }
                     blocks.push(b);
                 } else {
@@ -4174,7 +4226,7 @@ ${body}
                     const cols = (b.children||[]).map((children, colIdx) => {
                         const innerRows = children.map(c => blockToHtml(c)).join('');
                         const colWidth = colPercentsH[colIdx];
-                        const colValign = teColValign(children);
+                        const colValign = teColValignOf(b, colIdx);
                         return `<td valign="${colValign}" width="${colWidth}%" style="width:${colWidth}%;padding:4px;vertical-align:${colValign};${teColBorderCss(b,colIdx)}">` +
                             `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${innerRows}</table>` +
                             `</td>`;
@@ -4488,7 +4540,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const colPercentsM = teColWidthPercents(b);
                 const colsMjml = b.children.map((children, colIdx) => {
                     const inner = children.map(c => teInnerToMjml(c, i + '    ')).join('\n');
-                    const colValign = teColValign(children);
+                    const colValign = teColValignOf(b, colIdx);
                     return `${i}  <mj-column width="${colPercentsM[colIdx]}%" vertical-align="${colValign}"${teColBorderMjmlAttrs(b,colIdx)}>\n${inner}\n${i}  </mj-column>`;
                 });
                 // "Ordem no mobile: invertida" — no mobile as colunas empilham
