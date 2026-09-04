@@ -39,6 +39,15 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['cabeçalhos de cancelamento', `const {buildRawEmail,listUnsubscribeHeaders}=require('./lib/rawEmail');
+    const u='https://emkt.caetano.pt/api/suppression?action=unsubscribe&email=a%40b.pt&token=t';
+    const m=buildRawEmail({fromName:'C',fromEmail:'a@b.pt',toEmail:'c@d.pt',subject:'s',htmlBody:'h',textBody:'t',headers:listUnsubscribeHeaders(u)});
+    const cab=m.split('\\r\\n\\r\\n')[0];
+    if(!/^List-Unsubscribe: <https:\\/\\//m.test(cab))throw new Error('sem List-Unsubscribe — o Gmail exige-o a quem envia em volume');
+    if(!/^List-Unsubscribe-Post: List-Unsubscribe=One-Click$/m.test(cab))throw new Error('sem List-Unsubscribe-Post');
+    const inj=buildRawEmail({fromName:'C',fromEmail:'a@b.pt',toEmail:'c@d.pt',subject:'s',htmlBody:'h',textBody:'t',headers:{'X':'a\\r\\nBcc: v@a.pt'}});
+    if(/Bcc:/.test(inj.split('\\r\\n\\r\\n')[0]))throw new Error('um valor com CRLF injectou um cabeçalho na mensagem');
+    if(Object.keys(listUnsubscribeHeaders('#unsubscribe')).length)throw new Error('declarou um-clique sem endereço válido')`],
   ['metadados do editor fora do email', `const {stripEditorMetadata}=require('./lib/emailHtml');
     const h='<body>Olá</body></html><!--teBlocks:eyJ2IjoyfQ==-->';
     const r=stripEditorMetadata(h);

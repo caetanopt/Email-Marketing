@@ -1,65 +1,14 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
-const { SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
+const { SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
 const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle } = require('../../lib/emailHtml');
-
-function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
-  const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
-  const altBoundary = `==ALT${Date.now()}${Math.random().toString(36).slice(2)}==`;
-  const encodeB = s => '=?UTF-8?B?' + Buffer.from(s, 'utf8').toString('base64') + '?=';
-  const needsEncode = s => /[^\x20-\x7E]/.test(s);
-  const hdrSubject = needsEncode(subject) ? encodeB(subject) : subject;
-  const hdrFrom = needsEncode(fromName)
-    ? `${encodeB(fromName)} <${fromEmail}>`
-    : `${fromName} <${fromEmail}>`;
-
-  const lines = [
-    `MIME-Version: 1.0`,
-    `From: ${hdrFrom}`,
-    `To: ${toEmail}`,
-    `Subject: ${hdrSubject}`,
-    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    ``,
-    `--${boundary}`,
-    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
-    ``,
-    `--${altBoundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: base64`,
-    ``,
-    Buffer.from(textBody, 'utf8').toString('base64'),
-    ``,
-    `--${altBoundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: base64`,
-    ``,
-    Buffer.from(htmlBody, 'utf8').toString('base64'),
-    ``,
-    `--${altBoundary}--`,
-  ];
-
-  for (const att of (attachments || [])) {
-    const fname = needsEncode(att.name) ? encodeB(att.name) : att.name;
-    lines.push(
-      `--${boundary}`,
-      `Content-Type: ${att.type || 'application/octet-stream'}; name="${fname}"`,
-      `Content-Disposition: attachment; filename="${fname}"`,
-      `Content-Transfer-Encoding: base64`,
-      ``,
-      att.data,  // já vem base64 do browser
-      ``
-    );
-  }
-  lines.push(`--${boundary}--`);
-  return lines.join('\r\n');
-}
+const { buildRawEmail, listUnsubscribeHeaders } = require('../../lib/rawEmail');
 
 const APP_URL = process.env.APP_URL || 'https://emkt.caetano.pt';
 const FROM_DOMAIN = process.env.FROM_DOMAIN || 'caetano.pt';
@@ -734,44 +683,25 @@ module.exports = async function handler(req, res) {
               }
               const campAttachments = c.attachments || [];
               let msgId = null;
-              if (campAttachments.length > 0) {
-                const { SendRawEmailCommand } = require('@aws-sdk/client-ses');
-                const rawMsg = buildRawEmail({
-                  fromName, fromEmail, toEmail: contact.email, replyTo,
-                  subject: personalizedSubject,
-                  htmlBody: finalHtml,
-                  textBody: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
-                  attachments: campAttachments,
-                });
-                const rawCmd = new SendRawEmailCommand({
-                  RawMessage: { Data: Buffer.from(rawMsg) },
-                  Tags: [
-                    { Name: 'campaign_id', Value: String(id) },
-                    { Name: 'contact_id',  Value: String(contact.contact_id) },
-                  ],
-                });
-                const info = await sesClient.send(rawCmd);
-                msgId = info?.MessageId || null;
-              } else {
-                const sesCmd = new SendEmailCommand({
-                  Source: `${fromName} <${fromEmail}>`,
-                  Destination: { ToAddresses: [contact.email] },
-                  Message: {
-                    Subject: { Charset: 'UTF-8', Data: personalizedSubject },
-                    Body: {
-                      Html: { Charset: 'UTF-8', Data: finalHtml },
-                      Text: { Charset: 'UTF-8', Data: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}` },
-                    },
-                  },
-                  ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
-                  Tags: [
-                    { Name: 'campaign_id', Value: String(id) },
-                    { Name: 'contact_id',  Value: String(contact.contact_id) },
-                  ],
-                });
-                const info = await sesClient.send(sesCmd);
-                msgId = info?.MessageId || null;
-              }
+              // Um só caminho, com ou sem anexos: é a mensagem MIME que
+              // leva os cabeçalhos List-Unsubscribe, que o SendEmailCommand
+              // não aceita.
+              const rawMsg = buildRawEmail({
+                fromName, fromEmail, toEmail: contact.email, replyTo,
+                subject: personalizedSubject,
+                htmlBody: finalHtml,
+                textBody: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
+                attachments: campAttachments,
+                headers: listUnsubscribeHeaders(unsubUrl),
+              });
+              const info = await sesClient.send(new SendRawEmailCommand({
+                RawMessage: { Data: Buffer.from(rawMsg) },
+                Tags: [
+                  { Name: 'campaign_id', Value: String(id) },
+                  { Name: 'contact_id',  Value: String(contact.contact_id) },
+                ],
+              }));
+              msgId = info?.MessageId || null;
               // ── The email is now genuinely delivered (SES accepted it) ────
               // Everything below is DB bookkeeping only. A failure here must
               // NEVER be reclassified as a send failure (that risks a
@@ -929,7 +859,12 @@ module.exports = async function handler(req, res) {
         const fromName  = c.from_name  || c.brand_from_name  || 'eMKT';
         const fromEmail = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
         const replyTo   = c.reply_to   || c.brand_reply_to   || undefined;
+        // No corpo do email de teste o link de cancelamento continua a ser
+        // um lugar reservado (é uma estrutura a validar, não um envio real).
+        // Nos cabeçalhos vai o endereço verdadeiro para este destinatário:
+        // é isso que o cliente de email usa, e é o que se quer verificar.
         const unsubUrl = `${APP_URL}#unsubscribe`;
+        const unsubTeste = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&c=${id}&email=${encodeURIComponent(to)}&token=${unsubToken(to, c.brand_id)}`;
         const footerCfgTest = await loadFooterConfig();
         // A largura do rodapé é a do HTML desta campanha — que pode ter sido
         // gravada com outra largura que não a definida hoje em Definições
@@ -983,31 +918,23 @@ module.exports = async function handler(req, res) {
         const testAttachments = c.attachments || [];
         try {
           let info;
-          if (testAttachments.length > 0) {
-            const rawMsg = buildRawEmail({
-              fromName, fromEmail, toEmail: to, replyTo,
-              subject: `[TESTE] ${c.subject || '(sem assunto)'}`,
-              htmlBody: finalHtml,
-              textBody: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml),
-              attachments: testAttachments,
-            });
-            info = await sesClientTest.send(new SendRawEmailCommand({
-              RawMessage: { Data: Buffer.from(rawMsg) },
-            }));
-          } else {
-            info = await sesClientTest.send(new SendEmailCommand({
-              Source: `${fromName} <${fromEmail}>`,
-              Destination: { ToAddresses: [to] },
-              Message: {
-                Subject: { Charset: 'UTF-8', Data: `[TESTE] ${c.subject || '(sem assunto)'}` },
-                Body: {
-                  Html: { Charset: 'UTF-8', Data: finalHtml },
-                  Text: { Charset: 'UTF-8', Data: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml) },
-                },
-              },
-              ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
-            }));
-          }
+          // Também aqui um só caminho, para o teste sair exactamente como
+          // o envio real — incluindo os cabeçalhos de cancelamento, que é
+          // parte do que se quer poder verificar num teste. O endereço do
+          // cancelamento é o real para este destinatário: um clique no
+          // "Cancelar subscrição" do cliente de email suprime-o de facto,
+          // como aconteceria a um destinatário verdadeiro.
+          const rawMsg = buildRawEmail({
+            fromName, fromEmail, toEmail: to, replyTo,
+            subject: `[TESTE] ${c.subject || '(sem assunto)'}`,
+            htmlBody: finalHtml,
+            textBody: '[EMAIL DE TESTE]\n\n' + htmlToText(finalHtml),
+            attachments: testAttachments,
+            headers: listUnsubscribeHeaders(unsubTeste),
+          });
+          info = await sesClientTest.send(new SendRawEmailCommand({
+            RawMessage: { Data: Buffer.from(rawMsg) },
+          }));
           try {
             await query(
               `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, message_id, created_by)

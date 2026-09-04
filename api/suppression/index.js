@@ -116,6 +116,15 @@ module.exports = async function handler(req, res) {
       } catch (err) { console.error('unsubscribe link lookup:', err); }
       const isJson = (req.headers.accept || '').includes('application/json');
       if (isJson) return res.status(200).json({ ok: true, email: e, redirect: redirectLink });
+      // O cancelamento em um clique (RFC 8058) é um POST feito pelo cliente
+      // de email, não por uma pessoa: espera uma resposta 2xx. Responder-lhe
+      // com um 302 para um site externo não serve — e não havia lá ninguém
+      // para ver a página. O redireccionamento fica para quem abre o link
+      // no browser.
+      if (req.method === 'POST') {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return res.status(200).send('Subscrição cancelada.');
+      }
       if (redirectLink) {
         res.setHeader('Location', redirectLink);
         res.setHeader('Cache-Control', 'no-store');
