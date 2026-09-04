@@ -2015,7 +2015,7 @@
     //
     // Um link existente dentro da selecção é desfeito primeiro, senão ficavam
     // <a> aninhados (que o sanitizador teria de desmanchar).
-    function teWrapSelectionLink(containerEl, href) {
+    function teWrapSelectionLink(containerEl, href, cor) {
         const sel = window.getSelection();
         if (!sel || !sel.rangeCount) return false;
         const range = sel.getRangeAt(0);
@@ -2032,7 +2032,12 @@
         const no = range.commonAncestorContainer;
         const paiLink = (no.nodeType === Node.ELEMENT_NODE ? no : no.parentElement)?.closest?.('a');
         if (paiLink && containerEl.contains(paiLink)) {
-            if (href) { paiLink.setAttribute('href', href); paiLink.setAttribute('target', '_blank'); paiLink.setAttribute('rel', 'noopener noreferrer'); }
+            if (href) {
+                paiLink.setAttribute('href', href); paiLink.setAttribute('target', '_blank'); paiLink.setAttribute('rel', 'noopener noreferrer');
+                if (cor && !/color\s*:/i.test(paiLink.getAttribute('style') || '')) {
+                    paiLink.setAttribute('style', `color:${cor};text-decoration:underline`);
+                }
+            }
             else { while (paiLink.firstChild) paiLink.parentNode.insertBefore(paiLink.firstChild, paiLink); paiLink.remove(); }
             return true;
         }
@@ -2049,6 +2054,11 @@
         a.setAttribute('href', href);
         a.setAttribute('target', '_blank');
         a.setAttribute('rel', 'noopener noreferrer');
+        // Sem cor declarada, o link sai com o azul por omissão do cliente de
+        // email — que raramente é a cor da marca e, num fundo escuro, chega a
+        // ser ilegível. Fica com a cor do texto onde foi criado e mantém o
+        // sublinhado, que é o que diz a quem lê que aquilo se pode clicar.
+        if (cor) a.setAttribute('style', `color:${cor};text-decoration:underline`);
         a.appendChild(frag);
         range.insertNode(a);
         sel.removeAllRanges();
@@ -2127,7 +2137,7 @@
     // A selecção é guardada antes de abrir a caixa de diálogo: um prompt()
     // nativo tira o foco ao campo e pode levar a selecção com ele, e sem ela
     // o createLink não teria onde aplicar o link.
-    function teRichAplicarLink(el, aoTerminar) {
+    function teRichAplicarLink(el, aoTerminar, cor) {
         if (!el) return;
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !el.contains(sel.anchorNode)) {
@@ -2150,7 +2160,7 @@
 
         if (!url.trim()) {
             restaurar();
-            teWrapSelectionLink(el, null);
+            teWrapSelectionLink(el, null, cor);
             if (typeof aoTerminar === 'function') aoTerminar();
             return;
         }
@@ -2160,7 +2170,7 @@
             return;
         }
         restaurar();
-        if (!teWrapSelectionLink(el, seguro)) {
+        if (!teWrapSelectionLink(el, seguro, cor)) {
             showToast('Não foi possível aplicar o link a esta selecção.', 'error');
             return;
         }
@@ -2168,7 +2178,8 @@
     }
     function teRichLink(blockId) {
         const el = teRichComSelecao(blockId) || document.getElementById('richtext-' + blockId);
-        teRichAplicarLink(el, () => teRichInput(blockId, el));
+        const bloco = teFind(blockId)?.block;
+        teRichAplicarLink(el, () => teRichInput(blockId, el), bloco?.color || bloco?.textColor);
     }
 
     const TE_ICONS = {
@@ -4372,6 +4383,22 @@ ${teSerializeBlocksComment(srcBlocks)}
     // "910 726 364", com ou sem indicativo +351. Exige 9 dígitos para não
     // apanhar preços nem anos.
     const TE_TEL_RE = /(?:\+351[\s.-]?)?\b[2937]\d{2}[\s.-]?\d{3}[\s.-]?\d{3}\b/g;
+    // Um <a> sem cor declarada sai com o azul por omissão do cliente de
+    // email. Acontece nos links criados antes de a barra passar a atribuir a
+    // cor, e em qualquer MJML escrito à mão. Na geração, esses passam a levar
+    // a cor do bloco — os que já têm cor não são tocados, porque essa foi uma
+    // escolha de quem desenhou.
+    function teCorLinksSemCor(html, cor) {
+        if (!cor) return html;
+        return String(html == null ? '' : html).replace(/<a\b([^>]*)>/gi, (tag, attrs) => {
+            const estilo = (attrs.match(/\sstyle="([^"]*)"/i) || [])[1] || '';
+            if (/color\s*:/i.test(estilo)) return tag;                    // já tem cor
+            const novo = `color:${cor};text-decoration:underline` + (estilo ? ';' + estilo : '');
+            return /\sstyle="/i.test(attrs)
+                ? `<a${attrs.replace(/\sstyle="([^"]*)"/i, ` style="${novo}"`)}>`
+                : `<a${attrs} style="${novo}">`;
+        });
+    }
     function teEnvolveContactos(html, cor) {
         const texto = String(html == null ? '' : html);
         if (!texto) return texto;
@@ -4398,16 +4425,16 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'header':
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.textColor)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.textColor), b.textColor)}</mj-text>` };
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.color)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color)}</mj-text>` };
             }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.color)}</mj-text>`;
+                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color)}</mj-text>`;
                 return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:mjTextTag };
             }
             case 'button': {
@@ -4442,7 +4469,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, padOnEl:true, bg:null, inner:`${i}    <mj-spacer${TE_CBG_SLOT} height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.color)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color)}</mj-text>` };
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -4495,7 +4522,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'hero': {
                 // mj-hero is a direct <mj-body> child (like mj-section), not
                 // wrapped inside one — never merges with neighbouring blocks.
-                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${teEnvolveContactos(teTextoLimpo(b.text), b.color||'#ffffff')}</mj-text>\n${i}</mj-hero>` };
+                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color||'#ffffff'), b.color||'#ffffff')}</mj-text>\n${i}</mj-hero>` };
             }
             case 'accordion': {
                 const els = (b.items||[]).map(item => `${i}      <mj-accordion-element>\n${i}        <mj-accordion-title background-color="${b.bgColor||'#ffffff'}" color="${b.titleColor||'#0f172a'}" font-size="${b.fontSize||14}px">${item.title||''}</mj-accordion-title>\n${i}        <mj-accordion-text background-color="${b.bgColor||'#ffffff'}" color="${b.textColor||'#475569'}" font-size="${b.fontSize||14}px">${item.text||''}</mj-accordion-text>\n${i}      </mj-accordion-element>`).join('\n');
@@ -6358,7 +6385,8 @@ ${teSerializeBlocksComment(srcBlocks)}
     // selecção da mesma maneira e um link existente aparece preenchido para
     // ser editado.
     function _gsDiscLink() {
-        teRichAplicarLink(_gsDiscEl(), () => _gsRenderFooterPreview());
+        // #999999 é a cor do texto do disclaimer no rodapé legal.
+        teRichAplicarLink(_gsDiscEl(), () => _gsRenderFooterPreview(), '#999999');
     }
 
     // Limpa ao sair do campo, com o mesmo sanitizador do editor de blocos:
