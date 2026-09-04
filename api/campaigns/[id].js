@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
+const { previewToken, previewUrl } = require('../../lib/previewLink');
 
 function buildRawEmail({ fromName, fromEmail, toEmail, replyTo, subject, htmlBody, textBody, attachments }) {
   const boundary = `==PM${Date.now()}${Math.random().toString(36).slice(2)}==`;
@@ -67,12 +68,6 @@ function trackToken(campaignId, contactId) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET)
     .update(`track:${campaignId}:${contactId}`)
     .digest('hex');
-}
-
-// Token do link "Versão web" do rodapé — o mesmo que /api/preview valida.
-function previewToken(campaignId) {
-  return crypto.createHmac('sha256', process.env.JWT_SECRET || '')
-    .update(`preview:${campaignId}`).digest('hex');
 }
 
 // Disclaimer global + logótipo do rodapé. Devolve {} se a migração 045 ainda
@@ -137,10 +132,8 @@ module.exports = async function handler(req, res) {
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
 
     if (req.method === 'GET' && action === 'preview_token') {
-      const token = crypto.createHmac('sha256', process.env.JWT_SECRET)
-        .update(`preview:${id}`).digest('hex');
       const appUrl = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
-      return res.status(200).json({ token, url: `${appUrl}/api/preview?id=${id}&token=${token}` });
+      return res.status(200).json({ token: previewToken(id), url: previewUrl(appUrl, id) });
     }
 
     if (req.method === 'GET' && action === 'get_direct_recipients') {
@@ -724,7 +717,7 @@ module.exports = async function handler(req, res) {
                 variables: c.variables || {},
                 email: contact.email,
                 unsubUrl,
-                previewUrl: `${APP_URL}/api/preview?id=${id}&token=${previewToken(id)}`,
+                previewUrl: previewUrl(APP_URL, id),
               }) + `<img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
@@ -988,7 +981,7 @@ module.exports = async function handler(req, res) {
           variables: c.variables || {},
           email: to,
           unsubUrl,
-          previewUrl: `${APP_URL}/api/preview?id=${id}&token=${previewToken(id)}`,
+          previewUrl: previewUrl(APP_URL, id),
         });
         // Apply UTM params + click tracking (same as real sends so test reflects exact behaviour)
         const utmParamsT = c.utm_params || {};

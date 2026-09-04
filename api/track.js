@@ -1,5 +1,6 @@
 const { query, transaction } = require('../lib/db');
 const { buildLegalFooter, detectContentWidth } = require('../lib/emailFooter');
+const { previewTokenValido } = require('../lib/previewLink');
 const APP_URL_PREVIEW = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
 const crypto = require('crypto');
 
@@ -202,10 +203,9 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
     if (!id || !token) return res.status(400).send(errPage('Link inválido.'));
     if (!process.env.JWT_SECRET) return res.status(500).send(errPage('Configuração em falta.'));
 
-    const expected = crypto.createHmac('sha256', process.env.JWT_SECRET).update(`preview:${id}`).digest('hex');
-    let tokOk = false;
-    try { tokOk = crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex')); } catch (_) {}
-    if (!tokOk) return res.status(403).send(errPage('Link inválido ou sem permissão.'));
+    // Aceita o token curto (/v/:id/:token) e o de 64 caracteres dos emails
+    // já enviados.
+    if (!previewTokenValido(id, token)) return res.status(403).send(errPage('Link inválido ou sem permissão.'));
 
     try {
       const rows = await query(

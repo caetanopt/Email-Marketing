@@ -8,6 +8,7 @@
   "rewrites": [
     { "source": "/api/webhooks", "destination": "/api/track" },
     { "source": "/api/preview", "destination": "/api/track?action=preview" },
+    { "source": "/v/:id/:token", "destination": "/api/track?action=preview&id=:id&token=:token" },
     { "source": "/api/campaigns/:id", "destination": "/api/campaigns?id=:id" },
     { "source": "/api/lists/:id", "destination": "/api/lists?id=:id" },
     { "source": "/api/ai/image-to-mjml", "destination": "/api/templates?action=image-to-mjml" },
