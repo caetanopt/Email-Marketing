@@ -2112,6 +2112,12 @@
             if (Array.isArray(d.mjml_attributes)) _teGlobalMjmlAttrs = d.mjml_attributes;
             const ew = parseInt(d.email_width, 10);
             if (ew > 0) _teGlobalEmailWidth = ew;
+            // A largura entra também no valor por defeito de teDefaults: há
+            // caminhos (os templates de exemplo) que espalham teDefaults
+            // directamente em vez de passarem por teMakeBlock, e ficavam com
+            // os 600 escritos à mão.
+            teDefaults.image.width = teEmailWidth();
+            teDefaults.image.src = `https://placehold.co/${teEmailWidth()}x250?text=Imagem`;
         } catch (e) { /* silent — migration may not be run yet */ }
     }
 
@@ -2319,8 +2325,14 @@
         if (_teGlobalLineHeight !== null && 'lineHeight' in block) block.lineHeight = _teGlobalLineHeight;
         // Uma imagem nova ocupa a largura do email. Estava fixa nos 600 de
         // teDefaults, o que deixava uma folga de cada lado assim que a largura
-        // global deixou de ser 600.
-        if (type === 'image') block.width = teEmailWidth();
+        // global deixou de ser 600. O placeholder acompanha, senão o campo
+        // "URL Imagem" mostrava 600x250 num email de outra largura.
+        if (type === 'image') {
+            block.width = teEmailWidth();
+            if (/^https:\/\/placehold\.co\/\d+x\d+/.test(block.src || '')) {
+                block.src = `https://placehold.co/${block.width}x250?text=Imagem`;
+            }
+        }
         return block;
     }
 
@@ -3430,7 +3442,9 @@
             case 'mj-image':
                 // ...pad em falta aqui fazia a imagem perder sempre o padding
                 // ao voltar para o editor visual.
-                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||600, align:el.getAttribute('align')||'center', valign:colValign || 'top', href:el.getAttribute('href')||'', bgColor:bg, ...pad };
+                // Sem atributo width, a imagem ocupa a largura do email — que
+                // já não é sempre 600, como estava escrito aqui.
+                return { id, type:'image', src:el.getAttribute('src')||'', alt:el.getAttribute('alt')||'', width:parseInt(el.getAttribute('width'))||teEmailWidth(), align:el.getAttribute('align')||'center', valign:colValign || 'top', href:el.getAttribute('href')||'', bgColor:bg, ...pad };
             case 'mj-divider':
                 // usa o `pad` partilhado (elemento primeiro, secção depois) em
                 // vez de só o atributo do elemento, para ler também o formato
