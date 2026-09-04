@@ -4167,61 +4167,48 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!p.mergeable) return p.full;
         return `${i}<mj-section${p.attrs}>\n${i}  <mj-column>\n${p.inner}\n${i}  </mj-column>\n${i}</mj-section>`;
     }
+    // Geração de um bloco que vive dentro de uma coluna.
+    //
+    // Era uma segunda implementação, reduzida, do teBlockToMjmlParts — e foi
+    // ficando atrás dele. Medido: dentro de colunas perdiam-se as maiúsculas e
+    // o tipo de letra do texto, o "target", o tipo de letra e a espessura da
+    // borda do botão, o alinhamento/borda/raio E TODO O PADDING da imagem, a
+    // espessura/estilo/largura/alinhamento do separador e o alinhamento do
+    // ícone e do bloco de link. Passa a delegar no mesmo gerador dos blocos de
+    // topo, para não haver duas listas de atributos a divergir.
+    //
+    // O que muda dentro de uma coluna: não existe uma secção por bloco, por
+    // isso o atributo de fundo da secção não tem onde ser posto. Mantém-se o
+    // comportamento actual — só o separador pinta o seu próprio fundo — porque
+    // mudá-lo alteraria o aspecto dos emails já desenhados. Ver a nota sobre
+    // esta divergência entre o editor e o email enviado.
+    const TE_INNER_PINTA_FUNDO = new Set(['divider']);
+    // Tipos suportados dentro de colunas cujo padding e fundo vivem na
+    // <mj-section> em vez do elemento. Redes sociais, acordeão, navegação e
+    // carrossel também são destes, mas nunca foram suportados dentro de
+    // colunas — continuam a não ser, para esta alteração não trazer
+    // comportamento novo à mistura.
+    const TE_INNER_SEM_SECCAO = new Set(['quote']);
     function teInnerToMjml(b, i) {
-        switch(b.type) {
-            case 'text': case 'header': case 'heading': case 'footer': {
-                const c = b.color || b.textColor || '#000';
-                const lh = b.lineHeight || 1.4;
-                // "Maiúsculas" e "Tipo de letra" tinham de ser repetidos aqui:
-                // um bloco de texto dentro de colunas passa por este caminho e
-                // não pelo teBlockToMjmlParts, por isso as duas opções
-                // apareciam no editor mas não saíam no email enviado.
-                const upper = b.uppercase === true || b.uppercase === '1';
-                return `${i}<mj-text color="${c}" font-size="${b.fontSize||14}px" font-weight="${b.fontWeight||400}" align="${b.align||'left'}" line-height="${lh}"${upper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''} padding="${teMjmlPad(b)}">${teNl2brX(b.text)}</mj-text>`;
-            }
-            case 'button': {
-                const mjInBr = b.borderRadius ?? 6;
-                const mjInBorder = b.borderColor ? `2px solid ${b.borderColor}` : 'none';
-                const mjInInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
-                const mjInFullClass = (b.width && b.widthUnit === '%') ? ' css-class="te-btn-full"' : '';
-                return `${i}<mj-button background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjInBr}px" border="${mjInBorder}" inner-padding="${mjInInPad}" padding="${teMjmlPad(b)}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${mjInFullClass}>${b.text}</mj-button>`;
-            }
-            case 'image': {
-                const mjInFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
-                return `${i}<mj-image src="${b.src}" alt="${b.alt||''}" width="${b.width}px"${b.href ? ` href="${b.href}"` : ''}${mjInFluid} />`;
-            }
-            case 'divider':
-                return `${i}<mj-divider border-color="${b.color||'#e2e8f0'}" container-background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}" />`;
-            case 'spacer':
-                return `${i}<mj-spacer height="${b.height}px" />`;
-            case 'icon': {
-                const attrs2 = b.href ? ` href="${b.href}"` : '';
-                let dataUrl2;
-                if (b.iconKey?.startsWith('custom:')) {
-                    dataUrl2 = b.iconSvg;
-                } else {
-                    const ic2 = b.color || '#334155';
-                    const svgExp2 = (b.iconSvg || TE_ICONS['Geral']['star'])
-                        .replace(/stroke="currentColor"/g, `stroke="${ic2}"`)
-                        .replace(/fill="currentColor"/g, `fill="${ic2}"`);
-                    dataUrl2 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgExp2)));
-                }
-                return `${i}<mj-image src="${dataUrl2}" alt="" width="${b.size||48}px" padding="${teMjmlPad(b)}"${attrs2} />`;
-            }
-            case 'quote':
-                return `${i}<mj-text align="${b.align||'center'}" color="${b.color||'#1e293b'}" font-size="${b.fontSize||17}px" font-style="italic" line-height="1.6" padding="${teMjmlPad(b)}">${teNl2brX(b.text||'')}<br/><span style="font-size:13px;color:${b.authorColor||'#64748b'};font-style:normal;font-weight:600;">${b.author||''}</span></mj-text>`;
-            case 'linkBlock': {
-                const lbDesc2 = b.description ? `<br/><span style="font-size:12px;opacity:0.8;">${b.description}</span>` : '';
-                return `${i}<mj-button background-color="${b.bgColor||'#0f172a'}" color="${b.textColor||'#ffffff'}" font-size="${b.fontSize||15}px" font-weight="700" href="${b.href||'#'}" padding="${teMjmlPad(b)}">${b.title||''}${lbDesc2}</mj-button>`;
-            }
-            case 'listItems': {
-                const showDivI = b.showDividers === true || b.showDividers === '1';
-                const liStyleI = `padding:4px 0;color:${b.color||'#334155'};font-size:${b.fontSize||14}px;line-height:1.6;${showDivI ? 'border-bottom:1px solid #e2e8f0;' : ''}`;
-                const liHtml2 = (b.items||[]).map(item => `<li style="${liStyleI}">${item.text||''}</li>`).join('');
-                return `${i}<mj-text color="${b.color||'#334155'}" font-size="${b.fontSize||14}px" padding="${teMjmlPad(b)}"><ul style="padding-left:20px;margin:0;">${liHtml2}</ul></mj-text>`;
-            }
+        if (!b || b.type === 'columns' || b.type === 'hero') return '';
+        const p = teBlockToMjmlParts(b, '');
+        if (!p.mergeable || !p.inner) return '';
+        let inner;
+        if (p.padOnEl) {
+            const fundo = (TE_INNER_PINTA_FUNDO.has(b.type) && p.bg)
+                ? ` container-background-color="${p.bg}"`
+                : '';
+            inner = p.inner.replace(TE_CBG_SLOT, fundo);
+        } else if (TE_INNER_SEM_SECCAO.has(b.type)) {
+            // Sem secção própria, o padding passa para o elemento — era o que
+            // a versão anterior desta função fazia.
+            inner = p.inner.replace(/^(\s*<mj-[a-z-]+)/, `$1 padding="${teMjmlPad(b)}"`);
+        } else {
+            return '';
         }
-        return '';
+        // O gerador indenta com 4 espaços de base (e 6 nos filhos); troca-se
+        // essa base pela indentação pedida por quem chama.
+        return inner.split('\n').map(l => i + l.replace(/^ {4}/, '')).join('\n');
     }
 
     // ── Icon Picker ───────────────────────────────────────
@@ -6116,46 +6103,51 @@ ${teSerializeBlocksComment(srcBlocks)}
     // Reproduz o rodapé que o servidor monta (lib/emailFooter.js), para se ver
     // o resultado sem ter de enviar um email. As redes sociais mostradas são
     // as da marca actual.
+    // Pré-visualização do rodapé legal.
+    //
+    // Era uma cópia à mão da marcação de lib/emailFooter.js, e foi por aí que
+    // passaram despercebidos os ícones empilhados no Outlook: a cópia usava
+    // display:inline-block, que funciona no browser mas não no motor do Word,
+    // e mostrava um resultado que o email não tinha. Passa a pedir ao servidor
+    // o rodapé montado pelo MESMO gerador do envio, para o que se vê aqui ser
+    // literalmente o que vai sair.
+    let _gsFooterPreviewTimer = null;
+    let _gsFooterPreviewSeq = 0;
     function _gsRenderFooterPreview() {
         const alvo = document.getElementById('gsFooterPreview');
         if (!alvo) return;
-        // Já é HTML (vem do editor). Sanitiza-se para a pré-visualização
-        // mostrar exactamente o que vai ser gravado e enviado.
-        const texto = teSanitizeRichText(_gsDiscHtml()).trim();
-        const logo = (document.getElementById('gsFooterLogo')?.value || '').trim();
+        // Escreve-se a cada tecla no disclaimer; sem isto era um pedido por
+        // tecla carregada.
+        clearTimeout(_gsFooterPreviewTimer);
+        _gsFooterPreviewTimer = setTimeout(() => _gsFetchFooterPreview(alvo), 350);
+    }
+    async function _gsFetchFooterPreview(alvo) {
         const vars = _currentBrand?.variables || {};
-        const doRodape = _gsCollectSocials();
-        // Como no servidor (lib/emailFooter.js): o endereço vem sempre das
-        // variáveis da marca; aqui só se escolhe a imagem do ícone.
-        const redes = [['facebook','Facebook'],['instagram','Instagram'],['youtube','YouTube'],['linkedin','LinkedIn'],['tiktok','TikTok']]
-            .filter(([k]) => /^https?:\/\//i.test(String(vars[k] || '').trim()));
-        const icones = redes.map(([k, nome]) => {
-            const ic = _gsSocialIcon(doRodape[k]);
-            const src = /^https?:\/\//i.test(ic) ? ic : `https://www.mailjet.com/images/theme/v1/icons/ico-social/${k}.png`;
-            return `<img src="${escHtml(src)}" width="22" height="22" alt="${nome}" style="display:inline-block;margin-left:10px;vertical-align:middle">`;
-        }).join('');
-        // O logótipo da marca actual (variável footer_logo) sobrepõe-se ao
-        // global, como no servidor.
-        const logoDaMarca = String(vars.footer_logo || '').trim();
-        const logoEfectivo = /^https?:\/\//i.test(logoDaMarca) ? logoDaMarca : logo;
-        const logoImg = logoEfectivo ? `<img src="${escHtml(logoEfectivo)}" alt="${escHtml(_currentBrand?.name || 'Caetano')}" height="22" style="display:block;max-height:22px">` : '';
-        const ano = new Date().getFullYear();
-        const barra = (logoImg && icones)
-            ? `<td style="padding:0 18px;vertical-align:middle"><div style="height:1px;background:#d8d8d8;font-size:0;line-height:1px">&nbsp;</div></td>` : '';
-        const linhaMarca = (logoImg || icones)
-            ? `<table role="presentation" width="100%" style="margin-top:22px"><tr><td align="left" width="1" style="white-space:nowrap;vertical-align:middle">${logoImg}</td>${barra}<td align="right" width="1" style="white-space:nowrap;vertical-align:middle">${icones}</td></tr></table>` : '';
-        const areaCinza = (texto || linhaMarca)
-            ? `<div style="background:#f1f1f1;border-radius:10px;padding:26px 28px;margin:0 0 8px">
-                 ${texto ? `<div style="font-family:Arial,sans-serif;font-size:10px;line-height:1.2;text-align:left;color:#999999">${texto}</div>` : ''}
-                 ${linhaMarca}
-               </div>` : '';
-        alvo.innerHTML = `<div style="background:#ffffff;padding:8px 0">
-            ${areaCinza}
-            <div style="text-align:center;padding:18px 28px 6px;font-family:Arial,sans-serif;font-size:12px;line-height:1.2;color:#8a8a8a">Este e-mail foi enviado para <u>[email do destinatário]</u> por © ${ano} Caetano Automotive Portugal, S.A., com sede na Rua do Barreiro 547, 4409-513 Vila Nova de Gaia, matriculada na CRCOM.VNGAIA com o Nº/NIPC 500003165.</div>
-            <div style="text-align:center;padding:0 28px 20px;font-family:Arial,sans-serif;font-size:12px;color:#8a8a8a"><u>Política de privacidade</u> <span style="color:#c4c4c4">|</span> <u>Versão web</u> <span style="color:#c4c4c4">|</span> <u>Cancelar subscrição</u></div>
-        </div>`;
-        if (!texto && !logoEfectivo && !redes.length) {
-            alvo.innerHTML = `<p class="text-sm text-slate-400 p-4">Preenche o disclaimer acima para ver a área cinzenta. A frase legal e os links são sempre acrescentados.</p>` + alvo.innerHTML;
+        const seq = ++_gsFooterPreviewSeq;
+        try {
+            const { html } = await apiFetch('/api/brands?action=footer_preview', {
+                method: 'POST',
+                body: JSON.stringify({
+                    disclaimer: teSanitizeRichText(_gsDiscHtml()),
+                    footer_logo_url: (document.getElementById('gsFooterLogo')?.value || '').trim(),
+                    footer_socials: _gsCollectSocials(),
+                    variables: vars,
+                    brand_name: _currentBrand?.name || 'Caetano',
+                    email_width: `${teEmailWidth()}px`,
+                }),
+            });
+            // Um pedido mais recente já respondeu: descarta-se este, senão a
+            // pré-visualização podia ficar num estado antigo.
+            if (seq !== _gsFooterPreviewSeq) return;
+            alvo.innerHTML = `<div style="background:#ffffff;padding:8px 0">${html}</div>`;
+            const temConteudo = /f1f1f1/.test(html);
+            if (!temConteudo) {
+                alvo.insertAdjacentHTML('afterbegin',
+                    `<p class="text-sm text-slate-400 p-4">Preenche o disclaimer acima para ver a área cinzenta. A frase legal e os links são sempre acrescentados.</p>`);
+            }
+        } catch (e) {
+            if (seq !== _gsFooterPreviewSeq) return;
+            alvo.innerHTML = `<p class="text-sm text-slate-400 p-4">Não foi possível gerar a pré-visualização: ${escHtml(e.message)}</p>`;
         }
     }
 
@@ -7130,12 +7122,14 @@ ${teSerializeBlocksComment(srcBlocks)}
         ev.target.value = '';
         files.forEach(f => _mediaReadFile(f));
     }
-    // Optimiza uma imagem antes do upload: redimensiona para máx. 1200px de
-    // largura (2× retina dos 600px dos emails) e recomprime. GIFs não são
-    // tocados (o canvas destruiria a animação). Devolve sempre o resultado
-    // mais pequeno entre o original e o optimizado.
+    // Optimiza uma imagem antes do upload: redimensiona para o dobro da
+    // largura do email (2× para ecrãs retina) e recomprime. Estava fixo em
+    // 1200px, que era o dobro dos 600 de antes — uma imagem de largura total
+    // num email de 640 ficava a 1200 em vez de 1280 e perdia nitidez. GIFs
+    // não são tocados (o canvas destruiria a animação). Devolve sempre o
+    // resultado mais pequeno entre o original e o optimizado.
     const MEDIA_MAX_BYTES = 1024 * 1024; // 1 MB
-    const MEDIA_MAX_WIDTH = 1200;
+    const mediaMaxWidth = () => 2 * teEmailWidth();
     function _optimizeImage(dataUrl, mimeType) {
         return new Promise((resolve) => {
             if (mimeType === 'image/gif') return resolve(dataUrl);
@@ -7143,7 +7137,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             img.onerror = () => resolve(dataUrl);
             img.onload = () => {
                 try {
-                    const scale = Math.min(1, MEDIA_MAX_WIDTH / img.naturalWidth);
+                    const scale = Math.min(1, mediaMaxWidth() / img.naturalWidth);
                     const w = Math.round(img.naturalWidth * scale);
                     const h = Math.round(img.naturalHeight * scale);
                     const canvas = document.createElement('canvas');

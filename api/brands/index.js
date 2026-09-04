@@ -6,7 +6,7 @@ const { query } = require('../../lib/db');
 const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
-const { sanitizeDisclaimer, sanitizeFooterSocials } = require('../../lib/emailFooter');
+const { buildLegalFooter, sanitizeDisclaimer, sanitizeFooterSocials } = require('../../lib/emailFooter');
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -26,8 +26,22 @@ function normalizeEmailWidth(valor) {
 // não bastava mudar o defeito no código. Esta actualização corre uma única
 // vez: a coluna email_width_migrated marca-a como feita, e a partir daí a
 // largura é o que estiver gravado — incluindo 600px, se for essa a escolha.
+let emailWidthMigrado = false;
 async function migrateEmailWidthDefault() {
+  // Feita já nesta instância? Um ALTER TABLE, mesmo sem nada para alterar,
+  // pega um lock exclusivo na tabela; não vale a pena repeti-lo em cada
+  // leitura das definições. A memória é por instância, e o UPDATE tem a sua
+  // própria guarda na base de dados, por isso uma instância nova só repete
+  // trabalho inofensivo.
+  if (emailWidthMigrado) return;
   try {
+    // Se a coluna já existe e está a TRUE, não há nada a fazer — e esta
+    // leitura é muito mais barata do que os ALTER que se seguem.
+    const feito = await query(`SELECT email_width_migrated FROM global_settings WHERE id=1`)
+      .then(r => r[0]?.email_width_migrated === true)
+      .catch(() => false);
+    if (feito) { emailWidthMigrado = true; return; }
+
     await query(`ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS email_width_migrated BOOLEAN NOT NULL DEFAULT FALSE`);
     await query(`ALTER TABLE global_settings ALTER COLUMN email_width SET DEFAULT '${EMAIL_WIDTH_DEFAULT}px'`).catch(() => {});
     await query(
@@ -35,6 +49,7 @@ async function migrateEmailWidthDefault() {
         WHERE id=1 AND email_width_migrated=FALSE`,
       [`${EMAIL_WIDTH_DEFAULT}px`]
     );
+    emailWidthMigrado = true;
   } catch (_) { /* tabela/coluna em falta: fica o defeito do código */ }
 }
 
@@ -451,6 +466,36 @@ module.exports = async function handler(req, res) {
             [user.id]
           );
       return res.status(200).json({ data: rows });
+    }
+
+    // ── Pré-visualização do rodapé legal (owner-only) ────────────
+    // Devolve o rodapé montado pelo MESMO gerador do envio, a partir dos
+    // valores que estão no ecrã (ainda por gravar). A pré-visualização era
+    // uma cópia à mão da marcação em email.html e foi por aí que passaram
+    // despercebidos os ícones empilhados no Outlook: a cópia usava
+    // display:inline-block, que funciona no browser mas não no Outlook, e
+    // portanto mostrava um resultado que o email não tinha.
+    if (req.method === 'POST' && action === 'footer_preview') {
+      const ownerRow = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+      );
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+      const body = req.body || {};
+      // Tudo o que entra passa pelos mesmos sanitizadores da gravação — o
+      // resultado é escrito no ecrã de quem chamou.
+      const vars = (body.variables && typeof body.variables === 'object') ? body.variables : {};
+      const html = buildLegalFooter({
+        globalDisclaimer: sanitizeDisclaimer(body.disclaimer || ''),
+        footerLogoUrl: /^https?:\/\//i.test(String(body.footer_logo_url || '').trim()) ? String(body.footer_logo_url).trim() : '',
+        footerSocials: sanitizeFooterSocials(body.footer_socials),
+        variables: vars,
+        brandName: String(body.brand_name || 'Caetano').slice(0, 120),
+        width: normalizeEmailWidth(body.email_width),
+        email: '[email do destinatário]',
+        unsubUrl: `${(process.env.APP_URL || '').replace(/\/$/, '')}#unsubscribe`,
+        previewUrl: `${(process.env.APP_URL || '').replace(/\/$/, '')}#preview`,
+      });
+      return res.status(200).json({ html });
     }
 
     // ── Global settings PUT (owner-only) ─────────────────────────
