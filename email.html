@@ -3039,7 +3039,11 @@
                 const btnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};text-decoration:none;box-sizing:border-box;${b.width?`width:${b.width}${b.widthUnit||'px'};text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
+                // O canvas mostra o mesmo relevo e os mesmos estados do email
+                // (ver TE_BTN_CSS): é aqui que se desenha o botão antes de
+                // existir email, e tem de dar a mesma ideia de coisa clicável.
+                const btnRelevo = b.borderColor ? '' : `border-bottom:3px solid ${teEscurece(b.bgColor, 0.28)};`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" class="te-canvas-btn" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};${btnRelevo}text-decoration:none;box-sizing:border-box;cursor:pointer;transition:background-color .15s ease,transform .06s ease;${b.width?`width:${b.width}${b.widthUnit||'px'};text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
                 break;
             }
             case 'image': {
@@ -4018,6 +4022,11 @@
         if (srcBlocks.some(b => isFullPctButton(b) || (b.type === 'columns' && Array.isArray(b.children) && b.children.some(col => col.some(isFullPctButton))))) {
             headParts.push(`    <mj-style>.te-btn-full a { width:100% !important; box-sizing:border-box !important; text-align:center; }</mj-style>`);
         }
+        // Estados dos botões: cursor de mão, rato em cima e a carregar.
+        const hoverBotoes = teBtnHoverCss(srcBlocks);
+        if (hoverBotoes) {
+            headParts.push(`    <mj-style>${TE_BTN_CSS}${hoverBotoes}</mj-style>`);
+        }
         const head = headParts.length ? `  <mj-head>\n${headParts.join('\n')}\n  </mj-head>\n` : '';
         // lang="pt": sem isto a MJML escreve lang="und" ("undetermined") no
         // <html>, e um leitor de ecrã não sabe em que língua ler o email.
@@ -4303,6 +4312,51 @@ ${teSerializeBlocksComment(srcBlocks)}
     // reeditar aquele bloco. É idempotente: o que já está limpo não muda.
     const teTextoLimpo = (t) => teSanitizeRichText(t || '');
 
+    // ── Aspecto clicável dos botões ────────────────────────────────────
+    // Um rectângulo de cor plana não se lê como um botão. O que o torna
+    // clicável, num email, tem de funcionar sem JavaScript e degradar bem
+    // onde o CSS não é suportado:
+    //   · rebordo inferior mais escuro — dá relevo, e é um border, que todos
+    //     os clientes desenham (incluindo o Outlook);
+    //   · cursor de mão — a MJML escreve cursor:auto na célula, pelo que o
+    //     ponteiro nem mudava por cima do botão;
+    //   · rato em cima escurece o fundo, e a carregar o botão desce 1px, o
+    //     que dá a sensação de tecla. Só onde o CSS em <style> é suportado
+    //     (Gmail, Apple Mail, Outlook.com); onde não é, fica o estado normal.
+    function teEscurece(hex, fraccao) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+        if (!m) return '#000000';
+        const n = parseInt(m[1], 16);
+        const f = Math.max(0, Math.min(1, fraccao));
+        const canal = (v) => Math.round(v * (1 - f));
+        const r = canal((n >> 16) & 255), g = canal((n >> 8) & 255), b = canal(n & 255);
+        return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+    }
+    // Uma classe por cor de fundo, para a regra de "rato em cima" poder ter a
+    // cor certa sem precisar de uma classe por botão.
+    function teBtnClass(hex) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+        return 'te-b-' + (m ? m[1].toLowerCase() : '000000');
+    }
+    const TE_BTN_CSS = [
+        '.te-btn td{cursor:pointer!important}',
+        '.te-btn a{cursor:pointer!important;transition:background-color .15s ease,transform .06s ease}',
+        '.te-btn a:active{transform:translateY(1px)}',
+    ].join('');
+    // Regras de "rato em cima", uma por cor usada nos botões deste email.
+    function teBtnHoverCss(blocos) {
+        const cores = new Set();
+        const percorrer = (lista) => (lista || []).forEach(b => {
+            if (b.type === 'button' && b.bgColor) cores.add(b.bgColor);
+            if (b.type === 'columns') (b.children || []).forEach(percorrer);
+        });
+        percorrer(blocos);
+        return [...cores].map(cor => {
+            const escura = teEscurece(cor, 0.14);
+            return `.${teBtnClass(cor)} a:hover{background:${escura}!important;background-color:${escura}!important}`;
+        }).join('');
+    }
+
     // Endereços de email e números de telefone escritos em texto ficam com a
     // cor e o sublinhado do cliente de email: o Gmail e o Apple Mail
     // detectam-nos e criam eles o link, em azul. Não há regra de CSS que o
@@ -4360,12 +4414,18 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const mjBtnBr = b.borderRadius ?? 6;
                 const mjBtnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
+                // Aspecto de coisa clicável (ver TE_BTN_CSS): o rebordo
+                // inferior mais escuro dá-lhe relevo, e a classe leva o
+                // cursor de mão e os estados de rato em cima e a carregar.
+                // O rebordo só entra quando o botão não tem um contorno
+                // definido — nesse caso manda a escolha de quem desenhou.
+                const mjBtnClasses = ['te-btn', teBtnClass(b.bgColor), ...((b.width && b.widthUnit === '%') ? ['te-btn-full'] : [])];
+                const mjBtnRelevo = b.borderColor ? '' : ` border-bottom="3px solid ${teEscurece(b.bgColor, 0.28)}"`;
                 // mj-button's own %-width attribute only resizes the outer table,
                 // never the inner link (documented mjml-button limitation) — the
                 // te-btn-full class + matching <mj-style> rule (added in
                 // teBuildMjml) force the link itself to fill that table.
-                const mjBtnFullClass = (b.width && b.widthUnit === '%') ? ' css-class="te-btn-full"' : '';
-                return { mergeable:true, padOnEl:true, bg:b.areaBgColor||'#ffffff', inner:`${i}    <mj-button${TE_CBG_SLOT} background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}" inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${mjBtnFullClass}${elPad()}>${b.text}</mj-button>` };
+                return { mergeable:true, padOnEl:true, bg:b.areaBgColor||'#ffffff', inner:`${i}    <mj-button${TE_CBG_SLOT} background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}"${mjBtnRelevo} inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''} css-class="${mjBtnClasses.join(' ')}"${elPad()}>${b.text}</mj-button>` };
             }
             case 'image': {
                 const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
@@ -10620,6 +10680,9 @@ ${sections.join('\n\n')}
            Toggle by adding `.dark` to <html>. Sidebar & primary-button
            Caetano blue stays the same; only page surfaces flip.
         ─────────────────────────────────────────────────────────────────── */
+        /* Botões no canvas do editor: os mesmos estados que o email leva. */
+        .te-canvas-btn:hover { filter: brightness(0.88); }
+        .te-canvas-btn:active { transform: translateY(1px); }
         html.dark { color-scheme: dark; }
         html.dark body                                { background-color: #0b1220 !important; color: #e2e8f0; }
         html.dark .bg-white                           { background-color: #1e293b !important; color: #e2e8f0; }
