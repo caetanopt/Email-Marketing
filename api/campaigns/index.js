@@ -386,7 +386,7 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
       const { name, subject, preview_text, from_name, from_email,
-              template_id, list_ids, scheduled_at, utm_params, attachments } = req.body || {};
+              template_id, list_ids, scheduled_at, utm_params, attachments, client_key } = req.body || {};
       if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
 
       const brandAccess = await query(
@@ -413,14 +413,56 @@ module.exports = async function handler(req, res) {
         if (accessible.length !== list_ids.length) return res.status(400).json({ error: 'Uma ou mais listas não são acessíveis' });
       }
 
-      const rows = await query(
-        `INSERT INTO campaigns (brand_id, name, subject, preview_text, from_name, from_email,
-         template_id, scheduled_at, status, created_by, utm_params, attachments)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, created_at`,
-        [brand_id, name, subject||null, preview_text||null, from_name||null, from_email||null,
-         template_id||null, scheduled_at||null, scheduled_at ? 'scheduled' : 'draft', user.id, utmJson,
-         JSON.stringify(Array.isArray(attachments) ? attachments : [])]
-      );
+      // Criação idempotente.
+      //
+      // Quando a resposta deste POST não chega ao browser — um 504 do proxy,
+      // a rede a cair, o portátil a suspender — a campanha JÁ ficou gravada,
+      // mas o cliente não fica a saber o id e a gravação seguinte cria outra.
+      // Era a origem das campanhas duplicadas com o mesmo assunto, às vezes
+      // com uma hora de intervalo: reproduzido com um 504 no primeiro POST.
+      //
+      // O cliente manda uma chave própria da sessão de edição; ao repetir,
+      // devolve-se a campanha que já existe em vez de criar outra. Nenhuma
+      // gravação passa a depender de a resposta anterior ter chegado.
+      const chave = (typeof client_key === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(client_key)) ? client_key : null;
+      if (chave) {
+        try {
+          await query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS client_key TEXT`);
+          // O índice é o que resolve duas tentativas verdadeiramente
+          // simultâneas; o SELECT abaixo resolve a repetição sequencial.
+          await query(`CREATE UNIQUE INDEX IF NOT EXISTS campaigns_client_key_uniq ON campaigns (client_key) WHERE client_key IS NOT NULL`).catch(() => {});
+          const jaExiste = await query('SELECT id FROM campaigns WHERE client_key=$1 AND brand_id=$2', [chave, brand_id]);
+          if (jaExiste[0]) return res.status(200).json({ id: jaExiste[0].id, deduplicated: true });
+        } catch (_) { /* sem a coluna, segue-se sem idempotência */ }
+      }
+
+      let rows;
+      try {
+        rows = await query(
+          `INSERT INTO campaigns (brand_id, name, subject, preview_text, from_name, from_email,
+           template_id, scheduled_at, status, created_by, utm_params, attachments, client_key)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, created_at`,
+          [brand_id, name, subject||null, preview_text||null, from_name||null, from_email||null,
+           template_id||null, scheduled_at||null, scheduled_at ? 'scheduled' : 'draft', user.id, utmJson,
+           JSON.stringify(Array.isArray(attachments) ? attachments : []), chave]
+        );
+      } catch (e) {
+        // 42703 = a coluna client_key não existe (migração ainda não corrida);
+        // 23505 = duas tentativas simultâneas com a mesma chave.
+        if (e.code === '23505' && chave) {
+          const existente = await query('SELECT id FROM campaigns WHERE client_key=$1 AND brand_id=$2', [chave, brand_id]);
+          if (existente[0]) return res.status(200).json({ id: existente[0].id, deduplicated: true });
+        }
+        if (e.code !== '42703') throw e;
+        rows = await query(
+          `INSERT INTO campaigns (brand_id, name, subject, preview_text, from_name, from_email,
+           template_id, scheduled_at, status, created_by, utm_params, attachments)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, created_at`,
+          [brand_id, name, subject||null, preview_text||null, from_name||null, from_email||null,
+           template_id||null, scheduled_at||null, scheduled_at ? 'scheduled' : 'draft', user.id, utmJson,
+           JSON.stringify(Array.isArray(attachments) ? attachments : [])]
+        );
+      }
       const campaignId = rows[0].id;
 
       if (list_ids?.length) {
