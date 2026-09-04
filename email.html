@@ -1970,6 +1970,56 @@
         newRange.selectNodeContents(span);
         sel.addRange(newRange);
     }
+    // Envolve a selecção num <a href>, pela mesma via que o tamanho e a cor:
+    // manipulação directa do range, e não document.execCommand('createLink').
+    // O execCommand está descontinuado e não aplica nada quando o documento
+    // não tem foco — mais uma razão para o link seguir o caminho que o resto
+    // da barra já segue.
+    //
+    // Um link existente dentro da selecção é desfeito primeiro, senão ficavam
+    // <a> aninhados (que o sanitizador teria de desmanchar).
+    function teWrapSelectionLink(containerEl, href) {
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return false;
+        const range = sel.getRangeAt(0);
+        if (range.collapsed || !containerEl.contains(range.commonAncestorContainer)) return false;
+
+        const desfazerLinks = (raiz) => {
+            raiz.querySelectorAll?.('a').forEach(a => {
+                while (a.firstChild) a.parentNode.insertBefore(a.firstChild, a);
+                a.remove();
+            });
+        };
+        // Um <a> que contenha toda a selecção: troca-se-lhe o endereço em vez
+        // de criar outro por dentro.
+        const no = range.commonAncestorContainer;
+        const paiLink = (no.nodeType === Node.ELEMENT_NODE ? no : no.parentElement)?.closest?.('a');
+        if (paiLink && containerEl.contains(paiLink)) {
+            if (href) { paiLink.setAttribute('href', href); paiLink.setAttribute('target', '_blank'); paiLink.setAttribute('rel', 'noopener noreferrer'); }
+            else { while (paiLink.firstChild) paiLink.parentNode.insertBefore(paiLink.firstChild, paiLink); paiLink.remove(); }
+            return true;
+        }
+
+        const frag = range.extractContents();
+        desfazerLinks(frag);
+        if (!href) {
+            // Remover: fica só o conteúdo, sem qualquer <a>.
+            range.insertNode(frag);
+            sel.removeAllRanges();
+            return true;
+        }
+        const a = document.createElement('a');
+        a.setAttribute('href', href);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        a.appendChild(frag);
+        range.insertNode(a);
+        sel.removeAllRanges();
+        const novo = document.createRange();
+        novo.selectNodeContents(a);
+        sel.addRange(novo);
+        return true;
+    }
     function teRichInput(blockId, el) {
         const f = teFind(blockId);
         if (!f) return;
@@ -2005,6 +2055,56 @@
         if (!el) return;
         teWrapSelectionStyle(el, 'color', color);
         teRichInput(blockId, el);
+    }
+    // Aplica um link à parte do texto que está seleccionada. Partilhado pelo
+    // editor dos blocos e pelo do disclaimer, para os dois se comportarem da
+    // mesma maneira.
+    //
+    // A selecção é guardada antes de abrir a caixa de diálogo: um prompt()
+    // nativo tira o foco ao campo e pode levar a selecção com ele, e sem ela
+    // o createLink não teria onde aplicar o link.
+    function teRichAplicarLink(el, aoTerminar) {
+        if (!el) return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !el.contains(sel.anchorNode)) {
+            showToast('Selecciona primeiro a parte do texto que vai receber o link.', 'info');
+            return;
+        }
+        const range = sel.getRangeAt(0).cloneRange();
+        // Se a selecção já está dentro de um link, o endereço actual aparece
+        // preenchido — assim editar um link é o mesmo gesto que criá-lo.
+        const noInicio = sel.anchorNode?.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode?.parentElement;
+        const linkExistente = noInicio?.closest?.('a[href]');
+        const atual = linkExistente ? linkExistente.getAttribute('href') : '';
+
+        const url = prompt('Endereço do link (deixa vazio para remover):', atual || 'https://');
+        if (url === null) return;
+
+        // A selecção guardada é reposta antes de mexer no conteúdo: o prompt
+        // tira o foco ao campo e leva a selecção com ele.
+        const restaurar = () => { el.focus(); sel.removeAllRanges(); sel.addRange(range); };
+
+        if (!url.trim()) {
+            restaurar();
+            teWrapSelectionLink(el, null);
+            if (typeof aoTerminar === 'function') aoTerminar();
+            return;
+        }
+        const seguro = teSafeHref(url);
+        if (!seguro) {
+            showToast('Endereço inválido. Usa http://, https://, mailto: ou tel:', 'error');
+            return;
+        }
+        restaurar();
+        if (!teWrapSelectionLink(el, seguro)) {
+            showToast('Não foi possível aplicar o link a esta selecção.', 'error');
+            return;
+        }
+        if (typeof aoTerminar === 'function') aoTerminar();
+    }
+    function teRichLink(blockId) {
+        const el = document.getElementById('richtext-' + blockId);
+        teRichAplicarLink(el, () => teRichInput(blockId, el));
     }
 
     const TE_ICONS = {
@@ -3327,13 +3427,16 @@
                         <option value="">Tam.</option>${sizeOpts}
                     </select>
                     <input type="color" title="Cor da seleção" onmousedown="event.preventDefault()" onchange="teRichColor('${b.id}',this.value)" class="w-6 h-6 border border-slate-200 rounded cursor-pointer" />
+                    <button type="button" title="Inserir ou editar link na selecção" onmousedown="event.preventDefault()" onclick="teRichLink('${b.id}')" class="w-6 h-6 flex items-center justify-center border border-slate-200 rounded hover:bg-slate-100">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5"/></svg>
+                    </button>
                 </div>
                 <div id="richtext-${b.id}" contenteditable="true"
                     onfocus="document.execCommand('defaultParagraphSeparator',false,'br')"
                     oninput="teRichInput('${b.id}',this)"
                     onblur="teRichBlur('${b.id}',this)"
                     class="w-full min-h-[90px] px-2 py-1.5 border border-slate-200 border-t-0 rounded-b-lg text-xs focus:outline-none focus:ring-2 focus:ring-slate-900">${b.text || ''}</div>
-                <p class="text-[9px] text-slate-400 mt-1">Seleciona parte do texto e usa a barra acima para formatar só essa parte.</p>
+                <p class="text-[9px] text-slate-400 mt-1">Selecciona parte do texto e usa a barra acima para formatar só essa parte. O último botão põe um link na selecção — para o tirar, selecciona-o outra vez e deixa o endereço vazio.</p>
             </div>`;
         }
         if (b.type === 'button' && key === 'width') {
@@ -6046,24 +6149,11 @@ ${teSerializeBlocksComment(srcBlocks)}
         _gsRenderFooterPreview();
     }
 
+    // O mesmo helper do editor dos blocos: assim os dois editores tratam a
+    // selecção da mesma maneira e um link existente aparece preenchido para
+    // ser editado.
     function _gsDiscLink() {
-        const el = _gsDiscEl();
-        if (!el) return;
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || !el.contains(sel.anchorNode)) {
-            showToast('Selecciona primeiro o texto que vai receber o link.', 'info');
-            return;
-        }
-        const url = prompt('Endereço do link:', 'https://');
-        if (url === null) return;
-        const seguro = teSafeHref(url);
-        if (!seguro) {
-            showToast('Endereço inválido. Usa http://, https://, mailto: ou tel:', 'error');
-            return;
-        }
-        el.focus();
-        document.execCommand('createLink', false, seguro);
-        _gsRenderFooterPreview();
+        teRichAplicarLink(_gsDiscEl(), () => _gsRenderFooterPreview());
     }
 
     // Limpa ao sair do campo, com o mesmo sanitizador do editor de blocos:
