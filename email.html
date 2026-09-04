@@ -1936,7 +1936,13 @@
                         child = firstMoved || next;
                         continue;
                     }
-                    const keptStyle = tag === 'SPAN' ? cleanStyle(child) : '';
+                    // O estilo é mantido no <span> e no <a>. No <a> era
+                    // descartado, e por isso um link com cor própria perdia-a
+                    // ao voltar do editor — inclusive os links que a geração
+                    // cria a partir de endereços escritos em texto, que
+                    // existem precisamente para não ficarem com a cor do
+                    // cliente de email.
+                    const keptStyle = (tag === 'SPAN' || tag === 'A') ? cleanStyle(child) : '';
                     // Um <span> que não fique com estilo nenhum não pinta nada:
                     // é só marcação a mais no email (o editor deixa-os para
                     // trás ao formatar e desformatar texto). Desembrulha-se,
@@ -3958,7 +3964,14 @@
         // é enviado de facto — não, e por isso os emails apareciam com as
         // cores trocadas. mj-raw dentro de mj-head escreve directamente no
         // <head>, que é onde estas meta tags têm de estar.
-        headParts.push(`    <mj-raw>\n      <meta name="color-scheme" content="light" />\n      <meta name="supported-color-schemes" content="light" />\n    </mj-raw>`);
+        // format-detection: pede ao iOS e ao Apple Mail que não transformem
+        // telefones, datas, moradas e emails em links azuis por sua conta.
+        headParts.push(`    <mj-raw>\n      <meta name="color-scheme" content="light" />\n      <meta name="supported-color-schemes" content="light" />\n      <meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />\n    </mj-raw>`);
+        // E quando o Apple Mail o faz mesmo assim, marca o link que criou com
+        // x-apple-data-detectors: essa regra devolve-lhe a cor e o peso do
+        // texto à volta. Não toca nos links postos de propósito, que não
+        // levam esse atributo.
+        headParts.push(`    <mj-style>a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font-size:inherit!important;font-family:inherit!important;font-weight:inherit!important;line-height:inherit!important}</mj-style>`);
         // "only light" e não apenas "light": é o valor que desliga o modo
         // escuro automático do Chrome, que de outra forma escurece a página
         // por sua conta e pinta o fundo por omissão dos links (um quadrado
@@ -4289,6 +4302,40 @@ ${teSerializeBlocksComment(srcBlocks)}
     // formatar e desformatar) e essa marcação seguia no email até alguém
     // reeditar aquele bloco. É idempotente: o que já está limpo não muda.
     const teTextoLimpo = (t) => teSanitizeRichText(t || '');
+
+    // Endereços de email e números de telefone escritos em texto ficam com a
+    // cor e o sublinhado do cliente de email: o Gmail e o Apple Mail
+    // detectam-nos e criam eles o link, em azul. Não há regra de CSS que o
+    // impeça no Gmail — mas um texto que JÁ está dentro de um <a> não é
+    // tocado. Envolve-se, então, na geração, com a cor do próprio bloco:
+    // continua clicável (mailto:/tel:), e passa a ser indistinguível do texto
+    // à volta em qualquer cliente.
+    //
+    // Só se mexe em texto solto: nada dentro de um <a> que já exista, para
+    // não desfazer os links que foram postos de propósito.
+    const TE_EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+    // Telefones portugueses escritos como no rodapé: "272 340 340",
+    // "910 726 364", com ou sem indicativo +351. Exige 9 dígitos para não
+    // apanhar preços nem anos.
+    const TE_TEL_RE = /(?:\+351[\s.-]?)?\b[2937]\d{2}[\s.-]?\d{3}[\s.-]?\d{3}\b/g;
+    function teEnvolveContactos(html, cor) {
+        const texto = String(html == null ? '' : html);
+        if (!texto) return texto;
+        const estilo = `color:${cor || 'inherit'};text-decoration:none`;
+        // Divide pelas tags <a>...</a> já existentes e só trata o que fica
+        // fora delas.
+        const partes = texto.split(/(<a\b[^>]*>[\s\S]*?<\/a>)/gi);
+        return partes.map((parte, i) => {
+            if (i % 2 === 1) return parte;               // é um <a> existente
+            // Também não se mexe no interior de uma tag (atributos).
+            return parte.split(/(<[^>]+>)/g).map((pedaco, j) => {
+                if (j % 2 === 1) return pedaco;          // é uma tag
+                return pedaco
+                    .replace(TE_EMAIL_RE, (e) => `<a href="mailto:${e}" style="${estilo}">${e}</a>`)
+                    .replace(TE_TEL_RE, (t) => `<a href="tel:${t.replace(/[^\d+]/g, '')}" style="${estilo}">${t}</a>`);
+            }).join('');
+        }).join('');
+    }
     function teBlockToMjmlParts(b, i) {
         const txt = (text,color,size,weight,align,lh,extra='') => `${i}    <mj-text color="${color}" font-size="${size}px" font-weight="${weight}" align="${align}"${lh?` line-height="${lh}"`:''}${extra}>${teNl2brX(teEscape(text))}</mj-text>`;
         // Padding a colocar no elemento.
@@ -4297,16 +4344,16 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'header':
                 // b.text is already sanitised rich HTML — bypass the shared
                 // txt() helper since it escapes/nl2brX plain text.
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.textColor)}</mj-text>` };
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.color)}</mj-text>` };
             }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>`;
+                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.color)}</mj-text>`;
                 return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:mjTextTag };
             }
             case 'button': {
@@ -4335,7 +4382,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, padOnEl:true, bg:null, inner:`${i}    <mj-spacer${TE_CBG_SLOT} height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teTextoLimpo(b.text)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teEnvolveContactos(teTextoLimpo(b.text), b.color)}</mj-text>` };
             case 'icon': {
                 const attrs = b.href ? ` href="${b.href}"` : '';
                 let dataUrl;
@@ -4388,7 +4435,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             case 'hero': {
                 // mj-hero is a direct <mj-body> child (like mj-section), not
                 // wrapped inside one — never merges with neighbouring blocks.
-                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${teTextoLimpo(b.text)}</mj-text>\n${i}</mj-hero>` };
+                return { mergeable:false, full:`${i}<mj-hero mode="fixed-height" height="${b.height||300}px" background-url="${b.src||''}" background-position="center center" padding="${teMjmlPad(b)}" background-color="${b.bgColor||'#0f172a'}">\n${i}  <mj-text color="${b.color||'#ffffff'}" font-size="${b.fontSize||28}px" font-weight="${b.fontWeight||'700'}" align="${b.align||'center'}">${teEnvolveContactos(teTextoLimpo(b.text), b.color||'#ffffff')}</mj-text>\n${i}</mj-hero>` };
             }
             case 'accordion': {
                 const els = (b.items||[]).map(item => `${i}      <mj-accordion-element>\n${i}        <mj-accordion-title background-color="${b.bgColor||'#ffffff'}" color="${b.titleColor||'#0f172a'}" font-size="${b.fontSize||14}px">${item.title||''}</mj-accordion-title>\n${i}        <mj-accordion-text background-color="${b.bgColor||'#ffffff'}" color="${b.textColor||'#475569'}" font-size="${b.fontSize||14}px">${item.text||''}</mj-accordion-text>\n${i}      </mj-accordion-element>`).join('\n');
