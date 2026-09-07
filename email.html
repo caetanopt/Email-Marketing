@@ -9795,6 +9795,10 @@ ${teSerializeBlocksComment(srcBlocks)}
                 repetidos: repetidosNoFicheiro,     // o mesmo email mais do que uma vez
                 suprimidos: 0, cancelados: 0, jaNaCampanha: 0,
             };
+            // Contactos gravados que não chegaram a ser associados por uma
+            // falha de rede num bloco. Ficam contados à parte: são os únicos
+            // que se recuperam repetindo a importação.
+            let naoAssociados = 0;
             let erroAoAssociar = null;
             _wizImporting = true;
             _wizImportingCampaignId = campanhaId;
@@ -9816,9 +9820,23 @@ ${teSerializeBlocksComment(srcBlocks)}
                 fora.suprimidos += grav?.skipped_suppressed || 0;
                 fora.repetidos  += grav?.skipped_duplicate || 0;
                 try {
-                    const r = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
-                        method: 'POST', body: JSON.stringify({ emails, all_temp: true }),
-                    });
+                    // Repetido em falhas de rede, pelo mesmo motivo dos lotes
+                    // de envio: uma falha isolada não pode custar 500
+                    // contactos. Repetir é inofensivo — a associação é
+                    // idempotente (ON CONFLICT DO NOTHING).
+                    let r, ultimoErro;
+                    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+                        try {
+                            r = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
+                                method: 'POST', body: JSON.stringify({ emails, all_temp: true }),
+                            });
+                            break;
+                        } catch (e) {
+                            ultimoErro = e;
+                            if (tentativa < 3) await new Promise(res => setTimeout(res, 1000 * tentativa));
+                        }
+                    }
+                    if (!r) throw ultimoErro;
                     associados += r?.added || 0;
                     fora.cancelados += r?.excluded_status || 0;
                     fora.suprimidos += r?.excluded_suppression || 0;
@@ -9836,6 +9854,9 @@ ${teSerializeBlocksComment(srcBlocks)}
                 } catch (e) {
                     console.error('add_direct_recipients (bloco):', e);
                     erroAoAssociar = erroAoAssociar || e;
+                    // Contados, para a mensagem final não dar por adicionados
+                    // contactos que ficaram de fora por uma falha de rede.
+                    naoAssociados += emails.length;
                 }
                 imported += emails.length;
                 if (nestaCampanha()) {
@@ -9851,7 +9872,21 @@ ${teSerializeBlocksComment(srcBlocks)}
 
             for (let i = 0; i < blocos.length; i += CONCORRENCIA) {
                 const lote = blocos.slice(i, i + CONCORRENCIA);
-                const resultados = await Promise.allSettled(lote.map(tratarBloco));
+                // Cada bloco é tentado até três vezes antes de ser dado como
+                // perdido: sem isto, uma falha de rede num bloco custava 500
+                // contactos em silêncio.
+                const comRepeticao = async (bloco) => {
+                    let ultimoErro;
+                    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+                        try { return await tratarBloco(bloco); }
+                        catch (e) {
+                            ultimoErro = e;
+                            if (tentativa < 3) await new Promise(res => setTimeout(res, 1000 * tentativa));
+                        }
+                    }
+                    throw ultimoErro;
+                };
+                const resultados = await Promise.allSettled(lote.map(comRepeticao));
                 resultados.forEach((r, j) => {
                     if (r.status === 'rejected') {
                         console.error('bulk_import (bloco):', r.reason);
@@ -9883,7 +9918,7 @@ ${teSerializeBlocksComment(srcBlocks)}
 
             _wizClearFile(type);
             if (nestaCampanha()) _wizRecipTab('lists');
-            const totalFora = fora.invalidos + fora.suprimidos + fora.repetidos + fora.cancelados + fora.jaNaCampanha + failed;
+            const totalFora = fora.invalidos + fora.suprimidos + fora.repetidos + fora.cancelados + fora.jaNaCampanha + failed + naoAssociados;
             if (associados || (!erroAoAssociar && imported)) {
                 const n = (x) => x.toLocaleString('pt-PT');
                 let msg = `${n(associados)} de ${n(linhasNoFicheiro || rows.length)} linha(s) do ficheiro adicionadas à campanha.`;
@@ -9895,10 +9930,16 @@ ${teSerializeBlocksComment(srcBlocks)}
                     if (fora.jaNaCampanha) razoes.push(`${n(fora.jaNaCampanha)} já estavam nesta campanha`);
                     if (fora.invalidos)    razoes.push(`${n(fora.invalidos)} com email inválido`);
                     if (failed)            razoes.push(`${n(failed)} falharam a gravar`);
+                    if (naoAssociados)     razoes.push(`${n(naoAssociados)} gravados mas não associados (falha de rede)`);
                     msg += ` Ficaram de fora: ${razoes.join(', ')}.`;
                 }
+                // Uma falha de rede é recuperável repetindo a importação — os
+                // repetidos não são duplicados. Tem de ser dito, e a vermelho.
+                if (naoAssociados || failed) {
+                    msg += ' Repete a importação do mesmo ficheiro para recuperar esses — os que já entraram não são duplicados.';
+                }
                 if (!nestaCampanha()) msg += ' A importação era de outra campanha — os contactos ficaram nessa.';
-                showToast(msg, (totalFora || !nestaCampanha()) ? 'info' : undefined);
+                showToast(msg, (naoAssociados || failed) ? 'error' : ((totalFora || !nestaCampanha()) ? 'info' : undefined));
                 if (totalFora) console.info('Importação — o que ficou de fora:', { linhasNoFicheiro, enviados: rows.length, associados, ...fora, falhas: failed });
             } else if (erroAoAssociar) {
                 // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
