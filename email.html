@@ -9700,9 +9700,16 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-1 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>A importar…'; }
         try {
             let rows = [];
+            // Linhas do ficheiro antes de qualquer filtro. Sem este número não
+            // se percebia a diferença entre o que está no ficheiro e o que
+            // entra: as linhas descartadas ao ler nunca eram contadas nem
+            // reportadas em lado nenhum.
+            let linhasNoFicheiro = 0;
             if (type === 'txt') {
                 const text = await _readTextSmart(file);
-                rows = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && _isValidEmail(l)).map(email => ({ email: email.toLowerCase() }));
+                const linhas = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                linhasNoFicheiro = linhas.length;
+                rows = linhas.filter(_isValidEmail).map(email => ({ email: email.toLowerCase() }));
             } else if (type === 'excel') {
                 const ab = await file.arrayBuffer();
                 const wb = XLSX.read(ab, { type: 'array' });
@@ -9719,6 +9726,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                               company:    headers.findIndex(h => ['company','empresa','company name'].includes(h)) };
                 const statusIdx = headers.findIndex(h => _IMP_STATUS_HEADERS.includes(h));
                 const dateIdx   = headers.findIndex(h => _IMP_DATE_HEADERS.includes(h));
+                linhasNoFicheiro = raw.slice(1).filter(r => String(r[emailIdx] || '').trim()).length;
                 rows = raw.slice(1).map(r => {
                     const email = String(r[emailIdx] || '').trim().toLowerCase();
                     if (!_isValidEmail(email)) return null;
@@ -9730,9 +9738,25 @@ ${teSerializeBlocksComment(srcBlocks)}
                 }).filter(Boolean);
             } else {
                 const text = await _readTextSmart(file);
+                // Menos o cabeçalho, que não é um contacto.
+                linhasNoFicheiro = Math.max(0, text.split(/\r?\n/).filter(l => l.trim()).length - 1);
                 rows = _parseCsv(text);
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
+
+            // Repetidos no próprio ficheiro: retirados aqui, para o número que
+            // se mostra ser o de pessoas e não o de linhas, e para não se
+            // gastar rede a enviar duas vezes a mesma.
+            const vistos = new Set();
+            const semRepetidos = rows.filter(r => {
+                const e = (r.email || '').toLowerCase().trim();
+                if (!e || vistos.has(e)) return false;
+                vistos.add(e);
+                return true;
+            });
+            const repetidosNoFicheiro = rows.length - semRepetidos.length;
+            const semEmailValido = Math.max(0, linhasNoFicheiro - rows.length);
+            rows = semRepetidos;
 
             // A campanha é criada ANTES de importar, e o id fica numa variável
             // local. Duas razões, as duas vividas:
@@ -9766,7 +9790,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             // explicar a diferença entre o que estava no ficheiro e o que
             // ficou na campanha — antes dizia só um número e ficava-se sem
             // saber porquê.
-            const fora = { invalidos: 0, suprimidos: 0, repetidos: 0, cancelados: 0, jaNaCampanha: 0 };
+            const fora = {
+                invalidos: semEmailValido,          // linhas do ficheiro sem email utilizável
+                repetidos: repetidosNoFicheiro,     // o mesmo email mais do que uma vez
+                suprimidos: 0, cancelados: 0, jaNaCampanha: 0,
+            };
             let erroAoAssociar = null;
             _wizImporting = true;
             _wizImportingCampaignId = campanhaId;
@@ -9839,7 +9867,17 @@ ${teSerializeBlocksComment(srcBlocks)}
             try {
                 await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=imports`, {
                     method: 'POST',
-                    body: JSON.stringify({ file_name: file.name, list_id: null, list_name: null, total_rows: rows.length, imported, skipped: rows.length - imported - failed, failed, status: failed === 0 ? 'completed' : (imported > 0 ? 'partial' : 'failed') })
+                    body: JSON.stringify({
+                        file_name: file.name, list_id: null, list_name: null,
+                        // total_rows é o do ficheiro; imported é o que ficou
+                        // mesmo na campanha. Antes gravava-se aqui o número de
+                        // emails enviados ao servidor, que não é a mesma coisa.
+                        total_rows: linhasNoFicheiro || rows.length,
+                        imported: associados,
+                        skipped: Math.max(0, (linhasNoFicheiro || rows.length) - associados - failed),
+                        failed,
+                        status: failed === 0 ? 'completed' : (associados > 0 ? 'partial' : 'failed'),
+                    })
                 });
             } catch {}
 
@@ -9848,7 +9886,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             const totalFora = fora.invalidos + fora.suprimidos + fora.repetidos + fora.cancelados + fora.jaNaCampanha + failed;
             if (associados || (!erroAoAssociar && imported)) {
                 const n = (x) => x.toLocaleString('pt-PT');
-                let msg = `${n(associados)} de ${n(rows.length)} contacto(s) adicionado(s) à campanha.`;
+                let msg = `${n(associados)} de ${n(linhasNoFicheiro || rows.length)} linha(s) do ficheiro adicionadas à campanha.`;
                 if (totalFora) {
                     const razoes = [];
                     if (fora.cancelados)   razoes.push(`${n(fora.cancelados)} cancelaram a subscrição ou foram devolvidos`);
@@ -9861,7 +9899,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 }
                 if (!nestaCampanha()) msg += ' A importação era de outra campanha — os contactos ficaram nessa.';
                 showToast(msg, (totalFora || !nestaCampanha()) ? 'info' : undefined);
-                if (totalFora) console.info('Importação — o que ficou de fora:', { total: rows.length, associados, ...fora, falhas: failed });
+                if (totalFora) console.info('Importação — o que ficou de fora:', { linhasNoFicheiro, enviados: rows.length, associados, ...fora, falhas: failed });
             } else if (erroAoAssociar) {
                 // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
                 // do ecrã convencido de que a importação está feita.
