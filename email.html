@@ -8380,6 +8380,12 @@ ${teSerializeBlocksComment(srcBlocks)}
     // sítio a decidir, porque isto estava escrito em três (auto-save,
     // "Guardar" e gravação antes de enviar) e bastava um deles divergir.
     async function _wizGravarCampanha(payload) {
+        // A opção do rodapé legal é lida aqui, e não em cada sítio que monta o
+        // payload: são três (auto-save, rascunho e confirmação do envio) e
+        // qualquer um deles a esquecer-se voltava a pôr a frase no email.
+        // Sem a caixa no ecrã, envia-se a frase — é o comportamento por omissão.
+        const caixaLegal = document.getElementById('wizLegalNotice');
+        payload = { ...payload, no_legal_notice: caixaLegal ? !caixaLegal.checked : false };
         if (_editingCampaignId) {
             await apiFetch(`/api/campaigns/${_editingCampaignId}`, { method: 'PUT', body: JSON.stringify(payload) });
             return _editingCampaignId;
@@ -8403,6 +8409,12 @@ ${teSerializeBlocksComment(srcBlocks)}
         } catch (_) {}
         _wizClientKey = 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
         return _wizClientKey;
+    }
+    // Estado da caixa do rodapé legal ao abrir uma campanha. Uma campanha sem
+    // o campo (gravada antes desta opção existir) leva a frase.
+    function _wizAplicarFraseLegal(c) {
+        const el = document.getElementById('wizLegalNotice');
+        if (el) el.checked = !(c && c.no_legal_notice === true);
     }
     function _wizSaveDraft() {
         const draft = {
@@ -9797,6 +9809,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         sv('wizName',        (c.name && c.name !== c.subject) ? c.name : '');
         sv('wizSubject',     c.subject);
         sv('wizPreviewText', c.preview_text);
+        _wizAplicarFraseLegal(c);
         sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
         sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
         // UTM
@@ -9870,6 +9883,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             sv('wizName',        (c.name && c.name !== c.subject) ? c.name : '');
             sv('wizSubject',     c.subject);
             sv('wizPreviewText', c.preview_text);
+            _wizAplicarFraseLegal(c);
             sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
             sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
             const utmParams = c.utm_params || {};
@@ -11355,6 +11369,7 @@ ${sections.join('\n\n')}
                                 _sv('wizName',        (c.name && c.name !== c.subject) ? c.name : '');
                                 _sv('wizSubject',     c.subject);
                                 _sv('wizPreviewText', c.preview_text);
+                                _wizAplicarFraseLegal(c);
                                 _sv('wizFromName',    c.from_name  || _currentBrand?.from_name  || '');
                                 _sv('wizFromEmail',   c.from_email || _currentBrand?.from_email || '');
                                 _wizVarsRender();
@@ -11399,6 +11414,7 @@ ${sections.join('\n\n')}
                     _wizRecipTab('lists');
                     // New campaign — clear everything
                     ['wizName','wizSubject','wizPreviewText'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; });
+                    _wizAplicarFraseLegal(null);
                     _wizVarsRender();
                     const utmEn = document.getElementById('wizUtmEnabled'); if (utmEn) { utmEn.checked = false; _wizUtmToggle(); }
                     ['wizUtmCampaign','wizUtmContent'].forEach(uid => { const el = document.getElementById(uid); if (el) { el.value = ''; delete el.dataset.edited; } });
@@ -13690,6 +13706,18 @@ ${sections.join('\n\n')}
                                         <div><p class="text-sm font-medium text-slate-900">Guardar Rascunho</p><p class="text-xs text-slate-400">Envia mais tarde a partir do painel</p></div>
                                     </label>
                                 </div>
+                            </div>
+                            <!-- Rodapé legal -->
+                            <div class="bg-white border border-slate-200 rounded-xl p-5">
+                                <h3 class="font-semibold text-slate-900 text-sm mb-3">Rodapé legal</h3>
+                                <label class="flex items-start gap-3 cursor-pointer">
+                                    <input type="checkbox" id="wizLegalNotice" checked onchange="_wizScheduleApiAutoSave()" class="mt-0.5" />
+                                    <div>
+                                        <p class="text-sm font-medium text-slate-900">Incluir a frase legal</p>
+                                        <p class="text-xs text-slate-400 mt-0.5">«Este e-mail foi enviado para … por © Caetano Automotive Portugal, S.A., com sede …»</p>
+                                    </div>
+                                </label>
+                                <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">Desligar só retira esta frase. A linha de baixo — Política de privacidade, Versão web e Cancelar subscrição — mantém-se sempre: o link de cancelamento é obrigatório em envios em volume.</p>
                             </div>
                         </div>
                         </div><!-- /flex row -->

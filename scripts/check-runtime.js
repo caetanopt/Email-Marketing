@@ -39,6 +39,18 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['frase legal opcional', `const {buildLegalFooter}=require('./lib/emailFooter');
+    const o={globalDisclaimer:'aviso',email:'a@b.pt',unsubUrl:'https://e.pt/u',previewUrl:'https://e.pt/v/1/t'};
+    const com=buildLegalFooter(o), sem=buildLegalFooter({...o,semFraseLegal:true});
+    if(!/Este e-mail foi enviado para/.test(com))throw new Error('a frase legal deixou de sair por omissão');
+    if(/Este e-mail foi enviado para/.test(sem))throw new Error('a frase legal continua a sair com semFraseLegal');
+    for(const t of ['Cancelar subscrição','Política de privacidade','Versão web'])
+      if(!sem.includes(t))throw new Error('sem a frase legal desapareceu também o link "'+t+'" — o de cancelamento é obrigatório');
+    if(!/aviso/.test(sem))throw new Error('o disclaimer da área cinzenta desapareceu');
+    const {semFraseLegal}=require('./lib/campanhas');
+    if(semFraseLegal({}))throw new Error('uma campanha sem o campo tem de levar a frase');
+    if(semFraseLegal(null))throw new Error('sem campanha tem de levar a frase');
+    if(!semFraseLegal({no_legal_notice:true}))throw new Error('a opção gravada não é respeitada')`],
   ['cabeçalhos de cancelamento', `const {buildRawEmail,listUnsubscribeHeaders}=require('./lib/rawEmail');
     const u='https://emkt.caetano.pt/api/suppression?action=unsubscribe&email=a%40b.pt&token=t';
     const m=buildRawEmail({fromName:'C',fromEmail:'a@b.pt',toEmail:'c@d.pt',subject:'s',htmlBody:'h',textBody:'t',headers:listUnsubscribeHeaders(u)});

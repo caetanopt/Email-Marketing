@@ -2,6 +2,7 @@ const { GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../../lib/db');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors, requireBrand } = require('../../lib/auth');
+const { gravarFraseLegal } = require('../../lib/campanhas');
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -386,7 +387,8 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
       const { name, subject, preview_text, from_name, from_email,
-              template_id, list_ids, scheduled_at, utm_params, attachments, client_key } = req.body || {};
+              template_id, list_ids, scheduled_at, utm_params, attachments, client_key,
+              no_legal_notice } = req.body || {};
       if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
 
       const brandAccess = await query(
@@ -464,6 +466,8 @@ module.exports = async function handler(req, res) {
         );
       }
       const campaignId = rows[0].id;
+      // Gravado à parte: ver a nota em lib/campanhas.js.
+      await gravarFraseLegal(campaignId, no_legal_notice);
 
       if (list_ids?.length) {
         const vals = list_ids.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',');

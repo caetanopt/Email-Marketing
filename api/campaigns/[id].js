@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
+const { semFraseLegal, gravarFraseLegal } = require('../../lib/campanhas');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
 const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle } = require('../../lib/emailHtml');
 const { buildRawEmail, listUnsubscribeHeaders } = require('../../lib/rawEmail');
@@ -302,7 +303,8 @@ module.exports = async function handler(req, res) {
     if (req.method === 'PUT') {
       if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível editar uma campanha já enviada.' });
       const { name, subject, preview_text, from_name, from_email,
-              template_id, scheduled_at, status, list_ids, utm_params, attachments } = req.body || {};
+              template_id, scheduled_at, status, list_ids, utm_params, attachments,
+              no_legal_notice } = req.body || {};
       await query(
         `UPDATE campaigns SET
          name=COALESCE($1,name), subject=COALESCE($2,subject),
@@ -319,6 +321,8 @@ module.exports = async function handler(req, res) {
          attachments != null ? JSON.stringify(attachments) : null,
          id, camp.brand_id]
       );
+      // Gravado à parte: ver a nota em lib/campanhas.js.
+      await gravarFraseLegal(id, no_legal_notice);
       if (list_ids) {
         if (list_ids.length) {
           // Listas globais: basta o utilizador pertencer a alguma marca
@@ -630,6 +634,7 @@ module.exports = async function handler(req, res) {
                 email: contact.email,
                 unsubUrl,
                 previewUrl: previewUrl(APP_URL, id),
+                semFraseLegal: semFraseLegal(c),
               }) + `<img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
@@ -883,6 +888,7 @@ module.exports = async function handler(req, res) {
           email: to,
           unsubUrl,
           previewUrl: previewUrl(APP_URL, id),
+          semFraseLegal: semFraseLegal(c),
         });
         // Apply UTM params + click tracking (same as real sends so test reflects exact behaviour)
         const utmParamsT = c.utm_params || {};

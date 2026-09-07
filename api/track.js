@@ -1,5 +1,6 @@
 const { query, transaction } = require('../lib/db');
 const { buildLegalFooter, detectContentWidth } = require('../lib/emailFooter');
+const { lerFraseLegal } = require('../lib/campanhas');
 const { previewTokenValido } = require('../lib/previewLink');
 const { stripEditorMetadata } = require('../lib/emailHtml');
 const APP_URL_PREVIEW = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
@@ -247,6 +248,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
         email: '',
         unsubUrl: `${APP_URL_PREVIEW}#unsubscribe`,
         previewUrl: '',
+        semFraseLegal: await lerFraseLegal(id),
       });
 
       // Numa pré-visualização todos os links devem abrir noutro separador: é o
