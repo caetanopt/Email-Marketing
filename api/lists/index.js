@@ -51,6 +51,25 @@ function buildSegmentWhere(rules, match) {
 
 // As listas são globais (comuns a todas as marcas): o acesso exige apenas que
 // o utilizador pertença a alguma marca. Os segmentos são por marca (brand_id).
+// As listas são globais, mas a coluna lists.brand_id ficou da versão em que
+// eram por marca — declarada NOT NULL e com ON DELETE CASCADE para brands.
+//
+// O CASCADE é o problema sério: apagar a marca a que as listas ficaram
+// atribuídas (a migração 037 atribuiu-as à primeira marca activa) apagava as
+// listas "Marketing" e "Colaboradores" e todos os seus membros, para todas as
+// marcas. Tirar o NOT NULL permite ao código deixar de gravar a coluna e
+// permite desatribuir as listas antes de apagar uma marca, o que já evita a
+// perda de dados antes de a migração 049 correr. A migração é que apaga a
+// coluna de vez.
+let marcaDesvinculada = false;
+async function desvincularMarcaDasListas() {
+  if (marcaDesvinculada) return;
+  try {
+    await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
+  } catch (_) { /* já não existe coluna, ou sem permissão: segue */ }
+  marcaDesvinculada = true;
+}
+
 async function hasAnyRole(userId) {
   const r = await query('SELECT 1 FROM user_brand_roles WHERE user_id=$1 LIMIT 1', [userId]);
   return !!r[0];
@@ -200,16 +219,15 @@ module.exports = withAuth(async (req, res, user) => {
 
     try {
       if (req.method === 'GET') {
+        // Sem a marca da lista: uma lista global não pertence a nenhuma. O
+        // brand_name e o total_contacts_in_brand que aqui vinham não eram
+        // consumidos por ninguém e dependiam de l.brand_id.
         const rows = await query(
-          `SELECT l.*, b.name AS brand_name,
-                  COUNT(lm.contact_id)::int AS total_contacts,
-                  COUNT(lm.contact_id) FILTER (WHERE c.brand_id = $2)::int AS total_contacts_in_brand
+          `SELECT l.*, COUNT(lm.contact_id)::int AS total_contacts
            FROM lists l
-           LEFT JOIN brands b ON b.id = l.brand_id
            LEFT JOIN list_members lm ON lm.list_id = l.id
-           LEFT JOIN contacts c ON c.id = lm.contact_id
-           WHERE l.id = $1 GROUP BY l.id, b.name`,
-          [id, brand_id || auth[0].brand_id]
+           WHERE l.id = $1 GROUP BY l.id`,
+          [id]
         );
         return res.status(200).json(rows[0]);
       }
@@ -301,8 +319,14 @@ module.exports = withAuth(async (req, res, user) => {
     }
   }
 
-  // ── List collection operations (?brand_id=X) ─────────────────────────────
-  if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
+  await desvincularMarcaDasListas();
+
+  // ── Operações sobre a colecção de listas ────────────────────────────────
+  //
+  // As listas de email são globais: uma "Marketing" e uma "Colaboradores"
+  // partilhadas por todas as marcas (migração 037). O brand_id era exigido
+  // aqui mas não filtrava nada — a consulta abaixo nunca o usou. Deixa de ser
+  // pedido; quando vem, é ignorado.
 
   // Listas globais — comuns a todas as marcas. Inclui as duas listas fixas
   // (Marketing/Colaboradores) e quaisquer listas criadas por administradores.
@@ -335,8 +359,8 @@ module.exports = withAuth(async (req, res, user) => {
         for (const [name, description] of missing) {
           try {
             await query(
-              'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-              [brand_id, name, description]
+              'INSERT INTO lists (name, description) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+              [name, description]
             );
           } catch (_) {}
         }
@@ -359,8 +383,8 @@ module.exports = withAuth(async (req, res, user) => {
       const existing = await query('SELECT 1 FROM lists WHERE LOWER(name)=LOWER($1) LIMIT 1', [cleanName]);
       if (existing[0]) return res.status(409).json({ error: 'Já existe uma lista com esse nome.' });
       const rows = await query(
-        'INSERT INTO lists (brand_id, name, description) VALUES ($1,$2,$3) RETURNING id',
-        [brand_id, cleanName, description || null]
+        'INSERT INTO lists (name, description) VALUES ($1,$2) RETURNING id',
+        [cleanName, description || null]
       );
       return res.status(201).json({ ok: true, id: rows[0].id });
     }

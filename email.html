@@ -6274,9 +6274,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             const r = await apiFetch(`/api/brands?id=${id}&action=delete_brand`, { method: 'DELETE', body: JSON.stringify({ confirm: false }) });
             if (!r.requires_confirm) return;
             _deleteBrandTarget = { id, name };
-            const { contacts = 0, campaigns = 0, lists = 0 } = r.counts || {};
+            // As listas de email são globais e não são eliminadas com a
+            // marca, por isso deixaram de ser mencionadas aqui.
+            const { contacts = 0, campaigns = 0 } = r.counts || {};
             document.getElementById('deleteBrandWarning').innerHTML =
-                `A marca <strong>${escHtml(name)}</strong> tem <strong>${contacts}</strong> contacto(s), <strong>${campaigns}</strong> campanha(s) e <strong>${lists}</strong> lista(s) que serão eliminados.`;
+                `A marca <strong>${escHtml(name)}</strong> tem <strong>${contacts}</strong> contacto(s) e <strong>${campaigns}</strong> campanha(s) que serão eliminados. As listas de email são globais e mantêm-se.`;
             const inp = document.getElementById('deleteBrandConfirmInput');
             inp.value = '';
             inp.placeholder = name;

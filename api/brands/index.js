@@ -1086,18 +1086,30 @@ module.exports = async function handler(req, res) {
       const { confirm: confirmed } = req.body || {};
       if (!confirmed) {
         // Return counts for the confirmation dialog
-        const [contactsRes, campaignsRes, listsRes, brandRes] = await Promise.all([
+        // As listas de email são globais e não são apagadas com a marca, por
+        // isso deixam de ser contadas aqui — a contagem dizia que iam ser
+        // apagadas, e era verdade por causa do CASCADE (ver abaixo).
+        const [contactsRes, campaignsRes, brandRes] = await Promise.all([
           query(`SELECT COUNT(*)::int AS n FROM contacts WHERE brand_id=$1`, [id]),
           query(`SELECT COUNT(*)::int AS n FROM campaigns WHERE brand_id=$1`, [id]),
-          query(`SELECT COUNT(*)::int AS n FROM lists WHERE brand_id=$1`, [id]),
           query(`SELECT name FROM brands WHERE id=$1`, [id]),
         ]);
         return res.status(200).json({
           requires_confirm: true,
           brand_name: brandRes[0]?.name,
-          counts: { contacts: contactsRes[0]?.n ?? 0, campaigns: campaignsRes[0]?.n ?? 0, lists: listsRes[0]?.n ?? 0 },
+          counts: { contacts: contactsRes[0]?.n ?? 0, campaigns: campaignsRes[0]?.n ?? 0, lists: 0 },
         });
       }
+      // As listas de email são globais, mas lists.brand_id ainda tem
+      // ON DELETE CASCADE para brands enquanto a migração 049 não correr:
+      // apagar a marca a que ficaram atribuídas levava as listas
+      // "Marketing" e "Colaboradores" e todos os seus membros, para todas as
+      // marcas. Desatribuí-las primeiro evita isso. Depois de 049 a coluna
+      // já não existe e este UPDATE falha em silêncio, como deve.
+      try {
+        await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
+        await query(`UPDATE lists SET brand_id = NULL WHERE brand_id = $1`, [id]);
+      } catch (_) { /* coluna já apagada: nada a fazer */ }
       // All related tables have ON DELETE CASCADE on brand_id — one DELETE cascades everything
       await query(`DELETE FROM brands WHERE id=$1`, [id]);
       return res.status(200).json({ ok: true });
