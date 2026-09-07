@@ -6956,8 +6956,10 @@ ${teSerializeBlocksComment(srcBlocks)}
         const base = window.location.origin;
         const post = document.getElementById('gsApiDocsPost');
         const del  = document.getElementById('gsApiDocsDel');
+        const delLista = document.getElementById('gsApiDocsDelLista');
         const get  = document.getElementById('gsApiDocsGet');
         if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<id_da_lista>",\n    "contacts": [\n      {\n        "email": "user@exemplo.pt",\n        "name": "Nome Apelido",\n        "phone": "+351910000000",\n        "company": "Empresa Lda",\n        "extra_data": { "campo1": "valor1", "cargo": "Director" }\n      }\n    ]\n  }'`;
+        if (delLista) delLista.textContent = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "list_id": "<id_da_lista>", "emails": ["user@exemplo.pt"] }'`;
         if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "emails": ["user@exemplo.pt"] }'`;
         if (get)  get.textContent  = `curl "${base}/api/sync?email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${key}"`;
     }
@@ -15553,7 +15555,13 @@ ${sections.join('\n\n')}
                                         <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="gsApiDocsPost"></code></pre>
                                     </div>
                                     <div>
-                                        <p class="text-slate-500 mb-1 font-medium">Cancelar subscrição (DELETE)</p>
+                                        <p class="text-slate-500 mb-1 font-medium">Sair de uma lista (DELETE com <code class="font-mono">list_id</code>)</p>
+                                        <p class="text-slate-400 mb-1">Remove a pessoa <strong>só daquela lista</strong>. Continua a receber das outras.</p>
+                                        <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="gsApiDocsDelLista"></code></pre>
+                                    </div>
+                                    <div>
+                                        <p class="text-slate-500 mb-1 font-medium">Cancelar tudo (DELETE sem <code class="font-mono">list_id</code>)</p>
+                                        <p class="text-slate-400 mb-1">Cancelamento total: o email entra na lista de supressão e deixa de receber de <strong>todas</strong> as listas e marcas. É o mesmo efeito do link de cancelamento nos emails, e não se desfaz pela API.</p>
                                         <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="gsApiDocsDel"></code></pre>
                                     </div>
                                     <div>

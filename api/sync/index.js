@@ -143,15 +143,35 @@ module.exports = async function handler(req, res) {
     if (req.method === 'DELETE') {
       if (!await autenticar(req, res)) return;
 
-      const { emails } = req.body || {};
+      const { emails, list_id } = req.body || {};
       if (!Array.isArray(emails) || !emails.length)
         return res.status(400).json({ error: 'Campo emails (array) obrigatório' });
 
       const valid = emails.map(e => (e||'').toLowerCase().trim()).filter(e => VALID_EMAIL.test(e));
       if (!valid.length) return res.status(400).json({ error: 'Nenhum email válido encontrado' });
 
-      // O cancelamento é da pessoa, não de uma marca: a supressão sempre foi
-      // global e os contactos também são agora.
+      // Com list_id: sai só daquela lista e continua a receber das outras. É
+      // uma remoção da lista, não uma supressão — o email NÃO entra na lista
+      // de supressão, senão deixava de receber tudo.
+      if (list_id) {
+        const listRows = await query('SELECT id, name FROM lists WHERE id=$1', [list_id]);
+        if (!listRows[0]) return res.status(404).json({ error: 'Lista não encontrada' });
+        const removidos = await query(
+          `DELETE FROM list_members
+           WHERE list_id=$1
+             AND contact_id IN (SELECT id FROM contacts WHERE LOWER(email) = ANY($2::text[]))
+           RETURNING contact_id`,
+          [list_id, valid]
+        );
+        return res.status(200).json({
+          ok: true, scope: 'lista', list_id: Number(list_id), list_name: listRows[0].name,
+          removed: removidos.length,
+        });
+      }
+
+      // Sem list_id: cancelamento total. O email entra na lista de supressão,
+      // que é global, e deixa de receber de qualquer lista e de qualquer
+      // marca — é o mesmo efeito do link de cancelamento nos emails.
       await query(
         `UPDATE contacts SET status='unsubscribed', updated_at=NOW()
          WHERE LOWER(email) = ANY($1::text[]) AND status='active'`,
@@ -162,7 +182,7 @@ module.exports = async function handler(req, res) {
         [valid]
       );
 
-      return res.status(200).json({ ok: true, unsubscribed: valid.length });
+      return res.status(200).json({ ok: true, scope: 'global', unsubscribed: valid.length });
     }
 
     res.status(405).json({ error: 'Método não permitido' });
