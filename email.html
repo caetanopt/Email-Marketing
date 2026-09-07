@@ -709,6 +709,7 @@
                 <td class="px-4 py-3">${_campTitulo(c)}</td>
                 <td class="px-4 py-3">
                     ${_statusBadge[c.status]||c.status}
+                    ${_campProgressoEnvio(c)}
                     ${_currentUserRole !== 'viewer' ? `<span id="camp-import-badge-${c.id}" class="${(_wizImporting && _wizImportingCampaignId == c.id) ? '' : 'hidden'}">
                         ${(_wizImporting && _wizImportingCampaignId == c.id) ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-600 whitespace-nowrap"><svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>${_wizImportTotal ? Math.round(_wizImportDone/_wizImportTotal*100)+'%' : 'A importar…'}</span>` : ''}
                     </span>` : ''}
@@ -756,6 +757,27 @@
         showScreen('campaignReport');
     }
 
+    // Progresso de um envio a decorrer, na linha da campanha.
+    //
+    // Os números vêm do servidor (sent_count / total_recipients na listagem),
+    // por isso a barra mostra o progresso verdadeiro, quer o envio esteja a
+    // ser conduzido por este browser quer pelo cron — e é igual para quem
+    // esteja a ver noutro computador.
+    function _campProgressoEnvio(c) {
+        if (c.status !== 'sending') return '';
+        const total = c.total_recipients || 0;
+        const enviados = c.sent_count || 0;
+        const pct = total ? Math.min(100, Math.round(enviados / total * 100)) : 0;
+        return `<div class="mt-1.5 w-40">
+            <div class="flex items-center gap-1.5 mb-1">
+                <svg class="w-3 h-3 animate-spin shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+                <span class="text-xs font-medium text-blue-700">${pct}%</span>
+                <span class="text-[10px] text-slate-400">${enviados.toLocaleString('pt-PT')} / ${total.toLocaleString('pt-PT')}</span>
+            </div>
+            <div class="w-full bg-blue-100 rounded-full h-1"><div class="bg-blue-600 h-1 rounded-full transition-all duration-500" style="width:${pct}%"></div></div>
+        </div>`;
+    }
+
     // Polling automático: enquanto houver campanhas agendadas ou em envio,
     // a listagem actualiza-se sozinha (sem refresh manual) até estarem enviadas.
     let _campaignsPollTimer = null;
@@ -763,6 +785,8 @@
         clearTimeout(_campaignsPollTimer);
         const hasActive = (data || []).some(c => c.status === 'sending' || c.status === 'scheduled');
         if (!hasActive) return;
+        // A enviar, o número muda a cada lote: vale a pena olhar mais vezes.
+        const intervalo = (data || []).some(c => c.status === 'sending') ? 3000 : 8000;
         _campaignsPollTimer = setTimeout(async () => {
             // Só continua se o ecrã de campanhas ainda estiver visível
             if (document.querySelector('.screen.active')?.id !== 'campaigns' || !_currentBrand?.id) return;
@@ -771,7 +795,7 @@
                 _cacheSet(`campaigns_${_currentBrand.id}`, fresh);
                 _applyCampaignsData(fresh); // re-agenda o próximo poll se ainda houver activas
             } catch (_) { _scheduleCampaignsPoll(data); /* erro transitório — tenta de novo */ }
-        }, 8000);
+        }, intervalo);
     }
 
     // Nome e assunto de uma campanha, sem repetição.
@@ -8899,19 +8923,44 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const init = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
                 _envioArrancou = true;
                 if (!init.warning) {
+                    // Assim que o envio arranca, vai-se para a lista: é lá que
+                    // há indicação do que está a acontecer (barra e
+                    // percentagem por campanha, actualizadas de 3 em 3
+                    // segundos a partir do servidor). Ficar no wizard deixava
+                    // o utilizador a olhar para um botão "A processar…" sem
+                    // nada a mudar durante todo o envio.
+                    //
+                    // Os lotes continuam a ser pedidos por este browser em
+                    // segundo plano — é o que torna o envio rápido; se esta
+                    // janela fechar, o cron continua o resto.
+                    _editingCampaignId = null;
+                    _editingTemplateId = null;
+                    _wizClientKey = null;
+                    _wizClearDraft();
+                    _wizMarkClean();
+                    showScreen('campaigns');
+                    wizShowStep(1);
+                    _loadCampaigns(_currentBrand.id);
+                    showToast(`Envio iniciado: ${(init.total || 0).toLocaleString('pt-PT')} destinatários. Podes acompanhar o progresso aqui.`, 'info');
+
                     let totalSent = 0, totalFailed = 0, _batches = 0;
                     while (_batches++ < 500) {
                         const r = await _pedirLoteDeEnvio(campaignId);
                         totalSent   += r.sent   || 0;
                         totalFailed += r.failed || 0;
+                        // A cada lote, a lista mostra o número novo.
+                        if (document.querySelector('.screen.active')?.id === 'campaigns' && _currentBrand?.id) {
+                            _loadCampaigns(_currentBrand.id);
+                        }
                         if (r.done || r.warning) break;
                         if (r.quotaExhausted) {
                             showToast(`Quota diária SES atingida — ${totalSent.toLocaleString('pt-PT')} emails enviados. Os restantes (${(r.remaining||0).toLocaleString('pt-PT')}) serão enviados automaticamente quando a quota renovar à meia-noite UTC.`, 'info');
-                            _wizMarkClean(); showScreen('campaigns'); _loadCampaigns(_currentBrand.id); _wizClearDraft(); wizShowStep(1);
                             return;
                         }
                     }
                     showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
+                    if (_currentBrand?.id) _loadCampaigns(_currentBrand.id);
+                    return;
                 } else {
                     showToast(`Campanha marcada como enviada (${init.warning}).`, 'info');
                 }
