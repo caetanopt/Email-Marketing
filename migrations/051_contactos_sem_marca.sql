@@ -27,6 +27,14 @@
 -- as tabelas temporárias não sobrevivem entre instruções no editor de SQL do
 -- Supabase (cada uma pode correr noutra ligação), e o mapa dá sempre o mesmo
 -- resultado porque a tabela contacts só é alterada no fim, no passo 6.
+--
+-- O editor do Supabase também não pára na primeira instrução que falha nem
+-- desfaz o que já correu, apesar do BEGIN/COMMIT: na primeira tentativa desta
+-- migração as instruções da fusão falharam (tabela temporária) mas o passo 7
+-- aplicou-se, e a coluna contacts.brand_id já não existe. Por isso cada
+-- instrução aqui é segura de repetir e nenhuma depende da coluna: o ficheiro
+-- pode ser corrido de novo do início, quantas vezes for preciso, e o que
+-- estiver feito fica como está.
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Passo 0 — só para ver (não altera nada). Podes correr isto sozinho.
@@ -34,7 +42,7 @@
 --   SELECT LOWER(email) AS email,
 --          COUNT(*) AS quantos,
 --          MIN(id) AS fica_o_id,
---          ARRAY_AGG(brand_id ORDER BY id) AS marcas
+--          ARRAY_AGG(id ORDER BY id) AS ids
 --   FROM contacts
 --   GROUP BY LOWER(email)
 --   HAVING COUNT(*) > 1
@@ -232,10 +240,11 @@ WHERE id IN (
 -- Passo 7 — a coluna sai, e com ela o CASCADE que apagava contactos ao
 -- apagar uma marca
 --
--- Apagar a coluna leva com ela a chave estrangeira para brands, a unicidade
--- (brand_id, email) e o índice idx_contacts_brand_status.
+-- Apagar a coluna leva com ela o NOT NULL, a chave estrangeira para brands, a
+-- unicidade (brand_id, email) e o índice idx_contacts_brand_status. Aqui só
+-- se usam formas com IF EXISTS: se a coluna já tiver sido apagada numa
+-- tentativa anterior, não é erro nenhum.
 -- ───────────────────────────────────────────────────────────────────────────
-ALTER TABLE contacts ALTER COLUMN brand_id DROP NOT NULL;
 DROP INDEX IF EXISTS idx_contacts_brand_status;
 ALTER TABLE contacts DROP COLUMN IF EXISTS brand_id;
 
@@ -254,7 +263,13 @@ COMMIT;
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verificação — não pode sobrar nenhum email repetido
 -- ───────────────────────────────────────────────────────────────────────────
+-- contactos e emails_distintos têm de dar o mesmo número. E indice_unico tem
+-- de dar true: é ele que impede que voltem a aparecer duplicados.
 SELECT COUNT(*)::int AS contactos,
        COUNT(DISTINCT LOWER(email))::int AS emails_distintos,
-       COUNT(*) FILTER (WHERE status = 'active')::int AS activos
+       COUNT(*) FILTER (WHERE status = 'active')::int AS activos,
+       EXISTS (
+         SELECT 1 FROM pg_indexes
+         WHERE tablename = 'contacts' AND indexname = 'contacts_email_unique_ci'
+       ) AS indice_unico
 FROM contacts;
