@@ -8207,6 +8207,15 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (enabled) _wizUtmPreview();
         _wizRevUtmRender();
     }
+    // Mesmo padrão do cartão dos UTM: com o toggle desligado esconde-se o
+    // conteúdo e fica só a indicação do que vai acontecer.
+    function _wizLegalNoticeToggle() {
+        const ligado = document.getElementById('wizLegalNotice')?.checked;
+        document.getElementById('wizLegalNoticeBody')?.classList.toggle('hidden', !ligado);
+        const off = document.getElementById('wizLegalNoticeOff');
+        if (off) { off.classList.toggle('hidden', !!ligado); off.classList.toggle('flex', !ligado); }
+        _wizScheduleApiAutoSave();
+    }
     function _lisbonNow() {
         const fmt = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -8414,7 +8423,13 @@ ${teSerializeBlocksComment(srcBlocks)}
     // o campo (gravada antes desta opção existir) leva a frase.
     function _wizAplicarFraseLegal(c) {
         const el = document.getElementById('wizLegalNotice');
-        if (el) el.checked = !(c && c.no_legal_notice === true);
+        if (!el) return;
+        el.checked = !(c && c.no_legal_notice === true);
+        // Sem passar pelo onchange: restaurar não é uma alteração do
+        // utilizador e não deve agendar uma gravação.
+        document.getElementById('wizLegalNoticeBody')?.classList.toggle('hidden', !el.checked);
+        const off = document.getElementById('wizLegalNoticeOff');
+        if (off) { off.classList.toggle('hidden', el.checked); off.classList.toggle('flex', !el.checked); }
     }
     function _wizSaveDraft() {
         const draft = {
@@ -13574,21 +13589,32 @@ ${sections.join('\n\n')}
                             </div>
                             <p class="text-[10px] text-slate-400 mt-2">O assunto terá o prefixo [TESTE]. Não afecta a campanha original.</p>
                         </div>
-                        <!-- Anexos -->
-                        <div class="bg-white border border-slate-200 rounded-xl p-5">
-                            <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
-                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
-                                Anexos
-                            </h3>
-                            <p class="text-xs text-slate-400 mb-3">Ficheiros enviados a todos os destinatários. Máx. 5 MB por ficheiro, 9 MB no total.</p>
-                            <div id="wizAttachList" class="space-y-2 mb-3">
-                                <p class="text-xs text-slate-400 italic">Sem anexos adicionados.</p>
+                        <!-- Anexos (esquerda) e destinatários (direita) -->
+                        <div class="grid grid-cols-2 gap-4 items-start">
+                            <div class="bg-white border border-slate-200 rounded-xl p-5 min-w-0">
+                                <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                                    Anexos
+                                </h3>
+                                <p class="text-xs text-slate-400 mb-3">Ficheiros enviados a todos os destinatários. Máx. 5 MB por ficheiro, 9 MB no total.</p>
+                                <div id="wizAttachList" class="space-y-2 mb-3">
+                                    <p class="text-xs text-slate-400 italic">Sem anexos adicionados.</p>
+                                </div>
+                                <p id="wizAttachTotal" class="text-[10px] text-slate-400 mb-3"></p>
+                                <button onclick="_wizAttachPick()" class="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                    Adicionar ficheiro
+                                </button>
                             </div>
-                            <p id="wizAttachTotal" class="text-[10px] text-slate-400 mb-3"></p>
-                            <button onclick="_wizAttachPick()" class="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                                Adicionar ficheiro
-                            </button>
+                            <div class="bg-white border border-slate-200 rounded-xl p-5 min-w-0">
+                                <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                    Destinatários
+                                </h3>
+                                <div id="wizRevRecipients" class="max-h-64 overflow-y-auto">
+                                    <p class="text-xs text-slate-400 py-2 text-center">—</p>
+                                </div>
+                            </div>
                         </div>
                         <div class="bg-white border border-slate-200 rounded-xl p-6">
                             <h3 class="font-semibold text-slate-900 text-sm mb-4">Resumo da Campanha</h3>
@@ -13654,16 +13680,6 @@ ${sections.join('\n\n')}
 
                         <!-- Coluna direita 40%: destinatários + quando enviar -->
                         <div class="w-[40%] flex-shrink-0 sticky top-4 space-y-4">
-                            <!-- Destinatários -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-5">
-                                <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
-                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                    Destinatários
-                                </h3>
-                                <div id="wizRevRecipients" class="max-h-64 overflow-y-auto">
-                                    <p class="text-xs text-slate-400 py-2 text-center">—</p>
-                                </div>
-                            </div>
                             <!-- Link de pré-visualização pública -->
                             <div class="bg-white border border-slate-200 rounded-xl p-5">
                                 <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
@@ -13680,6 +13696,27 @@ ${sections.join('\n\n')}
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                                         Copiar link
                                     </button>
+                                </div>
+                            </div>
+                            <!-- Rodapé legal -->
+                            <div class="bg-white border border-slate-200 rounded-xl p-5">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-slate-900">Frase legal no rodapé</h3>
+                                        <p class="text-xs text-slate-400 mt-0.5">Identifica o remetente e a sede da empresa. Desliga para não a enviar nesta campanha.</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-0.5">
+                                        <input type="checkbox" id="wizLegalNotice" checked class="sr-only peer" onchange="_wizLegalNoticeToggle()">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-slate-900"></div>
+                                    </label>
+                                </div>
+                                <div id="wizLegalNoticeBody" class="mt-3">
+                                    <p class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed italic">«Este e-mail foi enviado para <span class="not-italic font-mono text-[10px]">[email]</span> por © Caetano Automotive Portugal, S.A., com sede na Rua do Barreiro 547, 4409-513 Vila Nova de Gaia, matriculada na CRCOM.VNGAIA com o Nº/NIPC 500003165.»</p>
+                                    <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">A linha de baixo — Política de privacidade, Versão web e Cancelar subscrição — mantém-se sempre: o link de cancelamento é obrigatório em envios em volume.</p>
+                                </div>
+                                <div id="wizLegalNoticeOff" class="hidden flex-col items-center justify-center py-6 text-center">
+                                    <svg class="w-8 h-8 text-slate-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-4.72-4.72m14.72 14.72l-4.72-4.72"/></svg>
+                                    <p class="text-xs text-slate-400">A frase legal não vai nesta campanha.<br>Activa para a incluir.</p>
                                 </div>
                             </div>
                             <!-- Quando enviar -->
@@ -13706,18 +13743,6 @@ ${sections.join('\n\n')}
                                         <div><p class="text-sm font-medium text-slate-900">Guardar Rascunho</p><p class="text-xs text-slate-400">Envia mais tarde a partir do painel</p></div>
                                     </label>
                                 </div>
-                            </div>
-                            <!-- Rodapé legal -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-5">
-                                <h3 class="font-semibold text-slate-900 text-sm mb-3">Rodapé legal</h3>
-                                <label class="flex items-start gap-3 cursor-pointer">
-                                    <input type="checkbox" id="wizLegalNotice" checked onchange="_wizScheduleApiAutoSave()" class="mt-0.5" />
-                                    <div>
-                                        <p class="text-sm font-medium text-slate-900">Incluir a frase legal</p>
-                                        <p class="text-xs text-slate-400 mt-0.5">«Este e-mail foi enviado para … por © Caetano Automotive Portugal, S.A., com sede …»</p>
-                                    </div>
-                                </label>
-                                <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">Desligar só retira esta frase. A linha de baixo — Política de privacidade, Versão web e Cancelar subscrição — mantém-se sempre: o link de cancelamento é obrigatório em envios em volume.</p>
                             </div>
                         </div>
                         </div><!-- /flex row -->
