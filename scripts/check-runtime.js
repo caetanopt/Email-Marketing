@@ -41,6 +41,15 @@ const provas = [
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
   ['a importação na campanha não fica em memória', `const fs=require('fs');
     const h=fs.readFileSync('email.html','utf8');
+    // A campanha é criada antes do loop e o id guardado numa variável local:
+    // sair da campanha a meio da importação punha os contactos na campanha
+    // errada (ou numa nova) quando a associação era feita só no fim.
+    if(!h.includes('const campanhaId = await _wizGarantirCampanha();'))
+      throw new Error('a importação deixou de fixar a campanha antes de começar');
+    if(!h.includes('const associarLote = async'))
+      throw new Error('a importação deixou de associar lote a lote — fechar a página a meio perde tudo');
+    if(!h.includes('const nestaCampanha = () =>'))
+      throw new Error('sem a verificação nestaCampanha, a importação mexe nos contadores da campanha errada');
     // Associar os contactos importados só quando a campanha já existia
     // deixava-os apenas em memória: sair do wizard — trocar de marca, por
     // exemplo — perdia a importação toda.

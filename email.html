@@ -9685,16 +9685,55 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 
-            // Import contacts to DB, collect IDs — show live progress per chunk
-            let imported = 0, failed = 0;
-            const newIds = [];
-            const newTempIds = [];
+            // A campanha é criada ANTES de importar, e o id fica numa variável
+            // local. Duas razões, as duas vividas:
+            //
+            //  1. A importação corre no browser e pode demorar. Se o
+            //     utilizador sair da campanha a meio, o loop continua — e no
+            //     fim _editingCampaignId já é outro (ou nenhum). Associar ao
+            //     que estivesse aberto nessa altura punha os contactos na
+            //     campanha errada, ou criava uma nova. É o que fazia os
+            //     contactos "desaparecerem" ao voltar.
+            //  2. Associar só no fim perdia tudo se a página fosse fechada a
+            //     meio. Agora cada lote é associado à medida que entra.
+            const campanhaId = await _wizGarantirCampanha();
+            if (!campanhaId) throw new Error('não foi possível criar a campanha para associar os contactos');
+            const nestaCampanha = () => _editingCampaignId === campanhaId;
+
+            let imported = 0, failed = 0, associados = 0, excluidos = 0;
+            let erroAoAssociar = null;
             const CHUNK = 5;
             _wizImporting = true;
-            _wizImportingCampaignId = _editingCampaignId;
+            _wizImportingCampaignId = campanhaId;
             _wizUpdateProgress(0, rows.length);
+
+            // Associa um lote. O ecrã só é actualizado se o utilizador ainda
+            // estiver nesta campanha — senão estaria a mexer nos contadores de
+            // outra.
+            const associarLote = async (ids, temps) => {
+                if (!ids.length) return;
+                try {
+                    const r = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
+                        method: 'POST', body: JSON.stringify({ contact_ids: ids, temp_contact_ids: temps })
+                    });
+                    associados += r?.added || 0;
+                    excluidos  += r?.excluded_suppressed || 0;
+                    if (nestaCampanha()) {
+                        _wizExistingDirectCount += (r?.added || 0);
+                        _wizUpdateDirectNotice();
+                        _wizRenderDirectPanel();
+                        wizUpdateListsTotal();
+                    }
+                } catch (e) {
+                    console.error('add_direct_recipients (lote):', e);
+                    erroAoAssociar = erroAoAssociar || e;
+                }
+            };
+
             for (let i = 0; i < rows.length; i += CHUNK) {
-                await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
+                const lote = rows.slice(i, i + CHUNK);
+                const idsDoLote = [], tempsDoLote = [];
+                await Promise.all(lote.map(async c => {
                     try {
                         // one_off: estes contactos vêm de um ficheiro para
                         // esta campanha. Ficam gravados — o relatório do
@@ -9702,9 +9741,18 @@ ${teSerializeBlocksComment(srcBlocks)}
                         // Contactos. Entram lá se algum dia forem postos numa
                         // lista.
                         const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ ...c, one_off: true }) });
-                        if (r.id) { newIds.push(r.id); if (r.created) newTempIds.push(r.id); imported++; }
+                        if (r.id) { idsDoLote.push(r.id); if (r.created) tempsDoLote.push(r.id); imported++; }
                     } catch { failed++; }
                 }));
+                await associarLote(idsDoLote, tempsDoLote);
+                if (nestaCampanha()) {
+                    lote.forEach(r => {
+                        const e = (r.email || '').toLowerCase();
+                        if (e && !_wizDirectContacts.find(c => c.email === e)) {
+                            _wizDirectContacts.push({ email: e, name: [r.first_name, r.last_name].filter(Boolean).join(' ') });
+                        }
+                    });
+                }
                 _wizUpdateProgress(imported + failed, rows.length);
             }
 
@@ -9716,44 +9764,14 @@ ${teSerializeBlocksComment(srcBlocks)}
                 });
             } catch {}
 
-            // Store IDs and display data for direct campaign recipients (deduplicated)
-            newTempIds.forEach(id => { if (!_wizTempContactIds.includes(id)) _wizTempContactIds.push(id); });
-            newIds.forEach(id => { if (!_wizDirectContactIds.includes(id)) _wizDirectContactIds.push(id); });
-            rows.forEach(r => { if (r.email && !_wizDirectContacts.find(c => c.email === r.email.toLowerCase())) _wizDirectContacts.push({ email: r.email.toLowerCase(), name: [r.first_name, r.last_name].filter(Boolean).join(' ') }); });
-            _wizUpdateDirectNotice();
-            _wizRenderDirectPanel();
-            // Associar já à campanha, criando-a se ainda não existir: é o que
-            // impede a importação de se perder ao sair do wizard.
-            let addResult = null;
-            let erroAoAssociar = null;
-            if (newIds.length) {
-                try {
-                    const campanhaId = await _wizGarantirCampanha();
-                    if (!campanhaId) throw new Error('não foi possível criar a campanha');
-                    addResult = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
-                        method: 'POST', body: JSON.stringify({ contact_ids: newIds, temp_contact_ids: newTempIds })
-                    });
-                    // Já estão no servidor: o que fica em memória só serve para
-                    // o painel, e a contagem passa a vir do que foi associado.
-                    _wizExistingDirectCount += (addResult?.added || 0);
-                    _wizDirectContactIds = [];
-                    _wizTempContactIds = [];
-                    _wizUpdateDirectNotice();
-                    _wizRenderDirectPanel();
-                    wizUpdateListsTotal();
-                } catch (e) {
-                    console.error('add_direct_recipients (imediato):', e);
-                    erroAoAssociar = e;
-                }
-            }
             _wizClearFile(type);
-            _wizRecipTab('lists');
-            if (addResult && typeof addResult.added === 'number') {
-                const excl = addResult.excluded_suppressed || 0;
-                let msg = `${addResult.added} contacto(s) adicionado(s) a esta campanha.`;
-                if (excl) msg += ` ${excl} excluído(s) (cancelaram subscrição, devolveram ou estão na lista de supressão).`;
+            if (nestaCampanha()) _wizRecipTab('lists');
+            if (associados || (!erroAoAssociar && imported)) {
+                let msg = `${associados} contacto(s) adicionado(s) à campanha.`;
+                if (excluidos) msg += ` ${excluidos} excluído(s) (cancelaram subscrição, devolveram ou estão na lista de supressão).`;
                 if (failed) msg += ` (${failed} falhas de importação)`;
-                showToast(msg, excl ? 'info' : undefined);
+                if (!nestaCampanha()) msg += ' A importação era de outra campanha — os contactos ficaram nessa.';
+                showToast(msg, (excluidos || !nestaCampanha()) ? 'info' : undefined);
             } else if (erroAoAssociar) {
                 // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
                 // do ecrã convencido de que a importação está feita.
@@ -9913,6 +9931,9 @@ ${teSerializeBlocksComment(srcBlocks)}
         showScreen('campaignCreate');
         _wizUpdateDirectNotice();
         _wizRenderDirectPanel();
+        // O total do passo 3 conta listas + destinatários directos: sem isto
+        // mostrava "0 contactos" numa campanha que os tem.
+        wizUpdateListsTotal();
         if (_wizExistingDirectCount > 0) {
             const _fetchForId = c.id;
             apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients, total }) => {
@@ -9993,6 +10014,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             showScreen('campaignCreate');
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
+            wizUpdateListsTotal();
             if (_wizExistingDirectCount > 0) {
                 const _fetchForId = c.id;
                 apiFetch(`/api/campaigns/${c.id}?action=get_direct_recipients`).then(({ recipients, total }) => {
