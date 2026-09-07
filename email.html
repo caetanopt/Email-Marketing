@@ -13589,9 +13589,12 @@ ${sections.join('\n\n')}
                             </div>
                             <p class="text-[10px] text-slate-400 mt-2">O assunto terá o prefixo [TESTE]. Não afecta a campanha original.</p>
                         </div>
-                        <!-- Anexos (esquerda) e destinatários (direita) -->
-                        <div class="grid grid-cols-2 gap-4 items-start">
-                            <div class="bg-white border border-slate-200 rounded-xl p-5 min-w-0">
+                        <!-- Anexos (esquerda) e destinatários (direita)
+                             Sem items-start: os dois esticam até à altura da
+                             linha, e o min-h dá-lhes um chão comum para não
+                             ficarem desiguais quando ambos estão vazios. -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-white border border-slate-200 rounded-xl p-5 min-w-0 min-h-[176px]">
                                 <h3 class="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
                                     Anexos
@@ -13606,7 +13609,7 @@ ${sections.join('\n\n')}
                                     Adicionar ficheiro
                                 </button>
                             </div>
-                            <div class="bg-white border border-slate-200 rounded-xl p-5 min-w-0">
+                            <div class="bg-white border border-slate-200 rounded-xl p-5 min-w-0 min-h-[176px]">
                                 <h3 class="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                     Destinatários
@@ -13702,8 +13705,8 @@ ${sections.join('\n\n')}
                             <div class="bg-white border border-slate-200 rounded-xl p-5">
                                 <div class="flex items-start justify-between gap-3">
                                     <div>
-                                        <h3 class="text-sm font-semibold text-slate-900">Frase legal no rodapé</h3>
-                                        <p class="text-xs text-slate-400 mt-0.5">Identifica o remetente e a sede da empresa. Desliga para não a enviar nesta campanha.</p>
+                                        <h3 class="text-sm font-semibold text-slate-900">Rodapé legal</h3>
+                                        <p class="text-xs text-slate-400 mt-0.5">A frase do remetente e a linha de links. Desliga para não os enviar nesta campanha.</p>
                                     </div>
                                     <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-0.5">
                                         <input type="checkbox" id="wizLegalNotice" checked class="sr-only peer" onchange="_wizLegalNoticeToggle()">
@@ -13712,11 +13715,13 @@ ${sections.join('\n\n')}
                                 </div>
                                 <div id="wizLegalNoticeBody" class="mt-3">
                                     <p class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed italic">«Este e-mail foi enviado para <span class="not-italic font-mono text-[10px]">[email]</span> por © Caetano Automotive Portugal, S.A., com sede na Rua do Barreiro 547, 4409-513 Vila Nova de Gaia, matriculada na CRCOM.VNGAIA com o Nº/NIPC 500003165.»</p>
-                                    <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">A linha de baixo — Política de privacidade, Versão web e Cancelar subscrição — mantém-se sempre: o link de cancelamento é obrigatório em envios em volume.</p>
+                                    <p class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mt-2 text-center">Política de privacidade <span class="text-slate-300">|</span> Versão web <span class="text-slate-300">|</span> Cancelar subscrição</p>
+                                    <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">O aviso legal das Definições Globais (a área cinzenta acima do rodapé) não é afectado por esta opção.</p>
                                 </div>
                                 <div id="wizLegalNoticeOff" class="hidden flex-col items-center justify-center py-6 text-center">
                                     <svg class="w-8 h-8 text-slate-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-4.72-4.72m14.72 14.72l-4.72-4.72"/></svg>
-                                    <p class="text-xs text-slate-400">A frase legal não vai nesta campanha.<br>Activa para a incluir.</p>
+                                    <p class="text-xs text-slate-400">A frase e os links não vão nesta campanha.<br>Activa para os incluir.</p>
+                                    <p class="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3 leading-relaxed text-left">O botão de cancelamento do Gmail e do Yahoo continua a funcionar (vai no cabeçalho <span class="font-mono">List-Unsubscribe</span>), mas sem o link visível no corpo há mais risco de o email ser marcado como spam.</p>
                                 </div>
                             </div>
                             <!-- Quando enviar -->

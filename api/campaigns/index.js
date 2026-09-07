@@ -2,7 +2,7 @@ const { GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../../lib/db');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors, requireBrand } = require('../../lib/auth');
-const { gravarFraseLegal } = require('../../lib/campanhas');
+const { gravarRodapeLegal } = require('../../lib/campanhas');
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -467,7 +467,7 @@ module.exports = async function handler(req, res) {
       }
       const campaignId = rows[0].id;
       // Gravado à parte: ver a nota em lib/campanhas.js.
-      await gravarFraseLegal(campaignId, no_legal_notice);
+      await gravarRodapeLegal(campaignId, no_legal_notice);
 
       if (list_ids?.length) {
         const vals = list_ids.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',');
