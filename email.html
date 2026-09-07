@@ -9603,6 +9603,45 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (btn) btn.disabled = true;
     }
 
+    // Quem ficou de fora da última importação, com o motivo de cada um.
+    // Guardado para poder ser exportado: um número não se verifica, uma lista
+    // vai-se conferir à base de dados.
+    let _wizForaDetalhe = [];
+
+    const _WIZ_MOTIVO = {
+        unsubscribed: 'cancelou a subscrição',
+        bounced: 'endereço devolvido',
+        complained: 'marcou como spam',
+        suppressed: 'suprimido',
+        suppression: 'na lista de supressão',
+        nao_gravado: 'não chegou a ser gravado',
+        repetido: 'repetido no ficheiro',
+        sem_email: 'linha sem email utilizável',
+        ja_na_campanha: 'já estava nesta campanha',
+    };
+
+    function _wizExportarFora() {
+        if (!_wizForaDetalhe.length) return;
+        const linhas = [['email', 'motivo', 'motivo_tecnico']];
+        _wizForaDetalhe.forEach(f => linhas.push([f.email || '', _WIZ_MOTIVO[f.reason] || f.reason || '', f.reason || '']));
+        const csv = linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+        const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = `importacao-ficaram-de-fora-${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function _wizMostrarFora(texto) {
+        const cx = document.getElementById('wizImportFora');
+        const tx = document.getElementById('wizImportForaTexto');
+        const bt = document.getElementById('wizImportForaCsv');
+        if (!cx || !tx) return;
+        tx.textContent = texto;
+        cx.classList.remove('hidden');
+        if (bt) bt.classList.toggle('hidden', !_wizForaDetalhe.length);
+    }
+
     function _wizUpdateDirectNotice() {
         const total = _wizExistingDirectCount + _wizDirectContactIds.length;
         const notice = document.getElementById('wizDirectNotice');
@@ -9773,10 +9812,12 @@ ${teSerializeBlocksComment(srcBlocks)}
                 if (r.status) { comEstadoNoFicheiro++; delete r.status; }
             });
 
+            _wizForaDetalhe = [];
             const vistos = new Set();
             const semRepetidos = rows.filter(r => {
                 const e = (r.email || '').toLowerCase().trim();
-                if (!e || vistos.has(e)) return false;
+                if (!e) return false;
+                if (vistos.has(e)) { _wizForaDetalhe.push({ email: e, reason: 'repetido' }); return false; }
                 vistos.add(e);
                 return true;
             });
@@ -9866,6 +9907,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     associados += r?.added || 0;
                     fora.cancelados += r?.excluded_status || 0;
                     fora.suprimidos += r?.excluded_suppression || 0;
+                    if (Array.isArray(r?.excluded)) _wizForaDetalhe.push(...r.excluded);
                     // Pedidos, encontrados e elegíveis, menos os que entraram:
                     // são os que já estavam nesta campanha (de uma importação
                     // anterior ou de uma lista).
@@ -9969,7 +10011,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                 }
                 if (!nestaCampanha()) msg += ' A importação era de outra campanha — os contactos ficaram nessa.';
                 showToast(msg, (naoAssociados || failed) ? 'error' : ((totalFora || !nestaCampanha()) ? 'info' : undefined));
-                if (totalFora) console.info('Importação — o que ficou de fora:', { linhasNoFicheiro, enviados: rows.length, associados, ...fora, falhas: failed });
+                // A notificação some-se; isto fica. Quem quiser conferir os
+                // números leva a lista dos endereços e vai vê-los à base de
+                // dados, em vez de ter de acreditar no total.
+                if (totalFora && nestaCampanha()) _wizMostrarFora(msg);
+                if (totalFora) console.info('Importação — o que ficou de fora:', { linhasNoFicheiro, enviados: rows.length, associados, ...fora, falhas: failed, detalhe: _wizForaDetalhe });
             } else if (erroAoAssociar) {
                 // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
                 // do ecrã convencido de que a importação está feita.
@@ -13856,6 +13902,23 @@ ${sections.join('\n\n')}
                                     <svg class="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                                     <span class="text-xs text-slate-600"><span id="wizDirectCount" class="font-semibold text-indigo-600">0</span> contactos importados directamente para esta campanha</span>
                                     <button onclick="_wizClearDirect()" class="ml-auto text-xs text-red-400 hover:text-red-600">Remover</button>
+                                </div>
+                                <!-- O que ficou de fora da última importação. Fica no ecrã até
+                                     ser fechado: uma notificação que desaparece em três segundos
+                                     não serve para explicar 800 contactos em falta. -->
+                                <div id="wizImportFora" class="hidden mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                                    <div class="flex items-start gap-2">
+                                        <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        <div class="flex-1 min-w-0">
+                                            <p id="wizImportForaTexto" class="text-xs text-amber-900 leading-relaxed"></p>
+                                            <button id="wizImportForaCsv" onclick="_wizExportarFora()"
+                                                    class="hidden mt-2 text-xs font-medium text-amber-800 underline hover:text-amber-900">
+                                                Exportar CSV com os que ficaram de fora e o motivo
+                                            </button>
+                                        </div>
+                                        <button onclick="document.getElementById('wizImportFora').classList.add('hidden')"
+                                                class="text-xs text-amber-500 hover:text-amber-700 flex-shrink-0">Fechar</button>
+                                    </div>
                                 </div>
                                 <p id="wizListsError" class="hidden text-xs text-red-500 flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>

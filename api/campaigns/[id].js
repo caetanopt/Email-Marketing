@@ -372,15 +372,21 @@ module.exports = async function handler(req, res) {
         // destinatários são resolvidos aqui numa consulta, em vez de o browser
         // ter de fazer um pedido por contacto só para saber o id.
         let ids = Array.isArray(contact_ids) ? contact_ids.map(Number).filter(Boolean) : [];
+        // Emails pedidos que nem sequer existem como contacto. Sem isto, um
+        // email que não chegou a ser gravado desaparecia dentro do not_found
+        // sem se poder dizer qual foi.
+        let naoGravados = [];
         if (!ids.length && Array.isArray(emails) && emails.length) {
           if (emails.length > 1000) return res.status(400).json({ error: 'Máximo de 1000 emails por pedido' });
           const norm = emails.map(e => String(e || '').toLowerCase().trim()).filter(Boolean);
           const achados = await query(
-            `SELECT DISTINCT ON (LOWER(email)) id FROM contacts
+            `SELECT DISTINCT ON (LOWER(email)) id, LOWER(email) AS email FROM contacts
              WHERE LOWER(email) = ANY($1::text[]) ORDER BY LOWER(email), id`,
             [norm]
           );
           ids = achados.map(r => r.id);
+          const encontrados = new Set(achados.map(r => r.email));
+          naoGravados = [...new Set(norm)].filter(e => !encontrados.has(e));
         }
         if (!ids.length)
           return res.status(400).json({ error: 'contact_ids ou emails obrigatório' });
@@ -394,7 +400,7 @@ module.exports = async function handler(req, res) {
         // reportar um resumo exacto em vez de devolver added:0 em silêncio — a
         // causa dos "0 destinatários" depois de importar contactos suprimidos.
         const candidates = await query(
-          `SELECT id, email,
+          `SELECT id, email, status::text AS status,
                   (status IN ('suppressed','bounced','unsubscribed','complained')) AS bad_status,
                   (lower(email) IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
                    OR '@'||split_part(lower(email),'@',2) IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')) AS suppressed
@@ -413,6 +419,17 @@ module.exports = async function handler(req, res) {
           excluded_suppression: candidates.filter(c => !c.bad_status && c.suppressed).length,
           // Mantido para não quebrar quem já lia este campo.
           excluded_suppressed: candidates.filter(c => c.suppressed || c.bad_status).length,
+          // Quem, e não só quantos. Um resumo numérico obriga a acreditar na
+          // aplicação; com a lista, a pessoa vai ver o contacto à base de
+          // dados e confirma. É o que faltava para se perceber porque é que
+          // um ficheiro de endereços bons entra a meio.
+          excluded: [
+            ...candidates.filter(c => c.bad_status)
+              .map(c => ({ email: c.email, reason: c.status })),
+            ...candidates.filter(c => !c.bad_status && c.suppressed)
+              .map(c => ({ email: c.email, reason: 'suppression' })),
+            ...naoGravados.map(e => ({ email: e, reason: 'nao_gravado' })),
+          ],
         };
         if (!eligible.length) return res.status(200).json({ ok: true, added: 0, ...breakdown });
         const vals = eligible.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},'pending',$${i*4+4})`).join(',');
