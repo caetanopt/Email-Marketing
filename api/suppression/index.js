@@ -10,6 +10,36 @@ function verifyToken(email, brandId, token) {
   return token === expected;
 }
 
+// Tirar alguém da lista de supressão tem de o pôr a receber outra vez.
+//
+// Acrescentar uma supressão marca os contactos com status='suppressed' — e no
+// caso de um domínio inteiro, marca todos os endereços desse domínio de uma
+// vez. Remover não desfazia nada: os contactos ficavam 'suppressed' para
+// sempre e continuavam a ser recusados em todas as campanhas, sem que nada o
+// explicasse. Foi assim que 823 endereços de colegas ficaram de fora de uma
+// importação.
+//
+// Reactiva-se apenas quem está em 'suppressed' — o estado que a lista de
+// supressão produz. Quem cancelou a subscrição ('unsubscribed') ou foi
+// devolvido ('bounced') não é tocado: são decisões da pessoa ou do servidor
+// de destino, não desta lista. E só quem já não está coberto por nenhuma
+// entrada: se sobrar a supressão do email, ou a do domínio, continua fora.
+async function reactivarSemSupressao() {
+  try {
+    const r = await query(
+      `UPDATE contacts SET status='active', updated_at=NOW()
+       WHERE status='suppressed'
+         AND lower(email) NOT IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
+         AND '@'||split_part(lower(email),'@',2) NOT IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')
+       RETURNING id`
+    );
+    return r.length;
+  } catch (e) {
+    console.error('reactivar contactos sem supressão:', e?.message);
+    return 0;
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
 
@@ -267,11 +297,13 @@ module.exports = async function handler(req, res) {
         if (!list.length) return res.status(400).json({ error: 'Nenhum email válido' });
         const placeholders = list.map((_, i) => `$${i + 1}`).join(',');
         await query(`DELETE FROM suppression WHERE email IN (${placeholders})`, list);
-        return res.status(200).json({ ok: true, deleted: list.length });
+        const reactivados = await reactivarSemSupressao();
+        return res.status(200).json({ ok: true, deleted: list.length, reactivados });
       }
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
       await query('DELETE FROM suppression WHERE email=$1', [email.toLowerCase().trim()]);
-      return res.status(200).json({ ok: true });
+      const reactivados = await reactivarSemSupressao();
+      return res.status(200).json({ ok: true, reactivados });
     }
 
     res.status(405).json({ error: 'Método não permitido' });

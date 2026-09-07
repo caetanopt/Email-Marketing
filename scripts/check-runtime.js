@@ -82,6 +82,20 @@ const provas = [
       if(linhas.join(' ').includes('DELETE FROM contacts'))
         throw new Error(f+' volta a apagar contactos durante o envio — isso apaga o relatório da campanha (CASCADE)');
     }`],
+  ['tirar da supressão volta a activar', `const fs=require('fs');
+    const s=fs.readFileSync('api/suppression/index.js','utf8');
+    // Acrescentar uma supressão marca os contactos como suppressed (e um
+    // domínio marca o domínio todo). Sem o inverso, ficavam recusados para
+    // sempre — foi o que deixou 823 colegas fora de uma importação.
+    if(!s.includes('async function reactivarSemSupressao'))
+      throw new Error('falta a reactivação: remover uma supressão tem de pôr os contactos a receber outra vez');
+    if((s.match(/reactivarSemSupressao\(\)/g)||[]).length<2)
+      throw new Error('a reactivação tem de correr nos dois caminhos do DELETE (um email e vários)');
+    const sql=(s.match(/UPDATE contacts SET status='active'[\\s\\S]*?RETURNING id/)||[''])[0];
+    if(!sql.includes("status='suppressed'"))
+      throw new Error('a reactivação tem de tocar só em quem está suppressed — nunca em quem cancelou ou foi devolvido');
+    if(!sql.includes('NOT LIKE') || !sql.includes('split_part'))
+      throw new Error('a reactivação tem de excluir quem continua coberto por outra supressão (email ou domínio)')`],
   ['ninguém cancelado recebe', `const fs=require('fs');
     // A barreira antes de cada lote tem de ser a mesma nos dois motores de
     // envio: já divergiram, e um verificava o que o outro não verificava.
