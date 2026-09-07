@@ -39,6 +39,20 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['ninguém cancelado recebe', `const fs=require('fs');
+    // A barreira antes de cada lote tem de ser a mesma nos dois motores de
+    // envio: já divergiram, e um verificava o que o outro não verificava.
+    for(const f of ['lib/sendCampaign.js','api/campaigns/[id].js']){
+      const s=fs.readFileSync(f,'utf8');
+      if(!/bloquearCancelados\\(/.test(s))throw new Error(f+' não usa a barreira partilhada antes do lote');
+      if(/error_message='Endereço na lista de supressão'/.test(s))throw new Error(f+' voltou a ter a sua própria barreira');
+    }
+    const c=fs.readFileSync('lib/campanhas.js','utf8');
+    if(!/FROM suppression/.test(c))throw new Error('a barreira deixou de consultar a lista de supressão');
+    if(!/FROM contacts WHERE status/.test(c))throw new Error('a barreira deixou de olhar ao estado do contacto — era este o buraco: cancelar à mão não passa pela supressão');
+    for(const e of ['unsubscribed','bounced','suppressed','complained'])
+      if(!c.includes("'"+e+"'"))throw new Error('a barreira deixou de contar com o estado '+e);
+    if(!/NOT LIKE '@%'/.test(c)||!/LIKE '@%'/.test(c))throw new Error('a barreira deixou de tratar as supressões de domínio inteiro')`],
   ['rodapé legal opcional', `const {buildLegalFooter}=require('./lib/emailFooter');
     const o={globalDisclaimer:'aviso',email:'a@b.pt',unsubUrl:'https://e.pt/u',previewUrl:'https://e.pt/v/1/t'};
     const com=buildLegalFooter(o), sem=buildLegalFooter({...o,semRodapeLegal:true});

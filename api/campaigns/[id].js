@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
 const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
-const { semRodapeLegal, gravarRodapeLegal } = require('../../lib/campanhas');
+const { semRodapeLegal, gravarRodapeLegal, bloquearCancelados } = require('../../lib/campanhas');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
 const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle } = require('../../lib/emailHtml');
 const { buildRawEmail, listUnsubscribeHeaders } = require('../../lib/rawEmail');
@@ -471,34 +471,9 @@ module.exports = async function handler(req, res) {
         if (camp[0].status !== 'sending')
           return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
 
-        // Honour suppressions added after the recipients were built (mid-send
-        // unsubscribes, direct imports) — never send to a suppressed address.
-        try {
-          await query(
-            `UPDATE campaign_recipients cr
-             SET status='failed', error_message='Endereço na lista de supressão', attempted_at=NOW()
-             WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
-               AND EXISTS (
-                 SELECT 1 FROM suppression s
-                 WHERE lower(s.email)=lower(cr.email)
-                    OR (s.email LIKE '@%' AND lower(s.email)='@'||split_part(lower(cr.email),'@',2))
-               )`,
-            [id]
-          );
-        } catch (e) {
-          if (e.code === '42703') {
-            await query(
-              `UPDATE campaign_recipients cr SET status='failed'
-               WHERE cr.campaign_id=$1 AND cr.status IN ('pending','retry')
-                 AND EXISTS (
-                   SELECT 1 FROM suppression s
-                   WHERE lower(s.email)=lower(cr.email)
-                      OR (s.email LIKE '@%' AND lower(s.email)='@'||split_part(lower(cr.email),'@',2))
-                 )`,
-              [id]
-            );
-          } else { throw e; }
-        }
+        // A mesma barreira do motor principal, e pela mesma função: quem
+        // cancelou entretanto não recebe (ver lib/campanhas.js).
+        await bloquearCancelados(id);
 
         const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
         // Claim atomically — see sendCampaign.js runBatch for the full rationale.
