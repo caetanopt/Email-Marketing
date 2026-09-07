@@ -5515,7 +5515,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const text = await _readTextSmart(_liFile);
         const isTxt = _liTab === 'txt';
         let rows = isTxt
-            ? text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&_isValidEmail(l)).map(e=>({email:e.toLowerCase()}))
+            ? text.split(/\r\n|\r|\n/).map(l=>l.trim()).map(l=>_isValidEmail(l)?l.toLowerCase():_emailNaLinha(l)).filter(Boolean).map(email=>({email}))
             : _parseCsv(text, _listExtraFields);
         if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 
@@ -9716,9 +9716,13 @@ ${teSerializeBlocksComment(srcBlocks)}
             let linhasNoFicheiro = 0;
             if (type === 'txt') {
                 const text = await _readTextSmart(file);
-                const linhas = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                const linhas = text.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean);
                 linhasNoFicheiro = linhas.length;
-                rows = linhas.filter(_isValidEmail).map(email => ({ email: email.toLowerCase() }));
+                // Uma linha que não seja só um email pode ainda ter um lá
+                // dentro — "Nome <email@dominio.pt>", ou um email seguido de
+                // um separador e mais alguma coisa. Antes perdia-se.
+                rows = linhas.map(l => _isValidEmail(l) ? l.toLowerCase() : _emailNaLinha(l))
+                             .filter(Boolean).map(email => ({ email }));
             } else if (type === 'excel') {
                 const ab = await file.arrayBuffer();
                 const wb = XLSX.read(ab, { type: 'array' });
@@ -9747,9 +9751,12 @@ ${teSerializeBlocksComment(srcBlocks)}
                 }).filter(Boolean);
             } else {
                 const text = await _readTextSmart(file);
-                // Menos o cabeçalho, que não é um contacto.
-                linhasNoFicheiro = Math.max(0, text.split(/\r?\n/).filter(l => l.trim()).length - 1);
-                rows = _parseCsv(text);
+                // Contado pelo próprio leitor, não por linhas do ficheiro: um
+                // registo com um campo entre aspas ocupa várias linhas e não é
+                // vários contactos. Menos o cabeçalho, que não é um contacto.
+                const info = {};
+                rows = _parseCsv(text, [], info);
+                linhasNoFicheiro = Math.max(0, (info.registos || 0) - (info.semCabecalho ? 0 : 1));
             }
             if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 
@@ -12901,51 +12908,152 @@ ${sections.join('\n\n')}
         }
     }
 
-    function _parseCsv(text, extraFields = []) {
-        // Auto-detect delimiter (comma, semicolon, tab)
-        const firstLine = text.split(/\r?\n/, 1)[0] || '';
-        const delim = firstLine.includes(';') ? ';' : firstLine.includes('\t') ? '\t' : ',';
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (!lines.length) return [];
-        const parseLine = line => {
-            const result = [];
-            let cur = '', inQ = false;
-            for (let i = 0; i < line.length; i++) {
-                const ch = line[i];
-                if (inQ) {
-                    if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
-                    else if (ch === '"') inQ = false;
-                    else cur += ch;
-                } else {
-                    if (ch === '"') inQ = true;
-                    else if (ch === delim) { result.push(cur); cur = ''; }
-                    else cur += ch;
-                }
-            }
-            result.push(cur);
-            return result.map(s => s.trim());
+    // ── Leitura de CSV ─────────────────────────────────
+    //
+    // Isto foi reescrito depois de o mesmo ficheiro entrar com 1161 contactos
+    // em TXT e 630 em CSV. Não era o servidor a recusá-los: eram linhas que
+    // nunca chegavam a sair do browser, por duas razões que um ficheiro
+    // exportado do Excel tem quase sempre:
+    //
+    //  1. Um campo entre aspas com uma quebra de linha lá dentro (uma morada,
+    //     uma nota). O ficheiro era cortado por linhas físicas, por isso esse
+    //     registo partia-se em dois e nenhum dos pedaços tinha o email na
+    //     coluna certa.
+    //  2. Uma vírgula dentro de um campo sem aspas ("Santos, Miguel"). Todas
+    //     as colunas à direita andavam uma casa, e o email deixava de estar
+    //     onde o cabeçalho dizia.
+    //
+    // Nos dois casos o contacto desaparecia sem uma palavra. Agora o ficheiro
+    // é lido como um fluxo de caracteres (as aspas mandam, mesmo por cima das
+    // quebras de linha) e, se o email não estiver na coluna esperada, procura-se
+    // nas outras colunas da mesma linha antes de a dar por perdida.
+
+    // Cabeçalho comparável: sem acentos, sem espaços a mais, sem BOM.
+    function _normCabecalho(h) {
+        return String(h == null ? '' : h)
+            .replace(/^﻿/, '')
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    // Divide o texto em registos. Um registo pode ocupar várias linhas do
+    // ficheiro se tiver um campo entre aspas com quebras lá dentro.
+    function _csvRegistos(text, delim) {
+        const registos = [];
+        let campos = [], cur = '', inQ = false, temAlgo = false;
+        const fechaCampo = () => { campos.push(cur.trim()); cur = ''; };
+        const fechaRegisto = () => {
+            fechaCampo();
+            if (temAlgo && campos.some(c => c !== '')) registos.push(campos);
+            campos = []; temAlgo = false;
         };
-        const headers = parseLine(lines[0]).map(h => h.toLowerCase());
-        const emailIdx   = headers.findIndex(h => /^e?mail$/.test(h) || h === 'email');
-        const nameIdx    = headers.findIndex(h => h === 'name' || h === 'nome' || h === 'first_name');
-        const lastIdx    = headers.findIndex(h => h === 'last_name' || h === 'apelido');
-        const phoneIdx   = headers.findIndex(h => h === 'phone' || h === 'telefone');
-        const companyIdx = headers.findIndex(h => h === 'company' || h === 'empresa');
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (inQ) {
+                if (ch === '"' && text[i+1] === '"') { cur += '"'; i++; }
+                else if (ch === '"') inQ = false;
+                else { cur += ch; temAlgo = true; }
+                continue;
+            }
+            if (ch === '"') { inQ = true; temAlgo = true; }
+            else if (ch === delim) { fechaCampo(); temAlgo = true; }
+            else if (ch === '\n') fechaRegisto();
+            else if (ch === '\r') { if (text[i+1] === '\n') i++; fechaRegisto(); }   // CRLF, LF e CR sozinho
+            else { cur += ch; if (ch.trim()) temAlgo = true; }
+        }
+        fechaRegisto();
+        return registos;
+    }
+
+    // O delimitador é o que parte o ficheiro em mais colunas de forma
+    // consistente. Olhar só para a primeira linha enganava-se sempre que o
+    // cabeçalho tinha uma coluna só ou um nome com vírgula lá dentro.
+    function _csvDelimitador(text) {
+        const amostra = text.slice(0, 64 * 1024);
+        let melhor = ',', pontos = -1;
+        for (const d of [';', ',', '\t', '|']) {
+            const regs = _csvRegistos(amostra, d).slice(0, 50);
+            if (regs.length < 1) continue;
+            const cols = regs.map(r => r.length);
+            const max = Math.max(...cols);
+            if (max < 2) continue;
+            // Muitas colunas e todas as linhas com o mesmo número de colunas.
+            const iguais = cols.filter(c => c === cols[0]).length / cols.length;
+            const p = max * 10 + iguais * 5;
+            if (p > pontos) { pontos = p; melhor = d; }
+        }
+        return melhor;
+    }
+
+    // O primeiro email que aparecer numa linha de texto livre. Serve para
+    // resgatar linhas com o formato "Nome <email@dominio.pt>" e colunas
+    // trocadas.
+    function _emailNaLinha(s) {
+        const m = String(s || '').match(/[^\s<>()\[\],;:"']+@[^\s<>()\[\],;:"']+/g);
+        if (!m) return '';
+        for (const cand of m) {
+            const limpo = cand.replace(/[.,;:]+$/, '').toLowerCase();
+            if (_isValidEmail(limpo)) return limpo;
+        }
+        return '';
+    }
+
+    // `info` é opcional: quando vem, fica lá o que se passou com o ficheiro
+    // (linhas lidas, descartadas, e se foi preciso ir procurar o email noutra
+    // coluna). Quem não o passa não nota diferença.
+    function _parseCsv(text, extraFields = [], info = null) {
+        const delim = _csvDelimitador(text);
+        const registos = _csvRegistos(text, delim);
+        if (info) { info.delimitador = delim; info.registos = registos.length; info.resgatados = 0; info.semEmail = 0; }
+        if (!registos.length) return [];
+        const headers = registos[0].map(_normCabecalho);
+        const qq = (...nomes) => headers.findIndex(h => nomes.includes(h));
+        let emailIdx   = headers.findIndex(h => /^(e-?mail|mail|email address|e-?mail address|endereco( de e-?mail)?|correio( electronico)?)$/.test(h));
+        const nameIdx    = qq('name', 'nome', 'first_name', 'first name', 'firstname', 'primeiro nome');
+        const lastIdx    = qq('last_name', 'last name', 'lastname', 'apelido', 'ultimo nome', 'sobrenome');
+        const phoneIdx   = qq('phone', 'telefone', 'telemovel', 'tel', 'mobile');
+        const companyIdx = qq('company', 'empresa', 'company name');
         const statusIdx  = headers.findIndex(h => _IMP_STATUS_HEADERS.includes(h));
         const subIdx     = headers.findIndex(h => _IMP_DATE_HEADERS.includes(h));
         // Map extra fields by name (case-insensitive)
         const extraIdx = {};
         (extraFields || []).forEach(f => {
-            const idx = headers.findIndex(h => h === f.name.toLowerCase());
+            const idx = headers.findIndex(h => h === _normCabecalho(f.name));
             if (idx >= 0) extraIdx[f.name] = idx;
         });
-        if (emailIdx < 0) return [];
-        return lines.slice(1).map(l => {
-            const cols = parseLine(l);
+
+        // Sem cabeçalho reconhecível o ficheiro não era lido de todo — devolvia
+        // zero contactos e a única explicação era "sem contactos válidos".
+        // Duas saídas antes de desistir: se a primeira linha já for um email, o
+        // ficheiro não tem cabeçalho; caso contrário, a coluna dos emails é a
+        // que tem emails.
+        let corpo = registos.slice(1);
+        if (emailIdx < 0) {
+            const primeiraEEmail = registos[0].some(c => _emailNaLinha(c));
+            if (primeiraEEmail) { corpo = registos; if (info) info.semCabecalho = true; }
+            const larguras = {};
+            corpo.slice(0, 200).forEach(r => r.forEach((c, i) => { if (_emailNaLinha(c)) larguras[i] = (larguras[i] || 0) + 1; }));
+            const cols = Object.keys(larguras);
+            if (!cols.length) return [];
+            emailIdx = Number(cols.reduce((a, b) => larguras[a] >= larguras[b] ? a : b));
+            if (info) info.colunaAdivinhada = emailIdx;
+        }
+
+        const fora = [];
+        const linhas = corpo.map(cols => {
+            let email = _emailNaLinha(cols[emailIdx]);
+            if (!email) {
+                // Colunas trocadas (uma vírgula a mais num campo sem aspas).
+                // O email está algures na linha: vale mais usá-lo do que
+                // perder a pessoa.
+                email = cols.map(_emailNaLinha).find(Boolean) || '';
+                if (email && info) info.resgatados++;
+            }
+            if (!email) { fora.push(cols); return null; }
             const fname = nameIdx >= 0 ? cols[nameIdx] : '';
             const lname = lastIdx >= 0 ? cols[lastIdx] : '';
             const row = {
-                email:   (cols[emailIdx]||'').toLowerCase(),
+                email,
                 name:    [fname, lname].filter(Boolean).join(' ').trim() || null,
                 phone:   phoneIdx >= 0 ? (cols[phoneIdx]||null) : null,
                 company: companyIdx >= 0 ? (cols[companyIdx]||null) : null,
@@ -12970,7 +13078,9 @@ ${sections.join('\n\n')}
             });
             if (Object.keys(extra).length) row._extra_data = extra;
             return row;
-        }).filter(c => c.email && _isValidEmail(c.email));
+        }).filter(Boolean);
+        if (info) { info.semEmail = fora.length; info.lidas = linhas.length; }
+        return linhas;
     }
 
     async function mockStartImport() {
@@ -12981,7 +13091,7 @@ ${sections.join('\n\n')}
         const text = await _readTextSmart(_importFile);
         const isTxt = _importFile.name.toLowerCase().endsWith('.txt');
         let rows = isTxt
-            ? text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&_isValidEmail(l)).map(e=>({email:e.toLowerCase()}))
+            ? text.split(/\r\n|\r|\n/).map(l=>l.trim()).map(l=>_isValidEmail(l)?l.toLowerCase():_emailNaLinha(l)).filter(Boolean).map(email=>({email}))
             : _parseCsv(text);
         if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
 

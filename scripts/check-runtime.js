@@ -98,6 +98,36 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['um CSV não perde linhas', `const fs=require('fs');
+    // O mesmo ficheiro entrava com 1161 contactos em TXT e 630 em CSV. Não era
+    // o servidor: eram linhas que nunca saíam do browser, porque o ficheiro era
+    // cortado por linhas físicas. Duas coisas que um export do Excel tem quase
+    // sempre — uma quebra de linha dentro de um campo entre aspas, e uma
+    // vírgula dentro de um campo sem aspas ("Santos, Miguel") — davam ~50%.
+    const h=fs.readFileSync('email.html','utf8');
+    const bloco=(inicio)=>{const i=h.indexOf(inicio);
+      if(i<0)throw new Error('não encontrei '+inicio+' no email.html');
+      let d=0;for(let k=h.indexOf('{',i);k<h.length;k++){
+        if(h[k]==='{')d++;else if(h[k]==='}'){d--;if(!d)return h.slice(i,k+1);}}
+      throw new Error(inicio+' sem fecho');};
+    const src=['function _isValidEmail','function _impStatus','function _impDate',
+      'function _normCabecalho','function _csvRegistos','function _csvDelimitador',
+      'function _emailNaLinha','function _parseCsv'].map(bloco).join('\\n');
+    const pre='const _IMP_STATUS_HEADERS=["estado"];const _IMP_DATE_HEADERS=["data"];';
+    const {_parseCsv,_emailNaLinha}=new Function(pre+src+';return {_parseCsv,_emailNaLinha};')();
+    const conta=(t)=>_parseCsv(t).length;
+    let a=['Notas,Email'],b=['Nome,Email'];
+    for(let i=0;i<10;i++){
+      a.push((i%2?'"nota\\nsegunda linha"':'nota')+',p'+i+'@caetano.pt');
+      b.push((i%2?'Santos, Miguel':'Miguel')+',q'+i+'@caetano.pt');
+    }
+    if(conta(a.join('\\n'))!==10)throw new Error('uma quebra de linha dentro de aspas voltou a comer contactos');
+    if(conta(b.join('\\n'))!==10)throw new Error('uma vírgula num campo sem aspas voltou a comer contactos');
+    if(conta('a@caetano.pt\\nb@caetano.pt')!==2)throw new Error('um ficheiro sem cabeçalho tem de ser lido na mesma');
+    if(conta('Nome,E-mail\\nx,c@caetano.pt')!==1)throw new Error('a coluna "E-mail" deixou de ser reconhecida');
+    if(conta('Nome,Email\\rx,d@caetano.pt\\ry,e@caetano.pt')!==2)throw new Error('fim de linha CR sozinho volta a dar um ficheiro só com cabeçalho');
+    if(_emailNaLinha('Miguel Santos <k@caetano.pt>')!=='k@caetano.pt')throw new Error('deixou de resgatar o email dentro de texto');
+    if(conta('Nome,Email\\nx,isto-nao-e-email')!==0)throw new Error('lixo não pode virar contacto')`],
   ['tirar da supressão volta a activar', `const fs=require('fs');
     const s=fs.readFileSync('api/suppression/index.js','utf8');
     // Acrescentar uma supressão marca os contactos como suppressed (e um
