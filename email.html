@@ -93,10 +93,19 @@
     // ── Importação: estado e data de subscrição ────────
     // Rótulos aceites nas colunas "estado"/"status" e "subscrito em".
     // O servidor volta a validar — isto é só para o ficheiro ser lido bem.
+    // Só palavras que dizem exactamente o que significam.
+    //
+    // Havia aqui "não", "n", "0" (e "sim", "s", "1") a valer cancelamento de
+    // subscrição. Uma coluna chamada "estado" num ficheiro interno pode
+    // significar tudo — "activo? não", "chefia? 0" — e bastou isso para 1355
+    // colegas ficarem marcados como tendo cancelado, sem nunca terem
+    // cancelado nada e sem aparecerem na lista de supressão. Marcar alguém
+    // como cancelado é irreversível na prática: deixa de receber e ninguém
+    // sabe porquê. Um valor ambíguo passa a ser ignorado.
     const _IMP_STATUS = {
-        active:'active', activo:'active', ativo:'active', subscrito:'active', sim:'active', s:'active', '1':'active',
-        unsubscribed:'unsubscribed', cancelado:'unsubscribed', cancelada:'unsubscribed', canceled:'unsubscribed',
-        cancelled:'unsubscribed', dessubscrito:'unsubscribed', nao:'unsubscribed', 'não':'unsubscribed', n:'unsubscribed', '0':'unsubscribed',
+        active:'active', activo:'active', ativo:'active', subscrito:'active',
+        unsubscribed:'unsubscribed', cancelado:'unsubscribed', cancelada:'unsubscribed',
+        canceled:'unsubscribed', cancelled:'unsubscribed', dessubscrito:'unsubscribed',
         bounced:'bounced', rejeitado:'bounced', devolvido:'bounced',
         suppressed:'suppressed', suprimido:'suppressed',
     };
@@ -9747,6 +9756,16 @@ ${teSerializeBlocksComment(srcBlocks)}
             // Repetidos no próprio ficheiro: retirados aqui, para o número que
             // se mostra ser o de pessoas e não o de linhas, e para não se
             // gastar rede a enviar duas vezes a mesma.
+            // Um ficheiro carregado no envio de uma campanha é uma lista de
+            // pessoas a quem enviar. Uma coluna de estado aí não pode cancelar
+            // ninguém: é mais provável significar outra coisa, e o estrago —
+            // um contacto que deixa de receber para sempre — não se vê. O
+            // estado é retirado aqui e contado, para ser dito no fim.
+            let comEstadoNoFicheiro = 0;
+            rows.forEach(r => {
+                if (r.status) { comEstadoNoFicheiro++; delete r.status; }
+            });
+
             const vistos = new Set();
             const semRepetidos = rows.filter(r => {
                 const e = (r.email || '').toLowerCase().trim();
@@ -9937,6 +9956,9 @@ ${teSerializeBlocksComment(srcBlocks)}
                 // repetidos não são duplicados. Tem de ser dito, e a vermelho.
                 if (naoAssociados || failed) {
                     msg += ' Repete a importação do mesmo ficheiro para recuperar esses — os que já entraram não são duplicados.';
+                }
+                if (comEstadoNoFicheiro) {
+                    msg += ` ${n(comEstadoNoFicheiro)} linha(s) traziam um estado no ficheiro, que foi ignorado — uma importação para envio não cancela subscrições.`;
                 }
                 if (!nestaCampanha()) msg += ' A importação era de outra campanha — os contactos ficaram nessa.';
                 showToast(msg, (naoAssociados || failed) ? 'error' : ((totalFora || !nestaCampanha()) ? 'info' : undefined));

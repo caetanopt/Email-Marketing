@@ -41,10 +41,16 @@ const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 // directamente.
 const CONTACT_STATUS = new Set(['active', 'unsubscribed', 'bounced', 'suppressed']);
 // Rótulos aceites no ficheiro, em português e inglês.
+//
+// Só palavras inequívocas. "não", "n" e "0" (e os seus opostos) valiam
+// cancelamento de subscrição, e uma coluna "estado" num ficheiro interno
+// significa quase sempre outra coisa — foi assim que 1355 contactos ficaram
+// marcados como cancelados sem nunca o terem feito. Um valor ambíguo é
+// ignorado: o contacto fica com o estado que já tinha, ou activo se é novo.
 const STATUS_ALIASES = {
-  active: 'active', activo: 'active', ativo: 'active', subscrito: 'active', sim: 'active', s: 'active', '1': 'active',
-  unsubscribed: 'unsubscribed', cancelado: 'unsubscribed', cancelada: 'unsubscribed', canceled: 'unsubscribed',
-  cancelled: 'unsubscribed', dessubscrito: 'unsubscribed', nao: 'unsubscribed', 'não': 'unsubscribed', n: 'unsubscribed', '0': 'unsubscribed',
+  active: 'active', activo: 'active', ativo: 'active', subscrito: 'active',
+  unsubscribed: 'unsubscribed', cancelado: 'unsubscribed', cancelada: 'unsubscribed',
+  canceled: 'unsubscribed', cancelled: 'unsubscribed', dessubscrito: 'unsubscribed',
   bounced: 'bounced', rejeitado: 'bounced', devolvido: 'bounced',
   suppressed: 'suppressed', suprimido: 'suppressed',
 };

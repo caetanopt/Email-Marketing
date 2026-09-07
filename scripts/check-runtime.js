@@ -82,6 +82,22 @@ const provas = [
       if(linhas.join(' ').includes('DELETE FROM contacts'))
         throw new Error(f+' volta a apagar contactos durante o envio — isso apaga o relatório da campanha (CASCADE)');
     }`],
+  ['um ficheiro não cancela subscrições', `const fs=require('fs');
+    // "não", "n" e "0" numa coluna "estado" valiam cancelamento. Uma coluna
+    // dessas num ficheiro interno significa quase sempre outra coisa, e o
+    // estrago não se vê: o contacto deixa de receber para sempre, sem sequer
+    // aparecer na lista de supressão. Aconteceu a 1355 contactos.
+    for(const f of ['email.html','api/contacts/index.js']){
+      const s=fs.readFileSync(f,'utf8');
+      const mapa=(s.match(/(_IMP_STATUS|STATUS_ALIASES) = \\{[\\s\\S]*?\\};/)||[''])[0];
+      if(!mapa)throw new Error('não encontrei a tabela de estados em '+f);
+      for(const v of ["nao:","'não':","n:","'0':","sim:","s:","'1':"])
+        if(mapa.includes(v))throw new Error(f+' voltou a aceitar um valor ambíguo ('+v+') como estado');
+      if(!mapa.includes('cancelado'))throw new Error(f+' deixou de reconhecer as palavras explícitas');
+    }
+    const h=fs.readFileSync('email.html','utf8');
+    if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
+      throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
   ['tirar da supressão volta a activar', `const fs=require('fs');
     const s=fs.readFileSync('api/suppression/index.js','utf8');
     // Acrescentar uma supressão marca os contactos como suppressed (e um
