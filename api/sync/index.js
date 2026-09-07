@@ -84,7 +84,10 @@ module.exports = async function handler(req, res) {
       if (contacts.length > 1000)
         return res.status(400).json({ error: 'Máximo de 1000 contactos por pedido' });
 
-      // Validate list ownership if list_id provided
+      // As listas são globais (migração 037): não pertencem a nenhuma marca,
+      // por isso só se confirma que a lista existe. O brand_id deste pedido é
+      // o dos CONTACTOS — contacts tem brand_id e uma unicidade
+      // (brand_id, email) — e não tem relação com a lista.
       if (list_id) {
         const listRows = await query('SELECT id FROM lists WHERE id=$1', [list_id]);
         if (!listRows[0]) return res.status(404).json({ error: 'Lista não encontrada' });
