@@ -9024,11 +9024,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             // de teste tem de sair com o que está no ecrã, não com o que
             // estava gravado antes.
             if (!campaignId) {
-                const utm_params = _wizGetUtmParams();
-                campaignId = await _wizGravarCampanha({
-                    name, subject, from_name: fromName, from_email: fromEmail,
-                    list_ids: listIds, scheduled_at: null, template_id: templateId, utm_params,
-                });
+                campaignId = await _wizGarantirCampanha();
             } else {
                 // Sync template and attachments into the existing campaign before test
                 await _wizGravarCampanha({ template_id: templateId || undefined, attachments: _wizAttachments });
@@ -9559,6 +9555,32 @@ ${teSerializeBlocksComment(srcBlocks)}
         }).join('') + (total > allContacts.length ? `<div class="px-4 py-2.5 text-xs text-slate-400 italic text-center">… e mais ${(total - allContacts.length).toLocaleString('pt-PT')} contactos</div>` : '');
     }
 
+    // Garante que a campanha existe antes de lhe associar qualquer coisa.
+    //
+    // Uma importação que fique só em memória perde-se ao sair do wizard — e
+    // sair inclui trocar de marca, que fecha o ecrã da campanha. Era o que
+    // acontecia: carregava-se o ficheiro antes de o rascunho existir, os ids
+    // ficavam numa variável, e ao voltar à campanha o wizard relê tudo do
+    // servidor, onde não havia nada.
+    //
+    // O nome é o que estiver no ecrã; se não houver nada, um nome provisório —
+    // a campanha é um rascunho e o nome é alterável a qualquer momento.
+    async function _wizGarantirCampanha() {
+        if (_editingCampaignId) return _editingCampaignId;
+        const subject   = document.getElementById('wizSubject')?.value.trim()   || '';
+        const name      = document.getElementById('wizName')?.value.trim()      || subject || 'Campanha sem nome';
+        const fromName  = document.getElementById('wizFromName')?.value.trim()  || _currentBrand?.from_name  || '';
+        const fromEmail = document.getElementById('wizFromEmail')?.value.trim() || _currentBrand?.from_email || '';
+        const listIds   = Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'))
+                               .map(cb => cb.dataset.listId).filter(Boolean);
+        await _wizGravarCampanha({
+            name, subject, from_name: fromName, from_email: fromEmail,
+            list_ids: listIds, utm_params: _wizGetUtmParams(),
+            template_id: _editingTemplateId || null,
+        });
+        return _editingCampaignId;
+    }
+
     async function _wizStartImport(type) {
         const T = type.charAt(0).toUpperCase() + type.slice(1);
         const file = _wizImportFiles[type];
@@ -9656,27 +9678,44 @@ ${teSerializeBlocksComment(srcBlocks)}
             rows.forEach(r => { if (r.email && !_wizDirectContacts.find(c => c.email === r.email.toLowerCase())) _wizDirectContacts.push({ email: r.email.toLowerCase(), name: [r.first_name, r.last_name].filter(Boolean).join(' ') }); });
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
-            // If editing an existing campaign, link contacts immediately (don't wait for submit)
+            // Associar já à campanha, criando-a se ainda não existir: é o que
+            // impede a importação de se perder ao sair do wizard.
             let addResult = null;
-            if (_editingCampaignId && newIds.length) {
+            let erroAoAssociar = null;
+            if (newIds.length) {
                 try {
-                    addResult = await apiFetch(`/api/campaigns/${_editingCampaignId}?action=add_direct_recipients`, {
+                    const campanhaId = await _wizGarantirCampanha();
+                    if (!campanhaId) throw new Error('não foi possível criar a campanha');
+                    addResult = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
                         method: 'POST', body: JSON.stringify({ contact_ids: newIds, temp_contact_ids: newTempIds })
                     });
-                } catch (e) { console.error('add_direct_recipients (immediate):', e); }
+                    // Já estão no servidor: o que fica em memória só serve para
+                    // o painel, e a contagem passa a vir do que foi associado.
+                    _wizExistingDirectCount += (addResult?.added || 0);
+                    _wizDirectContactIds = [];
+                    _wizTempContactIds = [];
+                    _wizUpdateDirectNotice();
+                    _wizRenderDirectPanel();
+                    wizUpdateListsTotal();
+                } catch (e) {
+                    console.error('add_direct_recipients (imediato):', e);
+                    erroAoAssociar = e;
+                }
             }
             _wizClearFile(type);
             _wizRecipTab('lists');
             if (addResult && typeof addResult.added === 'number') {
-                // Campaign already exists — report what actually landed as recipients.
                 const excl = addResult.excluded_suppressed || 0;
                 let msg = `${addResult.added} contacto(s) adicionado(s) a esta campanha.`;
                 if (excl) msg += ` ${excl} excluído(s) (cancelaram subscrição, devolveram ou estão na lista de supressão).`;
                 if (failed) msg += ` (${failed} falhas de importação)`;
                 showToast(msg, excl ? 'info' : undefined);
+            } else if (erroAoAssociar) {
+                // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
+                // do ecrã convencido de que a importação está feita.
+                showToast(`${imported} contacto(s) importado(s), mas NÃO ficaram associados à campanha: ${erroAoAssociar.message}. Tenta importar outra vez.`, 'error');
             } else {
-                // New campaign — contacts will be linked when the draft/campaign is saved.
-                showToast(`${imported} contacto(s) importado(s). Serão adicionados à campanha ao guardar.${failed ? ` (${failed} falhas)` : ''}`);
+                showToast(`${imported} contacto(s) importado(s).${failed ? ` (${failed} falhas)` : ''}`);
             }
         } catch (e) {
             showToast('Erro: ' + escHtml(e.message), 'error');
@@ -11950,6 +11989,13 @@ ${sections.join('\n\n')}
     }
 
     function selectBrand(id, name, color, targetScreen) {
+        // Trocar de marca fecha o ecrã da campanha (ver _SWITCH_SCREEN_MAP).
+        // A meio de uma importação isso interrompe o que falta carregar, e o
+        // ficheiro tem de ser importado outra vez a partir do ponto em que
+        // ficou — vale mais avisar do que deixar acontecer em silêncio.
+        if (typeof _wizImporting !== 'undefined' && _wizImporting) {
+            if (!confirm('Está uma importação a decorrer nesta campanha. Se trocares de marca agora, os contactos que faltam não são importados. Trocar mesmo assim?')) return;
+        }
         window._contactsCache  = [];
         window._campaignsCache = [];
         // Per-brand sessionStorage caches are kept — each loader renders the

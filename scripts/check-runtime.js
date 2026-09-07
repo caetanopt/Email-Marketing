@@ -39,6 +39,17 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['a importação na campanha não fica em memória', `const fs=require('fs');
+    const h=fs.readFileSync('email.html','utf8');
+    // Associar os contactos importados só quando a campanha já existia
+    // deixava-os apenas em memória: sair do wizard — trocar de marca, por
+    // exemplo — perdia a importação toda.
+    if(h.includes('if (_editingCampaignId && newIds.length)'))
+      throw new Error('a importação volta a só associar quando a campanha já existe — perde-se ao sair do wizard');
+    if(!h.includes('async function _wizGarantirCampanha'))
+      throw new Error('falta _wizGarantirCampanha, que cria a campanha para a importação poder ser gravada');
+    if(h.includes('Serão adicionados à campanha ao guardar'))
+      throw new Error('voltou a mensagem que prometia associar mais tarde — agora é associado logo');`],
   ['contactos de ficheiro fora da listagem', `const fs=require('fs');
     const a=fs.readFileSync('api/contacts/index.js','utf8');
     if(!a.includes('NOT COALESCE(c.hidden, FALSE)'))throw new Error('a listagem de contactos deixou de excluir os não listados');
