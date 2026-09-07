@@ -2342,8 +2342,8 @@
     };
     const teDefaults = {
         header:  { text:'A tua marca', bgColor:'#0f172a', textColor:'#ffffff', fontSize:20, fontWeight:'700', fontFamily:'', align:'center', lineHeight:1.4, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', fontFamily:'', align:'left', lineHeight:1.4, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
-        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', fontFamily:'', align:'left', lineHeight:1.6, uppercase:false, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        heading: { text:'Título', level:'h2', color:'#0f172a', bgColor:'#ffffff', fontSize:24, fontWeight:'700', fontFamily:'', align:'left', lineHeight:1.4, uppercase:false, bgWidth:'', bgRadius:0, areaBgColor:'#ffffff', innerPaddingTop:12, innerPaddingRight:20, innerPaddingBottom:12, innerPaddingLeft:20, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
+        text:    { text:'Escreve aqui o teu texto.', color:'#475569', bgColor:'#ffffff', fontSize:16, fontWeight:'400', fontFamily:'', align:'left', lineHeight:1.6, uppercase:false, bgWidth:'', bgRadius:0, areaBgColor:'#ffffff', innerPaddingTop:12, innerPaddingRight:20, innerPaddingBottom:12, innerPaddingLeft:20, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', widthUnit:'px', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', borderWidth:2, paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, imgBorderWidth:0, imgBorderColor:'#000000', imgBorderRadius:0, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', align:'center', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
@@ -2361,8 +2361,8 @@
     };
     const teFieldSchemas = {
         header:  ['text','bgColor','textColor','fontSize','fontWeight','fontFamily','align','lineHeight','padding'],
-        heading: ['text','level','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
-        text:    ['text','color','bgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','padding'],
+        heading: ['text','level','color','bgColor','bgWidth','bgRadius','areaBgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','innerPadding','padding'],
+        text:    ['text','color','bgColor','bgWidth','bgRadius','areaBgColor','fontSize','fontWeight','fontFamily','align','lineHeight','uppercase','innerPadding','padding'],
         button:  ['text','href','target','width','widthUnit','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','borderWidth','innerPadding','padding'],
         image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','imgBorderWidth','imgBorderColor','imgBorderRadius','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','align','padding'],
@@ -2405,7 +2405,9 @@
         showDividers:  { label:'Linhas separadoras',  type:'select', options:[['0','Não'],['1','Sim']] },
         fluidOnMobile: { label:'Fluid em mobile',     type:'select', options:[['0','Não'],['1','Sim']] },
         uppercase:     { label:'Maiúsculas',          type:'select', options:[['0','Não'],['1','Sim']] },
-        borderRadius: { label:'Border radius (px)', type:'number' },
+        borderRadius: { label:'Cantos arredondados (px)', type:'radius4' },
+        bgWidth:      { label:'Largura do fundo',    type:'text', placeholder:'toda a largura (ex: 80% ou 480px)' },
+        bgRadius:     { label:'Cantos arredondados do fundo (px)', type:'radius4' },
         areaBgColor:  { label:'Cor de fundo da área', type:'color' },
         innerPadding: { label:'Padding interno (px)', type:'innerPadding4' },
         title:        { label:'Título',          type:'text' },
@@ -2417,7 +2419,7 @@
         target:       { label:'Abrir link em',   type:'select', options:[['_blank','Novo separador'],['_self','Mesmo separador']] },
         imgBorderWidth:  { label:'Moldura (px)',   type:'number' },
         imgBorderColor:  { label:'Cor da moldura', type:'color' },
-        imgBorderRadius: { label:'Cantos arredondados (px)', type:'number' },
+        imgBorderRadius: { label:'Cantos arredondados (px)', type:'radius4' },
         iconSize:   { label:'Tamanho ícone (px)', type:'number' },
         titleColor: { label:'Cor do título',      type:'color' },
         widthUnit:  { label:'Unidade',            type:'select', options:[['px','Pixels'],['%','Percentagem']] },
@@ -2615,7 +2617,7 @@
         const f = teFind(id);
         if (!f) return;
         // Coerce numbers
-        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius'].includes(key)) value = Number(value);
+        if (['fontSize','paddingTop','paddingRight','paddingBottom','paddingLeft','innerPaddingTop','innerPaddingRight','innerPaddingBottom','innerPaddingLeft','width','height','lineHeight','borderRadius','bgRadius'].includes(key)) value = Number(value);
         f.block[key] = value;
         teRenderCanvas();
         teRenderMjml();
@@ -2861,6 +2863,113 @@
     function teMjmlPad(b) {
         return teCssBoxShorthand(b.paddingTop, b.paddingRight, b.paddingBottom, b.paddingLeft);
     }
+    // ── Cantos arredondados ────────────────────────────────────────
+    //
+    // Por omissão um bloco tem um valor só, aplicado aos quatro cantos
+    // (b[chave]). Quando se liga "cantos diferentes", guarda-se um objecto
+    // b[chave + 'Corners'] = {tl,tr,br,bl} e é ele que manda — é a presença do
+    // objecto que distingue os dois modos, sem precisar de outro campo.
+    //
+    // Ordem dos valores em CSS: superior-esquerdo, superior-direito,
+    // inferior-direito, inferior-esquerdo.
+    const TE_CANTOS = [['tl','Sup. esq.'], ['tr','Sup. dir.'], ['br','Inf. dir.'], ['bl','Inf. esq.']];
+    // omissao: o valor a usar quando o bloco ainda não tem o campo definido —
+    // é o que mantém os 6px de raiz do botão. Um 0 gravado de propósito conta
+    // como escolha e devolve vazio (canto vivo).
+    function teRadiusVal(b, chave, omissao = 0) {
+        const c = b[chave + 'Corners'];
+        if (c && typeof c === 'object') {
+            const v = TE_CANTOS.map(([k]) => Number(c[k]) || 0);
+            return v.some(n => n > 0) ? v.map(n => `${n}px`).join(' ') : '';
+        }
+        const n = Number(b[chave] ?? omissao) || 0;
+        return n > 0 ? `${n}px` : '';
+    }
+    function teRadiusCss(b, chave) {
+        const v = teRadiusVal(b, chave);
+        return v ? `border-radius:${v};` : '';
+    }
+    function teToggleRadiusSplit(blockId, chave) {
+        const f = teFind(blockId);
+        if (!f) return;
+        const b = f.block;
+        if (b[chave + 'Corners']) {
+            // Ao voltar ao valor único fica o maior dos cantos, para não
+            // perder o arredondamento que estava à vista.
+            const c = b[chave + 'Corners'];
+            b[chave] = Math.max(...TE_CANTOS.map(([k]) => Number(c[k]) || 0));
+            delete b[chave + 'Corners'];
+        } else {
+            const n = Number(b[chave] ?? 0) || 0;
+            b[chave + 'Corners'] = { tl:n, tr:n, br:n, bl:n };
+        }
+        teRender();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
+    function teUpdateRadiusCorner(blockId, chave, canto, valor) {
+        const f = teFind(blockId);
+        if (!f) return;
+        const b = f.block;
+        if (!b[chave + 'Corners']) b[chave + 'Corners'] = {};
+        b[chave + 'Corners'][canto] = Number(valor) || 0;
+        teRenderCanvas();
+        teRenderMjml();
+        if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
+
+    // ── Banda de fundo dos blocos de texto ─────────────────────────
+    //
+    // Por omissão o fundo de um bloco de texto ocupa toda a largura do email e
+    // é pintado no próprio elemento (container-background-color, em MJML).
+    // Quando se define uma largura ou cantos arredondados, o fundo passa a ser
+    // uma banda: uma tabela interior com a largura escolhida, sobre uma área
+    // com a cor de areaBgColor. É o que permite a faixa arredondada mais
+    // estreita do que o email.
+    //
+    // Devolve null quando não há banda — os blocos continuam a sair
+    // exactamente como saíam antes.
+    function teBanda(b) {
+        const largura = String(b.bgWidth || '').trim();
+        const radius  = teRadiusVal(b, 'bgRadius');
+        if (!largura && !radius) return null;
+        const m = largura.match(/^(\d+(?:\.\d+)?)\s*(px|%)?$/);
+        const larguraCss = m ? `${m[1]}${m[2] || 'px'}` : (largura || '100%');
+        return {
+            largura: larguraCss,
+            // O atributo width das tabelas é o que o Outlook respeita; em
+            // percentagem leva o sinal, em pixéis vai só o número.
+            larguraAttr: /%$/.test(larguraCss) ? larguraCss : String(parseInt(larguraCss, 10) || ''),
+            radius,
+            areaBg: b.areaBgColor || '#ffffff',
+            bandaBg: b.bgColor || '#ffffff',
+            innerPad: teCssBoxShorthand(b.innerPaddingTop ?? 12, b.innerPaddingRight ?? 20, b.innerPaddingBottom ?? 12, b.innerPaddingLeft ?? 20),
+        };
+    }
+    // A banda em si: uma tabela, porque é a única forma de ter uma largura e
+    // cantos arredondados que o Outlook respeita. Partilhada pela saída MJML e
+    // pelo HTML de recurso, para as duas não divergirem.
+    //
+    // O align="center" é para o Outlook, que não centra tabelas com
+    // margin:auto; à esquerda e à direita fica a margem, que é o que os
+    // restantes clientes usam.
+    function teBandaHtml(b, banda, conteudo, cor) {
+        const align = b.align || 'left';
+        const margem = align === 'center' ? 'margin:0 auto;' : align === 'right' ? 'margin:0 0 0 auto;' : 'margin:0;';
+        const attrW = banda.larguraAttr ? ` width="${banda.larguraAttr}"` : '';
+        const attrAlign = align === 'left' ? '' : ` align="${align}"`;
+        return `<table role="presentation" border="0" cellpadding="0" cellspacing="0"${attrAlign}${attrW} style="width:${banda.largura};max-width:100%;${margem}">`
+            + `<tr><td${attrAlign} style="background:${banda.bandaBg};padding:${banda.innerPad};${teRadiusCss(b, 'bgRadius')}${teBandaTextoCss(b, cor)}">`
+            + conteudo + `</td></tr></table>`;
+    }
+    // O estilo do texto dentro da banda tem de ser repetido na célula: as
+    // regras do mj-text ficam na célula de fora e o que é herdável passa, mas
+    // o alinhamento e as maiúsculas não são fiáveis a essa distância.
+    function teBandaTextoCss(b, cor) {
+        const upper = b.uppercase === true || b.uppercase === '1';
+        return `color:${cor};font-size:${b.fontSize}px;font-weight:${b.fontWeight||'400'};`
+            + `line-height:${b.lineHeight||1.6};text-align:${b.align||'left'};`
+            + (upper ? 'text-transform:uppercase;' : '') + teFontFamilyCss(b);
+    }
     // Per-column 4-side border for the "columns" (Layout) block — each
     // column opts in independently via b.colBorders[colIdx], sharing one
     // border color (b.borderColor) across the whole layout.
@@ -3056,24 +3165,39 @@
                 break;
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
+                const hdBanda = teBanda(b);
                 const h = document.createElement(b.level || 'h2');
                 h.style.cssText = `color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};margin:0;line-height:${b.lineHeight||1.4};text-transform:${hdUpper?'uppercase':'none'};${teFontFamilyCss(b)}`;
                 h.innerHTML = b.text || '';
-                d.appendChild(h);
+                if (hdBanda) {
+                    d.style.cssText = `background:${hdBanda.areaBg};padding:${tePadding(b)};text-align:${b.align||'left'};`;
+                    const faixa = document.createElement('div');
+                    faixa.style.cssText = `display:inline-block;box-sizing:border-box;width:${hdBanda.largura};max-width:100%;background:${hdBanda.bandaBg};padding:${hdBanda.innerPad};${teRadiusCss(b,'bgRadius')}`;
+                    faixa.appendChild(h);
+                    d.appendChild(faixa);
+                } else {
+                    d.style.cssText = `background:${b.bgColor};padding:${tePadding(b)};`;
+                    d.appendChild(h);
+                }
                 break;
             }
             case 'text': {
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};text-transform:${txtUpper?'uppercase':'none'};padding:${tePadding(b)};${teFontFamilyCss(b)}`;
+                const txBanda = teBanda(b);
                 // b.text is sanitised rich HTML (bold/italic/underline/size/color
                 // spans) from the rich text editor — not plain text, so no
                 // escaping/nl2br here (real <br> tags are already inline).
-                d.innerHTML = b.text || '';
+                if (txBanda) {
+                    d.style.cssText = `background:${txBanda.areaBg};padding:${tePadding(b)};text-align:${b.align||'left'};`;
+                    d.innerHTML = `<div style="display:inline-block;box-sizing:border-box;width:${txBanda.largura};max-width:100%;background:${txBanda.bandaBg};padding:${txBanda.innerPad};${teRadiusCss(b,'bgRadius')}${teBandaTextoCss(b, b.color)}">${b.text || ''}</div>`;
+                } else {
+                    d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;font-weight:${b.fontWeight};text-align:${b.align};line-height:${b.lineHeight};text-transform:${txtUpper?'uppercase':'none'};padding:${tePadding(b)};${teFontFamilyCss(b)}`;
+                    d.innerHTML = b.text || '';
+                }
                 break;
             }
             case 'button': {
-                const btnBr = b.borderRadius ?? 6;
+                const btnBr = teRadiusVal(b, 'borderRadius', 6) || '0';
                 const btnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const btnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 d.style.cssText = `background:${b.areaBgColor||'#ffffff'};padding:${tePadding(b)};text-align:${b.align||'center'};`;
@@ -3081,14 +3205,14 @@
                 // (ver TE_BTN_CSS): é aqui que se desenha o botão antes de
                 // existir email, e tem de dar a mesma ideia de coisa clicável.
                 const btnRelevo = b.borderColor ? '' : `border-bottom:3px solid ${teEscurece(b.bgColor, 0.28)};`;
-                d.innerHTML = `<a href="#" onclick="event.preventDefault()" class="te-canvas-btn" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr}px;border:${btnBorder};${btnRelevo}text-decoration:none;box-sizing:border-box;cursor:pointer;transition:background-color .15s ease,transform .06s ease;${b.width?`width:${b.width}${b.widthUnit||'px'};text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
+                d.innerHTML = `<a href="#" onclick="event.preventDefault()" class="te-canvas-btn" style="display:inline-block;background:${b.bgColor};color:${b.textColor};font-size:${b.fontSize}px;font-weight:${b.fontWeight};padding:${btnInPad};border-radius:${btnBr};border:${btnBorder};${btnRelevo}text-decoration:none;box-sizing:border-box;cursor:pointer;transition:background-color .15s ease,transform .06s ease;${b.width?`width:${b.width}${b.widthUnit||'px'};text-align:center;`:''}${teFontFamilyCss(b)}">${b.text||''}</a>`;
                 break;
             }
             case 'image': {
                 const imgPad = `${b.paddingTop??0}px ${b.paddingRight??0}px ${b.paddingBottom??0}px ${b.paddingLeft??0}px`;
                 d.style.cssText = `background:${b.bgColor||'#ffffff'};padding:${imgPad};text-align:${b.align};`;
                 const imgBorder = b.imgBorderWidth ? `border:${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'};` : '';
-                const imgRadius = b.imgBorderRadius ? `border-radius:${b.imgBorderRadius}px;` : '';
+                const imgRadius = teRadiusCss(b, 'imgBorderRadius');
                 if (b.href) {
                     d.innerHTML = `<a href="${teEscape(b.href)}" onclick="event.preventDefault()" style="display:inline-block;"><img src="${b.src}" alt="${teEscape(b.alt)}" style="max-width:100%;width:${b.width}px;height:auto;display:block;${imgBorder}${imgRadius}" /></a>`;
                 } else {
@@ -3513,7 +3637,12 @@
             `;
             return;
         }
-        const fields = teFieldSchemas[b.type] || [];
+        // A cor da área em volta e o espaçamento interior só fazem sentido
+        // quando o fundo é uma banda (tem largura ou cantos arredondados):
+        // sem banda, o fundo ocupa tudo e não há "volta" nem "interior".
+        const semBanda = new Set(['text','heading']).has(b.type) && !teBanda(b);
+        const fields = (teFieldSchemas[b.type] || [])
+            .filter(k => !(semBanda && (k === 'areaBgColor' || k === 'innerPadding')));
         const html = fields.map((key) => teRenderField(b, key)).join('');
         const extra = (b.type === 'image' || b.type === 'hero')
             ? `<button onclick="openMediaPicker(url => teUpdateField('${b.id}','src',url))" class="w-full mt-3 px-2 py-1.5 text-xs font-medium text-slate-700 border border-slate-200 rounded hover:bg-slate-50 flex items-center justify-center gap-1.5">
@@ -3572,6 +3701,18 @@
             const opts = f.options.map(([val,label]) => `<option value="${val}" ${String(val)===String(b.widthUnit||'px')?'selected':''}>${label}</option>`).join('');
             return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><select onchange="teUpdateField('${b.id}','widthUnit',this.value);teRenderProperties();" class="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs">${opts}</select></div>`;
         }
+        if (f.type === 'radius4') {
+            const c = b[key + 'Corners'];
+            const alternar = `<button type="button" onclick="teToggleRadiusSplit('${b.id}','${key}')" class="text-[9px] px-1.5 py-0.5 border rounded ${c ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-500 hover:bg-slate-100'}">${c ? 'todos iguais' : 'cantos diferentes'}</button>`;
+            const cabeca = `<div class="flex items-center justify-between mb-1"><label class="block text-[10px] font-medium text-slate-500">${f.label}</label>${alternar}</div>`;
+            if (!c) {
+                return `<div>${cabeca}<input type="number" min="0" value="${b[key] ?? 0}" oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" /></div>`;
+            }
+            const campos = TE_CANTOS.map(([canto, lbl]) =>
+                `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" min="0" value="${Number(c[canto]) || 0}" oninput="teUpdateRadiusCorner('${b.id}','${key}','${canto}',this.value)" onchange="teUpdateRadiusCorner('${b.id}','${key}','${canto}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`
+            ).join('');
+            return `<div>${cabeca}<div class="grid grid-cols-2 gap-1">${campos}</div></div>`;
+        }
         if (f.type === 'padding4') {
             const PT = b.paddingTop  ?? 0, PR = b.paddingRight  ?? 0;
             const PB = b.paddingBottom ?? 0, PL = b.paddingLeft ?? 0;
@@ -3579,8 +3720,10 @@
             return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><div class="grid grid-cols-2 gap-1">${inp4('paddingTop','Topo',PT)}${inp4('paddingRight','Dir.',PR)}${inp4('paddingBottom','Base',PB)}${inp4('paddingLeft','Esq.',PL)}</div></div>`;
         }
         if (f.type === 'innerPadding4') {
-            const PT = b.innerPaddingTop  ?? 12, PR = b.innerPaddingRight  ?? 28;
-            const PB = b.innerPaddingBottom ?? 12, PL = b.innerPaddingLeft ?? 28;
+            // O botão é mais folgado nos lados do que uma banda de texto.
+            const lado = b.type === 'button' ? 28 : 20;
+            const PT = b.innerPaddingTop  ?? 12, PR = b.innerPaddingRight  ?? lado;
+            const PB = b.innerPaddingBottom ?? 12, PL = b.innerPaddingLeft ?? lado;
             const inp4 = (k, lbl, val) => `<div><label class="block text-[9px] text-slate-400 mb-0.5">${lbl}</label><input type="number" value="${val}" oninput="teUpdateField('${b.id}','${k}',this.value)" onchange="teUpdateField('${b.id}','${k}',this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>`;
             return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label><div class="grid grid-cols-2 gap-1">${inp4('innerPaddingTop','Topo',PT)}${inp4('innerPaddingRight','Dir.',PR)}${inp4('innerPaddingBottom','Base',PB)}${inp4('innerPaddingLeft','Esq.',PL)}</div></div>`;
         }
@@ -3598,7 +3741,8 @@
         } else if (f.type === 'number') {
             input = `<input type="number" value="${v}" step="${f.step||'1'}" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />`;
         } else {
-            input = `<input type="${f.type}" value="${teEscape(v)}" ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />`;
+            const ph = f.placeholder ? ` placeholder="${teEscape(f.placeholder)}"` : '';
+            input = `<input type="${f.type}" value="${teEscape(v)}"${ph} ${handler} class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs" />`;
         }
         return `<div><label class="block text-[10px] font-medium text-slate-500 mb-1">${f.label}</label>${input}</div>`;
     }
@@ -4149,18 +4293,22 @@ ${body}
                 case 'heading': {
                     const hTag = ['h1','h2','h3'].includes(b.level) ? b.level : 'h2';
                     const hdUpper = b.uppercase === true || b.uppercase === '1';
-                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
-                        `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}${hdUpper?';text-transform:uppercase':''};${teFontFamilyCss(b)}">${b.text||''}</${hTag}>` };
+                    const hdTitulo = `<${hTag} style="margin:0;font-size:${b.fontSize||22}px;font-weight:${b.fontWeight||'bold'};color:${b.color||'#1e293b'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.4}${hdUpper?';text-transform:uppercase':''};${teFontFamilyCss(b)}">${b.text||''}</${hTag}>`;
+                    const hdBanda = teBanda(b);
+                    if (hdBanda) return { mergeable:true, bg:hdBanda.areaBg, p:pad(b), inner:teBandaHtml(b, hdBanda, hdTitulo) };
+                    return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:hdTitulo };
                 }
                 case 'text': {
                     const txtUpper = b.uppercase === true || b.uppercase === '1';
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
+                    const txBanda = teBanda(b);
+                    if (txBanda) return { mergeable:true, bg:txBanda.areaBg, p:pad(b), inner:teBandaHtml(b, txBanda, b.text||'') };
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:pad(b), inner:
                         `<p style="margin:0;font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'normal'};color:${b.color||'#334155'};text-align:${b.align||'left'};line-height:${b.lineHeight||1.6}${txtUpper?';text-transform:uppercase':''};${teFontFamilyCss(b)}">${b.text||''}</p>` };
                 }
                 case 'button': {
                     const btnHref = b.href||'#';
-                    const btnBr = b.borderRadius ?? 6;
+                    const btnBr = teRadiusVal(b, 'borderRadius', 6) || '0';
                     const btnAlign = b.align || 'center';
                     const btnMargin = btnAlign === 'center' ? 'margin:0 auto' : btnAlign === 'right' ? 'margin:0 0 0 auto' : 'margin:0';
                     const btnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${esc(b.borderColor)}` : 'none';
@@ -4175,14 +4323,14 @@ ${body}
                     const btnWidth = (btnWidthAttr && btnUnit === 'px') ? ` width="${btnWidthAttr}"` : '';
                     const btnFillLink = b.width ? `width:${btnUnit === '%' ? '100%' : `${b.width}px`};box-sizing:border-box;text-align:center;` : '';
                     return { mergeable:true, bg:b.areaBgColor||'#ffffff', p:pad(b), inner:
-                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}${btnWidthAttr?`;width:${btnWidthAttr}`:''}"><tr><td bgcolor="${btnBgColor}"${btnWidth} align="center" style="border-radius:${btnBr}px;background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}"${btnTarget} style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr}px;background:${btnBgColor};${teFontFamilyCss(b)}${btnFillLink}">${b.text||''}</a></td></tr></table>` };
+                        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="${btnMargin}${btnWidthAttr?`;width:${btnWidthAttr}`:''}"><tr><td bgcolor="${btnBgColor}"${btnWidth} align="center" style="border-radius:${btnBr};background:${btnBgColor};border:${btnBorder}"><a href="${esc(btnHref)}"${btnTarget} style="display:inline-block;padding:${btnInPad};font-size:${b.fontSize||15}px;font-weight:${b.fontWeight||'600'};color:${b.textColor||'#ffffff'};text-decoration:none;border-radius:${btnBr};background:${btnBgColor};${teFontFamilyCss(b)}${btnFillLink}">${b.text||''}</a></td></tr></table>` };
                 }
                 case 'image': {
                     const imgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                     const imgFluid = b.fluidOnMobile === true || b.fluidOnMobile === '1';
                     const imgClass = imgFluid ? ' class="te-fluid"' : '';
                     const imgBorder = b.imgBorderWidth ? `border:${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'};` : '';
-                    const imgRadius = b.imgBorderRadius ? `border-radius:${b.imgBorderRadius}px;` : '';
+                    const imgRadius = teRadiusCss(b, 'imgBorderRadius');
                     const imgTag = `<img src="${esc(b.src||'')}" alt="${esc(b.alt||'')}" width="${b.width||600}"${imgClass} style="display:block;max-width:100%;${b.align==='center'?'margin:0 auto':''}${b.align==='right'?'margin-left:auto':''}${imgBorder}${imgRadius}">`;
                     const imgContent = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener" style="display:block">${imgTag}</a>` : imgTag;
                     return { mergeable:true, bg:b.bgColor||'#ffffff', p:imgPad, inner:imgContent };
@@ -4480,17 +4628,24 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.textColor), b.textColor)}</mj-text>` };
             case 'heading': {
                 const hdUpper = b.uppercase === true || b.uppercase === '1';
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color)}</mj-text>` };
+                const hdTexto = teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color);
+                const hdAttrs = `${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${hdUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}`;
+                const hdBanda = teBanda(b);
+                if (hdBanda) return { mergeable:true, padOnEl:true, bg:hdBanda.areaBg, inner:`${i}    <mj-text${hdAttrs}>${teBandaHtml(b, hdBanda, hdTexto, b.color)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${hdAttrs}>${hdTexto}</mj-text>` };
             }
             case 'text': {
                 // b.text is already sanitised rich HTML (bold/italic/etc spans) —
                 // bypass the shared txt() helper since it escapes/nl2brX plain text.
                 const txtUpper = b.uppercase === true || b.uppercase === '1';
-                const mjTextTag = `${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color)}</mj-text>`;
-                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:mjTextTag };
+                const txTexto = teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color);
+                const txAttrs = `${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" align="${b.align}"${b.lineHeight?` line-height="${b.lineHeight}"`:''}${txtUpper?' text-transform="uppercase"':''}${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}`;
+                const txBanda = teBanda(b);
+                if (txBanda) return { mergeable:true, padOnEl:true, bg:txBanda.areaBg, inner:`${i}    <mj-text${txAttrs}>${teBandaHtml(b, txBanda, txTexto, b.color)}</mj-text>` };
+                return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${txAttrs}>${txTexto}</mj-text>` };
             }
             case 'button': {
-                const mjBtnBr = b.borderRadius ?? 6;
+                const mjBtnBr = teRadiusVal(b, 'borderRadius', 6) || '0';
                 const mjBtnBorder = b.borderColor ? `${b.borderWidth ?? 2}px solid ${b.borderColor}` : 'none';
                 const mjBtnInPad = `${b.innerPaddingTop??12}px ${b.innerPaddingRight??28}px ${b.innerPaddingBottom??12}px ${b.innerPaddingLeft??28}px`;
                 // Aspecto de coisa clicável (ver TE_BTN_CSS): o rebordo
@@ -4504,13 +4659,14 @@ ${teSerializeBlocksComment(srcBlocks)}
                 // never the inner link (documented mjml-button limitation) — the
                 // te-btn-full class + matching <mj-style> rule (added in
                 // teBuildMjml) force the link itself to fill that table.
-                return { mergeable:true, padOnEl:true, bg:b.areaBgColor||'#ffffff', inner:`${i}    <mj-button${TE_CBG_SLOT} background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}px" border="${mjBtnBorder}"${mjBtnRelevo} inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''} css-class="${mjBtnClasses.join(' ')}"${elPad()}>${b.text}</mj-button>` };
+                return { mergeable:true, padOnEl:true, bg:b.areaBgColor||'#ffffff', inner:`${i}    <mj-button${TE_CBG_SLOT} background-color="${b.bgColor}" color="${b.textColor}" font-size="${b.fontSize}px" font-weight="${b.fontWeight}" href="${b.href}" align="${b.align||'center'}" border-radius="${mjBtnBr}" border="${mjBtnBorder}"${mjBtnRelevo} inner-padding="${mjBtnInPad}" target="${b.target||'_blank'}"${b.width?` width="${b.width}${b.widthUnit||'px'}"`:''}${b.fontFamily?` font-family="${b.fontFamily}"`:''} css-class="${mjBtnClasses.join(' ')}"${elPad()}>${b.text}</mj-button>` };
             }
             case 'image': {
                 const mjImgPad = teCssBoxShorthand(b.paddingTop??0, b.paddingRight??0, b.paddingBottom??0, b.paddingLeft??0);
                 const mjFluid = (b.fluidOnMobile === true || b.fluidOnMobile === '1') ? ' fluid-on-mobile="true"' : '';
                 const mjImgBorder = b.imgBorderWidth ? ` border="${b.imgBorderWidth}px solid ${b.imgBorderColor||'#000'}"` : '';
-                const mjImgRadius = b.imgBorderRadius ? ` border-radius="${b.imgBorderRadius}px"` : '';
+                const mjImgRadiusVal = teRadiusVal(b, 'imgBorderRadius');
+                const mjImgRadius = mjImgRadiusVal ? ` border-radius="${mjImgRadiusVal}"` : '';
                 return { mergeable:true, padOnEl:true, bg:b.bgColor||'#ffffff', inner:`${i}    <mj-image${TE_CBG_SLOT} src="${b.src}" alt="${b.alt||''}" width="${b.width}px" align="${b.align||'center'}"${b.href ? ` href="${b.href}"` : ''}${mjFluid}${mjImgBorder}${mjImgRadius} padding="${mjImgPad}" />` };
             }
             case 'divider': {

@@ -66,6 +66,19 @@ const provas = [
     if(/96/.test(t))throw new Error('o valor de PixelsPerInch entrou no texto: '+JSON.stringify(t));
     if(/^\\s+$/m.test(t))throw new Error('linhas só com espaços: '+JSON.stringify(t));
     if(t!=='Olá\\n\\nAdeus')throw new Error('resultado inesperado: '+JSON.stringify(t))`],
+  ['arredondamento e banda pelos helpers', `const fs=require('fs');
+    const s=fs.readFileSync('email.html','utf8');
+    // O arredondamento tem de passar sempre por teRadiusVal/teRadiusCss: é o
+    // que suporta um valor por canto. Escrever o campo directamente no CSS
+    // faria o bloco voltar a ter os quatro cantos iguais num dos sítios.
+    const direto=s.match(/border-radius:\\\${1}\\{b\\.[A-Za-z]*[Rr]adius/g);
+    if(direto)throw new Error('há '+direto.length+' sítio(s) a escrever o arredondamento sem o helper: '+direto.join(', '));
+    for(const h of ['function teRadiusVal','function teRadiusCss','function teBanda','function teBandaHtml'])
+      if(!s.includes(h))throw new Error('falta '+h+' — os três desenhos (canvas, HTML e MJML) partilham-nos');
+    // A banda tem de ser desenhada nos três, senão o editor mostra uma coisa
+    // e o email envia outra.
+    const usos=(s.match(/teBanda\\(b\\)/g)||[]).length;
+    if(usos<6)throw new Error('a banda só é usada '+usos+' vez(es): faltam desenhos (esperado 2 por cada um dos 3)')`],
   ['contactos sem marca', `const fs=require('fs');
     const codigo=(f)=>fs.readFileSync(f,'utf8').split('\\n').filter(l=>!/^\\s*(\\/\\/|--|\\*)/.test(l)).join('\\n');
     const ins=codigo('lib/contactos.js');
