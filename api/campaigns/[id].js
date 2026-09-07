@@ -353,10 +353,28 @@ module.exports = async function handler(req, res) {
 
       // ── Adicionar destinatários directos (sem lista) ────────────
       if (action === 'add_direct_recipients') {
-        const { contact_ids, temp_contact_ids = [] } = req.body || {};
-        if (!Array.isArray(contact_ids) || !contact_ids.length)
-          return res.status(400).json({ error: 'contact_ids obrigatório' });
+        const { contact_ids, temp_contact_ids = [], emails, all_temp } = req.body || {};
+        // Aceita ids ou emails. Por emails é o que permite importar em blocos:
+        // o ficheiro é gravado com um INSERT por bloco (bulk_import) e os
+        // destinatários são resolvidos aqui numa consulta, em vez de o browser
+        // ter de fazer um pedido por contacto só para saber o id.
+        let ids = Array.isArray(contact_ids) ? contact_ids.map(Number).filter(Boolean) : [];
+        if (!ids.length && Array.isArray(emails) && emails.length) {
+          if (emails.length > 1000) return res.status(400).json({ error: 'Máximo de 1000 emails por pedido' });
+          const norm = emails.map(e => String(e || '').toLowerCase().trim()).filter(Boolean);
+          const achados = await query(
+            `SELECT DISTINCT ON (LOWER(email)) id FROM contacts
+             WHERE LOWER(email) = ANY($1::text[]) ORDER BY LOWER(email), id`,
+            [norm]
+          );
+          ids = achados.map(r => r.id);
+        }
+        if (!ids.length)
+          return res.status(400).json({ error: 'contact_ids ou emails obrigatório' });
         await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
+        // all_temp: todos vieram de um ficheiro. É o caso da importação por
+        // emails, em que não se sabe quais foram criados agora.
+        const marcarTodosTemp = all_temp === true || all_temp === 'true';
         const tempSet = new Set((temp_contact_ids || []).map(Number));
         // Os contactos são globais: não há filtro por marca. Cada contacto
         // pedido é devolvido com a razão pela qual seria excluído, para poder
@@ -369,19 +387,19 @@ module.exports = async function handler(req, res) {
                    OR '@'||split_part(lower(email),'@',2) IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')) AS suppressed
            FROM contacts
            WHERE id = ANY($1::int[])`,
-          [contact_ids]
+          [ids]
         );
         const eligible = candidates.filter(c => !c.bad_status && !c.suppressed);
         const breakdown = {
-          requested: contact_ids.length,
-          not_found: contact_ids.length - candidates.length,
+          requested: ids.length,
+          not_found: ids.length - candidates.length,
           excluded_suppressed: candidates.filter(c => c.suppressed || c.bad_status).length,
         };
         if (!eligible.length) return res.status(200).json({ ok: true, added: 0, ...breakdown });
         const vals = eligible.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},'pending',$${i*4+4})`).join(',');
         await query(
           `INSERT INTO campaign_recipients (campaign_id,contact_id,email,status,is_temp) VALUES ${vals} ON CONFLICT (campaign_id,contact_id) DO NOTHING`,
-          eligible.flatMap(ct => [id, ct.id, ct.email, tempSet.has(Number(ct.id))])
+          eligible.flatMap(ct => [id, ct.id, ct.email, marcarTodosTemp || tempSet.has(Number(ct.id))])
         );
         return res.status(200).json({ ok: true, added: eligible.length, ...breakdown });
       }

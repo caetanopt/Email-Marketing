@@ -3,7 +3,8 @@
   "github": { "enabled": false },
   "functions": {
     "api/campaigns/index.js": { "maxDuration": 60 },
-    "api/campaigns/[id].js":  { "maxDuration": 60 }
+    "api/campaigns/[id].js":  { "maxDuration": 60 },
+    "api/contacts/index.js":  { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/webhooks", "destination": "/api/track" },

@@ -46,8 +46,12 @@ const provas = [
     // errada (ou numa nova) quando a associação era feita só no fim.
     if(!h.includes('const campanhaId = await _wizGarantirCampanha();'))
       throw new Error('a importação deixou de fixar a campanha antes de começar');
-    if(!h.includes('const associarLote = async'))
-      throw new Error('a importação deixou de associar lote a lote — fechar a página a meio perde tudo');
+    if(!h.includes('const tratarBloco = async'))
+      throw new Error('a importação deixou de ir em blocos — um pedido por contacto torna impossível importar milhares');
+    if(!h.includes("action=bulk_import"))
+      throw new Error('a importação da campanha deixou de usar o bulk_import (um INSERT por bloco)');
+    if(!h.includes('emails, all_temp: true'))
+      throw new Error('a associação deixou de ser por email: voltaria a ser preciso um pedido por contacto para saber o id');
     if(!h.includes('const nestaCampanha = () =>'))
       throw new Error('sem a verificação nestaCampanha, a importação mexe nos contadores da campanha errada');
     // Associar os contactos importados só quando a campanha já existia

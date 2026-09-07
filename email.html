@@ -9749,21 +9749,38 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (!campanhaId) throw new Error('não foi possível criar a campanha para associar os contactos');
             const nestaCampanha = () => _editingCampaignId === campanhaId;
 
-            let imported = 0, failed = 0, associados = 0, excluidos = 0;
+            // A importação vai em blocos, não contacto a contacto.
+            //
+            // Antes era um POST /api/contacts por linha do ficheiro: 1413
+            // contactos eram 1413 pedidos, o que torna impossível importar
+            // dezenas de milhares. Agora cada bloco de 500 vai num pedido só
+            // (bulk_import → um único INSERT no servidor, o mesmo caminho que
+            // a importação da página de Contactos já usava) e os
+            // destinatários são resolvidos por email, sem ser preciso saber os
+            // ids no browser.
+            const BLOCO = 500;
+            const CONCORRENCIA = 2;   // dois blocos ao mesmo tempo
+            let imported = 0, falhados = 0, associados = 0, excluidos = 0;
             let erroAoAssociar = null;
-            const CHUNK = 5;
             _wizImporting = true;
             _wizImportingCampaignId = campanhaId;
             _wizUpdateProgress(0, rows.length);
 
-            // Associa um lote. O ecrã só é actualizado se o utilizador ainda
-            // estiver nesta campanha — senão estaria a mexer nos contadores de
-            // outra.
-            const associarLote = async (ids, temps) => {
-                if (!ids.length) return;
+            const blocos = [];
+            for (let i = 0; i < rows.length; i += BLOCO) blocos.push(rows.slice(i, i + BLOCO));
+
+            // Um bloco: grava os contactos e associa-os logo à campanha. Se a
+            // associação falhar, o bloco seguinte continua — e o erro é
+            // reportado no fim.
+            const tratarBloco = async (bloco) => {
+                const emails = bloco.map(c => (c.email || '').toLowerCase().trim()).filter(Boolean);
+                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`, {
+                    method: 'POST',
+                    body: JSON.stringify({ contacts: bloco, one_off: true }),
+                });
                 try {
                     const r = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
-                        method: 'POST', body: JSON.stringify({ contact_ids: ids, temp_contact_ids: temps })
+                        method: 'POST', body: JSON.stringify({ emails, all_temp: true }),
                     });
                     associados += r?.added || 0;
                     excluidos  += r?.excluded_suppressed || 0;
@@ -9774,36 +9791,34 @@ ${teSerializeBlocksComment(srcBlocks)}
                         wizUpdateListsTotal();
                     }
                 } catch (e) {
-                    console.error('add_direct_recipients (lote):', e);
+                    console.error('add_direct_recipients (bloco):', e);
                     erroAoAssociar = erroAoAssociar || e;
                 }
-            };
-
-            for (let i = 0; i < rows.length; i += CHUNK) {
-                const lote = rows.slice(i, i + CHUNK);
-                const idsDoLote = [], tempsDoLote = [];
-                await Promise.all(lote.map(async c => {
-                    try {
-                        // one_off: estes contactos vêm de um ficheiro para
-                        // esta campanha. Ficam gravados — o relatório do
-                        // envio depende deles — mas não aparecem na página de
-                        // Contactos. Entram lá se algum dia forem postos numa
-                        // lista.
-                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ ...c, one_off: true }) });
-                        if (r.id) { idsDoLote.push(r.id); if (r.created) tempsDoLote.push(r.id); imported++; }
-                    } catch { failed++; }
-                }));
-                await associarLote(idsDoLote, tempsDoLote);
+                imported += emails.length;
                 if (nestaCampanha()) {
-                    lote.forEach(r => {
+                    bloco.slice(0, 50).forEach(r => {
                         const e = (r.email || '').toLowerCase();
                         if (e && !_wizDirectContacts.find(c => c.email === e)) {
                             _wizDirectContacts.push({ email: e, name: [r.first_name, r.last_name].filter(Boolean).join(' ') });
                         }
                     });
                 }
-                _wizUpdateProgress(imported + failed, rows.length);
+                _wizUpdateProgress(imported + falhados, rows.length);
+            };
+
+            for (let i = 0; i < blocos.length; i += CONCORRENCIA) {
+                const lote = blocos.slice(i, i + CONCORRENCIA);
+                const resultados = await Promise.allSettled(lote.map(tratarBloco));
+                resultados.forEach((r, j) => {
+                    if (r.status === 'rejected') {
+                        console.error('bulk_import (bloco):', r.reason);
+                        falhados += lote[j].length;
+                        erroAoAssociar = erroAoAssociar || r.reason;
+                        _wizUpdateProgress(imported + falhados, rows.length);
+                    }
+                });
             }
+            const failed = falhados;
 
             // Record import history (best-effort)
             try {

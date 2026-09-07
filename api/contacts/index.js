@@ -79,7 +79,10 @@ function normalizeSubscribedAt(v) {
 
 // Os contactos são globais: não recebe marca, apenas a lista (também global)
 // onde os contactos importados devem ficar.
-async function processBatch(listId, batch) {
+//
+// ocultarNovos: os contactos criados agora ficam fora da página de Contactos
+// (importação feita no envio de uma campanha — ver lib/contactos.js).
+async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
   let imported = 0, skipped = 0, failed = 0;
 
   const validRows = [];
@@ -157,7 +160,7 @@ async function processBatch(listId, batch) {
           source: 'import',
           status: normalizeStatus(c.status),
           created_at: normalizeSubscribedAt(c.subscribed_at),
-        })))).filter(r => r.id);
+        })), { ocultarNovos })).filter(r => r.id);
         imported += inserted.length;
 
         if (listId && inserted.length) {
@@ -175,8 +178,8 @@ async function processBatch(listId, batch) {
           );
           // Entrar numa lista é passar a fazer parte dos contactos da empresa:
           // se algum destes tinha ficado não listado por um envio anterior,
-          // deixa de estar.
-          await marcarOculto(q, inserted.map(r => r.id), false);
+          // deixa de estar. (Uma importação de campanha não traz lista.)
+          if (!ocultarNovos) await marcarOculto(q, inserted.map(r => r.id), false);
           const emailToId = Object.fromEntries(inserted.map(r => [r.email, r.id]));
           for (const c of validRows) {
             if (!c._extra_data) continue;
@@ -551,9 +554,12 @@ module.exports = async function handler(req, res) {
 
     // ── Bulk import (direct, kept for small imports / campaign wizard) ────────
     if (action === 'bulk_import' && req.method === 'POST') {
-      const { contacts: rows, list_id: listId } = req.body || {};
+      const { contacts: rows, list_id: listId, one_off } = req.body || {};
       if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'contacts obrigatório' });
-      const result = await processBatch(listId, rows);
+      if (rows.length > 1000) return res.status(400).json({ error: 'Máximo de 1000 contactos por pedido' });
+      const result = await processBatch(listId, rows, {
+        ocultarNovos: one_off === true || one_off === 'true',
+      });
       return res.status(200).json(result);
     }
 
