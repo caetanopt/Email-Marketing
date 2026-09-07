@@ -354,18 +354,18 @@ module.exports = async function handler(req, res) {
           return res.status(400).json({ error: 'contact_ids obrigatório' });
         await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
         const tempSet = new Set((temp_contact_ids || []).map(Number));
-        // Fetch every requested contact that belongs to this brand, tagging each
-        // with WHY it would be excluded. This lets us report a precise breakdown
-        // instead of silently returning added:0 — the cause of "0 destinatários"
-        // after importing contacts that were previously suppressed/bounced.
+        // Os contactos são globais: não há filtro por marca. Cada contacto
+        // pedido é devolvido com a razão pela qual seria excluído, para poder
+        // reportar um resumo exacto em vez de devolver added:0 em silêncio — a
+        // causa dos "0 destinatários" depois de importar contactos suprimidos.
         const candidates = await query(
           `SELECT id, email,
                   (status IN ('suppressed','bounced','unsubscribed','complained')) AS bad_status,
                   (lower(email) IN (SELECT lower(email) FROM suppression WHERE email NOT LIKE '@%')
                    OR '@'||split_part(lower(email),'@',2) IN (SELECT lower(email) FROM suppression WHERE email LIKE '@%')) AS suppressed
            FROM contacts
-           WHERE id = ANY($1::int[]) AND brand_id=$2`,
-          [contact_ids, camp.brand_id]
+           WHERE id = ANY($1::int[])`,
+          [contact_ids]
         );
         const eligible = candidates.filter(c => !c.bad_status && !c.suppressed);
         const breakdown = {

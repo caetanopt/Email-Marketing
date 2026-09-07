@@ -66,6 +66,17 @@ const provas = [
     if(/96/.test(t))throw new Error('o valor de PixelsPerInch entrou no texto: '+JSON.stringify(t));
     if(/^\\s+$/m.test(t))throw new Error('linhas só com espaços: '+JSON.stringify(t));
     if(t!=='Olá\\n\\nAdeus')throw new Error('resultado inesperado: '+JSON.stringify(t))`],
+  ['contactos sem marca', `const fs=require('fs');
+    const codigo=(f)=>fs.readFileSync(f,'utf8').split('\\n').filter(l=>!/^\\s*(\\/\\/|--|\\*)/.test(l)).join('\\n');
+    const ins=codigo('lib/contactos.js');
+    if(/INSERT INTO contacts[^\`]*brand_id/.test(ins))throw new Error('lib/contactos.js volta a gravar brand_id — os contactos são globais e a coluna deixa de existir na 051');
+    for(const f of ['api/contacts/index.js','api/contacts/[id].js','api/sync/index.js']){
+      const s=codigo(f);
+      if(/c\\.brand_id|contacts\\.brand_id|contacts SET brand_id/.test(s))throw new Error(f+' volta a usar a marca do contacto');
+    }
+    const c=codigo('api/contacts/index.js');
+    if(/brand_id obrigatório'\\s*\\}\\);\\s*$/m.test(c.split('ACCOES_POR_MARCA')[0]))throw new Error('o brand_id volta a ser obrigatório em /api/contacts');
+    if(!/hasAnyRole/.test(c))throw new Error('/api/contacts deixou de verificar o acesso quando não recebe marca')`],
   ['link da versão web', `const p=require('./lib/previewLink');const t=p.previewToken(74);
     if(!p.previewTokenValido(74,t))throw new Error('token novo recusado');
     if(!p.previewTokenValido(74,p.previewTokenLegacy(74)))throw new Error('token antigo recusado — links já enviados deixariam de abrir');

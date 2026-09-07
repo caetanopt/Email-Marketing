@@ -366,7 +366,6 @@ module.exports = async function handler(req, res) {
         const brands = await query(
           `SELECT
               b.id, b.name, b.color, b.logo_url, b.from_name, b.from_email, b.active,
-              (SELECT COUNT(*)::int FROM contacts WHERE brand_id=b.id)        AS contacts_count,
               (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id)       AS campaigns_count,
               (SELECT COUNT(*)::int FROM campaigns WHERE brand_id=b.id AND status='sent') AS campaigns_sent,
               (SELECT COUNT(*)::int FROM user_brand_roles WHERE brand_id=b.id) AS users_count,
@@ -386,10 +385,14 @@ module.exports = async function handler(req, res) {
           return { ...b, warnings, ok: warnings.length === 0 };
         });
 
+        // Os contactos são globais: deixou de haver uma contagem por marca, e
+        // por isso passa a ser um total só, no resumo.
+        const [{ n: contactsTotal }] = await query('SELECT COUNT(*)::int AS n FROM contacts');
         const summary = {
           total: issues.length,
           ok:    issues.filter(b => b.ok).length,
           with_issues: issues.filter(b => !b.ok).length,
+          contacts_total: contactsTotal,
         };
 
         return res.status(200).json({ summary, brands: issues });
@@ -1085,19 +1088,17 @@ module.exports = async function handler(req, res) {
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
       const { confirm: confirmed } = req.body || {};
       if (!confirmed) {
-        // Return counts for the confirmation dialog
-        // As listas de email são globais e não são apagadas com a marca, por
-        // isso deixam de ser contadas aqui — a contagem dizia que iam ser
-        // apagadas, e era verdade por causa do CASCADE (ver abaixo).
-        const [contactsRes, campaignsRes, brandRes] = await Promise.all([
-          query(`SELECT COUNT(*)::int AS n FROM contacts WHERE brand_id=$1`, [id]),
+        // As listas de email e os contactos são globais e não são apagados com
+        // a marca, por isso não são contados aqui — a contagem dizia que iam
+        // ser apagados, e era verdade por causa do CASCADE (ver abaixo).
+        const [campaignsRes, brandRes] = await Promise.all([
           query(`SELECT COUNT(*)::int AS n FROM campaigns WHERE brand_id=$1`, [id]),
           query(`SELECT name FROM brands WHERE id=$1`, [id]),
         ]);
         return res.status(200).json({
           requires_confirm: true,
           brand_name: brandRes[0]?.name,
-          counts: { contacts: contactsRes[0]?.n ?? 0, campaigns: campaignsRes[0]?.n ?? 0, lists: 0 },
+          counts: { contacts: 0, campaigns: campaignsRes[0]?.n ?? 0, lists: 0 },
         });
       }
       // As listas de email são globais, mas lists.brand_id ainda tem
@@ -1109,6 +1110,14 @@ module.exports = async function handler(req, res) {
       try {
         await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
         await query(`UPDATE lists SET brand_id = NULL WHERE brand_id = $1`, [id]);
+      } catch (_) { /* coluna já apagada: nada a fazer */ }
+      // O mesmo se aplica aos contactos: contacts.brand_id também tem
+      // ON DELETE CASCADE enquanto a migração 051 não correr, e apagar uma
+      // marca levava com ela todos os contactos que lhe tinham ficado
+      // atribuídos — e a subscrição deles em todas as listas.
+      try {
+        await query(`ALTER TABLE contacts ALTER COLUMN brand_id DROP NOT NULL`);
+        await query(`UPDATE contacts SET brand_id = NULL WHERE brand_id = $1`, [id]);
       } catch (_) { /* coluna já apagada: nada a fazer */ }
       // All related tables have ON DELETE CASCADE on brand_id — one DELETE cascades everything
       await query(`DELETE FROM brands WHERE id=$1`, [id]);

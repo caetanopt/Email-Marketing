@@ -1,42 +1,37 @@
-const { query, transaction } = require('../../lib/db');
+const { query } = require('../../lib/db');
 const { cors } = require('../../lib/auth');
+const { upsertContactos, aplicarSupressao } = require('../../lib/contactos');
 
 const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Resolve brand from Authorization: Bearer <api_key>
-// Supports two modes:
-//   1. Global key (pmg_…): brand_id must be supplied in body or query
-//   2. Per-brand key (pm_…): brand resolved from brands.api_key
-async function resolveBrand(req, res) {
+// Autenticação por Authorization: Bearer <api_key>. São aceites dois tipos de
+// chave, com o mesmo efeito:
+//   1. Chave global (pmg_…)
+//   2. Chave de uma marca (pm_…), lida de brands.api_key
+//
+// Os contactos e as listas são globais — não pertencem a nenhuma marca — por
+// isso a chave só serve para autenticar: já não escolhe onde os contactos
+// ficam. O brand_id continua a ser aceite no pedido (as integrações antigas
+// enviam-no) mas é ignorado.
+async function autenticar(req, res) {
   const auth = (req.headers.authorization || '').trim();
   if (!auth.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Authorization header obrigatório: Bearer <api_key>' });
-    return null;
+    return false;
   }
   const key = auth.slice(7).trim();
 
-  // Try global key first
   try {
     const gs = await query('SELECT global_api_key FROM global_settings WHERE id=1');
-    if (gs[0]?.global_api_key && gs[0].global_api_key === key) {
-      const brandId = (req.body?.brand_id || req.query?.brand_id || '').toString().trim();
-      if (!brandId) {
-        res.status(400).json({ error: 'brand_id obrigatório ao usar a chave global' });
-        return null;
-      }
-      const br = await query('SELECT id FROM brands WHERE id=$1 AND active=TRUE', [brandId]);
-      if (!br[0]) { res.status(404).json({ error: 'Marca não encontrada' }); return null; }
-      return brandId;
-    }
+    if (gs[0]?.global_api_key && gs[0].global_api_key === key) return true;
   } catch (e) {
     if (e.code !== '42703' && e.code !== '42P01') throw e;
     // global_api_key column/table not yet created — fall through
   }
 
-  // Per-brand key
   const rows = await query('SELECT id FROM brands WHERE api_key=$1', [key]);
-  if (!rows[0]) { res.status(401).json({ error: 'API key inválida' }); return null; }
-  return rows[0].id;
+  if (!rows[0]) { res.status(401).json({ error: 'API key inválida' }); return false; }
+  return true;
 }
 
 module.exports = async function handler(req, res) {
@@ -45,8 +40,7 @@ module.exports = async function handler(req, res) {
   try {
     // ── GET /api/sync?email=xxx — consultar estado de um contacto ──
     if (req.method === 'GET') {
-      const brandId = await resolveBrand(req, res);
-      if (!brandId) return;
+      if (!await autenticar(req, res)) return;
 
       const { email } = req.query;
       if (!email) return res.status(400).json({ error: 'Parâmetro email obrigatório' });
@@ -64,9 +58,11 @@ module.exports = async function handler(req, res) {
          FROM contacts c
          LEFT JOIN list_members lm ON lm.contact_id = c.id
          LEFT JOIN lists l ON l.id = lm.list_id
-         WHERE c.brand_id=$1 AND c.email=$2
-         GROUP BY c.id`,
-        [brandId, e]
+         WHERE LOWER(c.email)=$1
+         GROUP BY c.id
+         ORDER BY c.id
+         LIMIT 1`,
+        [e]
       );
       if (!rows[0]) return res.status(404).json({ error: 'Contacto não encontrado' });
       return res.status(200).json(rows[0]);
@@ -74,8 +70,7 @@ module.exports = async function handler(req, res) {
 
     // ── POST /api/sync — sincronizar (upsert) contactos ──
     if (req.method === 'POST') {
-      const brandId = await resolveBrand(req, res);
-      if (!brandId) return;
+      if (!await autenticar(req, res)) return;
 
       const { contacts, list_id } = req.body || {};
       if (!Array.isArray(contacts) || !contacts.length)
@@ -84,10 +79,8 @@ module.exports = async function handler(req, res) {
       if (contacts.length > 1000)
         return res.status(400).json({ error: 'Máximo de 1000 contactos por pedido' });
 
-      // As listas são globais (migração 037): não pertencem a nenhuma marca,
-      // por isso só se confirma que a lista existe. O brand_id deste pedido é
-      // o dos CONTACTOS — contacts tem brand_id e uma unicidade
-      // (brand_id, email) — e não tem relação com a lista.
+      // As listas são globais (migração 037) e os contactos também (051): só
+      // se confirma que a lista existe.
       if (list_id) {
         const listRows = await query('SELECT id FROM lists WHERE id=$1', [list_id]);
         if (!listRows[0]) return res.status(404).json({ error: 'Lista não encontrada' });
@@ -109,33 +102,18 @@ module.exports = async function handler(req, res) {
           try {
             const extraData = (c.extra_data && typeof c.extra_data === 'object' && !Array.isArray(c.extra_data))
               ? c.extra_data : null;
-            const rows = await query(
-              `INSERT INTO contacts (brand_id, email, name, phone, company, source, custom_attributes)
-               VALUES ($1,$2,$3,$4,$5,'api',$6)
-               ON CONFLICT (brand_id, email) DO UPDATE
-                 SET name=COALESCE(EXCLUDED.name, contacts.name),
-                     phone=COALESCE(EXCLUDED.phone, contacts.phone),
-                     company=COALESCE(EXCLUDED.company, contacts.company),
-                     custom_attributes=CASE
-                       WHEN EXCLUDED.custom_attributes IS NOT NULL
-                       THEN contacts.custom_attributes || EXCLUDED.custom_attributes
-                       ELSE contacts.custom_attributes
-                     END,
-                     updated_at=NOW()
-               RETURNING id`,
-              [brandId, email,
-               c.name   || null,
-               c.phone  || null,
-               c.company|| null,
-               c.custom_attributes ? JSON.stringify(c.custom_attributes) : null]
-            );
+            const [contacto] = await upsertContactos(query, [{
+              email,
+              name: c.name || null,
+              phone: c.phone || null,
+              company: c.company || null,
+              source: 'api',
+              custom_attributes: c.custom_attributes || null,
+            }], { fundirAtributos: true });
+            if (!contacto?.id) throw new Error('Contacto não gravado');
             // Apply suppression status if contact is in suppression list
-            await query(
-              `UPDATE contacts SET status = (CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' WHEN s.reason='bounce' THEN 'bounced' WHEN s.reason='spam' THEN 'complained' ELSE 'suppressed' END)::contact_status
-               FROM suppression s WHERE contacts.id=$1 AND contacts.email=s.email AND contacts.status='active'`,
-              [rows[0].id]
-            );
-            if (list_id && rows[0].id) {
+            await aplicarSupressao(query, [contacto.id]);
+            if (list_id) {
               await query(
                 `INSERT INTO list_members (list_id, contact_id, extra_data)
                  VALUES ($1, $2, $3)
@@ -145,7 +123,7 @@ module.exports = async function handler(req, res) {
                      THEN COALESCE(list_members.extra_data, '{}'::jsonb) || EXCLUDED.extra_data
                      ELSE list_members.extra_data
                    END`,
-                [list_id, rows[0].id, extraData ? JSON.stringify(extraData) : null]
+                [list_id, contacto.id, extraData ? JSON.stringify(extraData) : null]
               );
             }
             synced++;
@@ -163,8 +141,7 @@ module.exports = async function handler(req, res) {
 
     // ── DELETE /api/sync — cancelar subscrição de emails ──
     if (req.method === 'DELETE') {
-      const brandId = await resolveBrand(req, res);
-      if (!brandId) return;
+      if (!await autenticar(req, res)) return;
 
       const { emails } = req.body || {};
       if (!Array.isArray(emails) || !emails.length)
@@ -173,9 +150,12 @@ module.exports = async function handler(req, res) {
       const valid = emails.map(e => (e||'').toLowerCase().trim()).filter(e => VALID_EMAIL.test(e));
       if (!valid.length) return res.status(400).json({ error: 'Nenhum email válido encontrado' });
 
+      // O cancelamento é da pessoa, não de uma marca: a supressão sempre foi
+      // global e os contactos também são agora.
       await query(
-        `UPDATE contacts SET status='unsubscribed' WHERE brand_id=$1 AND email = ANY($2::text[]) AND status='active'`,
-        [brandId, valid]
+        `UPDATE contacts SET status='unsubscribed', updated_at=NOW()
+         WHERE LOWER(email) = ANY($1::text[]) AND status='active'`,
+        [valid]
       );
       await query(
         `INSERT INTO suppression (email, reason) SELECT unnest($1::text[]), 'unsubscribe' ON CONFLICT (email) DO NOTHING`,

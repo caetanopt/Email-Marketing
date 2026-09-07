@@ -1,5 +1,5 @@
 const { query } = require('../../lib/db');
-const { withAuth } = require('../../lib/auth');
+const { withAuth, hasAnyRole } = require('../../lib/auth');
 
 // ── Segment rule builder ──────────────────────────────────────────────────────
 const CONTACT_FIELDS = new Set(['name','email','phone','company','status']);
@@ -68,11 +68,6 @@ async function desvincularMarcaDasListas() {
     await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
   } catch (_) { /* já não existe coluna, ou sem permissão: segue */ }
   marcaDesvinculada = true;
-}
-
-async function hasAnyRole(userId) {
-  const r = await query('SELECT 1 FROM user_brand_roles WHERE user_id=$1 LIMIT 1', [userId]);
-  return !!r[0];
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────

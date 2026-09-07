@@ -1,15 +1,13 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, cors, hasAnyRole } = require('../../lib/auth');
 
-// Helper: confirm caller has access to the contact's brand
+// Os contactos são globais: não pertencem a nenhuma marca. O acesso exige
+// apenas que o utilizador pertença a alguma marca — a mesma verificação que
+// as listas usam. (Antes cruzava-se contacts.brand_id com user_brand_roles, o
+// que deixaria de encontrar qualquer contacto sem marca.)
 async function authorizeContact(userId, contactId) {
-  const r = await query(
-    `SELECT c.*
-     FROM contacts c
-     JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
-     WHERE c.id = $1`,
-    [contactId, userId]
-  );
+  if (!await hasAnyRole(userId)) return null;
+  const r = await query(`SELECT c.* FROM contacts c WHERE c.id = $1`, [contactId]);
   return r[0] || null;
 }
 
@@ -39,21 +37,33 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'PUT') {
       const { email, name, phone, company, status, custom_attributes } = req.body || {};
+      const novoEmail = email?.toLowerCase().trim() || null;
+      // Um email é um contacto: mudar para um que já existe fundiria dois
+      // contactos sem o pedir. Recusa-se com uma mensagem em vez de deixar o
+      // índice único responder com um erro de servidor.
+      if (novoEmail && novoEmail !== String(contact.email || '').toLowerCase()) {
+        const [ja] = await query(
+          'SELECT id FROM contacts WHERE LOWER(email)=$1 AND id<>$2 LIMIT 1', [novoEmail, id]
+        );
+        if (ja) return res.status(409).json({ error: 'Já existe um contacto com esse email.' });
+      }
       await query(
         `UPDATE contacts SET
            email=COALESCE($1,email), name=$2,
            phone=COALESCE($3,phone), company=COALESCE($4,company),
            status=COALESCE($5,status),
            custom_attributes=COALESCE($6,custom_attributes), updated_at=NOW()
-         WHERE id=$7 AND brand_id=$8`,
+         WHERE id=$7`,
         [email?.toLowerCase().trim()||null, name||null, phone||null, company||null,
-         status||null, custom_attributes ? JSON.stringify(custom_attributes) : null, id, contact.brand_id]
+         status||null, custom_attributes ? JSON.stringify(custom_attributes) : null, id]
       );
       return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'DELETE') {
-      await query('DELETE FROM contacts WHERE id = $1 AND brand_id = $2', [id, contact.brand_id]);
+      // email_events.contact_id não tem ON DELETE definido — anular primeiro.
+      await query('UPDATE email_events SET contact_id=NULL WHERE contact_id = $1', [id]);
+      await query('DELETE FROM contacts WHERE id = $1', [id]);
       return res.status(200).json({ ok: true });
     }
 

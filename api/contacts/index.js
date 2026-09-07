@@ -1,5 +1,6 @@
 const { query, transaction } = require('../../lib/db');
-const { requireAuth, cors, requireBrand } = require('../../lib/auth');
+const { requireAuth, cors, requireBrand, hasAnyRole } = require('../../lib/auth');
+const { upsertContactos, aplicarSupressao, permitirContactosSemMarca } = require('../../lib/contactos');
 
 const IMPORT_INIT_SQL = `
   CREATE TABLE IF NOT EXISTS import_jobs (
@@ -76,7 +77,9 @@ function normalizeSubscribedAt(v) {
   return d.toISOString();
 }
 
-async function processBatch(brandId, listId, batch) {
+// Os contactos são globais: não recebe marca, apenas a lista (também global)
+// onde os contactos importados devem ficar.
+async function processBatch(listId, batch) {
   let imported = 0, skipped = 0, failed = 0;
 
   const validRows = [];
@@ -112,10 +115,9 @@ async function processBatch(brandId, listId, batch) {
   }
 
   if (validRows.length) {
-    // Dedupe by email WITHIN this chunk. A multi-row
-    // INSERT ... ON CONFLICT (brand_id,email) DO UPDATE throws
-    // "cannot affect row a second time" if the same email appears twice in
-    // one statement — which fails (and loses) the ENTIRE chunk of 500 rows.
+    // Dedupe by email WITHIN this chunk: o mesmo email duas vezes no mesmo
+    // ficheiro é a mesma pessoa. Faz-se aqui, e não só no upsert, porque os
+    // mapas de extra_data e da data de subscrição usados abaixo são por email.
     // Merge non-empty fields so a later row's data isn't discarded.
     const byEmail = new Map();
     for (const c of validRows) {
@@ -139,39 +141,23 @@ async function processBatch(brandId, listId, batch) {
 
   if (validRows.length) {
     try {
+      // Fora da transacção: o ALTER TABLE que permite contactos sem marca
+      // tranca a tabela, e dentro da transacção ficaria trancada até ao fim
+      // do lote.
+      await permitirContactosSemMarca();
       await transaction(async q => {
-        const vals = [], params = [];
-        let p = 1;
-        validRows.forEach(c => {
-          // COALESCE no status é indispensável: passar NULL explícito NÃO
-          // recorre ao DEFAULT da coluna — grava NULL. E um contacto com
-          // status NULL fica fora de todos os envios, porque o envio filtra
-          // por status='active'.
-          vals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},'import',COALESCE($${p++}::contact_status,'active'),COALESCE($${p++}::timestamptz, NOW()))`);
-          params.push(brandId, c.email, c.name||null, c.phone||null, c.company||null,
-                      normalizeStatus(c.status), normalizeSubscribedAt(c.subscribed_at));
-        });
-        const inserted = await q(
-          `INSERT INTO contacts (brand_id, email, name, phone, company, source, status, created_at)
-           VALUES ${vals.join(',')}
-           ON CONFLICT (brand_id, email) DO UPDATE
-             SET name=COALESCE(EXCLUDED.name, contacts.name),
-                 phone=COALESCE(EXCLUDED.phone, contacts.phone),
-                 company=COALESCE(EXCLUDED.company, contacts.company),
-                 -- O ficheiro pode corrigir a data de subscrição; sem valor,
-                 -- mantém-se a que já estava.
-                 created_at=COALESCE(EXCLUDED.created_at, contacts.created_at),
-                 -- O estado do ficheiro só se aplica a quem NÃO cancelou nem
-                 -- foi devolvido/suprimido: um ficheiro não deve reactivar
-                 -- alguém que pediu para sair.
-                 status=CASE
-                   WHEN contacts.status IN ('unsubscribed','bounced','suppressed') THEN contacts.status
-                   ELSE COALESCE(EXCLUDED.status, contacts.status)
-                 END,
-                 source=EXCLUDED.source, updated_at=NOW()
-           RETURNING id, email`,
-          params
-        );
+        // O ficheiro pode corrigir a data de subscrição e o estado; sem
+        // valor, mantém-se o que já estava. O estado do ficheiro nunca
+        // reactiva quem cancelou ou foi devolvido/suprimido (respeitarSaida).
+        const inserted = (await upsertContactos(q, validRows.map(c => ({
+          email: c.email,
+          name: c.name || null,
+          phone: c.phone || null,
+          company: c.company || null,
+          source: 'import',
+          status: normalizeStatus(c.status),
+          created_at: normalizeSubscribedAt(c.subscribed_at),
+        })))).filter(r => r.id);
         imported += inserted.length;
 
         if (listId && inserted.length) {
@@ -289,7 +275,7 @@ async function processImportQueue({ jobId = null, brandId = null, deadlineMs = 8
 
     const chunk = claimed[0];
     const contacts = Array.isArray(chunk.contacts) ? chunk.contacts : [];
-    const result = await processBatch(job.brand_id, job.list_id, contacts);
+    const result = await processBatch(job.list_id, contacts);
 
     await query(
       `UPDATE import_chunks SET status='done', imported=$1, skipped=$2, failed=$3 WHERE id=$4`,
@@ -329,8 +315,23 @@ module.exports = async function handler(req, res) {
   if (!user) return;
 
   const { brand_id, search, status, list_id, page = 1, limit = 50, action, import_id } = req.query;
-  if (!brand_id) return res.status(400).json({ error: 'brand_id obrigatório' });
-  if (!await requireBrand(req, res, user.id, brand_id)) return;
+
+  // Os contactos são globais: um email é uma pessoa, não uma pessoa por marca.
+  // Por isso o brand_id deixou de ser obrigatório e deixou de filtrar
+  // contactos. Continua a ser aceite — e verificado — porque o histórico de
+  // importações (imports, import_jobs) é que é por marca: é o registo de quem
+  // importou o quê, e não muda de dono por os contactos serem globais.
+  const ACCOES_POR_MARCA = new Set([
+    'imports', 'import_create', 'import_chunk', 'import_ready',
+    'import_status', 'import_active', 'import_process_now', 'import_cancel',
+  ]);
+  if (brand_id) {
+    if (!await requireBrand(req, res, user.id, brand_id)) return;
+  } else if (ACCOES_POR_MARCA.has(action)) {
+    return res.status(400).json({ error: 'brand_id obrigatório nesta acção' });
+  } else if (!await hasAnyRole(user.id)) {
+    return res.status(403).json({ error: 'Sem permissão' });
+  }
 
   try {
     // ── Imports history ─────────────────────────────────────
@@ -482,10 +483,10 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      // Listas são globais: ao filtrar por lista mostram-se TODOS os membros,
-      // independentemente da marca do contacto. Sem lista, a vista é por marca.
-      const params = [brand_id];
-      let join = '', where = list_id ? 'WHERE $1::text IS NOT NULL' : 'WHERE c.brand_id = $1';
+      // Contactos e listas são globais: a vista é a mesma para todas as
+      // marcas. O brand_id, se vier, não filtra nada.
+      const params = [];
+      let join = '', where = 'WHERE TRUE';
 
       if (list_id) {
         params.push(list_id);
@@ -494,8 +495,8 @@ module.exports = async function handler(req, res) {
       if (status)  { params.push(status);         where += ` AND c.status = $${params.length}`; }
       if (search)  { params.push(`%${search}%`);  where += ` AND (c.email ILIKE $${params.length} OR c.name ILIKE $${params.length})`; }
 
-      const countParams = [brand_id];
-      let countJoin = '', countWhere = list_id ? 'WHERE $1::text IS NOT NULL' : 'WHERE c.brand_id = $1';
+      const countParams = [];
+      let countJoin = '', countWhere = 'WHERE TRUE';
       if (list_id)  { countParams.push(list_id); countJoin = `JOIN list_members lm ON lm.contact_id = c.id AND lm.list_id = $${countParams.length}`; }
       if (status)   { countParams.push(status);          countWhere += ` AND c.status = $${countParams.length}`; }
       if (search)   { countParams.push(`%${search}%`);  countWhere += ` AND (c.email ILIKE $${countParams.length} OR c.name ILIKE $${countParams.length})`; }
@@ -520,12 +521,13 @@ module.exports = async function handler(req, res) {
 
     // ── Sync suppression ──────────────────────────────────────────────────────
     if (action === 'sync_suppression' && req.method === 'POST') {
+      // A supressão sempre foi global (é por email); os contactos também são
+      // agora, por isso deixa de haver filtro por marca.
       await query(
         `UPDATE contacts c
          SET status = (CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' WHEN s.reason='bounce' THEN 'bounced' WHEN s.reason='spam' THEN 'complained' ELSE 'suppressed' END)::contact_status
          FROM suppression s
-         WHERE c.email = s.email AND c.brand_id = $1 AND c.status = 'active'`,
-        [brand_id]
+         WHERE LOWER(c.email) = LOWER(s.email) AND c.status = 'active'`
       );
       return res.status(200).json({ ok: true });
     }
@@ -534,7 +536,7 @@ module.exports = async function handler(req, res) {
     if (action === 'bulk_import' && req.method === 'POST') {
       const { contacts: rows, list_id: listId } = req.body || {};
       if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'contacts obrigatório' });
-      const result = await processBatch(brand_id, listId, rows);
+      const result = await processBatch(listId, rows);
       return res.status(200).json(result);
     }
 
@@ -543,34 +545,22 @@ module.exports = async function handler(req, res) {
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
       const e = email.toLowerCase().trim();
 
-      const rows = await query(
-        `INSERT INTO contacts (brand_id, email, name, phone, company, source, custom_attributes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT (brand_id, email) DO UPDATE
-           SET name=COALESCE(EXCLUDED.name, contacts.name),
-               phone=COALESCE(EXCLUDED.phone, contacts.phone),
-               company=COALESCE(EXCLUDED.company, contacts.company),
-               source=EXCLUDED.source,
-               custom_attributes=COALESCE(EXCLUDED.custom_attributes, contacts.custom_attributes),
-               updated_at=NOW()
-         RETURNING id, (xmax = 0) AS created`,
-        [brand_id, e, name||null, phone||null,
-         company||null, source||null, custom_attributes ? JSON.stringify(custom_attributes) : null]
-      );
-      await query(
-        `UPDATE contacts SET status = (CASE WHEN s.reason='unsubscribe' THEN 'unsubscribed' ELSE 'suppressed' END)::contact_status
-         FROM suppression s WHERE contacts.id=$1 AND contacts.email=s.email`,
-        [rows[0].id]
-      );
-      return res.status(201).json({ id: rows[0].id, email: e, created: rows[0].created });
+      const [contacto] = await upsertContactos(query, [{
+        email: e, name, phone, company, source, custom_attributes,
+      }]);
+      if (!contacto?.id) return res.status(500).json({ error: 'Erro a gravar o contacto' });
+      await aplicarSupressao(query, [contacto.id]);
+      return res.status(201).json({ id: contacto.id, email: e, created: contacto.criado });
     }
 
     if (req.method === 'DELETE') {
       const { ids } = req.body || {};
       if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids obrigatório' });
-      const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
-      await query(`DELETE FROM contacts WHERE brand_id=$1 AND id IN (${placeholders})`, [brand_id, ...ids]);
-      return res.status(200).json({ ok: true, deleted: ids.length });
+      // email_events.contact_id não tem ON DELETE definido: sem anular antes,
+      // o DELETE falha em contactos com eventos registados.
+      await query(`UPDATE email_events SET contact_id=NULL WHERE contact_id = ANY($1::int[])`, [ids.map(Number)]);
+      const apagados = await query(`DELETE FROM contacts WHERE id = ANY($1::int[]) RETURNING id`, [ids.map(Number)]);
+      return res.status(200).json({ ok: true, deleted: apagados.length });
     }
 
     res.status(405).json({ error: 'Método não permitido' });

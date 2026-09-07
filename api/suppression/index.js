@@ -69,29 +69,29 @@ module.exports = async function handler(req, res) {
         if (!isNaN(campaignId)) {
           await query(
             `INSERT INTO email_events (campaign_id, contact_id, type)
-             SELECT $3, c.id, 'unsubscribe' FROM contacts c
-             WHERE c.brand_id=$1 AND c.email=$2
-               AND EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id=$3 AND cr.contact_id=c.id)
+             SELECT $2, c.id, 'unsubscribe' FROM contacts c
+             WHERE LOWER(c.email)=$1
+               AND EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id=$2 AND cr.contact_id=c.id)
                AND NOT EXISTS (
                  SELECT 1 FROM email_events ee
-                 WHERE ee.contact_id=c.id AND ee.type='unsubscribe' AND ee.campaign_id=$3
+                 WHERE ee.contact_id=c.id AND ee.type='unsubscribe' AND ee.campaign_id=$2
                )
              LIMIT 1`,
-            [brand_id, e, campaignId]
+            [e, campaignId]
           );
         } else {
           await query(
             `INSERT INTO email_events (campaign_id, contact_id, type)
              SELECT cr.campaign_id, c.id, 'unsubscribe' FROM contacts c
              LEFT JOIN campaign_recipients cr ON cr.contact_id=c.id
-             WHERE c.brand_id=$1 AND c.email=$2
+             WHERE LOWER(c.email)=$1
                AND NOT EXISTS (
                  SELECT 1 FROM email_events ee
                  WHERE ee.contact_id=c.id AND ee.type='unsubscribe'
                    AND ee.campaign_id IS NOT DISTINCT FROM cr.campaign_id
                )
              ORDER BY cr.sent_at DESC NULLS LAST LIMIT 1`,
-            [brand_id, e]
+            [e]
           );
         }
       } catch (err) { console.error('unsubscribe event log:', err); }
