@@ -22,8 +22,11 @@
 -- Para cada email fica o contacto com o id mais baixo (o mais antigo), que é o
 -- que as campanhas antigas referenciam.
 --
--- Tudo corre dentro de uma transacção: se qualquer passo falhar, nada é
--- aplicado.
+-- Nota sobre a forma do ficheiro: o mapa dos duplicados é recalculado em cada
+-- instrução em vez de ficar numa tabela temporária. Fica mais repetitivo, mas
+-- as tabelas temporárias não sobrevivem entre instruções no editor de SQL do
+-- Supabase (cada uma pode correr noutra ligação), e o mapa dá sempre o mesmo
+-- resultado porque a tabela contacts só é alterada no fim, no passo 6.
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Passo 0 — só para ver (não altera nada). Podes correr isto sozinho.
@@ -40,56 +43,52 @@
 BEGIN;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- Passo 1 — o mapa dos duplicados: quem desaparece e para quem vai
--- ───────────────────────────────────────────────────────────────────────────
-CREATE TEMP TABLE fusao_contactos (
-  antigo INT PRIMARY KEY,
-  fica   INT NOT NULL
-) ON COMMIT DROP;
-
-INSERT INTO fusao_contactos (antigo, fica)
-SELECT c.id, k.fica
-FROM contacts c
-JOIN (
-  SELECT LOWER(email) AS chave, MIN(id) AS fica
-  FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
-) k ON k.chave = LOWER(c.email)
-WHERE c.id <> k.fica;
-
--- ───────────────────────────────────────────────────────────────────────────
--- Passo 2 — o contacto que fica herda o que os duplicados tinham
+-- Passo 1 — o contacto que fica herda o estado dos duplicados
 --
--- Primeiro o estado: se algum dos duplicados tinha cancelado a subscrição (ou
--- foi devolvido/suprimido), o contacto que fica passa a cancelado. Uma fusão
+-- Se algum dos duplicados tinha cancelado a subscrição (ou foi
+-- devolvido/suprimido), o contacto que fica passa a cancelado. Uma fusão
 -- nunca pode reactivar quem pediu para sair.
 -- ───────────────────────────────────────────────────────────────────────────
 UPDATE contacts SET status = 'unsubscribed', updated_at = NOW()
 WHERE status = 'active'
   AND id IN (
-    SELECT f.fica FROM fusao_contactos f
-    JOIN contacts d ON d.id = f.antigo
-    WHERE d.status::text IN ('unsubscribed','bounced','suppressed','complained')
+    SELECT k.fica
+    FROM contacts d
+    JOIN (
+      SELECT LOWER(email) AS chave, MIN(id) AS fica
+      FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+    ) k ON k.chave = LOWER(d.email)
+    WHERE d.id <> k.fica
+      AND d.status::text IN ('unsubscribed','bounced','suppressed','complained')
   );
 
--- Depois os campos vazios — nome, telefone, empresa — e a data de subscrição
--- mais antiga, que é a que representa quando a pessoa se inscreveu de facto.
-UPDATE contacts k
-   SET name       = COALESCE(k.name, agg.nome),
-       phone      = COALESCE(k.phone, agg.telefone),
-       company    = COALESCE(k.company, agg.empresa),
-       created_at = LEAST(k.created_at, agg.mais_antiga),
+-- ───────────────────────────────────────────────────────────────────────────
+-- Passo 2 — e herda os campos que tinha vazios
+--
+-- Nome, telefone e empresa, mais a data de subscrição mais antiga, que é a que
+-- representa quando a pessoa se inscreveu de facto.
+-- ───────────────────────────────────────────────────────────────────────────
+UPDATE contacts c
+   SET name       = COALESCE(c.name, agg.nome),
+       phone      = COALESCE(c.phone, agg.telefone),
+       company    = COALESCE(c.company, agg.empresa),
+       created_at = LEAST(c.created_at, agg.mais_antiga),
        updated_at = NOW()
 FROM (
-  SELECT f.fica,
+  SELECT k.fica,
          MIN(d.name)       AS nome,
          MIN(d.phone)      AS telefone,
          MIN(d.company)    AS empresa,
          MIN(d.created_at) AS mais_antiga
-  FROM fusao_contactos f
-  JOIN contacts d ON d.id = f.antigo
-  GROUP BY f.fica
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+  GROUP BY k.fica
 ) agg
-WHERE k.id = agg.fica;
+WHERE c.id = agg.fica;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Passo 3 — subscrições nas listas passam para o contacto que fica
@@ -98,9 +97,17 @@ WHERE k.id = agg.fica;
 -- fica já estiver na lista, não é duplicado.
 -- ───────────────────────────────────────────────────────────────────────────
 INSERT INTO list_members (list_id, contact_id, extra_data, added_at)
-SELECT lm.list_id, f.fica, lm.extra_data, lm.added_at
+SELECT lm.list_id, mapa.fica, lm.extra_data, lm.added_at
 FROM list_members lm
-JOIN fusao_contactos f ON f.antigo = lm.contact_id
+JOIN (
+  SELECT d.id AS antigo, k.fica
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+) mapa ON mapa.antigo = lm.contact_id
 ON CONFLICT (list_id, contact_id) DO NOTHING;
 
 -- Se a pessoa estava na mesma lista pelos dois contactos, fica a data de
@@ -109,12 +116,20 @@ UPDATE list_members k
    SET added_at   = LEAST(k.added_at, origem.mais_antiga),
        extra_data = COALESCE(k.extra_data, origem.extra_data)
 FROM (
-  SELECT lm.list_id, f.fica,
+  SELECT lm.list_id, mapa.fica,
          MIN(lm.added_at) AS mais_antiga,
          MIN(lm.extra_data::text)::jsonb AS extra_data
   FROM list_members lm
-  JOIN fusao_contactos f ON f.antigo = lm.contact_id
-  GROUP BY lm.list_id, f.fica
+  JOIN (
+    SELECT d.id AS antigo, k2.fica
+    FROM contacts d
+    JOIN (
+      SELECT LOWER(email) AS chave, MIN(id) AS fica
+      FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+    ) k2 ON k2.chave = LOWER(d.email)
+    WHERE d.id <> k2.fica
+  ) mapa ON mapa.antigo = lm.contact_id
+  GROUP BY lm.list_id, mapa.fica
 ) origem
 WHERE k.list_id = origem.list_id
   AND k.contact_id = origem.fica
@@ -127,48 +142,74 @@ WHERE k.list_id = origem.list_id
 -- pessoa ficou como destinatária duas vezes na mesma campanha — uma por cada
 -- contacto duplicado — fica uma linha só: a que tem registo de envio.
 -- ───────────────────────────────────────────────────────────────────────────
-CREATE TEMP TABLE fusao_destinatarios (
-  id          INT PRIMARY KEY,
-  campaign_id INT NOT NULL,
-  fica        INT NOT NULL,
-  enviado     BOOLEAN NOT NULL
-) ON COMMIT DROP;
-
-INSERT INTO fusao_destinatarios (id, campaign_id, fica, enviado)
-SELECT cr.id, cr.campaign_id, COALESCE(f.fica, cr.contact_id), (cr.status::text = 'sent')
-FROM campaign_recipients cr
-LEFT JOIN fusao_contactos f ON f.antigo = cr.contact_id
-WHERE cr.contact_id IN (SELECT antigo FROM fusao_contactos)
-   OR cr.contact_id IN (SELECT fica FROM fusao_contactos);
-
+WITH mapa AS (
+  SELECT d.id AS antigo, k.fica
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+),
+envolvidos AS (
+  SELECT cr.id, cr.campaign_id,
+         COALESCE(m.fica, cr.contact_id) AS fica,
+         (cr.status::text = 'sent') AS enviado
+  FROM campaign_recipients cr
+  LEFT JOIN mapa m ON m.antigo = cr.contact_id
+  WHERE cr.contact_id IN (SELECT antigo FROM mapa)
+     OR cr.contact_id IN (SELECT fica FROM mapa)
+),
+fica_uma AS (
+  SELECT DISTINCT ON (campaign_id, fica) id
+  FROM envolvidos
+  ORDER BY campaign_id, fica, enviado DESC, id
+)
 DELETE FROM campaign_recipients
-WHERE id IN (
-  SELECT d.id FROM fusao_destinatarios d
-  WHERE d.id <> (
-    SELECT m.id FROM fusao_destinatarios m
-    WHERE m.campaign_id = d.campaign_id AND m.fica = d.fica
-    ORDER BY m.enviado DESC, m.id
-    LIMIT 1
-  )
-);
+WHERE id IN (SELECT id FROM envolvidos)
+  AND id NOT IN (SELECT id FROM fica_uma);
 
 UPDATE campaign_recipients cr
-   SET contact_id = f.fica
-FROM fusao_contactos f
-WHERE f.antigo = cr.contact_id;
+   SET contact_id = mapa.fica
+FROM (
+  SELECT d.id AS antigo, k.fica
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+) mapa
+WHERE mapa.antigo = cr.contact_id;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Passo 5 — eventos e registo de envios (aberturas, cliques, cancelamentos)
 -- ───────────────────────────────────────────────────────────────────────────
 UPDATE email_events e
-   SET contact_id = f.fica
-FROM fusao_contactos f
-WHERE f.antigo = e.contact_id;
+   SET contact_id = mapa.fica
+FROM (
+  SELECT d.id AS antigo, k.fica
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+) mapa
+WHERE mapa.antigo = e.contact_id;
 
 UPDATE email_send_log l
-   SET contact_id = f.fica
-FROM fusao_contactos f
-WHERE f.antigo = l.contact_id;
+   SET contact_id = mapa.fica
+FROM (
+  SELECT d.id AS antigo, k.fica
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+) mapa
+WHERE mapa.antigo = l.contact_id;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Passo 6 — apagar os contactos duplicados
@@ -176,7 +217,16 @@ WHERE f.antigo = l.contact_id;
 -- Já não sobra nada apontado para eles: as listas e os destinatários foram
 -- transferidos nos passos 3 e 4, os eventos no 5.
 -- ───────────────────────────────────────────────────────────────────────────
-DELETE FROM contacts WHERE id IN (SELECT antigo FROM fusao_contactos);
+DELETE FROM contacts
+WHERE id IN (
+  SELECT d.id
+  FROM contacts d
+  JOIN (
+    SELECT LOWER(email) AS chave, MIN(id) AS fica
+    FROM contacts GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  ) k ON k.chave = LOWER(d.email)
+  WHERE d.id <> k.fica
+);
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- Passo 7 — a coluna sai, e com ela o CASCADE que apagava contactos ao
