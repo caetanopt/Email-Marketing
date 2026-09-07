@@ -1,5 +1,6 @@
 const { query } = require('../../lib/db');
 const { withAuth, hasAnyRole } = require('../../lib/auth');
+const { marcarOculto } = require('../../lib/contactos');
 
 // ── Segment rule builder ──────────────────────────────────────────────────────
 const CONTACT_FIELDS = new Set(['name','email','phone','company','status']);
@@ -299,6 +300,10 @@ module.exports = withAuth(async (req, res, user) => {
           'INSERT INTO list_members (list_id, contact_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
           [id, cid]
         );
+        // Um contacto que tinha ficado não listado (veio de um ficheiro no
+        // envio de uma campanha) passa a fazer parte dos contactos ao entrar
+        // numa lista.
+        await marcarOculto(query, [cid], false);
         if (extra_data && typeof extra_data === 'object' && Object.keys(extra_data).length) {
           await query(
             'UPDATE list_members SET extra_data=$1::jsonb WHERE list_id=$2 AND contact_id=$3',

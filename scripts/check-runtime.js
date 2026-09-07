@@ -39,6 +39,25 @@ const provas = [
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
+  ['contactos de ficheiro fora da listagem', `const fs=require('fs');
+    const a=fs.readFileSync('api/contacts/index.js','utf8');
+    if(!a.includes('NOT COALESCE(c.hidden, FALSE)'))throw new Error('a listagem de contactos deixou de excluir os não listados');
+    if(!a.includes('ocultarNovos'))throw new Error('o POST deixou de marcar os contactos vindos de um ficheiro de campanha');
+    if(!fs.readFileSync('email.html','utf8').includes('one_off: true'))throw new Error('o upload no envio deixou de marcar os contactos como não listados');
+    const c=fs.readFileSync('lib/contactos.js','utf8');
+    if(!c.includes('r.criado && r.id'))throw new Error('só os contactos criados agora podem ser marcados: um ficheiro não pode esconder quem já existia');
+    if(!fs.readFileSync('api/lists/index.js','utf8').includes('marcarOculto'))throw new Error('entrar numa lista tem de desmarcar o contacto');`],
+  ['o envio não apaga contactos', `const fs=require('fs');
+    // campaign_recipients.contact_id é ON DELETE CASCADE: apagar um contacto
+    // no fim do envio apaga também a linha do destinatário, e a campanha fica
+    // sem relatório logo depois de ter sido enviada. Já aconteceu, e os dois
+    // motores de envio chegaram a fazer coisas diferentes.
+    for(const f of ['lib/sendCampaign.js','api/campaigns/[id].js']){
+      const linhas=fs.readFileSync(f,'utf8').split(String.fromCharCode(10))
+        .filter(l=>{const t=l.trim();return !t.startsWith('//') && !t.startsWith('*');});
+      if(linhas.join(' ').includes('DELETE FROM contacts'))
+        throw new Error(f+' volta a apagar contactos durante o envio — isso apaga o relatório da campanha (CASCADE)');
+    }`],
   ['ninguém cancelado recebe', `const fs=require('fs');
     // A barreira antes de cada lote tem de ser a mesma nos dois motores de
     // envio: já divergiram, e um verificava o que o outro não verificava.

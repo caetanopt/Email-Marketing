@@ -9630,7 +9630,12 @@ ${teSerializeBlocksComment(srcBlocks)}
             for (let i = 0; i < rows.length; i += CHUNK) {
                 await Promise.all(rows.slice(i, i + CHUNK).map(async c => {
                     try {
-                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify(c) });
+                        // one_off: estes contactos vêm de um ficheiro para
+                        // esta campanha. Ficam gravados — o relatório do
+                        // envio depende deles — mas não aparecem na página de
+                        // Contactos. Entram lá se algum dia forem postos numa
+                        // lista.
+                        const r = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}`, { method: 'POST', body: JSON.stringify({ ...c, one_off: true }) });
                         if (r.id) { newIds.push(r.id); if (r.created) newTempIds.push(r.id); imported++; }
                     } catch { failed++; }
                 }));

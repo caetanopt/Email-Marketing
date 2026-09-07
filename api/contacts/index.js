@@ -1,6 +1,6 @@
 const { query, transaction } = require('../../lib/db');
 const { requireAuth, cors, requireBrand, hasAnyRole } = require('../../lib/auth');
-const { upsertContactos, aplicarSupressao, permitirContactosSemMarca } = require('../../lib/contactos');
+const { upsertContactos, aplicarSupressao, permitirContactosSemMarca, marcarOculto } = require('../../lib/contactos');
 
 const IMPORT_INIT_SQL = `
   CREATE TABLE IF NOT EXISTS import_jobs (
@@ -173,6 +173,10 @@ async function processBatch(listId, batch) {
             `INSERT INTO list_members (list_id, contact_id, added_at) VALUES ${lvals} ON CONFLICT DO NOTHING`,
             lparams
           );
+          // Entrar numa lista é passar a fazer parte dos contactos da empresa:
+          // se algum destes tinha ficado não listado por um envio anterior,
+          // deixa de estar.
+          await marcarOculto(q, inserted.map(r => r.id), false);
           const emailToId = Object.fromEntries(inserted.map(r => [r.email, r.id]));
           for (const c of validRows) {
             if (!c._extra_data) continue;
@@ -314,7 +318,8 @@ module.exports = async function handler(req, res) {
   const user = requireAuth(req, res);
   if (!user) return;
 
-  const { brand_id, search, status, list_id, page = 1, limit = 50, action, import_id } = req.query;
+  const { brand_id, search, status, list_id, page = 1, limit = 50, action, import_id,
+          mostrar_ocultos } = req.query;
 
   // Os contactos são globais: um email é uma pessoa, não uma pessoa por marca.
   // Por isso o brand_id deixou de ser obrigatório e deixou de filtrar
@@ -485,6 +490,13 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') {
       // Contactos e listas são globais: a vista é a mesma para todas as
       // marcas. O brand_id, se vier, não filtra nada.
+      //
+      // Os contactos não listados (hidden) ficam de fora: são endereços que
+      // entraram por um ficheiro no envio de uma campanha e não fazem parte
+      // dos contactos da empresa. Ao filtrar por lista não se aplica — quem
+      // está numa lista deve aparecer, e entrar numa lista já desmarca.
+      const ocultarNaoListados = !list_id && !(mostrar_ocultos === '1' || mostrar_ocultos === 'true');
+      const filtroOculto = ocultarNaoListados ? ' AND NOT COALESCE(c.hidden, FALSE)' : '';
       const params = [];
       let join = '', where = 'WHERE TRUE';
 
@@ -501,9 +513,14 @@ module.exports = async function handler(req, res) {
       if (status)   { countParams.push(status);          countWhere += ` AND c.status = $${countParams.length}`; }
       if (search)   { countParams.push(`%${search}%`);  countWhere += ` AND (c.email ILIKE $${countParams.length} OR c.name ILIKE $${countParams.length})`; }
 
-      const [{ total }] = await query(
-        `SELECT COUNT(*)::int AS total FROM contacts c ${countJoin} ${countWhere}`, countParams
-      );
+      // Sem a coluna hidden (migração 053 ainda não corrida) repete-se sem o
+      // filtro, em vez de a listagem falhar.
+      const contar = async (extra) => (await query(
+        `SELECT COUNT(*)::int AS total FROM contacts c ${countJoin} ${countWhere}${extra}`, countParams
+      ))[0].total;
+      let total, filtro = filtroOculto;
+      try { total = await contar(filtro); }
+      catch (e) { if (e.code !== '42703') throw e; filtro = ''; total = await contar(''); }
 
       params.push(parseInt(limit));
       params.push((parseInt(page) - 1) * parseInt(limit));
@@ -512,7 +529,7 @@ module.exports = async function handler(req, res) {
       const rows = await query(
         `SELECT c.id, c.email, c.name, c.phone, c.company, c.status, c.source,
                 c.custom_attributes, c.created_at${extraDataCol}
-         FROM contacts c ${join} ${where}
+         FROM contacts c ${join} ${where}${filtro}
          ORDER BY c.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params
       );
@@ -541,13 +558,16 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { email, name, phone, company, source, custom_attributes } = req.body || {};
+      const { email, name, phone, company, source, custom_attributes, one_off } = req.body || {};
       if (!email) return res.status(400).json({ error: 'Email obrigatório' });
       const e = email.toLowerCase().trim();
 
+      // one_off: veio de um ficheiro carregado no envio de uma campanha. Fica
+      // gravado (o relatório da campanha depende dele) mas não aparece na
+      // página de Contactos. Não afecta contactos que já existiam.
       const [contacto] = await upsertContactos(query, [{
         email: e, name, phone, company, source, custom_attributes,
-      }]);
+      }], { ocultarNovos: one_off === true || one_off === 'true' });
       if (!contacto?.id) return res.status(500).json({ error: 'Erro a gravar o contacto' });
       await aplicarSupressao(query, [contacto.id]);
       return res.status(201).json({ id: contacto.id, email: e, created: contacto.criado });
