@@ -40,6 +40,19 @@ function unsubToken(email, brandId) {
     .digest('hex');
 }
 
+// O ALTER do is_temp corria em cada chamada a add_direct_recipients — com a
+// importação em blocos são várias por ficheiro, e um ALTER pega um lock
+// exclusivo na tabela mesmo quando não há nada para alterar. Uma vez por
+// instância é suficiente.
+let colunaIsTempGarantida = null;
+function garantirColunaIsTemp() {
+  if (!colunaIsTempGarantida) {
+    colunaIsTempGarantida = query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`)
+      .catch(() => { /* sem privilégio: os destinatários ficam sem a marca de origem */ });
+  }
+  return colunaIsTempGarantida;
+}
+
 async function authorizeCampaign(userId, campaignId) {
   const r = await query(
     `SELECT c.*
@@ -371,7 +384,7 @@ module.exports = async function handler(req, res) {
         }
         if (!ids.length)
           return res.status(400).json({ error: 'contact_ids ou emails obrigatório' });
-        await query(`ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS is_temp BOOLEAN DEFAULT false`);
+        await garantirColunaIsTemp();
         // all_temp: todos vieram de um ficheiro. É o caso da importação por
         // emails, em que não se sabe quais foram criados agora.
         const marcarTodosTemp = all_temp === true || all_temp === 'true';
@@ -393,6 +406,12 @@ module.exports = async function handler(req, res) {
         const breakdown = {
           requested: ids.length,
           not_found: ids.length - candidates.length,
+          // Separadas: cancelar a subscrição e estar na lista de supressão são
+          // coisas diferentes, e sem esta distinção não se percebe porque é
+          // que um ficheiro de contactos válidos entra a meio.
+          excluded_status: candidates.filter(c => c.bad_status).length,
+          excluded_suppression: candidates.filter(c => !c.bad_status && c.suppressed).length,
+          // Mantido para não quebrar quem já lia este campo.
           excluded_suppressed: candidates.filter(c => c.suppressed || c.bad_status).length,
         };
         if (!eligible.length) return res.status(200).json({ ok: true, added: 0, ...breakdown });

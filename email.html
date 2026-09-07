@@ -9760,7 +9760,13 @@ ${teSerializeBlocksComment(srcBlocks)}
             // ids no browser.
             const BLOCO = 500;
             const CONCORRENCIA = 2;   // dois blocos ao mesmo tempo
-            let imported = 0, falhados = 0, associados = 0, excluidos = 0;
+            let imported = 0, falhados = 0, associados = 0;
+            // Cada contacto que não entra tem uma razão, e são quatro
+            // diferentes. Contadas separadamente para a mensagem final poder
+            // explicar a diferença entre o que estava no ficheiro e o que
+            // ficou na campanha — antes dizia só um número e ficava-se sem
+            // saber porquê.
+            const fora = { invalidos: 0, suprimidos: 0, repetidos: 0, cancelados: 0, jaNaCampanha: 0 };
             let erroAoAssociar = null;
             _wizImporting = true;
             _wizImportingCampaignId = campanhaId;
@@ -9774,16 +9780,25 @@ ${teSerializeBlocksComment(srcBlocks)}
             // reportado no fim.
             const tratarBloco = async (bloco) => {
                 const emails = bloco.map(c => (c.email || '').toLowerCase().trim()).filter(Boolean);
-                await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`, {
+                const grav = await apiFetch(`/api/contacts?brand_id=${_currentBrand.id}&action=bulk_import`, {
                     method: 'POST',
                     body: JSON.stringify({ contacts: bloco, one_off: true }),
                 });
+                fora.invalidos  += grav?.skipped_invalid || 0;
+                fora.suprimidos += grav?.skipped_suppressed || 0;
+                fora.repetidos  += grav?.skipped_duplicate || 0;
                 try {
                     const r = await apiFetch(`/api/campaigns/${campanhaId}?action=add_direct_recipients`, {
                         method: 'POST', body: JSON.stringify({ emails, all_temp: true }),
                     });
                     associados += r?.added || 0;
-                    excluidos  += r?.excluded_suppressed || 0;
+                    fora.cancelados += r?.excluded_status || 0;
+                    fora.suprimidos += r?.excluded_suppression || 0;
+                    // Pedidos, encontrados e elegíveis, menos os que entraram:
+                    // são os que já estavam nesta campanha (de uma importação
+                    // anterior ou de uma lista).
+                    const elegiveis = (r?.requested || 0) - (r?.not_found || 0) - (r?.excluded_suppressed || 0);
+                    fora.jaNaCampanha += Math.max(0, elegiveis - (r?.added || 0));
                     if (nestaCampanha()) {
                         _wizExistingDirectCount += (r?.added || 0);
                         _wizUpdateDirectNotice();
@@ -9830,12 +9845,23 @@ ${teSerializeBlocksComment(srcBlocks)}
 
             _wizClearFile(type);
             if (nestaCampanha()) _wizRecipTab('lists');
+            const totalFora = fora.invalidos + fora.suprimidos + fora.repetidos + fora.cancelados + fora.jaNaCampanha + failed;
             if (associados || (!erroAoAssociar && imported)) {
-                let msg = `${associados} contacto(s) adicionado(s) à campanha.`;
-                if (excluidos) msg += ` ${excluidos} excluído(s) (cancelaram subscrição, devolveram ou estão na lista de supressão).`;
-                if (failed) msg += ` (${failed} falhas de importação)`;
+                const n = (x) => x.toLocaleString('pt-PT');
+                let msg = `${n(associados)} de ${n(rows.length)} contacto(s) adicionado(s) à campanha.`;
+                if (totalFora) {
+                    const razoes = [];
+                    if (fora.cancelados)   razoes.push(`${n(fora.cancelados)} cancelaram a subscrição ou foram devolvidos`);
+                    if (fora.suprimidos)   razoes.push(`${n(fora.suprimidos)} na lista de supressão`);
+                    if (fora.repetidos)    razoes.push(`${n(fora.repetidos)} repetidos no ficheiro`);
+                    if (fora.jaNaCampanha) razoes.push(`${n(fora.jaNaCampanha)} já estavam nesta campanha`);
+                    if (fora.invalidos)    razoes.push(`${n(fora.invalidos)} com email inválido`);
+                    if (failed)            razoes.push(`${n(failed)} falharam a gravar`);
+                    msg += ` Ficaram de fora: ${razoes.join(', ')}.`;
+                }
                 if (!nestaCampanha()) msg += ' A importação era de outra campanha — os contactos ficaram nessa.';
-                showToast(msg, (excluidos || !nestaCampanha()) ? 'info' : undefined);
+                showToast(msg, (totalFora || !nestaCampanha()) ? 'info' : undefined);
+                if (totalFora) console.info('Importação — o que ficou de fora:', { total: rows.length, associados, ...fora, falhas: failed });
             } else if (erroAoAssociar) {
                 // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
                 // do ecrã convencido de que a importação está feita.

@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const dns = require('dns').promises;
 const crypto = require('crypto');
-const { query } = require('../../lib/db');
+const { query, colunaExiste } = require('../../lib/db');
 const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors } = require('../../lib/auth');
@@ -1107,18 +1107,22 @@ module.exports = async function handler(req, res) {
       // "Marketing" e "Colaboradores" e todos os seus membros, para todas as
       // marcas. Desatribuí-las primeiro evita isso. Depois de 049 a coluna
       // já não existe e este UPDATE falha em silêncio, como deve.
-      try {
-        await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
-        await query(`UPDATE lists SET brand_id = NULL WHERE brand_id = $1`, [id]);
-      } catch (_) { /* coluna já apagada: nada a fazer */ }
+      if (await colunaExiste('lists', 'brand_id')) {
+        try {
+          await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
+          await query(`UPDATE lists SET brand_id = NULL WHERE brand_id = $1`, [id]);
+        } catch (_) { /* sem permissão: segue */ }
+      }
       // O mesmo se aplica aos contactos: contacts.brand_id também tem
       // ON DELETE CASCADE enquanto a migração 051 não correr, e apagar uma
       // marca levava com ela todos os contactos que lhe tinham ficado
       // atribuídos — e a subscrição deles em todas as listas.
-      try {
-        await query(`ALTER TABLE contacts ALTER COLUMN brand_id DROP NOT NULL`);
-        await query(`UPDATE contacts SET brand_id = NULL WHERE brand_id = $1`, [id]);
-      } catch (_) { /* coluna já apagada: nada a fazer */ }
+      if (await colunaExiste('contacts', 'brand_id')) {
+        try {
+          await query(`ALTER TABLE contacts ALTER COLUMN brand_id DROP NOT NULL`);
+          await query(`UPDATE contacts SET brand_id = NULL WHERE brand_id = $1`, [id]);
+        } catch (_) { /* sem permissão: segue */ }
+      }
       // All related tables have ON DELETE CASCADE on brand_id — one DELETE cascades everything
       await query(`DELETE FROM brands WHERE id=$1`, [id]);
       return res.status(200).json({ ok: true });

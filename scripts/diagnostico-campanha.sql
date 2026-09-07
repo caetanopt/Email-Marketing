@@ -75,3 +75,52 @@ WHERE campaign_id = 80 AND event_type = 'sent'
 GROUP BY LOWER(email)
 HAVING COUNT(*) > 1
 ORDER BY 2 DESC;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Porque é que uma importação entrou a meio?
+--
+-- Um ficheiro de endereços válidos pode entrar em muito menos do que o total.
+-- As consultas abaixo dizem porquê. (A aplicação passou a explicá-lo na
+-- mensagem no fim da importação; isto serve para as que já foram feitas.)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 7. Supressões de domínio inteiro — o suspeito número um
+--
+-- Um único registo destes tira todos os endereços desse domínio, de todas as
+-- importações e de todos os envios, sem aparecer em lado nenhum.
+SELECT email AS dominio, reason, created_at
+FROM suppression
+WHERE email LIKE '@%'
+ORDER BY email;
+
+-- 8. Quantos endereços da campanha estão na supressão
+SELECT COUNT(*)::int AS destinatarios,
+       COUNT(*) FILTER (WHERE LOWER(cr.email) IN (SELECT LOWER(email) FROM suppression WHERE email NOT LIKE '@%'))::int AS suprimidos_por_email,
+       COUNT(*) FILTER (WHERE '@'||split_part(LOWER(cr.email),'@',2) IN (SELECT LOWER(email) FROM suppression WHERE email LIKE '@%'))::int AS suprimidos_por_dominio
+FROM campaign_recipients cr
+WHERE cr.campaign_id = 80;
+
+-- 9. Os contactos que a importação criou (não listados), por estado
+--
+-- Os que não estão 'active' já existiam na base de dados com esse estado: a
+-- importação nunca reactiva quem cancelou ou foi devolvido, e o envio não os
+-- inclui. É a segunda causa mais comum de "só entrou metade".
+--
+-- Ajusta o intervalo se a importação foi noutro dia.
+SELECT c.status,
+       COUNT(*)::int AS contactos,
+       COUNT(*) FILTER (WHERE cr.id IS NOT NULL)::int AS ficaram_na_campanha
+FROM contacts c
+LEFT JOIN campaign_recipients cr ON cr.contact_id = c.id AND cr.campaign_id = 80
+WHERE c.created_at > NOW() - INTERVAL '2 days'
+GROUP BY c.status
+ORDER BY 2 DESC;
+
+-- 10. Endereços do ficheiro que já eram contactos com subscrição cancelada
+--
+-- Estes contam para o total do ficheiro mas nunca podem entrar numa campanha.
+SELECT c.status, COUNT(*)::int AS quantos
+FROM contacts c
+WHERE c.status::text <> 'active'
+GROUP BY c.status
+ORDER BY 2 DESC;

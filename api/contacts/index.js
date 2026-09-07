@@ -84,11 +84,15 @@ function normalizeSubscribedAt(v) {
 // (importação feita no envio de uma campanha — ver lib/contactos.js).
 async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
   let imported = 0, skipped = 0, failed = 0;
+  // Porque é que uma linha do ficheiro não entrou. Sem esta separação a única
+  // informação era "skipped", e ficava-se sem saber se foram emails
+  // inválidos, endereços suprimidos ou repetições no próprio ficheiro.
+  let skipped_invalid = 0, skipped_suppressed = 0, skipped_duplicate = 0;
 
   const validRows = [];
   for (const c of batch) {
     const email = (c.email || '').toLowerCase().trim();
-    if (!email || !EMAIL_RE.test(email)) { skipped++; continue; }
+    if (!email || !EMAIL_RE.test(email)) { skipped++; skipped_invalid++; continue; }
     validRows.push({ ...c, email });
   }
 
@@ -111,6 +115,7 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
           return true;
         });
         skipped += before - filtered.length;
+        skipped_suppressed += before - filtered.length;
         validRows.length = 0;
         validRows.push(...filtered);
       }
@@ -138,6 +143,7 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
     }
     const uniqueRows = [...byEmail.values()];
     skipped += validRows.length - uniqueRows.length;
+    skipped_duplicate += validRows.length - uniqueRows.length;
     validRows.length = 0;
     validRows.push(...uniqueRows);
   }
@@ -199,7 +205,7 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
     }
   }
 
-  return { imported, skipped, failed };
+  return { imported, skipped, failed, skipped_invalid, skipped_suppressed, skipped_duplicate };
 }
 
 // Drains pending import_chunks for jobs matching the given filter, until the

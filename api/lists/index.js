@@ -1,4 +1,4 @@
-const { query } = require('../../lib/db');
+const { query, colunaExiste } = require('../../lib/db');
 const { withAuth, hasAnyRole } = require('../../lib/auth');
 const { marcarOculto } = require('../../lib/contactos');
 
@@ -65,10 +65,13 @@ function buildSegmentWhere(rules, match) {
 let marcaDesvinculada = false;
 async function desvincularMarcaDasListas() {
   if (marcaDesvinculada) return;
+  marcaDesvinculada = true;
+  // Depois da 049 a coluna já não existe: tentar o ALTER só deixava um erro
+  // 42703 nos logs da base de dados.
+  if (!await colunaExiste('lists', 'brand_id')) return;
   try {
     await query(`ALTER TABLE lists ALTER COLUMN brand_id DROP NOT NULL`);
-  } catch (_) { /* já não existe coluna, ou sem permissão: segue */ }
-  marcaDesvinculada = true;
+  } catch (_) { /* sem permissão: segue */ }
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
