@@ -8792,6 +8792,9 @@ ${teSerializeBlocksComment(srcBlocks)}
         }
     }
     async function _wizDoSubmitStep4() {
+        // Passa a true quando o envio arranca no servidor: a partir daí, um
+        // erro no browser não significa que o envio tenha parado.
+        let _envioArrancou = false;
         const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
         const subject = document.getElementById('wizSubject')?.value.trim();
         const name    = document.getElementById('wizName')?.value.trim() || subject || 'Campanha';
@@ -8894,10 +8897,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (sendType === 'now' && campaignId) {
                 showToast('A iniciar envio…', 'info');
                 const init = await apiFetch(`/api/campaigns/${campaignId}?action=send`, { method: 'POST' });
+                _envioArrancou = true;
                 if (!init.warning) {
                     let totalSent = 0, totalFailed = 0, _batches = 0;
                     while (_batches++ < 500) {
-                        const r = await apiFetch(`/api/campaigns/${campaignId}?action=send_batch`, { method: 'POST' });
+                        const r = await _pedirLoteDeEnvio(campaignId);
                         totalSent   += r.sent   || 0;
                         totalFailed += r.failed || 0;
                         if (r.done || r.warning) break;
@@ -8925,12 +8929,52 @@ ${teSerializeBlocksComment(srcBlocks)}
             showScreen('campaigns');
             wizShowStep(1);
             _loadCampaigns(_currentBrand.id);
-        } catch (e) { showToast(e.message, 'error'); }
+        } catch (e) {
+            // Depois de o envio arrancar, um erro aqui é do browser a perder o
+            // servidor — não é o envio a falhar. Dizer só "erro" levava a
+            // pensar que nada tinha saído.
+            if (_envioArrancou) _avisarEnvioContinua(e.message);
+            else showToast(e.message, 'error');
+        }
         finally {
             _wizSubmitting = false;
             if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
         }
     }
+    // Pede um lote de envio, repetindo em falhas de rede.
+    //
+    // O envio acontece no servidor; o browser só pede lote a lote, e é isso
+    // que o torna rápido — quando o browser desiste, o resto passa a depender
+    // do cron, que corre de minuto a minuto (foi o que aconteceu com o
+    // ERR_ADDRESS_UNREACHABLE: a campanha acabou por sair, mas só quando o
+    // cron a retomou).
+    //
+    // Repetir é seguro: cada lote é reclamado no servidor antes de ser
+    // enviado (attempted_at=NOW() com FOR UPDATE SKIP LOCKED) e um lote
+    // reclamado só volta a estar disponível 2 minutos depois. A repetição
+    // pega no lote seguinte, não reenvia a quem já recebeu.
+    async function _pedirLoteDeEnvio(campaignId, tentativas = 3) {
+        let ultimoErro;
+        for (let i = 1; i <= tentativas; i++) {
+            try {
+                return await apiFetch(`/api/campaigns/${campaignId}?action=send_batch`, { method: 'POST' });
+            } catch (e) {
+                ultimoErro = e;
+                if (i < tentativas) await new Promise(r => setTimeout(r, 1000 * i));
+            }
+        }
+        throw ultimoErro;
+    }
+
+    // O que dizer quando o browser perde o servidor a meio de um envio: o
+    // envio NÃO foi cancelado — o cron retoma-o — e a listagem de campanhas
+    // actualiza-se sozinha, por isso é para lá que se vai.
+    function _avisarEnvioContinua(mensagemDoErro) {
+        showToast(`Perdeu-se a ligação ao servidor (${mensagemDoErro}). O envio não foi cancelado: continua no servidor e a lista actualiza-se sozinha.`, 'info');
+        showScreen('campaigns');
+        if (_currentBrand?.id) _loadCampaigns(_currentBrand.id);
+    }
+
     function mockCampaignPrev() { if (_wizStep > 1) wizShowStep(_wizStep - 1); }
     function _wizSendConfirmClose() {
         const m = document.getElementById('wizSendConfirmModal');
@@ -10397,6 +10441,7 @@ function toggleExportMenu() {
         if (prog) prog.classList.remove('hidden');
 
         let totalSent = 0, totalFailed = 0, grandTotal = 0;
+        let envioArrancou = false;
         try {
             // Fase 1: init — cria destinatários, retorna total
             const init = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send`, { method: 'POST' });
@@ -10412,8 +10457,9 @@ function toggleExportMenu() {
 
             // Fase 2: batches até done=true (max 500 para evitar loop infinito)
             let _batches = 0;
+            envioArrancou = true;
             while (_batches++ < 500) {
-                const r = await apiFetch(`/api/campaigns/${_currentCampaign.id}?action=send_batch`, { method: 'POST' });
+                const r = await _pedirLoteDeEnvio(_currentCampaign.id);
                 totalSent   += r.sent   || 0;
                 totalFailed += r.failed || 0;
                 const pct = grandTotal ? Math.round((totalSent + totalFailed) / grandTotal * 100) : 100;
@@ -10435,7 +10481,9 @@ function toggleExportMenu() {
             showToast(`Campanha enviada: ${totalSent.toLocaleString('pt-PT')} sucesso${totalFailed ? `, ${totalFailed} falhas` : ''}.`);
             _loadCampaigns(_currentBrand.id);
         } catch (e) {
-            showToast(e.message, 'error');
+            closeSendNowModal();
+            if (envioArrancou) _avisarEnvioContinua(e.message);
+            else showToast(e.message, 'error');
         } finally {
             if (btn)    { btn.disabled = false; btn.textContent = 'Confirmar Envio'; }
             if (cancelBtn) cancelBtn.disabled = false;
