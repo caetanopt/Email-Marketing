@@ -3441,7 +3441,10 @@
                 // No mobile as colunas empilham, como fazem no email (a MJML
                 // empilha abaixo dos 480px). Sem isto o botão Mobile não
                 // mostrava o efeito da "Ordem no mobile".
-                const empilhado = teState.viewport === 'mobile';
+                // "Manter lado a lado" (mj-group na MJML): as colunas não
+                // empilham no telefone. O editor tem de mostrar o mesmo, senão
+                // o botão Mobile mentia sobre o resultado.
+                const empilhado = teState.viewport === 'mobile' && !b.mobileGroup;
                 const inverter = empilhado && b.mobileOrder === 'reverse';
                 d.style.cssText = `display:flex;gap:8px;background:${b.bgColor||'#ffffff'};padding:8px;flex-direction:${empilhado ? (inverter ? 'column-reverse' : 'column') : 'row'};`;
                 const colPercents = teColWidthPercents(b);
@@ -3575,13 +3578,22 @@
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label class="block text-[10px] font-medium text-slate-500 mb-1">No mobile</label>
+                    <p class="text-[10px] text-slate-400 mb-1.5">Por omissão as colunas empilham, uma por linha. "Lado a lado" mantém-nas na mesma linha em qualquer largura — útil para um par ícone + texto, mas com colunas estreitas o texto fica apertado no telefone.</p>
+                    <select onchange="teUpdateField('${b.id}','mobileGroup',this.value === 'group')" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white">
+                        <option value="stack"${!b.mobileGroup ? ' selected' : ''}>Empilhar — uma coluna por linha</option>
+                        <option value="group"${b.mobileGroup ? ' selected' : ''}>Lado a lado — manter na mesma linha</option>
+                    </select>
+                </div>
+                ${b.mobileGroup ? '' : `
+                <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Ordem no mobile</label>
-                    <p class="text-[10px] text-slate-400 mb-1.5">No mobile as colunas empilham. "Invertida" faz a última aparecer primeiro, sem alterar o desktop.</p>
+                    <p class="text-[10px] text-slate-400 mb-1.5">"Invertida" faz a última coluna aparecer primeiro, sem alterar o desktop.</p>
                     <select onchange="teUpdateField('${b.id}','mobileOrder',this.value)" class="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white">
                         <option value="normal"${(b.mobileOrder||'normal') === 'normal' ? ' selected' : ''}>Normal (coluna 1 primeiro)</option>
                         <option value="reverse"${b.mobileOrder === 'reverse' ? ' selected' : ''}>Invertida (última coluna primeiro)</option>
                     </select>
-                </div>
+                </div>`}
                 <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Alinhamento vertical — por coluna</label>
                     <p class="text-[10px] text-slate-400 mb-1.5">Onde fica o conteúdo de cada coluna quando as colunas têm alturas diferentes.</p>
@@ -4830,9 +4842,18 @@ ${teSerializeBlocksComment(srcBlocks)}
                 // ordem no desktop e não toca no empilhamento). Escrevendo as
                 // colunas ao contrário E pondo rtl, o desktop fica igual ao
                 // que se vê no editor e só o mobile empilha invertido.
-                const inverterMobile = b.mobileOrder === 'reverse' && b.cols > 1;
+                // Com as colunas agrupadas não há empilhamento, por isso a
+                // ordem no mobile não existe — e o direction="rtl" passaria a
+                // trocar as colunas no desktop, que é o oposto do pedido.
+                const inverterMobile = b.mobileOrder === 'reverse' && b.cols > 1 && !b.mobileGroup;
                 const cols = (inverterMobile ? [...colsMjml].reverse() : colsMjml).join('\n');
                 const dirAttr = inverterMobile ? ' direction="rtl"' : '';
+                // mj-group: as colunas guardam a sua largura em % em vez de
+                // passarem a 100% abaixo dos 480px, e por isso ficam lado a
+                // lado em qualquer largura. É o que o "Lado a lado" faz.
+                const corpoCols = b.mobileGroup && b.cols > 1
+                    ? `${i}  <mj-group>\n${cols}\n${i}  </mj-group>`
+                    : cols;
                 // O padding vai explícito mesmo a zero. A mj-section da MJML
                 // tem padding="20px 0" por omissão, e sem o atributo era esse
                 // valor que saía: o bloco de colunas ganhava 20px em cima e em
@@ -4840,7 +4861,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 // como tirar. O gerador de recurso (o HTML montado à mão) já
                 // usava o padding do bloco, por isso os dois caminhos davam
                 // espaçamentos diferentes para o mesmo bloco.
-                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"${dirAttr}>\n${cols}\n${i}</mj-section>` };
+                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"${dirAttr}>\n${corpoCols}\n${i}</mj-section>` };
             }
             case 'quote':
                 // b.text is already sanitised rich HTML — do not nl2brX.

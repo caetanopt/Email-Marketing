@@ -98,6 +98,35 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['colunas lado a lado no mobile', `const fs=require('fs');
+    // A MJML faz as colunas empilharem pondo-as a width:100% no style inline e
+    // devolvendo a largura real só numa media query acima dos 480px. Dentro de
+    // um mj-group a largura em % fica no inline, e por isso nunca empilham. É
+    // esse o mecanismo por trás da opção "Lado a lado".
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/<mj-group>/.test(h))throw new Error('a opção de manter as colunas lado a lado no mobile desapareceu');
+    if(!/b\\.mobileGroup/.test(h))throw new Error('falta o campo mobileGroup do bloco de colunas');
+    // Agrupado não empilha, logo a ordem no mobile não se aplica — e o rtl
+    // passaria a trocar as colunas no desktop.
+    if(!/mobileOrder === 'reverse'[^\\n]*&& !b\\.mobileGroup/.test(h))
+      throw new Error('agrupado não pode emitir direction="rtl": trocaria as colunas no desktop');
+    // O editor tem de mostrar o mesmo no botão Mobile, senão mente.
+    if(!/viewport === 'mobile' && !b\\.mobileGroup/.test(h))
+      throw new Error('o editor voltou a empilhar em mobile mesmo com as colunas agrupadas');
+    const mjml=require(process.cwd()+'/node_modules/mjml');
+    const col=(w)=>'<mj-column width="'+w+'%"><mj-text color="#000000" font-size="14px" align="left">x</mj-text></mj-column>';
+    const doc=(inner)=>'<mjml><mj-body><mj-section padding="0px">'+inner+'</mj-section></mj-body></mjml>';
+    const larg=(html)=>(html.match(/<div[^>]*class="[^"]*mj-column-per-(?:30|70)[^"]*"[^>]*style="([^"]*)"/g)||[])
+      .map(s=>((s.match(/width:([0-9.]+%)/)||[])[1])||'?');
+    Promise.all([
+      mjml(doc(col(30)+col(70)),{validationLevel:'soft',fonts:{}}),
+      mjml(doc('<mj-group>'+col(30)+col(70)+'</mj-group>'),{validationLevel:'soft',fonts:{}}),
+    ]).then(([sem,com])=>{
+      if(larg(sem.html).join(',')!=='100%,100%')
+        throw new Error('a MJML mudou a forma de empilhar ('+larg(sem.html).join(',')+'): rever esta sonda');
+      if(larg(com.html).join(',')!=='30%,70%')
+        throw new Error('dentro do mj-group as colunas deviam guardar a largura e guardaram '+larg(com.html).join(','));
+    }).catch(e=>{throw e});`],
   ['nenhuma mj-section sem padding declarado', `const fs=require('fs');
     // A mj-section da MJML tem padding="20px 0" por omissão. Uma secção gerada
     // sem o atributo ganha 20px em cima e em baixo que não estão em lado
