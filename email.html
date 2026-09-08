@@ -8955,6 +8955,12 @@ ${teSerializeBlocksComment(srcBlocks)}
                     põe('wizSendConfirmFromEmail', val('wizFromEmail') || '(sem endereço de remetente)');
                     põe('wizSendConfirmSubject',   val('wizSubject')   || '(sem assunto)');
                     põe('wizSendConfirmAction', sendType === 'schedule' ? 'Agendar envio' : 'Enviar agora');
+                    // O aviso diz o que é verdade para cada caso. Agendar não
+                    // envia nada agora; enviar pode ser interrompido, mas o que
+                    // já saiu não volta atrás.
+                    põe('wizSendConfirmAviso', sendType === 'schedule'
+                        ? 'A campanha fica agendada e nada é enviado agora. Podes cancelar o agendamento na lista de campanhas até à hora marcada.'
+                        : 'Vão ser enviados emails reais, a partir de já. Podes interromper o envio na lista de campanhas enquanto ele decorre — mas os emails que já saíram não voltam atrás.');
                     _wizConfirmDestinatarios();
                     m.classList.remove('hidden'); m.classList.add('flex');
                     return; // wait for user confirmation
@@ -17953,7 +17959,8 @@ ${sections.join('\n\n')}
 
 <!-- Modal de confirmação de envio do wizard -->
 <div id="wizSendConfirmModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)_wizSendConfirmClose()">
-    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+    <!-- max-w-xl e não md: o assunto é a linha mais longa e partia em duas. -->
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6">
         <div class="flex items-center gap-3 mb-4">
             <div class="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center flex-shrink-0">
                 <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
@@ -17986,7 +17993,13 @@ ${sections.join('\n\n')}
                 </span>
             </div>
         </div>
-        <p class="text-xs text-slate-400 mb-5">Esta acção irá enviar ou agendar emails reais. Não é possível desfazer após o início do envio.</p>
+        <!-- O texto adapta-se a enviar ou agendar, e diz o que é verdade.
+             Dizia "não é possível desfazer após o início do envio", e não é
+             assim: um envio a decorrer pode ser interrompido a partir da lista
+             de campanhas (action=cancel_send), o que devolve a campanha a
+             rascunho. O que não volta atrás são os emails que já saíram — e é
+             essa a distinção que interessa a quem está a decidir. -->
+        <p id="wizSendConfirmAviso" class="text-xs text-slate-500 mb-5 leading-relaxed"></p>
         <div class="flex gap-3">
             <button onclick="_wizSendConfirmClose()" class="flex-1 px-4 py-2.5 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button id="wizSendConfirmBtn" onclick="_wizSendConfirmProceed()" class="flex-1 px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800"><span id="wizSendConfirmAction">Enviar agora</span></button>

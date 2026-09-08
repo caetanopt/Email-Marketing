@@ -229,7 +229,24 @@ const provas = [
     // Enquanto a contagem não chega, não se pode afirmar um número que se sabe
     // estar inflacionado.
     if(!/a confirmar quantos vão mesmo receber/.test(f))
-      throw new Error('sem aviso de "a confirmar", o número provisório passa por definitivo')`],
+      throw new Error('sem aviso de "a confirmar", o número provisório passa por definitivo');
+    // O aviso dizia "não é possível desfazer após o início do envio", e é
+    // falso: um envio a decorrer interrompe-se na lista de campanhas
+    // (cancel_send devolve a campanha a rascunho). O que não volta atrás são
+    // os emails já saídos — e é essa a distinção que serve a quem decide.
+    if(/Não é possível desfazer/.test(h))
+      throw new Error('voltou o aviso que diz não ser possível desfazer: o envio pode ser interrompido');
+    if(!/interromper o envio na lista de campanhas/.test(h))
+      throw new Error('o aviso tem de dizer que o envio pode ser interrompido');
+    if(!/não voltam atrás/.test(h))
+      throw new Error('e tem de dizer que os emails já enviados não voltam atrás');
+    if(!/nada é enviado agora/.test(h))
+      throw new Error('agendar não envia nada: o aviso tem de o dizer em vez de repetir o texto do envio');
+    // O servidor tem de continuar a permitir a interrupção, senão o aviso
+    // passa a prometer o que não existe.
+    const api2=fs.readFileSync('api/campaigns/[id].js','utf8');
+    if(!/action === 'cancel_send'/.test(api2))
+      throw new Error('o cancel_send desapareceu e o aviso da confirmação promete que se pode interromper')`],
   ['o rascunho nunca perde a identidade', `const fs=require('fs');
     // Campanhas duplicadas com o mesmo nome e muito tempo de intervalo. O
     // rascunho guarda o conteúdo em localStorage e é restaurado ao voltar ao
