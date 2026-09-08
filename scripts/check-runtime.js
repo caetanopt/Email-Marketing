@@ -102,37 +102,41 @@ const provas = [
     // Um src que dá 404 dentro de um email é um quadrado partido em todos os
     // destinatários, e não há como o corrigir depois de enviado. O conjunto da
     // MJML não tem TikTok — e o rodapé já oferecia TikTok na lista de redes.
-    const h=require(process.cwd()+'/api/social-icon.js');
-    if(typeof h!=='function')throw new Error('api/social-icon.js tem de exportar um handler');
     const REDES=['facebook','instagram','x','youtube','linkedin','tiktok'];
-    const pedir=(n)=>new Promise(r=>{const hd={};
-      const res={statusCode:200,setHeader(k,v){hd[k.toLowerCase()]=v;return res;},
-        status(c){res.statusCode=c;return res;},send(b){r({s:res.statusCode,hd,b});return res;},
-        json(b){r({s:res.statusCode,hd,b});return res;}};
-      h({method:'GET',query:{n}},res);});
-    (async()=>{
-      for(const n of REDES){
-        const x=await pedir(n);
-        if(x.s!==200)throw new Error('o ícone de '+n+' não é servido ('+x.s+')');
-        if(!Buffer.isBuffer(x.b)||x.b.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')
-          throw new Error('o ícone de '+n+' não é um PNG válido');
-        if(x.hd['content-type']!=='image/png')throw new Error('o ícone de '+n+' não vai como image/png');
-      }
-      const mau=await pedir('naoexiste');
-      if(mau.s!==404)throw new Error('uma rede desconhecida tem de dar 404');
-      if(/31536000/.test(mau.hd['cache-control']||''))
-        throw new Error('um 404 guardado um ano deixa a rede partida para sempre quando o ícone for acrescentado');
-      // As duas pontas que montam o email têm de apontar para cá.
-      const html=fs.readFileSync('email.html','utf8');
-      const footer=fs.readFileSync('lib/emailFooter.js','utf8');
-      for(const [f,s] of [['email.html',html],['lib/emailFooter.js',footer]]){
-        if(!/api\\/social-icon/.test(s))
-          throw new Error(f+' voltou a ir buscar os ícones à Mailjet — o TikTok não existe lá');
-        if(!/'tiktok'/.test(s))throw new Error(f+' deixou de reconhecer o tiktok');
-      }
-      if(!/const TE_SOCIAL_NETWORKS = \\[[^\\]]*'tiktok'/.test(html))
-        throw new Error('tiktok saiu da lista de redes do editor');
-    })().catch(e=>{throw e});`],
+    for(const n of REDES){
+      const f='social/'+n+'.png';
+      if(!fs.existsSync(f))throw new Error('falta o ícone '+f+' — o src fica a dar 404 dentro do email');
+      const b=fs.readFileSync(f);
+      if(b.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')
+        throw new Error(f+' não é um PNG válido');
+      if(b.readUInt32BE(16)!==200||b.readUInt32BE(20)!==200)
+        throw new Error(f+' devia ser 200x200 e é '+b.readUInt32BE(16)+'x'+b.readUInt32BE(20));
+    }
+    // Ficheiros estáticos de propósito: o projecto está no limite de 12 funções
+    // serverless do plano, e a 13.ª fez o deploy falhar.
+    if(fs.existsSync('api/social-icon.js'))
+      throw new Error('os ícones voltaram a ser uma função serverless — isso esgota o limite do plano e parte o build');
+    const fns=[];
+    (function anda(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){
+      const p=d+'/'+e.name;
+      if(e.isDirectory())anda(p); else if(e.name.endsWith('.js'))fns.push(p);
+    }})('api');
+    if(fns.length>12)
+      throw new Error('api/ tem '+fns.length+' funções e o plano permite 12: o deploy vai falhar. Junta a rota nova a uma existente por ?action=');
+    // As duas pontas que montam o email têm de apontar para cá.
+    const html=fs.readFileSync('email.html','utf8');
+    const footer=fs.readFileSync('lib/emailFooter.js','utf8');
+    for(const [f,s] of [['email.html',html],['lib/emailFooter.js',footer]]){
+      if(!/\\/social\\/\\$\\{(rede|network)\\}\\.png/.test(s))
+        throw new Error(f+' voltou a ir buscar os ícones à Mailjet — o TikTok não existe lá');
+      if(!/'tiktok'/.test(s))throw new Error(f+' deixou de reconhecer o tiktok');
+    }
+    if(!/const TE_SOCIAL_NETWORKS = \\[[^\\]]*'tiktok'/.test(html))
+      throw new Error('tiktok saiu da lista de redes do editor');
+    // Sem isto, a CDN serve os ícones com a cache curta por omissão.
+    const vj=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+    if(!(vj.headers||[]).some(h=>/social/.test(h.source||'')&&(h.headers||[]).some(x=>/immutable/.test(x.value||''))))
+      throw new Error('falta a regra de cache para /social/ no vercel.json')`],
   ['abrir a pré-visualização abre mesmo', `const fs=require('fs');
     // window.open chamado com 'noopener' devolve SEMPRE null, por
     // especificação. O código guardava esse null, dava-o por janela fechada, e

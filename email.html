@@ -2735,7 +2735,12 @@
         teRender();
     }
     const TE_SOCIAL_NETWORKS = ['facebook','x','instagram','tiktok','linkedin','youtube','pinterest','tumblr','github','vimeo','medium','soundcloud','dribbble','xing','snapchat','web'];
-    // Redes com ícone próprio, servido do nosso domínio (api/social-icon.js).
+    // Redes com ícone próprio, servido do nosso domínio a partir de /social/.
+    //
+    // Ficheiros estáticos e não uma rota de API: o projecto tinha 12 funções
+    // serverless, que é o limite do plano, e acrescentar a 13.ª fez o deploy
+    // falhar. Estáticos não contam para esse limite, vão pela CDN e não gastam
+    // invocações.
     //
     // O conjunto da MJML está datado: o X ainda é o passarinho do Twitter, o
     // Facebook e o Instagram são de identidades anteriores, e TikTok nem existe
@@ -2752,7 +2757,7 @@
     function teSocialIconUrl(network) {
         const rede = network || 'web';
         return TE_SOCIAL_PROPRIOS.includes(rede)
-            ? `https://emkt.caetano.pt/api/social-icon?n=${rede}`
+            ? `https://emkt.caetano.pt/social/${rede}.png`
             : `https://www.mailjet.com/images/theme/v1/icons/ico-social/${rede}.png`;
     }
     function teSetViewport(v) {
