@@ -94,11 +94,22 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
   // informação era "skipped", e ficava-se sem saber se foram emails
   // inválidos, endereços suprimidos ou repetições no próprio ficheiro.
   let skipped_invalid = 0, skipped_suppressed = 0, skipped_duplicate = 0;
+  // Quem, e não só quantos. Isto é o que permite dizer a razão certa a quem
+  // exporta a lista dos que não entraram: um endereço recusado aqui nunca
+  // chega a existir como contacto, e sem esta lista aparecia depois como
+  // "não chegou a ser gravado" — verdade, mas a razão errada. O motivo era a
+  // supressão, e essa é accionável (tira-se de lá); "não gravado" parece uma
+  // avaria.
+  const skipped_detail = [];
 
   const validRows = [];
   for (const c of batch) {
     const email = (c.email || '').toLowerCase().trim();
-    if (!email || !EMAIL_RE.test(email)) { skipped++; skipped_invalid++; continue; }
+    if (!email || !EMAIL_RE.test(email)) {
+      skipped++; skipped_invalid++;
+      skipped_detail.push({ email: email || String(c.email || ''), reason: 'sem_email' });
+      continue;
+    }
     validRows.push({ ...c, email });
   }
 
@@ -116,8 +127,19 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
         const blockedDomains  = new Set(suppressed.filter(r =>  r.email.startsWith('@')).map(r => r.email));
         const before = validRows.length;
         const filtered = validRows.filter(c => {
-          if (suppressedEmails.has(c.email)) return false;
-          if (blockedDomains.has('@' + c.email.split('@')[1])) return false;
+          if (suppressedEmails.has(c.email)) {
+            skipped_detail.push({ email: c.email, reason: 'suppression' });
+            return false;
+          }
+          const dom = '@' + c.email.split('@')[1];
+          if (blockedDomains.has(dom)) {
+            // O domínio inteiro está suprimido. É a causa mais escondida de
+            // todas: um registo destes tira todos os endereços do domínio de
+            // todas as importações e de todos os envios, e não aparece em
+            // lado nenhum. Vai dito, com o domínio.
+            skipped_detail.push({ email: c.email, reason: 'suppression_dominio', dominio: dom });
+            return false;
+          }
           return true;
         });
         skipped += before - filtered.length;
@@ -150,6 +172,13 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
     const uniqueRows = [...byEmail.values()];
     skipped += validRows.length - uniqueRows.length;
     skipped_duplicate += validRows.length - uniqueRows.length;
+    if (validRows.length !== uniqueRows.length) {
+      const contados = new Map();
+      validRows.forEach(c => contados.set(c.email, (contados.get(c.email) || 0) + 1));
+      contados.forEach((n, email) => {
+        for (let i = 1; i < n; i++) skipped_detail.push({ email, reason: 'repetido' });
+      });
+    }
     validRows.length = 0;
     validRows.push(...uniqueRows);
   }
@@ -211,7 +240,7 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
     }
   }
 
-  return { imported, skipped, failed, skipped_invalid, skipped_suppressed, skipped_duplicate };
+  return { imported, skipped, failed, skipped_invalid, skipped_suppressed, skipped_duplicate, skipped_detail };
 }
 
 // Drains pending import_chunks for jobs matching the given filter, until the

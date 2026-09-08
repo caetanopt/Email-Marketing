@@ -98,6 +98,25 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['o motivo de exclusão é o verdadeiro', `const fs=require('fs');
+    // Um endereço recusado na gravação (supressão, inválido, repetido) nunca
+    // chega a existir como contacto, por isso o passo seguinte não o encontra
+    // e chamava-lhe "não chegou a ser gravado". A razão certa era a supressão
+    // — e essa resolve-se; "não gravado" parece uma avaria e não se faz nada.
+    const c=fs.readFileSync('api/contacts/index.js','utf8');
+    if(!/skipped_detail/.test(c))
+      throw new Error('a gravação tem de devolver quem recusou, não só quantos');
+    if(!/reason: 'suppression_dominio'/.test(c))
+      throw new Error('uma supressão de domínio inteiro tem de ser nomeada como tal — é a causa mais escondida de todas');
+    if(!/dominio: dom/.test(c))
+      throw new Error('tem de dizer QUAL o domínio que bloqueou o endereço');
+    if(!/skipped_detail\\b[\\s\\S]{0,200}return \\{ imported/.test(c.replace(/\\n/g,' '))&&!/skipped_detail \\}/.test(c))
+      throw new Error('o skipped_detail tem de sair no resultado do processBatch');
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/jaExplicados/.test(h))
+      throw new Error('sem isto o mesmo endereço aparece duas vezes no CSV, com duas razões diferentes');
+    if(!/r\\.excluded\\.filter\\(d => !jaExplicados\\.has/.test(h))
+      throw new Error('o nao_gravado tem de ser descartado para quem já tem razão verdadeira')`],
   ['taxas de abertura e clique honestas', `const fs=require('fs');
     // Duas maneiras fáceis de inflacionar estes números sem ninguém reparar:
     // contar eventos em vez de pessoas (quem reabre o email conta cinco

@@ -9648,7 +9648,8 @@ ${teSerializeBlocksComment(srcBlocks)}
         complained: 'marcou como spam',
         suppressed: 'suprimido',
         suppression: 'na lista de supressão',
-        nao_gravado: 'não chegou a ser gravado',
+        suppression_dominio: 'domínio inteiro na lista de supressão',
+        nao_gravado: 'não chegou a ser gravado (falha ao gravar)',
         repetido: 'repetido no ficheiro',
         sem_email: 'linha sem email utilizável',
         ja_na_campanha: 'já estava nesta campanha',
@@ -9656,8 +9657,13 @@ ${teSerializeBlocksComment(srcBlocks)}
 
     function _wizExportarFora() {
         if (!_wizForaDetalhe.length) return;
-        const linhas = [['email', 'motivo', 'motivo_tecnico']];
-        _wizForaDetalhe.forEach(f => linhas.push([f.email || '', _WIZ_MOTIVO[f.reason] || f.reason || '', f.reason || '']));
+        const linhas = [['email', 'motivo', 'motivo_tecnico', 'detalhe']];
+        _wizForaDetalhe.forEach(f => linhas.push([
+            f.email || '',
+            _WIZ_MOTIVO[f.reason] || f.reason || '',
+            f.reason || '',
+            f.dominio || '',
+        ]));
         const csv = linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
         const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
         const a = document.createElement('a');
@@ -9920,6 +9926,16 @@ ${teSerializeBlocksComment(srcBlocks)}
                 fora.invalidos  += grav?.skipped_invalid || 0;
                 fora.suprimidos += grav?.skipped_suppressed || 0;
                 fora.repetidos  += grav?.skipped_duplicate || 0;
+                // Um endereço recusado na gravação (supressão, email inválido,
+                // repetido) nunca chega a existir como contacto. O passo
+                // seguinte não o encontra e chamava-lhe "não chegou a ser
+                // gravado" — verdade, mas a razão errada. Aqui fica com o
+                // motivo verdadeiro, e a seguir não é contado outra vez.
+                const jaExplicados = new Set();
+                (grav?.skipped_detail || []).forEach(d => {
+                    if (d.email) jaExplicados.add(String(d.email).toLowerCase());
+                    _wizForaDetalhe.push(d);
+                });
                 try {
                     // Repetido em falhas de rede, pelo mesmo motivo dos lotes
                     // de envio: uma falha isolada não pode custar 500
@@ -9941,7 +9957,8 @@ ${teSerializeBlocksComment(srcBlocks)}
                     associados += r?.added || 0;
                     fora.cancelados += r?.excluded_status || 0;
                     fora.suprimidos += r?.excluded_suppression || 0;
-                    if (Array.isArray(r?.excluded)) _wizForaDetalhe.push(...r.excluded);
+                    if (Array.isArray(r?.excluded)) _wizForaDetalhe.push(
+                        ...r.excluded.filter(d => !jaExplicados.has(String(d.email || '').toLowerCase())));
                     // Pedidos, encontrados e elegíveis, menos os que entraram:
                     // são os que já estavam nesta campanha (de uma importação
                     // anterior ou de uma lista).
