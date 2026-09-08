@@ -2734,9 +2734,26 @@
         f.block[arrKey].push(newItem);
         teRender();
     }
-    const TE_SOCIAL_NETWORKS = ['facebook','x','instagram','linkedin','youtube','pinterest','tumblr','github','vimeo','medium','soundcloud','dribbble','xing','snapchat','web'];
+    const TE_SOCIAL_NETWORKS = ['facebook','x','instagram','tiktok','linkedin','youtube','pinterest','tumblr','github','vimeo','medium','soundcloud','dribbble','xing','snapchat','web'];
+    // Redes com ícone próprio, servido do nosso domínio (api/social-icon.js).
+    //
+    // O conjunto da MJML está datado: o X ainda é o passarinho do Twitter, o
+    // Facebook e o Instagram são de identidades anteriores, e TikTok nem existe
+    // lá — pedir tiktok.png devolve 404, o que num email é um quadrado partido
+    // em todos os destinatários. Estas seis são as que a empresa usa, por isso
+    // são as que foram refeitas; as restantes continuam a vir da MJML.
+    //
+    // O endereço é absoluto porque vai dentro do HTML do email, onde não há
+    // origem para resolver um caminho relativo. Fica o domínio de produção, o
+    // mesmo que o servidor usa por omissão — e não location.origin, para uma
+    // pré-visualização gerada noutro domínio não deixar emails a apontar para
+    // um endereço que amanhã já não existe.
+    const TE_SOCIAL_PROPRIOS = ['facebook','instagram','x','youtube','linkedin','tiktok'];
     function teSocialIconUrl(network) {
-        return `https://www.mailjet.com/images/theme/v1/icons/ico-social/${network||'web'}.png`;
+        const rede = network || 'web';
+        return TE_SOCIAL_PROPRIOS.includes(rede)
+            ? `https://emkt.caetano.pt/api/social-icon?n=${rede}`
+            : `https://www.mailjet.com/images/theme/v1/icons/ico-social/${rede}.png`;
     }
     function teSetViewport(v) {
         teState.viewport = v;
