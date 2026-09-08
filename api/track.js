@@ -339,12 +339,31 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
     return res.status(302).end();
   }
 
-  // Open pixel — record BEFORE returning the image.
-  // Skip known mail proxy / security scanner user-agents that pre-fetch images
-  // without the user opening the email (e.g. Gmail Image Proxy, Yahoo Mail,
-  // Proofpoint, Barracuda, Apple Mail Privacy Protection prefetch, etc.).
+  // Pixel de abertura — registado antes de devolver a imagem.
+  //
+  // Ignoram-se os agentes que vão buscar as imagens SEM ninguém ter aberto o
+  // email: filtros de segurança que analisam tudo o que entra, e a
+  // pré-visualização do Apple Mail Privacy Protection, que descarrega as
+  // imagens na entrega. Contá-los era inventar aberturas.
+  //
+  // O Gmail e o Yahoo estavam nesta lista e não deviam: ao contrário dos
+  // outros, esses dois só vão buscar a imagem QUANDO a pessoa abre a mensagem
+  // — servem-na do seu proxy para proteger o IP de quem lê, mas o pedido é uma
+  // abertura verdadeira, e é assim que toda a indústria a conta.
+  //
+  // O estrago não se via numa campanha interna, onde quase todos usam Outlook,
+  // mas numa campanha para consumidores o Gmail é mais de metade da lista:
+  // uma campanha de 9223 contactos deu 3,83% de aberturas com 0,94% de
+  // cliques. O sinal estava aí — os cliques nunca foram filtrados por agente,
+  // por isso a proporção clique/abertura subiu para 24,6% quando o normal
+  // nesta conta é 10%. Menos aberturas com os mesmos cliques não é menos
+  // interesse: são aberturas que se estavam a perder.
   const ua = (req.headers['user-agent'] || '').toLowerCase();
-  const isMailBot = /googleimageproxy|ggpht\.com|yahooimageproxy|yahoo.*mail.*proxy|preview\.mail\.icloud|mail-proxy|mimecast|proofpoint|barracuda|cloudmark|symantec.*email|messagelabs|sophos|ironport|postfix|spamassassin|url.*scanner|link.*scanner|phishtank|avira|kaspersky.*mail/i.test(ua);
+  // "mail-proxy" saiu com eles: era genérico e apanhava o Yahoo pelo endereço
+  // da própria página de ajuda que ele põe no agente
+  // (…/yahoo-mail-proxy-SLN28749…). Os filtros de segurança identificam-se
+  // todos pelo nome, não precisam de um padrão vago.
+  const isMailBot = /preview\.mail\.icloud|mimecast|proofpoint|barracuda|cloudmark|symantec.*email|messagelabs|sophos|ironport|postfix|spamassassin|url.*scanner|link.*scanner|phishtank|avira|kaspersky.*mail/i.test(ua);
 
   if (!isMailBot) {
     try {

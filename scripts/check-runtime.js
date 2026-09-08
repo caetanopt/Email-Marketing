@@ -98,6 +98,37 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['aberturas do Gmail contam', `const fs=require('fs');
+    // O proxy do Gmail e do Yahoo estava na lista de agentes ignorados. Ao
+    // contrário dos filtros de segurança, esses dois só vão buscar a imagem
+    // quando a pessoa abre a mensagem: são aberturas verdadeiras, e é assim
+    // que toda a indústria as conta. Ignorá-los apagava as aberturas do maior
+    // cliente de email que existe — numa campanha para consumidores, mais de
+    // metade da lista. Deu 3,83% de aberturas com 0,94% de cliques.
+    const s=fs.readFileSync('api/track.js','utf8');
+    const m=s.match(/const isMailBot = \\/([^/]+)\\/i/);
+    if(!m)throw new Error('não encontrei o filtro de agentes das aberturas');
+    const re=new RegExp(m[1],'i');
+    const contam={
+      'Gmail':'Mozilla/5.0 (compatible; GoogleImageProxy; +http://www.google.com/mail/help/)',
+      'Gmail via ggpht':'Mozilla/5.0 Firefox/11.0 (via ggpht.com GoogleImageProxy)',
+      'Yahoo':'Mozilla/5.0 YahooMailProxy; https://help.yahoo.com/kb/yahoo-mail-proxy-SLN28749.html',
+      'Outlook':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36',
+      'iPhone':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148',
+    };
+    for(const [nome,ua] of Object.entries(contam))
+      if(re.test(ua))throw new Error('as aberturas do '+nome+' voltaram a ser ignoradas: '+ua);
+    const naoContam={
+      'Apple Mail Privacy Protection':'Mozilla/5.0 (Macintosh) preview.mail.icloud.com',
+      'Proofpoint':'Mozilla/5.0 proofpoint-urldefense','Mimecast':'Mimecast-Impersonation-Protect',
+      'Barracuda':'Barracuda-Link-Protect/1.0','analisador de links':'Mozilla/5.0 url-scanner/2.1',
+    };
+    for(const [nome,ua] of Object.entries(naoContam))
+      if(!re.test(ua))throw new Error(nome+' descarrega as imagens sem ninguém abrir: contá-lo é inventar aberturas ('+ua+')');
+    // Os cliques nunca foram filtrados por agente. É essa assimetria que
+    // permite detectar o problema — a proporção clique/abertura sobe.
+    if(/isMailBot/.test(s.slice(s.indexOf("if (type === 'click')"), s.indexOf('// Pixel de abertura'))))
+      throw new Error('o clique passou a ser filtrado por agente: a comparação com as aberturas deixa de servir de sinal')`],
   ['avisa quando um colega já começou a campanha', `const fs=require('fs');
     // Duas pessoas criaram a mesma campanha com 53 minutos de diferença, cada
     // uma sem saber da outra. Não é deduplicação — o servidor não pode assumir
