@@ -14,8 +14,32 @@ module.exports = async function handler(req, res) {
 
   // ── Cron: process scheduled campaigns ──────────────────
   if (action === 'process-scheduled') {
-    // Endpoint público — apenas processa campanhas já agendadas pelo utilizador,
-    // não executa acções arbitrárias. Não requer autenticação.
+    // Autenticação do cron (A-1). O endpoint só processa campanhas já
+    // agendadas — não executa acções arbitrárias — mas ser público permite a
+    // qualquer pessoa forçar processamento e gastar invocações e quota de SES.
+    //
+    // Enforce-when-configured, como o webhook: exige o segredo apenas quando
+    // CRON_TRIGGER_SECRET está definido, para o deploy não parar os envios
+    // agendados antes de o agendador externo (Vercel Cron, cron-job.org, …)
+    // ser actualizado. Usa uma variável PRÓPRIA e não o CRON_SECRET das acções
+    // de administração (ver S-2) — sobrecarregar um segredo com dois fins foi
+    // parte do problema. Aceita-se por cabeçalho Authorization OU por ?k=,
+    // porque nem todos os agendadores conseguem enviar cabeçalhos. Comparação
+    // em tempo constante.
+    const _cronSecret = process.env.CRON_TRIGGER_SECRET;
+    if (_cronSecret) {
+      const crypto = require('crypto');
+      const esperadoHeader = `Bearer ${_cronSecret}`;
+      const auth = req.headers.authorization || '';
+      const q = String((req.query && req.query.k) || '');
+      const okHeader = auth.length === esperadoHeader.length
+        && crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(esperadoHeader));
+      const okQuery = q.length === String(_cronSecret).length
+        && crypto.timingSafeEqual(Buffer.from(q), Buffer.from(String(_cronSecret)));
+      if (!okHeader && !okQuery) return res.status(401).json({ error: 'Unauthorized' });
+    } else {
+      console.warn('SECURITY: /api/cron sem CRON_TRIGGER_SECRET — o processamento agendado aceita chamadas não autenticadas.');
+    }
 
     const { initCampaignSend, runBatch } = require('../../lib/sendCampaign');
 

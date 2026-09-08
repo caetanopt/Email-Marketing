@@ -88,6 +88,29 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-amz-sns-message-type');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
+    // Autenticação do webhook — mitigação do S-1 enquanto a validação da
+    // assinatura SNS completa não está feita. Sem isto, qualquer POST anónimo
+    // consegue suprimir contactos (forjando um bounce) e forjar aberturas e
+    // cliques. O SES/SNS passa a ser configurado com o endpoint
+    // …/api/webhooks?k=<segredo>; um pedido sem o segredo certo é recusado.
+    //
+    // Enforce-when-configured: só exige o segredo quando SNS_WEBHOOK_SECRET
+    // está definido. Assim o deploy não interrompe um webhook a funcionar — a
+    // protecção liga-se no momento em que se define a variável E se actualiza
+    // o URL da subscrição SNS para incluir ?k=<segredo>. Enquanto não estiver
+    // definida, cada pedido regista um aviso para a lacuna não passar
+    // despercebida. A comparação é em tempo constante.
+    const _whSecret = process.env.SNS_WEBHOOK_SECRET;
+    if (_whSecret) {
+      const fornecido = String((req.query && req.query.k) || '');
+      const esperado = String(_whSecret);
+      const autorizado = fornecido.length === esperado.length
+        && crypto.timingSafeEqual(Buffer.from(fornecido), Buffer.from(esperado));
+      if (!autorizado) return res.status(401).json({ error: 'Unauthorized' });
+    } else {
+      console.warn('SECURITY: /api/webhooks sem SNS_WEBHOOK_SECRET — aceita eventos não autenticados. Define a variável e actualiza o URL da subscrição SNS para incluir ?k=<segredo>.');
+    }
+
     try {
       const msgType = req.headers['x-amz-sns-message-type'] || '';
 
@@ -352,7 +375,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 </head><body>
 <div class="bar"><div class="bar-left"><span class="bar-tag">Pré-visualização</span><div><div class="bar-name">${esc(tituloPreview)}</div>${subtituloPreview?`<div class="bar-sub">${esc(subtituloPreview)}</div>`:''}</div></div>${brandRight}</div>
 <div class="wrap"><iframe id="f" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="Pré-visualização do email"></iframe></div>
-<script>(function(){const h=${JSON.stringify(emailHtml)};const f=document.getElementById('f');f.srcdoc=h;f.addEventListener('load',function(){try{const s=f.contentDocument.documentElement.scrollHeight;if(s>100)f.style.height=s+'px';}catch(_){}});})();</script>
+<script>(function(){const h=${JSON.stringify(emailHtml).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')};const f=document.getElementById('f');f.srcdoc=h;f.addEventListener('load',function(){try{const s=f.contentDocument.documentElement.scrollHeight;if(s>100)f.style.height=s+'px';}catch(_){}});})();</script>
 </body></html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Robots-Tag', 'noindex');

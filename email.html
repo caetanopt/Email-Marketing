@@ -9938,7 +9938,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             f.reason || '',
             f.dominio || f.detalhe || '',
         ]));
-        const csv = linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+        const csv = linhas.map(l => l.map(c => `"${_csvSafe(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
         const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
         const a = document.createElement('a');
         a.href = url; a.download = `importacao-ficaram-de-fora-${new Date().toISOString().slice(0,10)}.csv`;
@@ -11003,8 +11003,19 @@ function toggleExportMenu() {
         if (fmt === 'pdf') return _exportReportPDF();
     }
 
-    function _csvCell(v) {
+    // Neutraliza injecção de fórmulas em CSV. Uma célula que começa por
+    // = + - @ (ou por tab/CR, que o Excel também trata como início de fórmula)
+    // é interpretada como fórmula pelo Excel e pelo Google Sheets ao abrir o
+    // ficheiro — e envolver o campo em aspas NÃO protege, porque o cliente
+    // desfaz as aspas antes de avaliar. Prefixar um apóstrofo desarma-a sem
+    // alterar o valor que a pessoa vê. Estes exports levam emails, nomes,
+    // domínios e mensagens de erro — todos controláveis por quem foi importado.
+    function _csvSafe(v) {
         const s = (v === null || v === undefined) ? '' : String(v);
+        return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+    }
+    function _csvCell(v) {
+        const s = _csvSafe(v);
         return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     }
 

@@ -36,6 +36,55 @@ for (const alvo of alvos) {
 
 console.log('\nExecução das dependências críticas:');
 const provas = [
+  ['webhook do SES é autenticável', `const fs=require('fs');
+    // S-1: o webhook aceitava qualquer POST anónimo, que suprimia contactos
+    // forjando um bounce. Agora há um gate por segredo no URL, em tempo
+    // constante, antes de o corpo ser processado.
+    const s=fs.readFileSync('api/track.js','utf8');
+    const post=s.slice(s.indexOf("req.method === 'POST'"), s.indexOf('const msgType'));
+    if(!/process\\.env\\.SNS_WEBHOOK_SECRET/.test(post))
+      throw new Error('o webhook deixou de ler SNS_WEBHOOK_SECRET — voltou a aceitar eventos anónimos');
+    if(!/timingSafeEqual/.test(post))
+      throw new Error('a comparação do segredo do webhook tem de ser em tempo constante');
+    if(!/req\\.query && req\\.query\\.k/.test(post))
+      throw new Error('o segredo do webhook tem de vir de ?k=');
+    // 'post' vai de req.method==='POST' até 'const msgType', por isso um 401
+    // aqui está garantidamente antes de o corpo do evento ser processado.
+    if(!/return res\\.status\\(401\\)/.test(post))
+      throw new Error('o 401 do webhook tem de ser devolvido antes de o corpo ser processado')`],
+  ['a pré-visualização não injecta HTML no script', `const fs=require('fs');
+    // S-4: emailHtml era embutido num <script> com JSON.stringify, que não
+    // escapa "<": um </script> no template executava JS na origem da app.
+    const s=fs.readFileSync('api/track.js','utf8');
+    if(/JSON\\.stringify\\(emailHtml\\)\\}/.test(s))
+      throw new Error('emailHtml voltou a ser embutido sem escapar "<" — XSS armazenado na página pública');
+    if(!/JSON\\.stringify\\(emailHtml\\)\\.replace\\(\\/<\\/g/.test(s))
+      throw new Error('falta o .replace(/</g, ...) que neutraliza </script>')`],
+  ['o cron é autenticável', `const fs=require('fs');
+    // A-1: /api/cron era público. Agora há um gate por segredo PRÓPRIO
+    // (não o CRON_SECRET de admin), em tempo constante.
+    const s=fs.readFileSync('api/campaigns/index.js','utf8');
+    const cron=s.slice(s.indexOf("action === 'process-scheduled'"), s.indexOf('initCampaignSend, runBatch'));
+    if(!/process\\.env\\.CRON_TRIGGER_SECRET/.test(cron))
+      throw new Error('o cron deixou de ler CRON_TRIGGER_SECRET — voltou a ser público');
+    if(/process\\.env\\.CRON_SECRET/.test(cron))
+      throw new Error('o cron não pode reutilizar o CRON_SECRET das acções de admin (S-2)');
+    if(!/timingSafeEqual/.test(cron))
+      throw new Error('a comparação do segredo do cron tem de ser em tempo constante')`],
+  ['exports de CSV desarmam fórmulas', `const fs=require('fs');
+    // S-7: uma célula começada por = + - @ é avaliada como fórmula pelo Excel
+    // ao abrir o ficheiro, mesmo entre aspas. _csvSafe prefixa um apóstrofo.
+    const h=fs.readFileSync('email.html','utf8');
+    const m=h.match(/function _csvSafe\\(v\\) \\{[\\s\\S]*?\\n    \\}/);
+    if(!m)throw new Error('falta o _csvSafe');
+    const f=new Function('return ('+m[0]+')')();
+    for(const [inp,exp] of [['=1+1',"'=1+1"],['+A1',"'+A1"],['-2',"'-2"],['@x',"'@x"],['ana@x.pt','ana@x.pt'],['Bruno','Bruno'],['0','0']])
+      if(f(inp)!==exp)throw new Error('_csvSafe('+JSON.stringify(inp)+') deu '+JSON.stringify(f(inp))+', esperado '+JSON.stringify(exp));
+    // e os dois construtores de CSV com dados de utilizador têm de o usar
+    if(!/const s = _csvSafe\\(v\\)/.test(h))
+      throw new Error('o _csvCell deixou de passar por _csvSafe');
+    if(!/l\\.map\\(c => \`"\\$\\{_csvSafe\\(c\\)/.test(h))
+      throw new Error('o export dos excluídos deixou de passar por _csvSafe')`],
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],
