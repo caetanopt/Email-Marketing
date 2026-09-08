@@ -29,13 +29,17 @@ module.exports = async function handler(req, res) {
     const _cronSecret = process.env.CRON_TRIGGER_SECRET;
     if (_cronSecret) {
       const crypto = require('crypto');
-      const esperadoHeader = `Bearer ${_cronSecret}`;
-      const auth = req.headers.authorization || '';
-      const q = String((req.query && req.query.k) || '');
+      // Buffers primeiro e comparação por bytes — ver a mesma nota no webhook
+      // (api/track.js): char-length vs byte-length faria o timingSafeEqual
+      // lançar 500 com um ?k= multi-byte forjado, em vez do 401.
+      const auth = Buffer.from(req.headers.authorization || '');
+      const esperadoHeader = Buffer.from(`Bearer ${_cronSecret}`);
       const okHeader = auth.length === esperadoHeader.length
-        && crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(esperadoHeader));
-      const okQuery = q.length === String(_cronSecret).length
-        && crypto.timingSafeEqual(Buffer.from(q), Buffer.from(String(_cronSecret)));
+        && crypto.timingSafeEqual(auth, esperadoHeader);
+      const q = Buffer.from(String((req.query && req.query.k) || ''));
+      const esperadoQuery = Buffer.from(String(_cronSecret));
+      const okQuery = q.length === esperadoQuery.length
+        && crypto.timingSafeEqual(q, esperadoQuery);
       if (!okHeader && !okQuery) return res.status(401).json({ error: 'Unauthorized' });
     } else {
       console.warn('SECURITY: /api/cron sem CRON_TRIGGER_SECRET — o processamento agendado aceita chamadas não autenticadas.');

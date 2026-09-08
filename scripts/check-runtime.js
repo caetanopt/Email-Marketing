@@ -48,10 +48,14 @@ const provas = [
       throw new Error('a comparação do segredo do webhook tem de ser em tempo constante');
     if(!/req\\.query && req\\.query\\.k/.test(post))
       throw new Error('o segredo do webhook tem de vir de ?k=');
+    // Buffers primeiro: comparar por char-length e depois passar Buffers ao
+    // timingSafeEqual faz rebentar (500) com um ?k= multi-byte forjado.
+    if(!/const fornecido = Buffer\\.from/.test(post) || !/const esperado = Buffer\\.from/.test(post))
+      throw new Error('o guard do webhook tem de comparar comprimento de BYTES (Buffer.from primeiro), não de caracteres');
     // 'post' vai de req.method==='POST' até 'const msgType', por isso um 401
     // aqui está garantidamente antes de o corpo do evento ser processado.
     if(!/return res\\.status\\(401\\)/.test(post))
-      throw new Error('o 401 do webhook tem de ser devolvido antes de o corpo ser processado')`],
+      throw new Error('o 401 do webhook tem de ser devolvido antes de o corpo do evento ser processado')`],
   ['a pré-visualização não injecta HTML no script', `const fs=require('fs');
     // S-4: emailHtml era embutido num <script> com JSON.stringify, que não
     // escapa "<": um </script> no template executava JS na origem da app.
@@ -70,16 +74,26 @@ const provas = [
     if(/process\\.env\\.CRON_SECRET/.test(cron))
       throw new Error('o cron não pode reutilizar o CRON_SECRET das acções de admin (S-2)');
     if(!/timingSafeEqual/.test(cron))
-      throw new Error('a comparação do segredo do cron tem de ser em tempo constante')`],
+      throw new Error('a comparação do segredo do cron tem de ser em tempo constante');
+    if(!/const auth = Buffer\\.from/.test(cron) || !/const q = Buffer\\.from/.test(cron))
+      throw new Error('o guard do cron tem de comparar comprimento de BYTES (Buffer.from primeiro)')`],
   ['exports de CSV desarmam fórmulas', `const fs=require('fs');
     // S-7: uma célula começada por = + - @ é avaliada como fórmula pelo Excel
     // ao abrir o ficheiro, mesmo entre aspas. _csvSafe prefixa um apóstrofo.
     const h=fs.readFileSync('email.html','utf8');
-    const m=h.match(/function _csvSafe\\(v\\) \\{[\\s\\S]*?\\n    \\}/);
-    if(!m)throw new Error('falta o _csvSafe');
-    const f=new Function('return ('+m[0]+')')();
+    const mSafe=h.match(/function _csvSafe\\(v\\) \\{[\\s\\S]*?\\n    \\}/);
+    const mCell=h.match(/function _csvCell\\(v\\) \\{[\\s\\S]*?\\n    \\}/);
+    if(!mSafe||!mCell)throw new Error('falta o _csvSafe/_csvCell');
+    const _csvSafe=new Function('return ('+mSafe[0]+')')();
+    const _csvCell=new Function('_csvSafe', 'return ('+mCell[0]+')')(_csvSafe);
     for(const [inp,exp] of [['=1+1',"'=1+1"],['+A1',"'+A1"],['-2',"'-2"],['@x',"'@x"],['ana@x.pt','ana@x.pt'],['Bruno','Bruno'],['0','0']])
-      if(f(inp)!==exp)throw new Error('_csvSafe('+JSON.stringify(inp)+') deu '+JSON.stringify(f(inp))+', esperado '+JSON.stringify(exp));
+      if(_csvSafe(inp)!==exp)throw new Error('_csvSafe('+JSON.stringify(inp)+') deu '+JSON.stringify(_csvSafe(inp))+', esperado '+JSON.stringify(exp));
+    // O ataque que a primeira versão deixou passar: um \\r no MEIO do valor
+    // partia a linha do CSV e a linha seguinte começava por = sem protecção.
+    // Nenhuma célula emitida pode conter uma quebra de linha crua.
+    for(const inp of ['ok\\r=1+1', 'x\\n=HYPERLINK("http://e")', '=1+1\\rmais', 'a\\r\\n@SUM(1)'])
+      if(/[\\r\\n]/.test(_csvCell(inp)))
+        throw new Error('_csvCell('+JSON.stringify(inp)+') deixou passar uma quebra de linha crua: '+JSON.stringify(_csvCell(inp)));
     // e os dois construtores de CSV com dados de utilizador têm de o usar
     if(!/const s = _csvSafe\\(v\\)/.test(h))
       throw new Error('o _csvCell deixou de passar por _csvSafe');

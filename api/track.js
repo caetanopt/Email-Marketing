@@ -102,10 +102,15 @@ module.exports = async (req, res) => {
     // despercebida. A comparação é em tempo constante.
     const _whSecret = process.env.SNS_WEBHOOK_SECRET;
     if (_whSecret) {
-      const fornecido = String((req.query && req.query.k) || '');
-      const esperado = String(_whSecret);
+      // Buffers primeiro, e comparar por comprimento de BYTES: timingSafeEqual
+      // rebenta com buffers de tamanhos diferentes, e String.length conta
+      // unidades UTF-16, não bytes. Um ?k= com o mesmo número de caracteres mas
+      // um char multi-byte (ex.: 'é') passaria o guard de char-length e faria
+      // o timingSafeEqual lançar — 500 e unhandled rejection em vez do 401.
+      const fornecido = Buffer.from(String((req.query && req.query.k) || ''));
+      const esperado = Buffer.from(String(_whSecret));
       const autorizado = fornecido.length === esperado.length
-        && crypto.timingSafeEqual(Buffer.from(fornecido), Buffer.from(esperado));
+        && crypto.timingSafeEqual(fornecido, esperado);
       if (!autorizado) return res.status(401).json({ error: 'Unauthorized' });
     } else {
       console.warn('SECURITY: /api/webhooks sem SNS_WEBHOOK_SECRET — aceita eventos não autenticados. Define a variável e actualiza o URL da subscrição SNS para incluir ?k=<segredo>.');
