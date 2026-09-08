@@ -703,7 +703,7 @@
         const start = (_campaignsPage - 1) * _CAMPAIGNS_PAGE_SIZE;
         const pageItems = filtered.slice(start, start + _CAMPAIGNS_PAGE_SIZE);
         if (!pageItems.length) {
-            el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">${all.length ? 'Sem campanhas correspondentes ao filtro.' : 'Sem campanhas para esta marca.'}</td></tr>`;
+            el.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-slate-400 text-sm">${all.length ? 'Sem campanhas correspondentes ao filtro.' : 'Sem campanhas para esta marca.'}</td></tr>`;
             if (pag) pag.innerHTML = '';
             return;
         }
@@ -724,6 +724,8 @@
                     </span>` : ''}
                 </td>
                 <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
+                <td class="px-4 py-3">${_campTaxa(c, 'abertura')}</td>
+                <td class="px-4 py-3">${_campTaxa(c, 'clique')}</td>
                 <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-1">
@@ -764,6 +766,38 @@
     async function _openCampReport(i) {
         await showCampaign(null, _campaignsCache[i]);
         showScreen('campaignReport');
+    }
+
+    // Aberturas e cliques na própria listagem, para não ser preciso abrir o
+    // relatório de cada campanha só para comparar duas.
+    //
+    // São únicos — por pessoa, não por evento: quem abre cinco vezes conta uma
+    // abertura. É o mesmo critério do painel e dos relatórios, e sem ele a
+    // taxa passava dos 100% em campanhas com clientes que reabrem o email.
+    //
+    // A base é o que foi mesmo entregue (sent_count), não o total de
+    // destinatários: uma taxa sobre endereços que nunca receberam nada é uma
+    // taxa inventada.
+    function _campTaxa(c, tipo) {
+        if (c.status !== 'sent' && c.status !== 'sending') return '<span class="text-slate-300">—</span>';
+        const base = c.sent_count || 0;
+        const n = tipo === 'abertura' ? (c.unique_opens || 0) : (c.unique_clicks || 0);
+        if (!base) return '<span class="text-slate-300">—</span>';
+        const pct = n / base * 100;
+        // Duas casas decimais, como no relatório: entre duas campanhas a
+        // diferença está muitas vezes na primeira decimal. Zero não leva
+        // vírgula nenhuma.
+        const rot = pct === 0 ? '0' : pct.toFixed(2).replace('.', ',');
+        const cor = tipo === 'abertura'
+            ? 'bg-green-100 text-green-700'
+            : 'bg-purple-100 text-purple-700';
+        const titulo = tipo === 'abertura'
+            ? `${n.toLocaleString('pt-PT')} de ${base.toLocaleString('pt-PT')} entregues abriram o email`
+            : `${n.toLocaleString('pt-PT')} de ${base.toLocaleString('pt-PT')} entregues clicaram numa ligação`;
+        return `<div class="flex items-center gap-2 whitespace-nowrap" title="${escHtml(titulo)}">
+            <span class="px-2.5 py-1 rounded-full text-xs font-medium ${cor}">${rot}%</span>
+            <span class="text-xs text-slate-500 tabular-nums">${n.toLocaleString('pt-PT')}</span>
+        </div>`;
     }
 
     // Progresso de um envio a decorrer, na linha da campanha.
@@ -852,7 +886,7 @@
         if (!el) return;
         const cacheKey = `campaigns_${brandId}`;
         const cached = _cacheGet(cacheKey);
-        if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
+        if (!cached) el.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
         _campaignsPage = 1;
         if (cached) _applyCampaignsData(cached);
         try {
@@ -861,7 +895,7 @@
             // Sempre via _applyCampaignsData — também no caso vazio, para limpar
             // o cache, a paginação e os contadores da marca anterior.
             _applyCampaignsData(data);
-        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
+        } catch (e) { if (!cached) el.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`; }
     }
 
     function _applyListsData(el, data) {
@@ -13478,6 +13512,8 @@ ${sections.join('\n\n')}
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Campanha</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Estado</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Destinatários</th>
+                                <th class="px-4 py-3 text-left font-medium text-slate-500">Aberturas</th>
+                                <th class="px-4 py-3 text-left font-medium text-slate-500">Cliques</th>
                                 <th class="px-4 py-3 text-left font-medium text-slate-500">Data</th>
                                 <th class="px-4 py-3"></th>
                             </tr>

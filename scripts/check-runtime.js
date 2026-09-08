@@ -98,6 +98,26 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['taxas de abertura e clique honestas', `const fs=require('fs');
+    // Duas maneiras fáceis de inflacionar estes números sem ninguém reparar:
+    // contar eventos em vez de pessoas (quem reabre o email conta cinco
+    // vezes, e a taxa passa dos 100%), e dividir pelos destinatários em vez
+    // de pelo que foi entregue. São KPIs que vão a reuniões.
+    const api=fs.readFileSync('api/campaigns/index.js','utf8');
+    if(!/COUNT\\(DISTINCT ee\\.contact_id\\) FILTER \\(WHERE ee\\.type='open'/.test(api))
+      throw new Error('a listagem tem de contar aberturas únicas por contacto, não eventos');
+    if(!/COUNT\\(DISTINCT ee\\.contact_id\\) FILTER \\(WHERE ee\\.type='click'/.test(api))
+      throw new Error('a listagem tem de contar cliques únicos por contacto, não eventos');
+    const h=fs.readFileSync('email.html','utf8');
+    const i=h.indexOf('function _campTaxa');
+    if(i<0)throw new Error('falta o _campTaxa que desenha as taxas na listagem');
+    const corpo=h.slice(i,h.indexOf('function _campProgressoEnvio'));
+    if(!/const base = c\\.sent_count/.test(corpo))
+      throw new Error('a taxa tem de ser sobre o que foi entregue (sent_count), não sobre os destinatários');
+    if(!/c\\.unique_opens/.test(corpo)||!/c\\.unique_clicks/.test(corpo))
+      throw new Error('a taxa tem de usar os únicos (unique_opens/unique_clicks), não open_count/click_count');
+    if(/c\\.total_recipients/.test(corpo))
+      throw new Error('total_recipients como base dá uma taxa sobre endereços que não receberam nada')`],
   ['um CSV não perde linhas', `const fs=require('fs');
     // O mesmo ficheiro entrava com 1161 contactos em TXT e 630 em CSV. Não era
     // o servidor: eram linhas que nunca saíam do browser, porque o ficheiro era

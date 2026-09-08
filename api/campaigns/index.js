@@ -359,6 +359,11 @@ module.exports = async function handler(req, res) {
                 COALESCE(rc.sent,0)  AS sent_count,
                 COALESCE(ev.opens,0)  AS open_count,
                 COALESCE(ev.clicks,0) AS click_count,
+                -- Únicos, por pessoa. É o que o painel e os relatórios já
+                -- mostram: um contacto que abre cinco vezes é uma abertura,
+                -- senão a taxa passa dos 100% e não quer dizer nada.
+                COALESCE(ev.uniq_opens,0)  AS unique_opens,
+                COALESCE(ev.uniq_clicks,0) AS unique_clicks,
                 COALESCE(li.list_ids, '{}') AS list_ids
          FROM campaigns c
          LEFT JOIN brands b ON b.id=c.brand_id
@@ -371,7 +376,9 @@ module.exports = async function handler(req, res) {
          ) rc ON TRUE
          LEFT JOIN LATERAL (
            SELECT COUNT(*) FILTER (WHERE ee.type='open' )::int AS opens,
-                  COUNT(*) FILTER (WHERE ee.type='click')::int AS clicks
+                  COUNT(*) FILTER (WHERE ee.type='click')::int AS clicks,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open' )::int AS uniq_opens,
+                  COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int AS uniq_clicks
            FROM email_events ee WHERE ee.campaign_id=c.id
          ) ev ON TRUE
          LEFT JOIN LATERAL (
