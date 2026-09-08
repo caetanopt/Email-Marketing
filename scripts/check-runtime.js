@@ -231,7 +231,21 @@ const provas = [
     // O email aparecia duas vezes na mesma linha: a primeira linha era
     // contact_name||email e a segunda o email, e sem nome dava o mesmo valor.
     if(/escHtml\\(r\\.contact_name\\|\\|r\\.email\\)/.test(f + h.slice(h.indexOf('function _renderReportLog'))))
-      throw new Error('volta a repetir o email quando o contacto não tem nome')`],
+      throw new Error('volta a repetir o email quando o contacto não tem nome');
+    // A exportação completa: o log do ecrã tem 500 e não serve para segmentar
+    // um reenvio numa campanha de milhares.
+    if(!/action === 'export_recipients'/.test(api))
+      throw new Error('falta a exportação de todos os destinatários');
+    const ex=api.slice(api.indexOf("action === 'export_recipients'"), api.indexOf("action === 'send_log'"));
+    if(/LIMIT 500\\b/.test(ex))throw new Error('a exportação não pode ficar limitada aos 500 do log');
+    if(!/LIMIT 50000/.test(ex))throw new Error('a exportação precisa de um limite de segurança');
+    if(!/function _exportarDestinatarios/.test(h))throw new Error('falta o botão de exportar todos');
+    const g=h.slice(h.indexOf('async function _exportarDestinatarios'), h.indexOf('function _exportReportCSV'));
+    // Vazio e não "nao" em quem não recebeu: filtrar por abriu=nao no Excel
+    // tem de dar exactamente o público de um reenvio.
+    if(!/entregue \\? \\(d\\.aberto_em \\? 'sim' : 'nao'\\) : ''/.test(g))
+      throw new Error('quem não recebeu não pode sair como "nao abriu": estragava o filtro do reenvio');
+    if(!/ufeff/.test(g))throw new Error('sem BOM o Excel abre os acentos mal')`],
   ['filtrar campanhas por mês usa a data que se vê', `const fs=require('fs');
     // A coluna "Data" da listagem mostra a do envio, ou a do agendamento, ou a
     // da criação. Filtrar por outra qualquer daria listas que não correspondem

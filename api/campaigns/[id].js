@@ -174,6 +174,40 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // Todos os destinatários, com abertura e clique. Sem os 500 do log.
+    //
+    // O log do ecrã mostra os 500 mais recentes, o que basta para ver o que
+    // aconteceu mas não para trabalhar a lista: segmentar um reenvio a quem
+    // não abriu, numa campanha de 9223, precisa dos 9223.
+    //
+    // Ordenado por email e não por data: um ficheiro que se vai abrir no Excel
+    // ganha mais em ser estável entre exportações do que em ter os últimos
+    // primeiro.
+    if (req.method === 'GET' && action === 'export_recipients') {
+      const linhas = await query(
+        `WITH ev AS (
+           SELECT contact_id,
+                  MIN(created_at) FILTER (WHERE type = 'open')  AS aberto_em,
+                  MIN(created_at) FILTER (WHERE type = 'click') AS clicado_em,
+                  COUNT(*) FILTER (WHERE type = 'click')::int   AS cliques
+           FROM email_events
+           WHERE campaign_id = $1 AND type IN ('open', 'click') AND contact_id IS NOT NULL
+           GROUP BY contact_id
+         )
+         SELECT cr.email, cr.status::text AS status, cr.sent_at, cr.attempted_at, cr.error_message,
+                ct.name AS contact_name,
+                ev.aberto_em, ev.clicado_em, COALESCE(ev.cliques, 0) AS cliques
+         FROM campaign_recipients cr
+         LEFT JOIN contacts ct ON ct.id = cr.contact_id
+         LEFT JOIN ev ON ev.contact_id = cr.contact_id
+         WHERE cr.campaign_id = $1
+         ORDER BY LOWER(cr.email)
+         LIMIT 50000`,
+        [id]
+      );
+      return res.status(200).json({ recipients: linhas, total: linhas.length });
+    }
+
     if (req.method === 'GET' && action === 'send_log') {
       // Per-recipient status (sent/failed/bounced) for this campaign
       let recipients;

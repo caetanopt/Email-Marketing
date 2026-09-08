@@ -11008,6 +11008,56 @@ function toggleExportMenu() {
         return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     }
 
+    // Exportação de todos os destinatários, com abertura e clique.
+    //
+    // O log do ecrã mostra os 500 mais recentes. Para segmentar um reenvio a
+    // quem não abriu — numa campanha de 9223 — são precisos os 9223, e é isso
+    // que este pede ao servidor.
+    //
+    // As colunas "abriu" e "clicou" ficam vazias em quem não recebeu: a
+    // pergunta não se aplica, e um "nao" apresentaria uma falha de entrega
+    // como desinteresse. Assim, filtrar por abriu=nao no Excel dá exactamente
+    // o público de um reenvio.
+    async function _exportarDestinatarios() {
+        const c = _currentCampaign || {};
+        if (!c.id) { showToast('Abre o relatório de uma campanha primeiro.', 'error'); return; }
+        const btn = document.getElementById('repExportBtn');
+        const antes = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'A exportar…'; }
+        try {
+            const r = await apiFetch(`/api/campaigns/${c.id}?action=export_recipients`);
+            const dest = r?.recipients || [];
+            if (!dest.length) { showToast('Esta campanha não tem destinatários.', 'error'); return; }
+            const dt = (v) => v ? new Date(v).toLocaleString('pt-PT') : '';
+            const linhas = [['email','nome','estado','enviado_em','abriu','primeira_abertura','clicou','primeiro_clique','cliques','erro']];
+            dest.forEach(d => {
+                const entregue = d.status === 'sent';
+                linhas.push([
+                    d.email || '',
+                    d.contact_name || '',
+                    d.status || '',
+                    dt(d.sent_at || d.attempted_at),
+                    entregue ? (d.aberto_em ? 'sim' : 'nao') : '',
+                    dt(d.aberto_em),
+                    entregue ? (d.clicado_em ? 'sim' : 'nao') : '',
+                    dt(d.clicado_em),
+                    d.cliques || 0,
+                    d.error_message || '',
+                ]);
+            });
+            const csv = '\ufeff' + linhas.map(l => l.map(_csvCell).join(',')).join('\r\n');
+            _downloadBlob(csv, `destinatarios-${_slugify(c.name || 'campanha')}-${_todayStamp()}.csv`, 'text/csv;charset=utf-8');
+            const abriram = dest.filter(d => d.aberto_em).length;
+            const naoAbriram = dest.filter(d => !d.aberto_em && d.status === 'sent').length;
+            showToast(`${dest.length.toLocaleString('pt-PT')} destinatários exportados: `
+                + `${abriram.toLocaleString('pt-PT')} abriram, ${naoAbriram.toLocaleString('pt-PT')} não abriram.`, 'info');
+        } catch (e) {
+            showToast('Não foi possível exportar: ' + e.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = antes; }
+        }
+    }
+
     function _exportReportCSV() {
         const c = _currentCampaign || {};
         const r = _currentReportData || {};
@@ -11043,13 +11093,17 @@ function toggleExportMenu() {
         // Bloco de log de envio (por destinatário)
         if (_repLogRecipients?.length) {
             lines.push('');
-            lines.push('Email,Nome,Estado,Quando,Detalhe');
+            lines.push('Email,Nome,Estado,Quando,Abriu,Clicou,Detalhe');
             _repLogRecipients.forEach(rec => {
                 const when = rec.sent_at || rec.attempted_at;
                 const detail = rec.error_message || rec.message_id || '';
+                const entregue = rec.status === 'sent';
                 lines.push([
                     rec.email || '', rec.contact_name || '', rec.status || '',
-                    when ? new Date(when).toLocaleString('pt-PT') : '', detail,
+                    when ? new Date(when).toLocaleString('pt-PT') : '',
+                    entregue ? (rec.aberto_em ? 'sim' : 'nao') : '',
+                    entregue ? (rec.clicado_em ? 'sim' : 'nao') : '',
+                    detail,
                 ].map(_csvCell).join(','));
             });
         }
@@ -15028,6 +15082,14 @@ ${sections.join('\n\n')}
                                 <input id="repLogSearch" type="search" placeholder="Pesquisar email…" oninput="_repLogRender(true);_srchToggleClear('repLogSearch')" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs w-48">
                                 <button type="button" id="repLogSearchClear" onclick="_srchClear('repLogSearch',()=>_repLogRender(true))" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 hidden"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>
                             </div>
+                            <!-- O log mostra os 500 mais recentes; isto traz
+                                 todos, que é o que serve para segmentar um
+                                 reenvio a quem não abriu. -->
+                            <button type="button" id="repExportBtn" onclick="_exportarDestinatarios()"
+                                    class="flex items-center gap-1.5 px-2.5 py-1 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50 whitespace-nowrap">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                Exportar todos
+                            </button>
                         </div>
                     </div>
                     <div class="overflow-x-auto">
