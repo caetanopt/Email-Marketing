@@ -8939,13 +8939,15 @@ ${teSerializeBlocksComment(srcBlocks)}
             const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
             // Confirmation modal before send (only for 'now' and 'schedule')
             if (sendType === 'now' || sendType === 'schedule') {
-                const total = (window._wizLastTotalContacts ?? '?').toLocaleString('pt-PT');
-                const nameVal = document.getElementById('wizName')?.value.trim() || 'esta campanha';
                 const m = document.getElementById('wizSendConfirmModal');
                 if (m) {
-                    document.getElementById('wizSendConfirmName').textContent    = nameVal;
-                    document.getElementById('wizSendConfirmRecip').textContent   = total;
-                    document.getElementById('wizSendConfirmAction').textContent  = sendType === 'schedule' ? 'Agendar envio' : 'Enviar agora';
+                    const val = (id) => document.getElementById(id)?.value.trim() || '';
+                    const põe = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+                    põe('wizSendConfirmFromName',  val('wizFromName')  || '(sem nome de remetente)');
+                    põe('wizSendConfirmFromEmail', val('wizFromEmail') || '(sem endereço de remetente)');
+                    põe('wizSendConfirmSubject',   val('wizSubject')   || '(sem assunto)');
+                    põe('wizSendConfirmAction', sendType === 'schedule' ? 'Agendar envio' : 'Enviar agora');
+                    _wizConfirmDestinatarios();
                     m.classList.remove('hidden'); m.classList.add('flex');
                     return; // wait for user confirmation
                 }
@@ -8953,6 +8955,42 @@ ${teSerializeBlocksComment(srcBlocks)}
             _wizDoSubmitStep4(); return;
         }
     }
+    // Quantas pessoas vão receber, na janela de confirmação.
+    //
+    // Mostrava-se a soma das listas com os contactos do ficheiro. Não é o
+    // número de pessoas: quem está numa lista E no ficheiro contava duas
+    // vezes, e quem cancelou ou está na supressão contava como se fosse
+    // receber. Num caso real deste mês eram 1985 no ecrã e 1161 a receber — e
+    // este é o pior sítio para um número inflacionado, porque é o último.
+    //
+    // O resumo do passo 3 costuma já estar em memória; quando não está,
+    // pede-se e a janela actualiza-se sozinha. Se não houver campanha gravada
+    // (nem ficheiro nem rascunho), não há nada a consultar e fica-se pela
+    // soma, dita como soma.
+    function _wizConfirmDestinatarios() {
+        const n = (x) => Number(x || 0).toLocaleString('pt-PT', { useGrouping: 'always' });
+        const põe = (num, nota) => {
+            const a = document.getElementById('wizSendConfirmRecip');
+            const b = document.getElementById('wizSendConfirmRecipNota');
+            if (a) a.textContent = num;
+            if (b) b.textContent = nota || '';
+        };
+        const mostrar = (r) => {
+            const partes = [];
+            if (r.fora_estado)    partes.push(`${n(r.fora_estado)} cancelaram ou foram devolvidos`);
+            if (r.fora_supressao) partes.push(`${n(r.fora_supressao)} na lista de supressão`);
+            if (r.nos_dois)       partes.push(`${n(r.nos_dois)} repetidas entre as listas e o ficheiro`);
+            põe(`${n(r.vao_receber)} pessoas`, partes.length ? `fora: ${partes.join(', ')}` : '');
+        };
+        if (_wizResumo) { mostrar(_wizResumo); return; }
+        const soma = window._wizLastTotalContacts;
+        põe(soma == null ? '—' : `${n(soma)} contactos`, 'a confirmar quantos vão mesmo receber…');
+        if (!_editingCampaignId) { põe(soma == null ? '—' : `${n(soma)} contactos`, 'soma das listas e do ficheiro'); return; }
+        apiFetch(`/api/campaigns/${_editingCampaignId}?action=recipient_summary&list_ids=${_wizListasEscolhidas().join(',')}`)
+            .then(r => { _wizResumo = r; if (!document.getElementById('wizSendConfirmModal')?.classList.contains('hidden')) mostrar(r); })
+            .catch(() => põe(soma == null ? '—' : `${n(soma)} contactos`, 'soma das listas e do ficheiro'));
+    }
+
     async function _wizDoSubmitStep4() {
         // Passa a true quando o envio arranca no servidor: a partir daí, um
         // erro no browser não significa que o envio tenha parado.
@@ -17833,9 +17871,28 @@ ${sections.join('\n\n')}
                 <p class="text-sm text-slate-400">Revê os detalhes antes de continuar</p>
             </div>
         </div>
-        <div class="bg-slate-50 rounded-xl p-4 mb-5 space-y-2">
-            <div class="flex justify-between text-sm"><span class="text-slate-500">Campanha</span><span class="font-medium text-slate-800 text-right max-w-[200px] truncate" id="wizSendConfirmName">—</span></div>
-            <div class="flex justify-between text-sm"><span class="text-slate-500">Destinatários</span><span class="font-semibold text-slate-900" id="wizSendConfirmRecip">—</span></div>
+        <!-- O que aqui está é o que não se desfaz: de quem vai, o que as
+             pessoas vêem, e quantas são. O nome da campanha saiu — é interno,
+             serve para a encontrar na lista, e vinha cortado. -->
+        <div class="bg-slate-50 rounded-xl p-4 mb-5 space-y-2.5">
+            <div class="flex justify-between gap-4 text-sm">
+                <span class="text-slate-500 flex-shrink-0">De</span>
+                <span class="text-right min-w-0">
+                    <span class="block font-medium text-slate-800 break-words" id="wizSendConfirmFromName">—</span>
+                    <span class="block text-xs text-slate-500 font-mono break-all" id="wizSendConfirmFromEmail">—</span>
+                </span>
+            </div>
+            <div class="flex justify-between gap-4 text-sm border-t border-slate-200 pt-2.5">
+                <span class="text-slate-500 flex-shrink-0">Assunto</span>
+                <span class="font-medium text-slate-800 text-right min-w-0 break-words" id="wizSendConfirmSubject">—</span>
+            </div>
+            <div class="flex justify-between gap-4 text-sm border-t border-slate-200 pt-2.5">
+                <span class="text-slate-500 flex-shrink-0">Vão receber</span>
+                <span class="text-right min-w-0">
+                    <span class="block font-semibold text-slate-900 tabular-nums" id="wizSendConfirmRecip">—</span>
+                    <span class="block text-xs text-slate-500" id="wizSendConfirmRecipNota"></span>
+                </span>
+            </div>
         </div>
         <p class="text-xs text-slate-400 mb-5">Esta acção irá enviar ou agendar emails reais. Não é possível desfazer após o início do envio.</p>
         <div class="flex gap-3">

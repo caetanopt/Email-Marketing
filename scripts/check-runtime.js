@@ -98,6 +98,28 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['a confirmação de envio diz o que interessa', `const fs=require('fs');
+    // Mostrava o nome interno da campanha (cortado a 200px) e a soma das
+    // listas com o ficheiro. A soma conta duas vezes quem está nas duas
+    // origens e inclui quem não vai receber: num caso real deste mês eram
+    // 1985 no ecrã e 1161 a receber. É o último ecrã antes do irreversível.
+    const h=fs.readFileSync('email.html','utf8');
+    for(const id of ['wizSendConfirmFromName','wizSendConfirmFromEmail','wizSendConfirmSubject'])
+      if(!h.includes('id="'+id+'"'))
+        throw new Error('a confirmação tem de mostrar '+id+' — é o que não se corrige depois de sair');
+    if(h.includes('id="wizSendConfirmName"'))
+      throw new Error('o nome interno da campanha voltou à confirmação: vinha cortado e não é o que sai para as pessoas');
+    if(!/function _wizConfirmDestinatarios/.test(h))
+      throw new Error('falta o cálculo de quem vai mesmo receber na confirmação');
+    const f=h.slice(h.indexOf('function _wizConfirmDestinatarios'), h.indexOf('async function _wizDoSubmitStep4'));
+    if(!/r\\.vao_receber/.test(f))
+      throw new Error('a confirmação tem de mostrar vao_receber, não a soma das listas com o ficheiro');
+    if(!/fora_estado/.test(f)||!/fora_supressao/.test(f))
+      throw new Error('quem fica de fora tem de ser dito, senão o número parece uma perda inexplicada');
+    // Enquanto a contagem não chega, não se pode afirmar um número que se sabe
+    // estar inflacionado.
+    if(!/a confirmar quantos vão mesmo receber/.test(f))
+      throw new Error('sem aviso de "a confirmar", o número provisório passa por definitivo')`],
   ['o rascunho nunca perde a identidade', `const fs=require('fs');
     // Campanhas duplicadas com o mesmo nome e muito tempo de intervalo. O
     // rascunho guarda o conteúdo em localStorage e é restaurado ao voltar ao
