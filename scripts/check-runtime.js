@@ -136,7 +136,24 @@ const provas = [
     // Sem isto, a CDN serve os ícones com a cache curta por omissão.
     const vj=JSON.parse(fs.readFileSync('vercel.json','utf8'));
     if(!(vj.headers||[]).some(h=>/social/.test(h.source||'')&&(h.headers||[]).some(x=>/immutable/.test(x.value||''))))
-      throw new Error('falta a regra de cache para /social/ no vercel.json')`],
+      throw new Error('falta a regra de cache para /social/ no vercel.json');
+    // O endereço do ícone está gravado dentro do HTML de cada campanha, por
+    // isso trocar o conjunto não corrige nada do que já existe: sem esta
+    // reescrita, as campanhas antigas continuam a mandar os ícones velhos, e
+    // as que tenham TikTok mandam um 404.
+    const {updateSocialIcons}=require(process.cwd()+'/lib/emailHtml');
+    const antigo='https://www.mailjet.com/images/theme/v1/icons/ico-social/tiktok.png';
+    const refeito=updateSocialIcons('<img src="'+antigo+'">','https://emkt.caetano.pt');
+    if(!refeito.includes('/social/tiktok.png')||refeito.includes('mailjet'))
+      throw new Error('a reescrita dos ícones gravados deixou de funcionar');
+    if(updateSocialIcons(refeito)!==refeito)
+      throw new Error('a reescrita tem de ser idempotente — corre em cada envio');
+    const naoNossa='https://www.mailjet.com/images/theme/v1/icons/ico-social/pinterest.png';
+    if(!updateSocialIcons('<img src="'+naoNossa+'">').includes(naoNossa))
+      throw new Error('uma rede sem ícone nosso não pode ser reescrita para um 404');
+    for(const f of ['api/track.js','lib/sendCampaign.js','api/campaigns/[id].js'])
+      if(!/updateSocialIcons\\(stripEditorMetadata/.test(fs.readFileSync(f,'utf8')))
+        throw new Error(f+' monta o email sem reescrever os ícones gravados')`],
   ['abrir a pré-visualização abre mesmo', `const fs=require('fs');
     // window.open chamado com 'noopener' devolve SEMPRE null, por
     // especificação. O código guardava esse null, dava-o por janela fechada, e

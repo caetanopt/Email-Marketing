@@ -8,7 +8,7 @@ const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sen
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { semRodapeLegal, gravarRodapeLegal, bloquearCancelados } = require('../../lib/campanhas');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
-const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle } = require('../../lib/emailHtml');
+const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle, updateSocialIcons } = require('../../lib/emailHtml');
 const { buildRawEmail, listUnsubscribeHeaders } = require('../../lib/rawEmail');
 
 const APP_URL = process.env.APP_URL || 'https://emkt.caetano.pt';
@@ -741,7 +741,7 @@ module.exports = async function handler(req, res) {
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
               // Fora o marcador dos blocos do editor: pertence à base de
               // dados, não ao email enviado.
-              const rawContent = stripEditorMetadata(c.html_content || '');
+              const rawContent = updateSocialIcons(stripEditorMetadata(c.html_content || ''));
               if (rawContent.trimStart().startsWith('<mjml>')) {
                 console.warn(`Campaign ${id}: template stored as MJML — re-save to convert to HTML.`);
               }
@@ -1004,7 +1004,7 @@ module.exports = async function handler(req, res) {
           appUrl: APP_URL, campaignId: id, contactId: 0, token: trackToken(id, 0), utm: utmStrT,
         });
         const testVars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
-        let rawHtml = stripEditorMetadata(c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>');
+        let rawHtml = updateSocialIcons(stripEditorMetadata(c.html_content || '<p style="font-family:sans-serif;color:#334155">Sem conteúdo de template.</p>'));
         // Apply brand variables first (use function replacer to avoid $& interpolation issues)
         for (const [k, v] of Object.entries(testVars)) {
           const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
