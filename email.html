@@ -8627,6 +8627,9 @@ ${teSerializeBlocksComment(srcBlocks)}
         _wizClientKey = null;
         _editingCampaignId = null;
         _editingTemplateId = null;
+        // Campanha nova é ocasião nova: um nome que já foi avisado antes volta
+        // a ser avisado, porque entretanto pode ter aparecido a do colega.
+        _wizNomeAvisado.clear();
         teState.blocks = [];
         teState.selected = null;
         showScreen('campaignCreate');
@@ -8914,6 +8917,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (!subj)      { _setFieldError(document.getElementById('wizSubject'), false, 'Campo obrigatório'); return; }
             if (!fromName)  { _setFieldError(document.getElementById('wizFromName'), false, 'Campo obrigatório'); return; }
             if (!fromEmail || !_isValidEmail(fromEmail)) { _setFieldError(document.getElementById('wizFromEmail'), false, 'Email inválido'); return; }
+            // Um colega já começou esta campanha? Verifica-se aqui, ao sair do
+            // primeiro passo — antes de se construir o template, que é onde
+            // está o trabalho. Aconteceu com 53 minutos de diferença entre
+            // duas pessoas, e nenhuma soube da outra.
+            if (await _wizAvisarNomeRepetido(name)) return;   // a janela está aberta; ela decide
             wizShowStep(2); return;
         }
         if (_wizStep === 2) {
@@ -8955,6 +8963,63 @@ ${teSerializeBlocksComment(srcBlocks)}
             _wizDoSubmitStep4(); return;
         }
     }
+    // Aviso de campanha com o mesmo nome já começada por outra pessoa.
+    //
+    // Duas pessoas criaram a mesma campanha com 53 minutos de diferença. O
+    // servidor não pode deduplicar isso — duas pessoas com o mesmo nome de
+    // campanha podem querer coisas diferentes — mas pode dizer-se-lhes o que
+    // já lá está antes de duplicarem o trabalho.
+    //
+    // Não bloqueia: informa e deixa escolher. E não volta a avisar do mesmo
+    // nome na mesma sessão, senão passa a ser um obstáculo em vez de um aviso.
+    let _wizNomeAvisado = new Set();
+    async function _wizAvisarNomeRepetido(nome) {
+        const chave = String(nome || '').trim().toLowerCase();
+        if (!chave || chave.length < 3 || _wizNomeAvisado.has(chave)) return false;
+        if (!_currentBrand?.id) return false;
+        let campanhas = [];
+        try {
+            const r = await apiFetch(`/api/campaigns?brand_id=${_currentBrand.id}&action=same_name`
+                + `&name=${encodeURIComponent(nome)}&exclude=${_editingCampaignId || 0}`);
+            campanhas = r?.campaigns || [];
+        } catch (e) {
+            // Um aviso que falha não pode travar o trabalho.
+            console.warn('verificação de nome repetido:', e.message);
+            return false;
+        }
+        if (!campanhas.length) return false;
+        const c = campanhas[0];
+        const quem = c.created_by_name || c.created_by_email || 'outra pessoa';
+        const estado = { draft: 'rascunho', scheduled: 'agendada', sending: 'a enviar' }[c.status] || c.status;
+        const el = (id) => document.getElementById(id);
+        el('wizNomeDupQuem').textContent = quem;
+        el('wizNomeDupQuando').textContent = _fmtDateTime(c.created_at);
+        el('wizNomeDupEstado').textContent = estado;
+        el('wizNomeDupNome').textContent = c.name || nome;
+        el('wizNomeDupMais').textContent = campanhas.length > 1
+            ? `Há ${campanhas.length} campanhas com este nome; esta é a mais recente.` : '';
+        _wizNomeDupId = c.id;
+        _wizNomeAvisado.add(chave);
+        const m = el('wizNomeDupModal');
+        if (!m) return false;
+        m.classList.remove('hidden'); m.classList.add('flex');
+        return true;
+    }
+    let _wizNomeDupId = null;
+    function _wizNomeDupFechar() {
+        const m = document.getElementById('wizNomeDupModal');
+        if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+    // "Continuar": segue-se para o passo 2 como se o aviso não existisse. O
+    // nome fica na lista dos avisados, por isso não volta a aparecer.
+    function _wizNomeDupContinuar() { _wizNomeDupFechar(); wizShowStep(2); }
+    // "Abrir a que existe": abre a campanha do colega em vez de criar outra. O
+    // que estava no assistente não se perde — é um rascunho e continua lá.
+    function _wizNomeDupAbrir() {
+        _wizNomeDupFechar();
+        if (_wizNomeDupId) _editCampaignFromList(null, { id: _wizNomeDupId });
+    }
+
     // Quantas pessoas vão receber, na janela de confirmação.
     //
     // Mostrava-se a soma das listas com os contactos do ficheiro. Não é o
@@ -10475,8 +10540,10 @@ ${teSerializeBlocksComment(srcBlocks)}
         showScreen('campaignShow');
     }
 
-    async function _editCampaignFromList(idx) {
-        let c = _campaignsCache[idx];
+    // `campanha` permite abrir uma campanha que não está no cache da lista —
+    // é o caso do aviso de nome repetido, que só conhece o id.
+    async function _editCampaignFromList(idx, campanha) {
+        let c = campanha || _campaignsCache[idx];
         if (!c) return;
         try { c = await apiFetch(`/api/campaigns/${c.id}`); } catch (e) { showToast(e.message, 'error'); return; }
         _currentCampaign = c;
@@ -17898,6 +17965,35 @@ ${sections.join('\n\n')}
         <div class="flex gap-3">
             <button onclick="_wizSendConfirmClose()" class="flex-1 px-4 py-2.5 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Cancelar</button>
             <button id="wizSendConfirmBtn" onclick="_wizSendConfirmProceed()" class="flex-1 px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800"><span id="wizSendConfirmAction">Enviar agora</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Já existe uma campanha com este nome. Não bloqueia: informa e deixa
+     escolher. Apareceu porque duas pessoas criaram a mesma campanha com 53
+     minutos de diferença, cada uma sem saber da outra. -->
+<div id="wizNomeDupModal" class="hidden fixed inset-0 z-[80] bg-slate-900/70 items-center justify-center p-6" onclick="if(event.target===this)_wizNomeDupFechar()">
+    <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.73-3l-6.93-12a2 2 0 00-3.46 0l-6.93 12a2 2 0 001.73 3z"/></svg>
+            </div>
+            <div class="min-w-0">
+                <h3 class="text-base font-semibold text-slate-900">Já existe uma campanha com este nome</h3>
+                <p class="text-sm text-slate-400">Pode ser trabalho a ser feito duas vezes</p>
+            </div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-4 mb-4 space-y-2 text-sm">
+            <div class="font-medium text-slate-800 break-words" id="wizNomeDupNome">—</div>
+            <div class="flex justify-between gap-4"><span class="text-slate-500 flex-shrink-0">Criada por</span><span class="text-right text-slate-800 break-words" id="wizNomeDupQuem">—</span></div>
+            <div class="flex justify-between gap-4"><span class="text-slate-500 flex-shrink-0">Em</span><span class="text-right text-slate-800" id="wizNomeDupQuando">—</span></div>
+            <div class="flex justify-between gap-4"><span class="text-slate-500 flex-shrink-0">Estado</span><span class="text-right text-slate-800" id="wizNomeDupEstado">—</span></div>
+        </div>
+        <p class="text-xs text-slate-400 mb-4" id="wizNomeDupMais"></p>
+        <p class="text-xs text-slate-500 mb-5">Podes continuar e criar uma campanha nova — este aviso não volta a aparecer para este nome — ou abrir a que já existe e trabalhar nela.</p>
+        <div class="flex gap-3">
+            <button onclick="_wizNomeDupContinuar()" class="flex-1 px-4 py-2.5 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">Continuar e criar nova</button>
+            <button onclick="_wizNomeDupAbrir()" class="flex-1 px-4 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Abrir a que existe</button>
         </div>
     </div>
 </div>

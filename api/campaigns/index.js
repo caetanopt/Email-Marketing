@@ -262,6 +262,38 @@ module.exports = async function handler(req, res) {
   if (!await requireBrand(req, res, user.id, brand_id)) return;
 
   try {
+    // Já existe uma campanha com este nome nesta marca?
+    //
+    // Duas pessoas criaram a mesma campanha com 53 minutos de diferença, cada
+    // uma sem saber da outra. Não é um problema de duplicação — o servidor não
+    // pode assumir que duas pessoas a criar campanhas com o mesmo nome queriam
+    // a mesma coisa — mas é trabalho feito duas vezes que ninguém viu a tempo.
+    // Isto só informa: quem chama decide o que fazer.
+    //
+    // Só rascunhos, agendadas e em envio: uma campanha já enviada é histórico
+    // e repetir o nome é legítimo (a newsletter de todos os meses chama-se o
+    // mesmo).
+    if (action === 'same_name' && req.method === 'GET') {
+      const nome = String(req.query.name || '').trim();
+      if (nome.length < 3) return res.status(200).json({ campaigns: [] });
+      const excluir = parseInt(req.query.exclude, 10) || 0;
+      const rows = await query(
+        `SELECT c.id, c.name, c.status::text AS status, c.created_at, u.email AS created_by_email, u.name AS created_by_name
+         FROM campaigns c
+         LEFT JOIN users u ON u.id = c.created_by
+         WHERE c.brand_id = $1
+           AND lower(btrim(c.name)) = lower(btrim($2))
+           AND c.status IN ('draft','scheduled','sending')
+           -- A campanha que está a ser editada não se avisa a si mesma. Sem
+           -- nada a excluir vem 0, que nenhum id é.
+           AND c.id <> $3
+         ORDER BY c.created_at DESC
+         LIMIT 5`,
+        [brand_id, nome, excluir]
+      );
+      return res.status(200).json({ campaigns: rows });
+    }
+
     if (action === 'dashboard' && req.method === 'GET') {
       const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || '30d'] || 30;
       const sinceParams = [brand_id, days];

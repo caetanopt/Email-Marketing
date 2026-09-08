@@ -98,6 +98,33 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['avisa quando um colega já começou a campanha', `const fs=require('fs');
+    // Duas pessoas criaram a mesma campanha com 53 minutos de diferença, cada
+    // uma sem saber da outra. Não é deduplicação — o servidor não pode assumir
+    // que dois nomes iguais são a mesma intenção — é só dizer o que já lá está
+    // antes de o trabalho ser feito duas vezes.
+    const api=fs.readFileSync('api/campaigns/index.js','utf8');
+    const i=api.indexOf("action === 'same_name'");
+    if(i<0)throw new Error('falta a verificação de campanha com o mesmo nome');
+    const q=api.slice(i, i+1800);
+    if(!/lower\\(btrim\\(c\\.name\\)\\) = lower\\(btrim\\(\\$2\\)\\)/.test(q))
+      throw new Error('a comparação do nome tem de ignorar maiúsculas e espaços, senão passa ao lado do caso óbvio');
+    if(!/status IN \\('draft','scheduled','sending'\\)/.test(q))
+      throw new Error('uma campanha já enviada é histórico: repetir o nome é legítimo e não pode gerar aviso');
+    if(!/c\\.id <> \\$3/.test(q))
+      throw new Error('a campanha em edição avisava-se a si mesma');
+    if(!/c\\.brand_id = \\$1/.test(q))
+      throw new Error('o aviso não pode atravessar marcas');
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/_wizAvisarNomeRepetido/.test(h))throw new Error('o assistente deixou de verificar o nome');
+    const f=h.slice(h.indexOf('async function _wizAvisarNomeRepetido'), h.indexOf('let _wizNomeDupId'));
+    // Um aviso que falha ou que insiste passa a ser um obstáculo.
+    if(!/console\\.warn\\('verificação de nome repetido/.test(f)||!/return false;/.test(f))
+      throw new Error('uma falha na verificação tem de deixar o trabalho seguir');
+    if(!/_wizNomeAvisado\\.has\\(chave\\)/.test(f))
+      throw new Error('sem memória do que já foi avisado, o aviso repete-se a cada passagem');
+    if(!/if \\(await _wizAvisarNomeRepetido\\(name\\)\\) return;/.test(h))
+      throw new Error('o aviso tem de correr ao sair do passo 1, antes de se construir o template')`],
   ['a confirmação de envio diz o que interessa', `const fs=require('fs');
     // Mostrava o nome interno da campanha (cortado a 200px) e a soma das
     // listas com o ficheiro. A soma conta duas vezes quem está nas duas
