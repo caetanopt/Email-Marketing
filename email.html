@@ -9709,32 +9709,108 @@ ${teSerializeBlocksComment(srcBlocks)}
         wizUpdateListsTotal();
     }
 
+    // Este painel mostrava a lista dos endereços importados. Com 9 223
+    // contactos isso não se lê nem se confere — e o que interessa saber ali
+    // não é quais são, é quantas pessoas vão receber e o que é aquela base de
+    // dados. Passou a mostrar as duas coisas.
+    function _wizListasEscolhidas() {
+        return Array.from(document.querySelectorAll('#wizListsContainer input[type="checkbox"]:checked'))
+            .map(cb => cb.dataset.listId).filter(Boolean);
+    }
+
+    let _wizResumo = null;         // último resumo devolvido pelo servidor
+    let _wizResumoTimer = null;
+    let _wizResumoPedido = 0;      // para descartar respostas fora de ordem
+
+    // A intersecção entre o ficheiro e as listas só a base de dados sabe.
+    // Adiada meio segundo porque isto corre a cada clique numa lista.
+    function _wizPedirResumo() {
+        clearTimeout(_wizResumoTimer);
+        _wizResumoTimer = setTimeout(async () => {
+            if (!_editingCampaignId) return;
+            const pedido = ++_wizResumoPedido;
+            const ids = _wizListasEscolhidas().join(',');
+            try {
+                const r = await apiFetch(`/api/campaigns/${_editingCampaignId}?action=recipient_summary&list_ids=${ids}`);
+                if (pedido !== _wizResumoPedido) return;   // já há um mais recente
+                _wizResumo = r;
+                _wizRenderDirectPanel();
+            } catch (e) { console.warn('resumo de destinatários:', e.message); }
+        }, 500);
+    }
+
     function _wizRenderDirectPanel() {
         const panel = document.getElementById('wizDirectPanel');
         const list  = document.getElementById('wizDirectPanelList');
         const countEl = document.getElementById('wizDirectPanelCount');
         if (!panel || !list) return;
-        const allContacts = [..._wizExistingContacts, ..._wizDirectContacts];
-        if (!allContacts.length && !_wizExistingDirectCount) { panel.classList.add('hidden'); return; }
+        const doFicheiro = _wizExistingDirectCount + _wizDirectContactIds.length;
+        const temListas = _wizListasEscolhidas().length > 0;
+        if (!doFicheiro && !temListas) { panel.classList.add('hidden'); _wizResumo = null; return; }
         panel.classList.remove('hidden');
-        const total = _wizExistingDirectCount + _wizDirectContactIds.length || allContacts.length;
-        if (countEl) countEl.textContent = total.toLocaleString('pt-PT');
-        if (!allContacts.length) {
-            list.innerHTML = `<div class="px-4 py-3 text-xs text-slate-400 italic">A carregar…</div>`;
+
+        const r = _wizResumo;
+        // useGrouping:'always' porque em pt-PT os números de quatro dígitos
+        // não levam separador por omissão: numa coluna alinhada, "9223" ao
+        // lado de "133 751" lê-se como se fosse de outra grandeza.
+        const n = (x) => Number(x || 0).toLocaleString('pt-PT', { useGrouping: 'always' });
+        if (countEl) countEl.textContent = n(r ? r.vao_receber : doFicheiro);
+
+        if (!r) {
+            list.innerHTML = `<div class="px-4 py-6 text-xs text-slate-400 italic text-center">A contar destinatários…</div>`;
             return;
         }
-        list.innerHTML = allContacts.map(c => {
-            const initial = (c.name || c.email || '?')[0].toUpperCase();
-            return `<div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-slate-100 last:border-0">
-                <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                    <span class="text-xs font-semibold text-indigo-600">${escHtml(initial)}</span>
-                </div>
-                <div class="min-w-0">
-                    ${c.name ? `<p class="text-xs font-medium text-slate-900 truncate">${escHtml(c.name)}</p>` : ''}
-                    <p class="text-xs text-slate-500 truncate">${escHtml(c.email)}</p>
-                </div>
+
+        const linha = (rot, val, cor = 'text-slate-900', nota = '') => `
+            <div class="flex items-baseline justify-between px-4 py-2">
+                <span class="text-xs text-slate-500">${rot}${nota ? `<span class="block text-[10px] text-slate-400 leading-tight">${nota}</span>` : ''}</span>
+                <span class="text-sm font-semibold ${cor} tabular-nums">${n(val)}</span>
             </div>`;
-        }).join('') + (total > allContacts.length ? `<div class="px-4 py-2.5 text-xs text-slate-400 italic text-center">… e mais ${(total - allContacts.length).toLocaleString('pt-PT')} contactos</div>` : '');
+
+        // O número grande é o que vai sair, não a soma das origens: quem está
+        // numa lista e no ficheiro é uma pessoa, e quem cancelou não recebe.
+        let html = `
+            <div class="px-4 pt-4 pb-3 border-b border-slate-100">
+                <p class="text-3xl font-bold text-slate-900 tabular-nums leading-none">${n(r.vao_receber)}</p>
+                <p class="text-xs text-slate-500 mt-1">pessoas vão receber esta campanha</p>
+            </div>
+            <div class="py-1 border-b border-slate-100">
+                ${r.do_ficheiro ? linha('Do ficheiro importado', r.do_ficheiro) : ''}
+                ${r.das_listas  ? linha('Das listas seleccionadas', r.das_listas) : ''}
+                ${r.nos_dois    ? linha('Nas duas origens', r.nos_dois, 'text-amber-600', 'contadas uma vez só') : ''}
+            </div>`;
+
+        if (r.fora_estado || r.fora_supressao) {
+            html += `<div class="py-1 border-b border-slate-100">
+                <p class="px-4 pt-2 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Não recebem</p>
+                ${r.fora_estado    ? linha('Cancelaram ou foram devolvidos', r.fora_estado, 'text-slate-400') : ''}
+                ${r.fora_supressao ? linha('Na lista de supressão', r.fora_supressao, 'text-slate-400') : ''}
+            </div>`;
+        }
+
+        // Domínios: diz num relance se a base de dados é o que se pensava. Um
+        // ficheiro que devia ser interno com 40% de gmail vê-se aqui, antes de
+        // enviar. E a fatia de Gmail/Outlook/Yahoo é a que manda nas regras de
+        // remetente em massa.
+        const doms = r.dominios || [];
+        if (doms.length) {
+            const base = doms.reduce((s, d) => s + d.quantos, 0) || 1;
+            html += `<div class="px-4 pt-3 pb-4">
+                <p class="pb-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Domínios mais frequentes</p>
+                ${doms.map(d => {
+                    const pct = d.quantos / base * 100;
+                    return `<div class="mb-2">
+                        <div class="flex items-baseline justify-between gap-2">
+                            <span class="text-xs text-slate-600 truncate" title="${escHtml(d.dominio || '')}">${escHtml(d.dominio || '—')}</span>
+                            <span class="text-xs text-slate-400 tabular-nums flex-shrink-0">${n(d.quantos)} · ${pct.toFixed(pct < 1 ? 1 : 0)}%</span>
+                        </div>
+                        <div class="mt-1 w-full bg-slate-100 rounded-full h-1"><div class="bg-indigo-400 h-1 rounded-full" style="width:${Math.max(2, pct).toFixed(1)}%"></div></div>
+                    </div>`;
+                }).join('')}
+            </div>`;
+        }
+
+        list.innerHTML = html;
     }
 
     // Garante que a campanha existe antes de lhe associar qualquer coisa.
@@ -10122,6 +10198,11 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (totalBar) totalBar.classList.toggle('hidden', total === 0);
         if (totalCount) totalCount.textContent = total.toLocaleString('pt-PT') + ' contactos';
         if (err) err.classList.add('hidden');
+        // Esta soma conta duas vezes quem está numa lista e no ficheiro, e
+        // inclui quem não vai receber. O painel ao lado diz o número
+        // verdadeiro, e é aqui que se pede — é aqui que ele muda.
+        _wizPedirResumo();
+        _wizRenderDirectPanel();
     }
 
     let _currentCampaign = null;
@@ -10263,6 +10344,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                 _wizExistingDirectCount = total || _wizExistingContacts.length;
                 _wizUpdateDirectNotice();
                 _wizRenderDirectPanel();
+                _wizPedirResumo();
             }).catch(() => {});
         }
         // Pre-fill step 1 fields
@@ -10342,6 +10424,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     _wizExistingDirectCount = total || _wizExistingContacts.length;
                     _wizUpdateDirectNotice();
                     _wizRenderDirectPanel();
+                    _wizPedirResumo();
                 }).catch(() => {});
             }
             const sv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
@@ -14131,10 +14214,10 @@ ${sections.join('\n\n')}
                         <!-- Coluna direita: contactos importados -->
                         <div id="wizDirectPanel" class="hidden w-96 flex-shrink-0 bg-white border border-slate-200 rounded-xl overflow-hidden sticky top-4">
                             <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                                <h3 class="text-sm font-semibold text-slate-900">Contactos importados</h3>
+                                <h3 class="text-sm font-semibold text-slate-900">Quem vai receber</h3>
                                 <span id="wizDirectPanelCount" class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">0</span>
                             </div>
-                            <div id="wizDirectPanelList" class="max-h-[32rem] overflow-y-auto"></div>
+                            <div id="wizDirectPanelList" class="max-h-[36rem] overflow-y-auto"></div>
                         </div>
 
                       </div><!-- /flex row -->

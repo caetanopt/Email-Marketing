@@ -98,6 +98,32 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['o número de destinatários é de pessoas', `const fs=require('fs');
+    // O ecrã somava os contactos do ficheiro aos das listas. Quem está numa
+    // lista E no ficheiro contava duas vezes, e quem cancelou contava como
+    // quem vai receber. Num envio de 140 mil a diferença são milhares, e só
+    // se via depois de enviar.
+    const api=fs.readFileSync('api/campaigns/[id].js','utf8');
+    const i=api.indexOf("action === 'recipient_summary'");
+    if(i<0)throw new Error('falta o resumo de destinatários');
+    const q=api.slice(i, api.indexOf("get_direct_recipients", i));
+    if(!/BOOL_OR\\(f\\)/.test(q)||!/UNION ALL/.test(q))
+      throw new Error('as duas origens têm de ser unidas por contacto, senão a intersecção conta duas vezes');
+    if(!/nos_dois/.test(q))
+      throw new Error('a sobreposição entre ficheiro e listas tem de ser dita — é o número que ninguém vê');
+    if(!/vao_receber/.test(q)||!/estado = 'active' AND NOT suprimida/.test(q))
+      throw new Error('quem vai receber tem de excluir quem cancelou e quem está na supressão');
+    // Um EXISTS correlacionado dentro de cada contagem é uma consulta por
+    // contacto: com a lista Marketing são 130 mil.
+    if(/EXISTS \\(SELECT 1 FROM suppression/.test(q))
+      throw new Error('a supressão tem de entrar como conjunto (IN), não como EXISTS por linha');
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/_wizPedirResumo/.test(h))
+      throw new Error('o painel tem de pedir o resumo ao servidor — a intersecção não se calcula no browser');
+    if(!/_wizResumoTimer/.test(h))
+      throw new Error('sem espera, cada clique numa lista dispara uma consulta a 130 mil contactos');
+    if(!/pedido !== _wizResumoPedido/.test(h))
+      throw new Error('respostas fora de ordem punham no ecrã o resumo de outra selecção')`],
   ['o motivo de exclusão é o verdadeiro', `const fs=require('fs');
     // Um endereço recusado na gravação (supressão, inválido, repetido) nunca
     // chega a existir como contacto, por isso o passo seguinte não o encontra

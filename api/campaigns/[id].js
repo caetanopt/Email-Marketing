@@ -81,6 +81,78 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ token: previewToken(id), url: previewUrl(appUrl, id) });
     }
 
+    // Quem vai receber isto, a sério.
+    //
+    // O ecrã dos destinatários somava os contactos do ficheiro aos das listas
+    // e mostrava o resultado. Isso não é o número de pessoas: quem está numa
+    // lista E no ficheiro era contado duas vezes, e quem cancelou ou está na
+    // supressão era contado como se fosse receber. A diferença chega a ser de
+    // milhares, e só aparecia depois do envio.
+    //
+    // Calculado aqui porque só a base de dados sabe a intersecção. Uma
+    // consulta para os números, outra para os domínios.
+    if (req.method === 'GET' && action === 'recipient_summary') {
+      const listIds = String(req.query.list_ids || '')
+        .split(',').map(n => parseInt(n, 10)).filter(Boolean);
+      // As duas consultas partilham a mesma base: os contactos desta
+      // campanha, vindos do ficheiro (campaign_recipients) ou das listas
+      // seleccionadas, cada um uma vez só e a saber de onde veio.
+      const BASE = `
+        WITH directos AS (
+          SELECT DISTINCT contact_id AS id FROM campaign_recipients
+          WHERE campaign_id = $1 AND contact_id IS NOT NULL
+        ),
+        das_listas AS (
+          SELECT DISTINCT contact_id AS id FROM list_members
+          WHERE list_id = ANY($2::int[])
+        ),
+        juntos AS (
+          SELECT id, BOOL_OR(f) AS no_ficheiro, BOOL_OR(l) AS na_lista
+          FROM (
+            SELECT id, TRUE AS f, FALSE AS l FROM directos
+            UNION ALL
+            SELECT id, FALSE AS f, TRUE AS l FROM das_listas
+          ) t
+          GROUP BY id
+        ),
+        -- A supressão entra como dois conjuntos, não como uma condição por
+        -- linha: com listas de 130 mil contactos, um EXISTS correlacionado
+        -- dentro de cada contagem é uma consulta por contacto.
+        sup_emails AS (SELECT LOWER(email) AS email FROM suppression WHERE email NOT LIKE '@%'),
+        sup_dominios AS (SELECT LOWER(email) AS dominio FROM suppression WHERE email LIKE '@%'),
+        pessoas AS (
+          SELECT j.no_ficheiro, j.na_lista,
+                 c.status::text AS estado,
+                 split_part(LOWER(c.email), '@', 2) AS dominio,
+                 (LOWER(c.email) IN (SELECT email FROM sup_emails)
+                  OR '@'||split_part(LOWER(c.email), '@', 2) IN (SELECT dominio FROM sup_dominios)) AS suprimida
+          FROM juntos j JOIN contacts c ON c.id = j.id
+        )`;
+      const [nums] = await query(
+        `${BASE}
+         SELECT COUNT(*)::int                                                          AS unicos,
+                COUNT(*) FILTER (WHERE no_ficheiro)::int                               AS do_ficheiro,
+                COUNT(*) FILTER (WHERE na_lista)::int                                   AS das_listas,
+                COUNT(*) FILTER (WHERE no_ficheiro AND na_lista)::int                   AS nos_dois,
+                COUNT(*) FILTER (WHERE estado = 'active' AND NOT suprimida)::int        AS vao_receber,
+                COUNT(*) FILTER (WHERE estado <> 'active')::int                         AS fora_estado,
+                COUNT(*) FILTER (WHERE estado = 'active' AND suprimida)::int            AS fora_supressao
+         FROM pessoas`,
+        [id, listIds]
+      );
+      const dominios = await query(
+        `${BASE}
+         SELECT dominio, COUNT(*)::int AS quantos
+         FROM pessoas
+         WHERE estado = 'active' AND NOT suprimida
+         GROUP BY dominio
+         ORDER BY COUNT(*) DESC, dominio
+         LIMIT 10`,
+        [id, listIds]
+      );
+      return res.status(200).json({ ...(nums || {}), dominios });
+    }
+
     if (req.method === 'GET' && action === 'get_direct_recipients') {
       const [{ total }] = await query(
         `SELECT COUNT(*)::int AS total FROM campaign_recipients WHERE campaign_id=$1`, [id]
