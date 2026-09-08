@@ -116,7 +116,13 @@ const provas = [
     if(!/jaExplicados/.test(h))
       throw new Error('sem isto o mesmo endereço aparece duas vezes no CSV, com duas razões diferentes');
     if(!/r\\.excluded\\.filter\\(d => !jaExplicados\\.has/.test(h))
-      throw new Error('o nao_gravado tem de ser descartado para quem já tem razão verdadeira')`],
+      throw new Error('o nao_gravado tem de ser descartado para quem já tem razão verdadeira');
+    // Dois buracos por onde uma linha desaparecia sem ser contada em nada:
+    // voltar do upsert sem id, e a transacção rebentar.
+    if(!/todos\\.filter\\(r => !r\\.id\\)/.test(c))
+      throw new Error('uma linha que volte do upsert sem id não pode desaparecer sem ser contada');
+    if(!/reason: 'falha_ao_gravar'/.test(c))
+      throw new Error('um bloco que rebente tem de nomear os endereços que ficaram por gravar')`],
   ['taxas de abertura e clique honestas', `const fs=require('fs');
     // Duas maneiras fáceis de inflacionar estes números sem ninguém reparar:
     // contar eventos em vez de pessoas (quem reabre o email conta cinco

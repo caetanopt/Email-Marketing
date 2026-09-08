@@ -193,7 +193,7 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
         // O ficheiro pode corrigir a data de subscrição e o estado; sem
         // valor, mantém-se o que já estava. O estado do ficheiro nunca
         // reactiva quem cancelou ou foi devolvido/suprimido (respeitarSaida).
-        const inserted = (await upsertContactos(q, validRows.map(c => ({
+        const todos = await upsertContactos(q, validRows.map(c => ({
           email: c.email,
           name: c.name || null,
           phone: c.phone || null,
@@ -201,8 +201,18 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
           source: 'import',
           status: normalizeStatus(c.status),
           created_at: normalizeSubscribedAt(c.subscribed_at),
-        })), { ocultarNovos })).filter(r => r.id);
+        })), { ocultarNovos });
+        const inserted = todos.filter(r => r.id);
         imported += inserted.length;
+        // Uma linha que volte do upsert sem id não era contada em nada: não
+        // entrava no imported, não era skipped, não era failed. Sumia. Depois
+        // aparecia como "não chegou a ser gravado" no passo seguinte, sem
+        // ninguém saber porquê — foi este buraco que deu esse rótulo a um
+        // endereço que não estava em supressão nenhuma. Agora tem nome.
+        todos.filter(r => !r.id).forEach(r => {
+          skipped++;
+          skipped_detail.push({ email: r.email, reason: 'nao_gravado' });
+        });
 
         if (listId && inserted.length) {
           // added_at leva a mesma data do ficheiro, quando existe: é o campo
@@ -237,6 +247,12 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
       console.error('processBatch error:', err);
       failed += validRows.length;
       imported = 0;
+      // A transacção é toda ou nada: se rebentou, nenhum destes ficou
+      // gravado. Vão todos nomeados, com a mensagem do erro — sem isto o
+      // utilizador via um número e não tinha como saber o que aconteceu nem
+      // que basta repetir a importação.
+      const motivo = String(err && err.message || err || '').slice(0, 200);
+      validRows.forEach(c => skipped_detail.push({ email: c.email, reason: 'falha_ao_gravar', detalhe: motivo }));
     }
   }
 

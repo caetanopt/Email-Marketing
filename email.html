@@ -9649,7 +9649,8 @@ ${teSerializeBlocksComment(srcBlocks)}
         suppressed: 'suprimido',
         suppression: 'na lista de supressão',
         suppression_dominio: 'domínio inteiro na lista de supressão',
-        nao_gravado: 'não chegou a ser gravado (falha ao gravar)',
+        nao_gravado: 'não chegou a ser gravado',
+        falha_ao_gravar: 'erro ao gravar — repetir a importação recupera-o',
         repetido: 'repetido no ficheiro',
         sem_email: 'linha sem email utilizável',
         ja_na_campanha: 'já estava nesta campanha',
@@ -9662,7 +9663,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             f.email || '',
             _WIZ_MOTIVO[f.reason] || f.reason || '',
             f.reason || '',
-            f.dominio || '',
+            f.dominio || f.detalhe || '',
         ]));
         const csv = linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
         const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
