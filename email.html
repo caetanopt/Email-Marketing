@@ -9924,6 +9924,20 @@ ${teSerializeBlocksComment(srcBlocks)}
                     method: 'POST',
                     body: JSON.stringify({ contacts: bloco, one_off: true }),
                 });
+                // Antes de contar o que quer que seja: um bloco cuja transacção rebenta
+                // failed:N — não é um erro de rede, é uma resposta normal a
+                // dizer que não gravou nada. Não era lido em lado nenhum: o
+                // bloco não era repetido, não aparecia como falha, e a única
+                // pista que sobrava eram os endereços a surgirem depois como
+                // "não chegou a ser gravado", sem número e sem aviso.
+                //
+                // Lançar aqui põe-no no mesmo caminho de uma falha de rede:
+                // três tentativas, e se nenhuma pegar entra na contagem de
+                // falhas com o aviso de que repetir a importação recupera.
+                if (grav?.failed) {
+                    const det = (grav.skipped_detail || []).find(d => d.reason === 'falha_ao_gravar');
+                    throw new Error(`o servidor não gravou ${grav.failed} contacto(s) deste bloco${det?.detalhe ? ': ' + det.detalhe : ''}`);
+                }
                 fora.invalidos  += grav?.skipped_invalid || 0;
                 fora.suprimidos += grav?.skipped_suppressed || 0;
                 fora.repetidos  += grav?.skipped_duplicate || 0;
@@ -10071,7 +10085,16 @@ ${teSerializeBlocksComment(srcBlocks)}
             } else if (erroAoAssociar) {
                 // Não ficou gravado: é preciso dizê-lo, senão o utilizador sai
                 // do ecrã convencido de que a importação está feita.
-                showToast(`${imported} contacto(s) importado(s), mas NÃO ficaram associados à campanha: ${erroAoAssociar.message}. Tenta importar outra vez.`, 'error');
+                //
+                // Duas coisas diferentes, e a mensagem tem de as distinguir:
+                // gravar e não conseguir associar, ou não ter gravado nada. A
+                // segunda dizia "importados, mas não associados" com o número
+                // a zero, o que não fazia sentido nenhum.
+                const msgFalha = imported === 0
+                    ? `Nada foi gravado — ${failed || rows.length} contacto(s) ficaram por importar: ${erroAoAssociar.message}. Repete a importação do mesmo ficheiro: os que já entraram não são duplicados.`
+                    : `${imported} contacto(s) importado(s), mas NÃO ficaram associados à campanha: ${erroAoAssociar.message}. Repete a importação do mesmo ficheiro: os que já entraram não são duplicados.`;
+                showToast(msgFalha, 'error');
+                _wizMostrarFora(msgFalha);
             } else {
                 showToast(`${imported} contacto(s) importado(s).${failed ? ` (${failed} falhas)` : ''}`);
             }

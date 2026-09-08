@@ -122,7 +122,15 @@ const provas = [
     if(!/todos\\.filter\\(r => !r\\.id\\)/.test(c))
       throw new Error('uma linha que volte do upsert sem id não pode desaparecer sem ser contada');
     if(!/reason: 'falha_ao_gravar'/.test(c))
-      throw new Error('um bloco que rebente tem de nomear os endereços que ficaram por gravar')`],
+      throw new Error('um bloco que rebente tem de nomear os endereços que ficaram por gravar');
+    // failed:N vem com HTTP 200 — não é erro de rede, é o servidor a dizer que
+    // não gravou. Se o browser não olhar para isso, o bloco não é repetido e o
+    // utilizador não é avisado: os endereços só reaparecem como nao_gravado.
+    if(!/if \\(grav\\?\\.failed\\) \\{/.test(h))
+      throw new Error('o browser tem de reagir ao failed do bulk_import, senão um bloco perdido passa em silêncio');
+    const tb=h.slice(h.indexOf('const tratarBloco'), h.indexOf('for (let i = 0; i < blocos.length'));
+    if(tb.indexOf('grav?.failed') > tb.indexOf('fora.invalidos'))
+      throw new Error('o failed tem de ser visto ANTES de somar contagens, senão a repetição do bloco conta tudo duas vezes')`],
   ['taxas de abertura e clique honestas', `const fs=require('fs');
     // Duas maneiras fáceis de inflacionar estes números sem ninguém reparar:
     // contar eventos em vez de pessoas (quem reabre o email conta cinco
