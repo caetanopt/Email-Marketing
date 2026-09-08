@@ -208,6 +208,30 @@ const provas = [
       throw new Error('sem memória do que já foi avisado, o aviso repete-se a cada passagem');
     if(!/if \\(await _wizAvisarNomeRepetido\\(name\\)\\) return;/.test(h))
       throw new Error('o aviso tem de correr ao sair do passo 1, antes de se construir o template')`],
+  ['o log de envio diz quem abriu', `const fs=require('fs');
+    const h=fs.readFileSync('email.html','utf8');
+    const api=fs.readFileSync('api/campaigns/[id].js','utf8');
+    // A abertura por destinatário vem do send_log, agregada numa CTE — não uma
+    // subconsulta por linha, que com 500 destinatários são 500 consultas.
+    const sl=api.slice(api.indexOf("action === 'send_log'"), api.indexOf('42P01'));
+    if(!/aberto_em/.test(sl)||!/clicado_em/.test(sl))
+      throw new Error('o send_log deixou de dizer se cada destinatário abriu');
+    if(!/WITH ev AS/.test(sl))
+      throw new Error('a abertura por destinatário tem de vir agregada, não por subconsulta por linha');
+    if(!/type IN \\('open', 'click'\\)/.test(sl))
+      throw new Error('só aberturas humanas: os open_auto ficam de fora, como nas taxas');
+    if(!/function _repAbriu/.test(h))throw new Error('falta a coluna Abriu no log de envio');
+    const f=h.slice(h.indexOf('function _repAbriu'), h.indexOf('function _renderReportLog'));
+    // Um travessão não é "não abriu": em quem não recebeu, a pergunta não se
+    // aplica, e dizer "não" apresentava uma falha de entrega como desinteresse.
+    if(!/r\\.status !== 'sent'/.test(f))
+      throw new Error('quem não recebeu não pode aparecer como "não abriu"');
+    if(!/nao_abriu/.test(h)||!/r\\.status === 'sent'/.test(h))
+      throw new Error('o filtro "não abriram" tem de contar só entre os entregues');
+    // O email aparecia duas vezes na mesma linha: a primeira linha era
+    // contact_name||email e a segunda o email, e sem nome dava o mesmo valor.
+    if(/escHtml\\(r\\.contact_name\\|\\|r\\.email\\)/.test(f + h.slice(h.indexOf('function _renderReportLog'))))
+      throw new Error('volta a repetir o email quando o contacto não tem nome')`],
   ['filtrar campanhas por mês usa a data que se vê', `const fs=require('fs');
     // A coluna "Data" da listagem mostra a do envio, ou a do agendamento, ou a
     // da criação. Filtrar por outra qualquer daria listas que não correspondem

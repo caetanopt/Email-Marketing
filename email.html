@@ -12472,7 +12472,7 @@ ${sections.join('\n\n')}
             if (hasErrors) _loadErrorLog(campaignId);
         } catch (e) {
             const tb = document.getElementById('repLogBody');
-            if (tb) tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-red-400">Erro ao carregar log: ${escHtml(e.message)}</td></tr>`;
+            if (tb) tb.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400">Erro ao carregar log: ${escHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -12513,6 +12513,26 @@ ${sections.join('\n\n')}
             if (tb) tb.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-center text-red-400">Erro: ${escHtml(e.message)}</td></tr>`;
         }
     }
+    // A coluna "Abriu" do log de envio.
+    //
+    // Só conta aberturas humanas: os eventos automáticos ficam guardados com
+    // outro tipo (open_auto) e não chegam aqui, como não entram nas taxas.
+    //
+    // Um travessão não é "não abriu": num destinatário que não recebeu (falhou,
+    // rejeitado, suprimido) a pergunta não se aplica, e dizer "não" seria
+    // apresentá-lo como desinteresse.
+    function _repAbriu(r) {
+        const hora = (d) => new Date(d).toLocaleString('pt-PT');
+        if (r.clicado_em) {
+            return `<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700" title="Abriu e clicou — primeiro clique em ${escHtml(hora(r.clicado_em))}">Clicou</span>`;
+        }
+        if (r.aberto_em) {
+            return `<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700" title="Primeira abertura em ${escHtml(hora(r.aberto_em))}">Abriu</span>`;
+        }
+        if (r.status !== 'sent') return '<span class="text-slate-300">—</span>';
+        return '<span class="text-[10px] text-slate-400">não</span>';
+    }
+
     function _renderReportLog() {
         const tb = document.getElementById('repLogBody');
         if (!tb) return;
@@ -12520,10 +12540,16 @@ ${sections.join('\n\n')}
         const q = (document.getElementById('repLogSearch')?.value || '').trim().toLowerCase();
         const pag = document.getElementById('repLogPagination');
         let rows = _repLogRecipients;
-        if (status) rows = rows.filter(r => r.status === status);
+        // O filtro serve dois eixos: o estado do envio e o que a pessoa fez.
+        // "Não abriram" conta só entre os que foram entregues — quem não
+        // recebeu não tinha como abrir, e apareceria como desinteresse.
+        if (status === 'abriu')          rows = rows.filter(r => r.aberto_em);
+        else if (status === 'clicou')    rows = rows.filter(r => r.clicado_em);
+        else if (status === 'nao_abriu') rows = rows.filter(r => !r.aberto_em && r.status === 'sent');
+        else if (status)                 rows = rows.filter(r => r.status === status);
         if (q) rows = rows.filter(r => (r.email||'').toLowerCase().includes(q) || (r.contact_name||'').toLowerCase().includes(q));
         if (!rows.length) {
-            tb.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Sem registos.</td></tr>`;
+            tb.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Sem registos.</td></tr>`;
             if (pag) pag.innerHTML = '';
             return;
         }
@@ -12546,8 +12572,9 @@ ${sections.join('\n\n')}
             const when = r.sent_at || r.attempted_at;
             const retryBadge = (r.retry_count > 0) ? ` <span class="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">${r.retry_count}×</span>` : '';
             return `<tr class="hover:bg-slate-50">
-                <td class="px-4 py-2"><p class="text-slate-900 font-medium">${escHtml(r.contact_name||r.email)}</p><p class="text-[10px] text-slate-400">${escHtml(r.email)}</p></td>
+                <td class="px-4 py-2"><p class="text-slate-900 font-medium">${escHtml(r.email)}</p>${r.contact_name ? `<p class="text-[10px] text-slate-400">${escHtml(r.contact_name)}</p>` : ''}</td>
                 <td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-medium ${bg}">${lbl}</span>${retryBadge}</td>
+                <td class="px-4 py-2">${_repAbriu(r)}</td>
                 <td class="px-4 py-2 text-slate-500">${when ? new Date(when).toLocaleString('pt-PT') : '—'}</td>
                 <td class="px-4 py-2 text-slate-500">${r.error_message ? `<span class="text-red-600" title="${escHtml(r.error_message)}">${escHtml(r.error_message.slice(0, 80))}${r.error_message.length>80?'…':''}</span>` : (r.message_id ? `<span class="text-[10px] font-mono text-slate-400" title="${escHtml(r.message_id)}">msg ${escHtml(r.message_id.slice(0,16))}…</span>` : '—')}</td>
             </tr>`;
@@ -14993,6 +15020,9 @@ ${sections.join('\n\n')}
                                 <option value="bounced">Rejeitados</option>
                                 <option value="retry">Retry</option>
                                 <option value="suppressed">Suprimidos</option>
+                                <option value="abriu">Abriram</option>
+                                <option value="nao_abriu">Não abriram</option>
+                                <option value="clicou">Clicaram</option>
                             </select>
                             <div class="relative">
                                 <input id="repLogSearch" type="search" placeholder="Pesquisar email…" oninput="_repLogRender(true);_srchToggleClear('repLogSearch')" class="pl-2 pr-6 py-1 border border-slate-200 rounded text-xs w-48">
@@ -15006,12 +15036,13 @@ ${sections.join('\n\n')}
                                 <tr class="border-b border-slate-200">
                                     <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Email</th>
                                     <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Estado</th>
+                                    <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Abriu</th>
                                     <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Quando</th>
                                     <th class="px-4 py-2 text-left font-medium text-slate-500 uppercase tracking-wide">Detalhe / Erro</th>
                                 </tr>
                             </thead>
                             <tbody id="repLogBody" class="divide-y divide-slate-50">
-                                <tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">A carregar…</td></tr>
+                                <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">A carregar…</td></tr>
                             </tbody>
                         </table>
                     </div>

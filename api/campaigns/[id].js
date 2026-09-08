@@ -178,11 +178,28 @@ module.exports = async function handler(req, res) {
       // Per-recipient status (sent/failed/bounced) for this campaign
       let recipients;
       try {
+        // A abertura e o clique de cada destinatário vêm agregados numa CTE e
+        // juntados por contacto — uma passagem pela tabela de eventos, em vez
+        // de uma subconsulta por linha.
+        //
+        // Só 'open' e 'click': os eventos automáticos (open_auto, click_auto)
+        // ficam de fora, como nas taxas. Um filtro de segurança a descarregar
+        // as imagens não é uma pessoa a abrir.
         recipients = await query(
-          `SELECT cr.email, cr.status, cr.message_id, cr.sent_at, cr.attempted_at, cr.error_message,
-                  ct.name AS contact_name, ct.id AS contact_id
+          `WITH ev AS (
+             SELECT contact_id,
+                    MIN(created_at) FILTER (WHERE type = 'open')  AS aberto_em,
+                    MIN(created_at) FILTER (WHERE type = 'click') AS clicado_em
+             FROM email_events
+             WHERE campaign_id = $1 AND type IN ('open', 'click') AND contact_id IS NOT NULL
+             GROUP BY contact_id
+           )
+           SELECT cr.email, cr.status, cr.message_id, cr.sent_at, cr.attempted_at, cr.error_message,
+                  ct.name AS contact_name, ct.id AS contact_id,
+                  ev.aberto_em, ev.clicado_em
            FROM campaign_recipients cr
            LEFT JOIN contacts ct ON ct.id = cr.contact_id
+           LEFT JOIN ev ON ev.contact_id = cr.contact_id
            WHERE cr.campaign_id = $1 ORDER BY COALESCE(cr.attempted_at, cr.sent_at) DESC NULLS LAST LIMIT 500`,
           [id]
         );
