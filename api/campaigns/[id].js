@@ -267,6 +267,28 @@ module.exports = async function handler(req, res) {
         const [spam] = await query(
           "SELECT COUNT(DISTINCT contact_id)::int AS total FROM email_events WHERE campaign_id=$1 AND type='spam'", [id]
         );
+        // Aberturas e cliques de agentes automáticos: filtros de segurança e a
+        // pré-visualização do Apple Mail. Não entram nas taxas — nunca
+        // entraram — mas passam a ser ditos.
+        //
+        // Um número removido em silêncio é uma armadilho: foi o que tornou
+        // indecidível, durante três dias, se as aberturas do Gmail estavam a
+        // ser contadas. À vista, é informação: se este valor for grande, a
+        // taxa da campanha tem uma explicação que não é o desempenho.
+        //
+        // Devolve zeros enquanto a migração 054 não correr (42P02/22P02 = os
+        // tipos ainda não existem no enum).
+        let automaticos = { opens: 0, clicks: 0 };
+        try {
+          const [auto] = await query(
+            `SELECT COUNT(DISTINCT contact_id) FILTER (WHERE type='open_auto')::int  AS opens,
+                    COUNT(DISTINCT contact_id) FILTER (WHERE type='click_auto')::int AS clicks
+             FROM email_events WHERE campaign_id=$1`, [id]
+          );
+          automaticos = auto || automaticos;
+        } catch (e) {
+          if (e.code !== '22P02' && e.code !== '42P02' && e.code !== '42704') throw e;
+        }
         const top_links = await query(
           `SELECT ee.url, COUNT(DISTINCT ee.contact_id)::int AS clicks, COUNT(DISTINCT ee.contact_id)::int AS unique_clicks
            FROM email_events ee
@@ -358,6 +380,9 @@ module.exports = async function handler(req, res) {
             ctor:       openUniq  ? ((clickUniq/openUniq)*100).toFixed(1)  : 0,
             unsubscribes: unsubs?.total||0,
             spam_complaints: spam?.total||0,
+            // Fora das taxas, como sempre estiveram — mas ditos.
+            automated_opens:  automaticos.opens  || 0,
+            automated_clicks: automaticos.clicks || 0,
           },
           top_links,
           timeseries,

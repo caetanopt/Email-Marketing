@@ -133,8 +133,8 @@ const provas = [
     // cliente de email que existe — numa campanha para consumidores, mais de
     // metade da lista. Deu 3,83% de aberturas com 0,94% de cliques.
     const s=fs.readFileSync('api/track.js','utf8');
-    const m=s.match(/const isMailBot = \\/([^/]+)\\/i/);
-    if(!m)throw new Error('não encontrei o filtro de agentes das aberturas');
+    const m=s.match(/const AGENTE_AUTOMATICO = \\/([^/]+)\\/i/);
+    if(!m)throw new Error('não encontrei o filtro de agentes');
     const re=new RegExp(m[1],'i');
     const contam={
       'Gmail':'Mozilla/5.0 (compatible; GoogleImageProxy; +http://www.google.com/mail/help/)',
@@ -152,10 +152,35 @@ const provas = [
     };
     for(const [nome,ua] of Object.entries(naoContam))
       if(!re.test(ua))throw new Error(nome+' descarrega as imagens sem ninguém abrir: contá-lo é inventar aberturas ('+ua+')');
-    // Os cliques nunca foram filtrados por agente. É essa assimetria que
-    // permite detectar o problema — a proporção clique/abertura sobe.
-    if(/isMailBot/.test(s.slice(s.indexOf("if (type === 'click')"), s.indexOf('// Pixel de abertura'))))
-      throw new Error('o clique passou a ser filtrado por agente: a comparação com as aberturas deixa de servir de sinal')`],
+    // Nada de descartar em silêncio. Um evento automático é gravado com o seu
+    // próprio tipo: as contagens (dezesseis consultas, todas a filtrar
+    // type='open'/'click') excluem-no sem serem tocadas, e a decisão de o
+    // excluir passa a ser reversível. Era esta ausência de registo que tornou
+    // indecidível, durante três dias, se as aberturas do Gmail contavam.
+    if(!/async function registarEvento/.test(s))
+      throw new Error('falta o registarEvento: sem ele volta-se a descartar eventos sem deixar rasto');
+    if(!/user_agent/.test(s))
+      throw new Error('o agente deixou de ser guardado — é o que permite responder por consulta em vez de por dedução');
+    if(!/\\$\\{tipo\\}_auto/.test(s))
+      throw new Error('o evento automático tem de ter um tipo próprio, não ser apagado');
+    if(!/slice\\(0, 200\\)/.test(s))
+      throw new Error('o agente tem de ser truncado: é dado pessoal e não precisa de estar inteiro');
+    // As duas pontas — abertura e clique — têm de passar pelo registarEvento.
+    const clique=s.slice(s.indexOf("if (type === 'click')"), s.indexOf('// Pixel de abertura'));
+    if(!/registarEvento/.test(clique))
+      throw new Error('o clique voltou a ser gravado sem classificação: uma campanha mostrava 2,46% quando o real era 0,48%');
+    if(!/res.status\\(302\\)/.test(clique))
+      throw new Error('o clique tem de continuar a reencaminhar, mesmo quando é automático');
+    const abertura=s.slice(s.indexOf('// Pixel de abertura'));
+    if(!/registarEvento/.test(abertura))
+      throw new Error('a abertura deixou de passar pelo registarEvento');
+    // E o relatório tem de dizer quantos foram, senão o número volta a ser
+    // removido em silêncio.
+    const rel=fs.readFileSync('api/campaigns/[id].js','utf8');
+    if(!/automated_opens/.test(rel)||!/open_auto/.test(rel))
+      throw new Error('o relatório deixou de dizer quantos eventos foram automáticos');
+    if(!/id="repAutoBox"/.test(fs.readFileSync('email.html','utf8')))
+      throw new Error('o ecrã do relatório deixou de mostrar os eventos automáticos')`],
   ['avisa quando um colega já começou a campanha', `const fs=require('fs');
     // Duas pessoas criaram a mesma campanha com 53 minutos de diferença, cada
     // uma sem saber da outra. Não é deduplicação — o servidor não pode assumir

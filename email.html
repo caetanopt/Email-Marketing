@@ -12369,6 +12369,16 @@ ${sections.join('\n\n')}
             _setText('repCTOR', (eng.ctor||0) + '%');
             _setText('repUnsubs', (eng.unsubscribes||0).toString());
             _setText('repSpam', (eng.spam_complaints||0).toString());
+            // Automáticos: só se mostra quando há, e diz-se de que tipo são.
+            const _ab = eng.automated_opens || 0, _acl = eng.automated_clicks || 0;
+            const _autoBox = document.getElementById('repAutoBox');
+            if (_autoBox) {
+                _autoBox.classList.toggle('hidden', !(_ab || _acl));
+                const partes = [];
+                if (_ab)  partes.push(`${_ab.toLocaleString('pt-PT')} abertura${_ab === 1 ? '' : 's'}`);
+                if (_acl) partes.push(`${_acl.toLocaleString('pt-PT')} clique${_acl === 1 ? '' : 's'}`);
+                _setText('repAutoTexto', partes.join(' e '));
+            }
             // Top links
             const linksEl = document.getElementById('repTopLinks');
             if (linksEl) {
@@ -14886,6 +14896,21 @@ ${sections.join('\n\n')}
                             <p id="repSpam" class="text-2xl font-bold text-red-600">—</p>
                             <p class="text-xs text-slate-500 mt-1">Marcado como spam</p>
                             <p class="text-xs text-slate-400 mt-0.5">reports</p>
+                        </div>
+                    </div>
+                    <!-- Aberturas e cliques de agentes automáticos. Nunca entraram
+                         nas taxas; passam a ser ditos. Um número removido em
+                         silêncio é uma armadilha — foi o que tornou indecidível,
+                         durante três dias, se as aberturas do Gmail contavam.
+                         Só aparece quando há algum. -->
+                    <div id="repAutoBox" class="hidden mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                        <div class="flex items-start gap-2">
+                            <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            <p class="text-xs text-slate-500 leading-relaxed">
+                                <span id="repAutoTexto" class="font-medium text-slate-700"></span>
+                                de agentes automáticos — filtros de segurança e a pré-visualização do Apple Mail, que descarregam o email sem ninguém o abrir.
+                                <span class="text-slate-400">Não entram nas taxas acima. Se este número for grande, a taxa desta campanha tem uma explicação que não é o desempenho.</span>
+                            </p>
                         </div>
                     </div>
                 </div>

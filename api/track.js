@@ -17,6 +17,61 @@ function trackToken(campaignId, contactId) {
     .digest('hex');
 }
 
+// Agentes que vão buscar as imagens e seguem os links SEM ninguém ter aberto
+// o email: filtros de segurança que analisam tudo o que entra, e a
+// pré-visualização do Apple Mail Privacy Protection, que descarrega na
+// entrega.
+//
+// O Gmail e o Yahoo NÃO estão aqui, e é deliberado: ao contrário dos outros,
+// só vão buscar a imagem quando a pessoa abre a mensagem. Servem-na do seu
+// proxy para proteger o IP de quem lê, mas o pedido é uma abertura verdadeira,
+// e é assim que toda a indústria a conta. Estiveram nesta lista e apagavam as
+// aberturas do maior cliente de email que existe.
+//
+// "mail-proxy" também saiu: era genérico e apanhava o Yahoo pelo endereço da
+// própria página de ajuda que ele põe no agente.
+const AGENTE_AUTOMATICO = /preview\.mail\.icloud|mimecast|proofpoint|barracuda|cloudmark|symantec.*email|messagelabs|sophos|ironport|postfix|spamassassin|url.*scanner|link.*scanner|phishtank|avira|kaspersky.*mail/i;
+
+// Nada é descartado: um evento automático é gravado com o seu próprio tipo.
+//
+// As consultas de métricas — são dezesseis — filtram todas por type='open' ou
+// type='click', por isso passam a excluir os automáticos sem serem tocadas.
+// Uma coluna booleana obrigaria a alterar as dezesseis e a nunca esquecer
+// nenhuma. E filtrar deixa de ser uma decisão irreversível tomada aqui: se um
+// filtro estiver errado, os números são recalculáveis em vez de perdidos.
+//
+// Enquanto a migração 054 não correr, os tipos novos não existem no enum e o
+// INSERT devolve 22P02. Nesse caso volta-se ao comportamento anterior — o
+// evento humano é gravado, o automático é descartado — para a contagem nunca
+// parar por causa de uma migração em falta.
+let tiposAutoDisponiveis = true;
+async function registarEvento({ campaignId, contactId, tipo, url = null, ua = '' }) {
+  const automatico = AGENTE_AUTOMATICO.test(ua);
+  const agente = String(ua || '').slice(0, 200) || null;
+  if (automatico && !tiposAutoDisponiveis) return { automatico, gravado: false };
+  const nome = automatico ? `${tipo}_auto` : tipo;
+  try {
+    await query(
+      `INSERT INTO email_events (campaign_id, contact_id, type, url, user_agent, created_at)
+       VALUES ($1,$2,$3::event_type,$4,$5,NOW())`,
+      [campaignId, contactId, nome, url, agente]
+    );
+    return { automatico, gravado: true };
+  } catch (e) {
+    // 22P02 = o valor não existe no enum; 42703 = a coluna user_agent não
+    // existe. Nos dois casos a migração ainda não correu.
+    if (e.code !== '22P02' && e.code !== '42703') throw e;
+    if (e.code === '22P02') tiposAutoDisponiveis = false;
+    if (automatico) return { automatico, gravado: false };
+    await query(
+      `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at)
+       VALUES ($1,$2,$3::event_type,$4,NOW())`,
+      [campaignId, contactId, tipo, url]
+    );
+    return { automatico, gravado: true };
+  }
+}
+
 function rawBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -324,10 +379,18 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
           // destino, mas não se registra — não há contacto 0 e não deve
           // contar nas estatísticas da campanha.
           if (contactId !== 0) {
-            await query(
-              `INSERT INTO email_events (campaign_id, contact_id, type, url, created_at) VALUES ($1, $2, 'click', $3, NOW())`,
-              [campaignId, contactId, url || null]
-            );
+            // O reencaminhamento acontece sempre — mesmo um clique automático
+            // tem de levar a pessoa (ou o analisador) ao destino. O que muda é
+            // o tipo com que fica registado.
+            //
+            // Os cliques nunca tinham filtro de agente, ao contrário das
+            // aberturas. Uma campanha deste mês mostrava 2,46% quando o número
+            // real era 0,48%: de 31 que clicaram, 25 fizeram-no no primeiro
+            // minuto após a entrega, e um deles clicou 25 vezes. Não era gente.
+            await registarEvento({
+              campaignId, contactId, tipo: 'click', url: url || null,
+              ua: req.headers['user-agent'] || '',
+            });
           }
         }
       }
@@ -341,46 +404,28 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
 
   // Pixel de abertura — registado antes de devolver a imagem.
   //
-  // Ignoram-se os agentes que vão buscar as imagens SEM ninguém ter aberto o
-  // email: filtros de segurança que analisam tudo o que entra, e a
-  // pré-visualização do Apple Mail Privacy Protection, que descarrega as
-  // imagens na entrega. Contá-los era inventar aberturas.
+  // Nada é descartado: ver registarEvento e AGENTE_AUTOMATICO no topo. Um
+  // agente automático fica gravado como 'open_auto', que as contagens não
+  // incluem — mas passa a existir, e a decisão de o excluir passa a ser
+  // reversível.
   //
-  // O Gmail e o Yahoo estavam nesta lista e não deviam: ao contrário dos
-  // outros, esses dois só vão buscar a imagem QUANDO a pessoa abre a mensagem
-  // — servem-na do seu proxy para proteger o IP de quem lê, mas o pedido é uma
-  // abertura verdadeira, e é assim que toda a indústria a conta.
-  //
-  // O estrago não se via numa campanha interna, onde quase todos usam Outlook,
-  // mas numa campanha para consumidores o Gmail é mais de metade da lista:
-  // uma campanha de 9223 contactos deu 3,83% de aberturas com 0,94% de
-  // cliques. O sinal estava aí — os cliques nunca foram filtrados por agente,
-  // por isso a proporção clique/abertura subiu para 24,6% quando o normal
-  // nesta conta é 10%. Menos aberturas com os mesmos cliques não é menos
-  // interesse: são aberturas que se estavam a perder.
-  const ua = (req.headers['user-agent'] || '').toLowerCase();
-  // "mail-proxy" saiu com eles: era genérico e apanhava o Yahoo pelo endereço
-  // da própria página de ajuda que ele põe no agente
-  // (…/yahoo-mail-proxy-SLN28749…). Os filtros de segurança identificam-se
-  // todos pelo nome, não precisam de um padrão vago.
-  const isMailBot = /preview\.mail\.icloud|mimecast|proofpoint|barracuda|cloudmark|symantec.*email|messagelabs|sophos|ironport|postfix|spamassassin|url.*scanner|link.*scanner|phishtank|avira|kaspersky.*mail/i.test(ua);
-
-  if (!isMailBot) {
-    try {
-      if (cid && uid && t) {
-        const expected = trackToken(cid, uid);
-        const campaignId = parseInt(cid, 10);
-        const contactId  = parseInt(uid, 10);
-        if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
-          await query(
-            `INSERT INTO email_events (campaign_id, contact_id, type, created_at) VALUES ($1, $2, 'open', NOW())`,
-            [campaignId, contactId]
-          );
-        }
+  // O pixel vai no INÍCIO do corpo do email (ver injectOpenPixel em
+  // lib/emailHtml.js): estava no fim, e num email cortado pelo Gmail nunca
+  // era carregado.
+  try {
+    if (cid && uid && t) {
+      const expected = trackToken(cid, uid);
+      const campaignId = parseInt(cid, 10);
+      const contactId  = parseInt(uid, 10);
+      if (t === expected && !isNaN(campaignId) && !isNaN(contactId)) {
+        await registarEvento({
+          campaignId, contactId, tipo: 'open',
+          ua: req.headers['user-agent'] || '',
+        });
       }
-    } catch (e) {
-      console.error('track open error:', e.message);
     }
+  } catch (e) {
+    console.error('track open error:', e.message);
   }
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
