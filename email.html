@@ -8577,6 +8577,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (step === 4) {
             _wizUpdateStep4ImportBanner();
             _wizRenderAttachments();
+            _wizPrepararPreview();
             // Always pre-fill test email with logged-in user's email
             const _wizTestIn = document.getElementById('wizTestEmailInput');
             if (_wizTestIn) {
@@ -9104,19 +9105,46 @@ ${teSerializeBlocksComment(srcBlocks)}
         }
     }
 
-    async function _openPreviewLink(campaignId) {
-        if (!campaignId) { showToast('Guarda o rascunho primeiro.', 'error'); return; }
-        // A janela é aberta já — abrir depois de um await seria bloqueado pelo
-        // browser, que só deixa abrir janelas em resposta directa ao clique.
-        const janela = window.open('', '_blank', 'noopener');
+    // Link de pré-visualização: buscado quando o passo 4 abre, para o botão
+    // ser um <a href> a sério.
+    //
+    // Antes era um botão que abria a janela por JavaScript, e não funcionava
+    // nunca. O motivo é uma armadilha do próprio window.open: chamado com
+    // 'noopener', devolve SEMPRE null, por especificação. Logo a variável da
+    // janela ficava a null, o código caía no ramo alternativo — abrir depois
+    // dos awaits — e aí o browser bloqueia, porque já não é resposta directa a
+    // um clique. Resultado: o botão não fazia absolutamente nada, sem erro.
+    //
+    // Com o endereço já no href, é o browser que abre: nada de bloqueios, e
+    // ganha-se o clique do meio e o "copiar endereço do link".
+    async function _wizPrepararPreview() {
+        const a = document.getElementById('wizPreviewOpen');
+        if (!a) return;
+        a.removeAttribute('href');
+        if (!_editingCampaignId) return;
         try {
-            await _wizFlushAutoSave();
-            const { url } = await apiFetch(`/api/campaigns/${campaignId}?action=preview_token`);
-            if (janela) janela.location = url; else window.open(url, '_blank', 'noopener');
-        } catch (e) {
-            if (janela) janela.close();
-            showToast('Não foi possível abrir o link.', 'error');
-        }
+            const { url } = await apiFetch(`/api/campaigns/${_editingCampaignId}?action=preview_token`);
+            if (url) a.href = url;
+        } catch (e) { console.warn('link de pré-visualização:', e.message); }
+    }
+
+    function _openPreviewLink(ev) {
+        const a = document.getElementById('wizPreviewOpen');
+        const url = a && a.getAttribute('href');
+        // Com href, deixa-se o browser abrir — é o caminho que funciona.
+        // Guardar as alterações pendentes pode ficar para depois: o que se
+        // pré-visualiza é o que está gravado, e a gravação automática já está
+        // em curso. Sem href (campanha ainda sem id, ou o pedido falhou), não
+        // há nada para abrir.
+        if (url) { _wizFlushAutoSave().catch(() => {}); return true; }
+        if (ev) ev.preventDefault();
+        if (!_editingCampaignId) { showToast('Guarda o rascunho primeiro para gerar o link.', 'error'); return false; }
+        _wizPrepararPreview().then(() => {
+            const novo = document.getElementById('wizPreviewOpen')?.getAttribute('href');
+            if (novo) window.open(novo, '_blank');   // sem 'noopener', senão vem null outra vez
+            else showToast('Não foi possível gerar o link de pré-visualização.', 'error');
+        });
+        return false;
     }
 
     async function _wizSendTest() {
@@ -14357,10 +14385,12 @@ ${sections.join('\n\n')}
                                 </h3>
                                 <p class="text-xs text-slate-400 mb-3">Partilha o template com pessoas externas. O link não requer autenticação.</p>
                                 <div class="flex gap-2">
-                                    <button onclick="_openPreviewLink(_editingCampaignId)" class="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50">
+                                    <a id="wizPreviewOpen" href="" target="_blank" rel="noopener"
+                                       onclick="return _openPreviewLink(event)"
+                                       class="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 cursor-pointer no-underline">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                         Abrir
-                                    </button>
+                                    </a>
                                     <button onclick="_copyPreviewLink(_editingCampaignId)" class="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                                         Copiar link

@@ -98,6 +98,22 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['abrir a pré-visualização abre mesmo', `const fs=require('fs');
+    // window.open chamado com 'noopener' devolve SEMPRE null, por
+    // especificação. O código guardava esse null, dava-o por janela fechada, e
+    // caía no ramo de abrir depois dos awaits — que o browser bloqueia por já
+    // não ser resposta directa ao clique. O botão abria um separador em branco
+    // e mais nada, sem um único erro na consola.
+    const h=fs.readFileSync('email.html','utf8');
+    const i=h.indexOf('function _openPreviewLink');
+    if(i<0)throw new Error('falta o _openPreviewLink');
+    const f=h.slice(i, h.indexOf('async function _wizSendTest'));
+    if(/window\\.open\\([^)]*noopener/.test(f))
+      throw new Error("window.open com 'noopener' devolve null: a janela nunca pode ser navegada");
+    if(!/id="wizPreviewOpen"[\\s\\S]{0,400}?href=/.test(h))
+      throw new Error('o botão Abrir tem de ser um <a href> — é o browser que abre, sem bloqueios');
+    if(!/function _wizPrepararPreview/.test(h)||!/_wizPrepararPreview\\(\\);/.test(h))
+      throw new Error('o endereço tem de ser buscado ao entrar no passo 4, senão o href está vazio no clique')`],
   ['o número de destinatários é de pessoas', `const fs=require('fs');
     // O ecrã somava os contactos do ficheiro aos das listas. Quem está numa
     // lista E no ficheiro contava duas vezes, e quem cancelou contava como
