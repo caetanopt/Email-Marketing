@@ -4855,7 +4855,26 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, padOnEl:true, bg:b.bgColor||'#ffffff', inner:`${i}    <mj-text${liAttrsM}>${ulHtmlM}</mj-text>` };
             }
             case 'social': {
-                const els = (b.items||[]).map(item => `${i}      <mj-social-element name="${item.network||'web'}" href="${item.href||'#'}" />`).join('\n');
+                // O src vai sempre explícito, e é isto que fazia o TikTok
+                // desaparecer do email enquanto aparecia no editor.
+                //
+                // Com `name` e sem `src`, é a MJML que decide o endereço do
+                // ícone a partir de uma lista interna. Essa lista não tem
+                // TikTok — e a MJML não dá erro: descarta o elemento em
+                // silêncio. Cinco redes no editor saíam quatro no email, sem
+                // um aviso em lado nenhum.
+                //
+                // Passando o src, a MJML não precisa de conhecer a rede: as
+                // dezoito do menu funcionam, e o endereço passa a ser o mesmo
+                // que o editor mostra em vez de uma segunda opinião.
+                //
+                // background-color="transparent" porque a MJML pinta a cor da
+                // marca por trás do ícone, e a que ela tem guardada é antiga
+                // (para o Facebook, o azul de 2012). Os nossos ícones já
+                // trazem o fundo, e o da MJML aparecia nos cantos.
+                const els = (b.items||[]).map(item =>
+                    `${i}      <mj-social-element name="${item.network||'web'}" href="${item.href||'#'}" src="${teSocialIconUrl(item.network)}" background-color="transparent" />`
+                ).join('\n');
                 return { mergeable:true, attrs:` background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"`, inner:`${i}    <mj-social align="${b.align||'center'}" icon-size="${b.iconSize||24}px" mode="horizontal">\n${els}\n${i}    </mj-social>` };
             }
             case 'hero': {
@@ -11496,7 +11515,10 @@ function toggleExportMenu() {
             } else if (t.type === 'socialGroup') {
                 flush();
                 const els = t.items.map(s =>
-                    `            <mj-social-element name="${s.net}" href="${xmlEsc(s.href||'#')}" src="${xmlEsc(s.src)}" target="_blank" padding="0 6px">${xmlEsc(s.alt)}</mj-social-element>`
+                    // background-color="transparent" pelo mesmo motivo do bloco
+                    // do editor: a MJML pinta a cor que tem guardada para a
+                    // rede por trás do ícone, e essas cores são antigas.
+                    `            <mj-social-element name="${s.net}" href="${xmlEsc(s.href||'#')}" src="${xmlEsc(s.src)}" target="_blank" padding="0 6px" background-color="transparent">${xmlEsc(s.alt)}</mj-social-element>`
                 ).join('\n');
                 sections.push(`    <mj-section padding="10px 0">\n        <mj-column>\n            <mj-social icon-size="28px" mode="horizontal" align="center" padding="10px 0" font-size="0">\n${els}\n            </mj-social>\n        </mj-column>\n    </mj-section>`);
             } else if (t.type === 'divider') {

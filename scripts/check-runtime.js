@@ -98,6 +98,34 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['a MJML não come redes sociais', `const fs=require('fs');
+    // Com name e sem src, é a MJML que resolve o endereço do ícone por uma
+    // lista interna. Essa lista não tem TikTok — e a MJML não dá erro:
+    // descarta o elemento em silêncio. Cinco redes no editor saíam quatro no
+    // email, e no editor apareciam as cinco porque o editor tem o seu próprio
+    // renderizador. Levou três voltas a encontrar.
+    const h=fs.readFileSync('email.html','utf8');
+    const els=h.match(/<mj-social-element[^\`]*?\\/>/g)||h.match(/<mj-social-element[\\s\\S]{0,400}?<\\/mj-social-element>/g)||[];
+    if(!els.length)throw new Error('não encontrei a geração dos mj-social-element');
+    for(const e of els){
+      if(!/src="/.test(e))
+        throw new Error('um mj-social-element sem src: a MJML volta a decidir o ícone e a comer as redes que não conhece');
+      if(!/background-color="transparent"/.test(e))
+        throw new Error('sem background-color="transparent" a MJML pinta a cor que tem guardada para a rede, e são antigas');
+    }
+    // Prova com o compilador a sério: cinco entram, cinco saem.
+    const mjml=require(process.cwd()+'/node_modules/mjml');
+    const el=(n)=>'<mj-social-element name="'+n+'" href="https://x.pt" src="https://emkt.caetano.pt/social/'+n+'.png" background-color="transparent" />';
+    const redes=['facebook','instagram','linkedin','youtube','tiktok'];
+    const doc='<mjml><mj-body><mj-section><mj-column><mj-social icon-size="40px" mode="horizontal">'
+      +redes.map(el).join('')+'</mj-social></mj-column></mj-section></mj-body></mjml>';
+    mjml(doc,{validationLevel:'soft',fonts:{}}).then(r=>{
+      const imgs=(r.html.match(/src="[^"]*social\\/[^"]*"/g)||[]);
+      if(imgs.length!==redes.length)
+        throw new Error('a MJML devolveu '+imgs.length+' ícones de '+redes.length+' — está a descartar elementos outra vez');
+      if(!/tiktok\\.png/.test(r.html))throw new Error('o tiktok não sobreviveu à compilação');
+      if(/background:#3b5998/.test(r.html))throw new Error('a MJML voltou a pintar a cor antiga por trás do ícone');
+    }).catch(e=>{throw e});`],
   ['ícones das redes sociais existem', `const fs=require('fs');
     // Um src que dá 404 dentro de um email é um quadrado partido em todos os
     // destinatários, e não há como o corrigir depois de enviado. O conjunto da
