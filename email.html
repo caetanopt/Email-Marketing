@@ -4833,7 +4833,14 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const inverterMobile = b.mobileOrder === 'reverse' && b.cols > 1;
                 const cols = (inverterMobile ? [...colsMjml].reverse() : colsMjml).join('\n');
                 const dirAttr = inverterMobile ? ' direction="rtl"' : '';
-                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}"${dirAttr}>\n${cols}\n${i}</mj-section>` };
+                // O padding vai explícito mesmo a zero. A mj-section da MJML
+                // tem padding="20px 0" por omissão, e sem o atributo era esse
+                // valor que saía: o bloco de colunas ganhava 20px em cima e em
+                // baixo que não estão em lado nenhum no editor e que não havia
+                // como tirar. O gerador de recurso (o HTML montado à mão) já
+                // usava o padding do bloco, por isso os dois caminhos davam
+                // espaçamentos diferentes para o mesmo bloco.
+                return { mergeable:false, full:`${i}<mj-section background-color="${b.bgColor||'#ffffff'}" padding="${teMjmlPad(b)}"${dirAttr}>\n${cols}\n${i}</mj-section>` };
             }
             case 'quote':
                 // b.text is already sanitised rich HTML — do not nl2brX.

@@ -98,6 +98,39 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['nenhuma mj-section sem padding declarado', `const fs=require('fs');
+    // A mj-section da MJML tem padding="20px 0" por omissão. Uma secção gerada
+    // sem o atributo ganha 20px em cima e em baixo que não estão em lado
+    // nenhum no editor e que não há como tirar — foi o que aconteceu ao bloco
+    // de colunas, e o gerador de recurso não fazia o mesmo, por isso os dois
+    // caminhos davam espaçamentos diferentes para o mesmo bloco.
+    const h=fs.readFileSync('email.html','utf8');
+    // Fora as linhas de comentário: várias falam de <mj-section> em prosa.
+    const codigo=h.split(String.fromCharCode(10)).filter(l=>!/^\\s*(\\/\\/|\\*)/.test(l)).join(String.fromCharCode(10));
+    const secs=codigo.match(/<mj-section[^>\\n]*>/g)||[];
+    for(const s of secs){
+      // Secções cujos atributos são montados à parte (a variável já traz o
+      // padding, e isso é verificado logo a seguir).
+      if(/\\$\\{(attrs|p\\.attrs)\\}/.test(s))continue;
+      if(!/padding="/.test(s))
+        throw new Error('mj-section gerada sem padding: a MJML mete 20px 0 por omissão -> '+s.trim());
+    }
+    // A montagem por grupos: o ramo padOnEl declara padding="0", e o outro usa
+    // os attrs de cada bloco, que têm de trazer padding.
+    const grupos=h.slice(h.indexOf('const body = groups.map'), h.indexOf('// Global default font'));
+    if(!/padding="0"/.test(grupos))
+      throw new Error('o ramo padOnEl deixou de declarar padding="0" na secção');
+    // Prova com o compilador: com padding="0px" o <td> da secção sai a 0px.
+    const mjml=require(process.cwd()+'/node_modules/mjml');
+    const sec=(pad)=>'<mjml><mj-body><mj-section background-color="#ffffff"'+pad
+      +'><mj-column width="50%"><mj-text color="#000000" font-size="14px" align="left">a</mj-text></mj-column>'
+      +'<mj-column width="50%"><mj-text color="#000000" font-size="14px" align="left">b</mj-text></mj-column></mj-section></mj-body></mjml>';
+    const td=(html)=>{const m=html.match(/<td[^>]*style="direction:ltr;font-size:0px;padding:([^;"]*)/);return m?m[1]:null;};
+    Promise.all([mjml(sec(' padding="0px"'),{validationLevel:'soft',fonts:{}}),mjml(sec(''),{validationLevel:'soft',fonts:{}})])
+      .then(([com,sem])=>{
+        if(td(com.html)!=='0px')throw new Error('com padding="0px" a secção devia sair a 0px e saiu '+td(com.html));
+        if(td(sem.html)!=='20px 0')throw new Error('a omissão da MJML mudou ('+td(sem.html)+'): rever esta sonda');
+      }).catch(e=>{throw e});`],
   ['a MJML não come redes sociais', `const fs=require('fs');
     // Com name e sem src, é a MJML que resolve o endereço do ícone por uma
     // lista interna. Essa lista não tem TikTok — e a MJML não dá erro:
