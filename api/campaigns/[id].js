@@ -8,7 +8,7 @@ const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sen
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { semRodapeLegal, gravarRodapeLegal, bloquearCancelados } = require('../../lib/campanhas');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
-const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle, updateSocialIcons } = require('../../lib/emailHtml');
+const { injectTracking: injectarLinks, htmlToText, stripEditorMetadata, injectTitle, updateSocialIcons, injectOpenPixel } = require('../../lib/emailHtml');
 const { buildRawEmail, listUnsubscribeHeaders } = require('../../lib/rawEmail');
 
 const APP_URL = process.env.APP_URL || 'https://emkt.caetano.pt';
@@ -736,7 +736,7 @@ module.exports = async function handler(req, res) {
                 unsubUrl,
                 previewUrl: previewUrl(APP_URL, id),
                 semRodapeLegal: semRodapeLegal(c),
-              }) + `<img src="${pixelUrl}" width="1" height="1" border="0" style="display:block;width:1px;height:1px;border:0" alt="" />`;
+              });
               const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
               // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
               // Fora o marcador dos blocos do editor: pertence à base de
@@ -767,9 +767,13 @@ module.exports = async function handler(req, res) {
               rawHtml = injectTracking(rawHtml, id, contact.contact_id);
               rawHtml = injectPreviewText(rawHtml, c.preview_text);
               rawHtml = injectTitle(rawHtml, c.subject);
-              const finalHtml = rawHtml.includes('</body>')
+              // O rodapé no fim; o pixel no início. Se o Gmail cortar a
+              // mensagem, perde-se o rodapé (que já era assim) mas não a
+              // abertura. Ver injectOpenPixel.
+              const comRodape = rawHtml.includes('</body>')
                 ? rawHtml.replace('</body>', unsubBlock + '</body>')
                 : rawHtml + unsubBlock;
+              const finalHtml = injectOpenPixel(comRodape, pixelUrl);
               // Personalise subject line
               let personalizedSubject = c.subject || '(sem assunto)';
               for (const [k, v] of Object.entries(vars)) {

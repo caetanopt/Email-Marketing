@@ -98,6 +98,33 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['o pixel de abertura vai no início', `const fs=require('fs');
+    // O Gmail corta as mensagens acima de ~102 KB e não carrega o que vem
+    // depois do corte. O pixel estava no fim, depois do rodapé: num email
+    // cortado a abertura não era registada, e os cliques ficavam intactos
+    // porque os links estão acima. Dava uma campanha com 4,32% de aberturas e
+    // 24,1% de cliques por abertura, contra 21,79% e 11,3% de outra do mesmo
+    // mês.
+    const {injectOpenPixel}=require(process.cwd()+'/lib/emailHtml');
+    const px='https://x.pt/api/track?type=open&cid=1&uid=2&t=abc';
+    const doc='<!doctype html><html><head></head><body style="margin:0">TOPO'
+      +'x'.repeat(140*1024)+'<div>rodape</div></body></html>';
+    const r=injectOpenPixel(doc,px);
+    const pos=r.indexOf(px);
+    if(pos<0)throw new Error('o pixel não foi injectado');
+    if(pos>102*1024)throw new Error('o pixel ficou fora dos primeiros 102 KB: o Gmail corta antes de o carregar');
+    if(pos>r.indexOf('TOPO'))throw new Error('o pixel tem de vir antes do conteúdo, não depois');
+    if(!/<body style="margin:0">/.test(r))throw new Error('os atributos do <body> foram perdidos');
+    if(!injectOpenPixel('<table></table>',px).startsWith('<img'))
+      throw new Error('sem <body> o pixel tem de ir à frente de tudo');
+    // E nenhum dos dois motores de envio pode voltar a pendurá-lo no rodapé.
+    for(const f of ['lib/sendCampaign.js','api/campaigns/[id].js']){
+      const s=fs.readFileSync(f,'utf8');
+      if(!/injectOpenPixel\\(comRodape, pixelUrl\\)/.test(s))
+        throw new Error(f+' deixou de pôr o pixel no início do email');
+      if(/\\}\\) \\+ \`<img src="\\$\\{pixelUrl\\}"/.test(s))
+        throw new Error(f+' voltou a juntar o pixel ao rodapé, onde o Gmail o corta');
+    }`],
   ['aberturas do Gmail contam', `const fs=require('fs');
     // O proxy do Gmail e do Yahoo estava na lista de agentes ignorados. Ao
     // contrário dos filtros de segurança, esses dois só vão buscar a imagem
