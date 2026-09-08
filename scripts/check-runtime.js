@@ -208,6 +208,24 @@ const provas = [
       throw new Error('sem memória do que já foi avisado, o aviso repete-se a cada passagem');
     if(!/if \\(await _wizAvisarNomeRepetido\\(name\\)\\) return;/.test(h))
       throw new Error('o aviso tem de correr ao sair do passo 1, antes de se construir o template')`],
+  ['filtrar campanhas por mês usa a data que se vê', `const fs=require('fs');
+    // A coluna "Data" da listagem mostra a do envio, ou a do agendamento, ou a
+    // da criação. Filtrar por outra qualquer daria listas que não correspondem
+    // ao que está no ecrã — um rascunho desapareceria do mês em que foi criado
+    // só por nunca ter sido enviado.
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/id="campMonthFilter"/.test(h))throw new Error('o filtro de mês desapareceu da listagem');
+    const f=h.slice(h.indexOf('function _campData'), h.indexOf('function _renderCampaignsPage'));
+    if(!/c\\.sent_at \\|\\| c\\.scheduled_at \\|\\| c\\.created_at/.test(f))
+      throw new Error('o filtro tem de usar a mesma data que a coluna da listagem');
+    const linha=(h.match(/\\$\\{_fmtDateTime\\(([^)]*)\\)\\}/)||[])[1]||'';
+    if(!/sent_at\\s*\\|\\|\\s*c\\.scheduled_at\\s*\\|\\|\\s*c\\.created_at/.test(linha))
+      throw new Error('a coluna Data mudou de critério: o filtro de mês tem de a acompanhar ('+linha+')');
+    // As opções vêm dos dados: uma lista fixa ofereceria meses sem campanhas.
+    if(!/function _campPreencherMeses/.test(h)||!/_campPreencherMeses\\(\\);/.test(h))
+      throw new Error('as opções do filtro têm de ser construídas a partir das campanhas existentes');
+    if(!/chaves\\.includes\\(anterior\\) \\? anterior : ''/.test(h))
+      throw new Error('um mês que deixe de existir (troca de marca) tem de voltar a "todos", senão a lista fica vazia sem razão')`],
   ['a confirmação de envio diz o que interessa', `const fs=require('fs');
     // Mostrava o nome interno da campanha (cortado a 200px) e a soma das
     // listas com o ficheiro. A soma conta duas vezes quem está nas duas

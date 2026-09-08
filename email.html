@@ -688,15 +688,54 @@
             + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + _ROW_ICON_PATHS[icon] + '"/></svg></button>';
     }
 
+    // A data de uma campanha é a que a listagem mostra na coluna "Data": a do
+    // envio, ou a do agendamento, ou a da criação. O filtro tem de usar a
+    // mesma, senão filtra por uma data que não está no ecrã.
+    function _campData(c) {
+        return c.sent_at || c.scheduled_at || c.created_at || null;
+    }
+    function _campMesChave(c) {
+        const d = _campData(c);
+        if (!d) return '';
+        const t = new Date(d);
+        if (isNaN(t)) return '';
+        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const _MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho',
+                       'julho','agosto','setembro','outubro','novembro','dezembro'];
+    function _campMesRotulo(chave) {
+        const [ano, mes] = chave.split('-');
+        const nome = _MESES_PT[Number(mes) - 1] || mes;
+        return `${nome.charAt(0).toUpperCase()}${nome.slice(1)} de ${ano}`;
+    }
+    // Opções construídas a partir das campanhas existentes, do mais recente
+    // para o mais antigo. Uma lista fixa de doze meses ofereceria escolhas que
+    // dão sempre zero resultados.
+    function _campPreencherMeses() {
+        const sel = document.getElementById('campMonthFilter');
+        if (!sel) return;
+        const chaves = [...new Set((window._campaignsCache || []).map(_campMesChave).filter(Boolean))]
+            .sort().reverse();
+        const anterior = sel.value;
+        sel.innerHTML = '<option value="">Todos os meses</option>'
+            + chaves.map(k => `<option value="${k}">${escHtml(_campMesRotulo(k))}</option>`).join('');
+        // Manter a escolha se o mês continuar a existir; caso contrário voltar
+        // a "todos" em vez de ficar num filtro que já não existe.
+        sel.value = chaves.includes(anterior) ? anterior : '';
+    }
+
     function _renderCampaignsPage() {
         const el  = document.getElementById('campaignsTbody');
         const pag = document.getElementById('campaignsPagination');
         if (!el) return;
         const q = (document.getElementById('campSearch')?.value||'').toLowerCase();
         const s = document.getElementById('campStatusFilter')?.value||'';
+        const m = document.getElementById('campMonthFilter')?.value||'';
         const all = window._campaignsCache || [];
         const filtered = all.map((c, i) => ({ c, i }))
-            .filter(({ c }) => (!q || (c.name||'').toLowerCase().includes(q) || (c.subject||'').toLowerCase().includes(q)) && (!s || c.status === s));
+            .filter(({ c }) => (!q || (c.name||'').toLowerCase().includes(q) || (c.subject||'').toLowerCase().includes(q))
+                            && (!s || c.status === s)
+                            && (!m || _campMesChave(c) === m));
         const total = filtered.length;
         const pages = Math.ceil(total / _CAMPAIGNS_PAGE_SIZE) || 1;
         if (_campaignsPage > pages) _campaignsPage = pages;
@@ -862,6 +901,9 @@
 
     function _applyCampaignsData(data) {
         window._campaignsCache = data;
+        // Antes de desenhar: as opções do filtro de mês vêm destes dados, e
+        // trocar de marca muda os meses que existem.
+        _campPreencherMeses();
         _renderCampaignsPage();
         _scheduleCampaignsPoll(data);
         _setText('dash-campaigns', data.length.toString());
@@ -13863,6 +13905,12 @@ ${sections.join('\n\n')}
                         <option value="scheduled">Agendada</option>
                         <option value="draft">Rascunho</option>
                         <option value="failed">Falhou</option>
+                    </select>
+                    <!-- As opções são preenchidas a partir das campanhas que
+                         existem (_campPreencherMeses): só aparecem meses com
+                         campanhas, e nunca uma escolha que dá lista vazia. -->
+                    <select id="campMonthFilter" onchange="filterCampaigns()" class="pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900">
+                        <option value="">Todos os meses</option>
                     </select>
                 </div>
                 <!-- Barra de acções em massa (oculta por defeito) -->
