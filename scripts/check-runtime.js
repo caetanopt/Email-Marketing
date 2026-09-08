@@ -98,6 +98,28 @@ const provas = [
     const h=fs.readFileSync('email.html','utf8');
     if(!h.includes('if (r.status) { comEstadoNoFicheiro++; delete r.status; }'))
       throw new Error('a importação de campanha voltou a deixar o ficheiro mexer no estado dos contactos');`],
+  ['o rascunho nunca perde a identidade', `const fs=require('fs');
+    // Campanhas duplicadas com o mesmo nome e muito tempo de intervalo. O
+    // rascunho guarda o conteúdo em localStorage e é restaurado ao voltar ao
+    // assistente; se a identidade não vier com ele, a gravação seguinte é um
+    // POST novo e o servidor não tem como saber que aquilo já existe.
+    const h=fs.readFileSync('email.html','utf8');
+    const salvar=h.slice(h.indexOf('function _wizSaveDraft'), h.indexOf('function _wizRestoreDraft'));
+    if(/clientKey:\\s*_wizClientKey \\|\\| null/.test(salvar))
+      throw new Error('a chave volta a só existir depois do primeiro POST: entre escrever o nome e gravar, dois separadores geram chaves diferentes');
+    if(!/clientKey:\\s*temAlgo \\? _wizChaveEdicao\\(\\)/.test(salvar))
+      throw new Error('o rascunho tem de nascer com a chave de idempotência');
+    const repor=h.slice(h.indexOf('function _wizRestoreDraft'), h.indexOf('function _wizClearDraft'));
+    if(!/_wizClientKey = d\\.clientKey/.test(repor))
+      throw new Error('restaurar o conteúdo sem a chave é o que criava a segunda campanha');
+    if(!/_editingCampaignId = d\\.editingId/.test(repor))
+      throw new Error('restaurar o conteúdo sem o id é o que criava a segunda campanha');
+    // E do lado do servidor, a chave tem de continuar a ser respeitada.
+    const api=fs.readFileSync('api/campaigns/index.js','utf8');
+    if(!/SELECT id FROM campaigns WHERE client_key=\\$1 AND brand_id=\\$2/.test(api))
+      throw new Error('o servidor deixou de devolver a campanha existente para uma chave repetida');
+    if(!/campaigns_client_key_uniq/.test(api))
+      throw new Error('falta o índice único: duas gravações verdadeiramente simultâneas voltam a duplicar')`],
   ['colunas lado a lado no mobile', `const fs=require('fs');
     // A MJML faz as colunas empilharem pondo-as a width:100% no style inline e
     // devolvendo a largura real só numa media query acima dos 480px. Dentro de

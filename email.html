@@ -8570,18 +8570,37 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (off) { off.classList.toggle('hidden', el.checked); off.classList.toggle('flex', !el.checked); }
     }
     function _wizSaveDraft() {
+        const val = (id) => document.getElementById(id)?.value || '';
+        const nome = val('wizName'), assunto = val('wizSubject');
+        // Há rascunho a partir do momento em que existe conteúdo (ou já uma
+        // campanha aberta).
+        const temAlgo = !!(_editingCampaignId || nome || assunto);
         const draft = {
             editingId:   _editingCampaignId || null,
-            clientKey:   _wizClientKey || null,
-            name:        document.getElementById('wizName')?.value || '',
-            subject:     document.getElementById('wizSubject')?.value || '',
-            previewText: document.getElementById('wizPreviewText')?.value || '',
-            fromName:    document.getElementById('wizFromName')?.value || '',
-            fromEmail:   document.getElementById('wizFromEmail')?.value || '',
+            // A chave nasce COM o rascunho, e não só no primeiro POST.
+            //
+            // Era aqui que se duplicavam campanhas. O rascunho guarda o
+            // conteúdo em localStorage e é restaurado quando se volta ao
+            // assistente — mas a identidade não vinha com ele: se o
+            // _editingCampaignId se tiver perdido pelo caminho (sair do ecrã
+            // limpa-o, outro separador, uma troca de marca) o assistente
+            // reaparecia com o nome e o assunto certos e sem nada que o
+            // ligasse à campanha que já existia. A gravação seguinte era um
+            // POST com uma chave nova, e o servidor não tinha como saber que
+            // aquilo já lá estava: ficavam duas campanhas com o mesmo nome,
+            // separadas pelo tempo que se esteve fora.
+            //
+            // Com a chave no rascunho desde o início, qualquer POST que venha
+            // dele traz sempre a mesma chave e o servidor devolve a campanha
+            // que já criou.
+            clientKey:   temAlgo ? _wizChaveEdicao() : null,
+            name:        nome,
+            subject:     assunto,
+            previewText: val('wizPreviewText'),
+            fromName:    val('wizFromName'),
+            fromEmail:   val('wizFromEmail'),
         };
-        if (draft.editingId || draft.clientKey || draft.name || draft.subject) {
-            localStorage.setItem(_wizDraftKey(), JSON.stringify(draft));
-        }
+        if (temAlgo) localStorage.setItem(_wizDraftKey(), JSON.stringify(draft));
     }
     function _wizRestoreDraft() {
         try {
@@ -8592,6 +8611,10 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const el = document.getElementById('wiz' + k.charAt(0).toUpperCase() + k.slice(1));
                 if (el && d[k]) el.value = d[k];
             });
+            // Restaurar o conteúdo sem restaurar a identidade é o que criava a
+            // segunda campanha. Vêm os dois.
+            if (d.clientKey && !_wizClientKey) _wizClientKey = d.clientKey;
+            if (d.editingId && !_editingCampaignId) _editingCampaignId = d.editingId;
             return !!d.editingId;
         } catch(e) { return false; }
     }
