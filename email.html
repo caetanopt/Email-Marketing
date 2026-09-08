@@ -2734,7 +2734,9 @@
         f.block[arrKey].push(newItem);
         teRender();
     }
-    const TE_SOCIAL_NETWORKS = ['facebook','x','instagram','tiktok','linkedin','youtube','pinterest','tumblr','github','vimeo','medium','soundcloud','dribbble','xing','snapchat','web'];
+    // As nove primeiras têm ícone próprio em /social/; as restantes continuam a
+    // vir do conjunto da MJML. A ordem é a do menu.
+    const TE_SOCIAL_NETWORKS = ['facebook','x','instagram','tiktok','linkedin','youtube','whatsapp','telegram','snapchat','pinterest','tumblr','github','vimeo','medium','soundcloud','dribbble','xing','web'];
     // Redes com ícone próprio, servido do nosso domínio a partir de /social/.
     //
     // Ficheiros estáticos e não uma rota de API: o projecto tinha 12 funções
@@ -2753,7 +2755,7 @@
     // mesmo que o servidor usa por omissão — e não location.origin, para uma
     // pré-visualização gerada noutro domínio não deixar emails a apontar para
     // um endereço que amanhã já não existe.
-    const TE_SOCIAL_PROPRIOS = ['facebook','instagram','x','youtube','linkedin','tiktok'];
+    const TE_SOCIAL_PROPRIOS = ['facebook','instagram','x','youtube','linkedin','tiktok','whatsapp','telegram','snapchat'];
     function teSocialIconUrl(network) {
         const rede = network || 'web';
         return TE_SOCIAL_PROPRIOS.includes(rede)

@@ -102,7 +102,7 @@ const provas = [
     // Um src que dá 404 dentro de um email é um quadrado partido em todos os
     // destinatários, e não há como o corrigir depois de enviado. O conjunto da
     // MJML não tem TikTok — e o rodapé já oferecia TikTok na lista de redes.
-    const REDES=['facebook','instagram','x','youtube','linkedin','tiktok'];
+    const REDES=['facebook','instagram','x','youtube','linkedin','tiktok','whatsapp','telegram','snapchat'];
     for(const n of REDES){
       const f='social/'+n+'.png';
       if(!fs.existsSync(f))throw new Error('falta o ícone '+f+' — o src fica a dar 404 dentro do email');
@@ -153,7 +153,24 @@ const provas = [
       throw new Error('uma rede sem ícone nosso não pode ser reescrita para um 404');
     for(const f of ['api/track.js','lib/sendCampaign.js','api/campaigns/[id].js'])
       if(!/updateSocialIcons\\(stripEditorMetadata/.test(fs.readFileSync(f,'utf8')))
-        throw new Error(f+' monta o email sem reescrever os ícones gravados')`],
+        throw new Error(f+' monta o email sem reescrever os ícones gravados');
+    // As três listas de nomes têm de ser a mesma: uma rede que esteja numa e
+    // não noutra fica com o ícone velho num sítio e o novo noutro.
+    const listas={
+      'email.html (TE_SOCIAL_PROPRIOS)': /TE_SOCIAL_PROPRIOS = \\[([^\\]]*)\\]/.exec(html),
+      'lib/emailFooter.js (SOCIAL_ICON_PROPRIOS)': /SOCIAL_ICON_PROPRIOS = \\[([\\s\\S]*?)\\]/.exec(footer),
+      'lib/emailHtml.js (SOCIAL_PROPRIAS)': /SOCIAL_PROPRIAS = \\[([\\s\\S]*?)\\]/.exec(fs.readFileSync('lib/emailHtml.js','utf8')),
+    };
+    const chaves=(m)=>((m&&m[1])||'').match(/'[a-z]+'/g)||[];
+    const ref=chaves(listas['email.html (TE_SOCIAL_PROPRIOS)']).sort().join(',');
+    if(!ref)throw new Error('não consegui ler a lista de redes do email.html');
+    for(const [nome,m] of Object.entries(listas)){
+      const k=chaves(m).sort().join(',');
+      if(k!==ref)throw new Error('a lista de redes em '+nome+' não coincide com as outras: ['+k+'] vs ['+ref+']');
+    }
+    for(const r of chaves(listas['email.html (TE_SOCIAL_PROPRIOS)']).map(x=>x.slice(1,-1)))
+      if(!fs.existsSync('social/'+r+'.png'))
+        throw new Error(r+' está na lista mas não tem social/'+r+'.png — dá 404 dentro do email')`],
   ['abrir a pré-visualização abre mesmo', `const fs=require('fs');
     // window.open chamado com 'noopener' devolve SEMPRE null, por
     // especificação. O código guardava esse null, dava-o por janela fechada, e
