@@ -7312,32 +7312,33 @@ ${teSerializeBlocksComment(srcBlocks)}
     // ── Global Settings: single API key for all brands ───────────
     async function _gsLoadApiSection() {
         try {
-            const { api_key } = await apiFetch('/api/brands?action=global_api_key');
-            _gsShowApiKey(api_key);
+            const { api_key, configured } = await apiFetch('/api/brands?action=global_api_key');
+            _gsShowApiKey(api_key, configured);
         } catch (e) { console.error('gsLoadApiSection:', e); }
     }
 
-    function _gsShowApiKey(key) {
+    function _gsShowApiKey(key, configured) {
         const empty  = document.getElementById('gsApiKeyEmpty');
         const filled = document.getElementById('gsApiKeyFilled');
         const val    = document.getElementById('gsApiKeyValue');
         const label  = document.getElementById('gsApiKeyGenLabel');
-        if (!key) {
+        if (!key && !configured) {
             empty?.classList.remove('hidden'); filled?.classList.add('hidden');
             if (label) label.textContent = 'Gerar chave'; return;
         }
         empty?.classList.add('hidden'); filled?.classList.remove('hidden');
-        if (val) val.textContent = key;
+        if (val) val.textContent = key || '•••••••••••• chave oculta — regenera para obteres uma nova';
         if (label) label.textContent = 'Regenerar';
+        const docsKey = key || '<A_TUA_CHAVE>';
         const base = window.location.origin;
         const post = document.getElementById('gsApiDocsPost');
         const del  = document.getElementById('gsApiDocsDel');
         const delLista = document.getElementById('gsApiDocsDelLista');
         const get  = document.getElementById('gsApiDocsGet');
-        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<id_da_lista>",\n    "contacts": [\n      {\n        "email": "user@exemplo.pt",\n        "name": "Nome Apelido",\n        "phone": "+351910000000",\n        "company": "Empresa Lda",\n        "extra_data": { "campo1": "valor1", "cargo": "Director" }\n      }\n    ]\n  }'`;
-        if (delLista) delLista.textContent = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "list_id": "<id_da_lista>", "emails": ["user@exemplo.pt"] }'`;
-        if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "emails": ["user@exemplo.pt"] }'`;
-        if (get)  get.textContent  = `curl "${base}/api/sync?email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${key}"`;
+        if (post) post.textContent = `curl -X POST ${base}/api/sync \\\n  -H "Authorization: Bearer ${docsKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "list_id": "<id_da_lista>",\n    "contacts": [\n      {\n        "email": "user@exemplo.pt",\n        "name": "Nome Apelido",\n        "phone": "+351910000000",\n        "company": "Empresa Lda",\n        "extra_data": { "campo1": "valor1", "cargo": "Director" }\n      }\n    ]\n  }'`;
+        if (delLista) delLista.textContent = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${docsKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "list_id": "<id_da_lista>", "emails": ["user@exemplo.pt"] }'`;
+        if (del)  del.textContent  = `curl -X DELETE ${base}/api/sync \\\n  -H "Authorization: Bearer ${docsKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "emails": ["user@exemplo.pt"] }'`;
+        if (get)  get.textContent  = `curl "${base}/api/sync?email=user@exemplo.pt" \\\n  -H "Authorization: Bearer ${docsKey}"`;
     }
 
     async function _gsGenerateApiKey() {
@@ -7353,17 +7354,17 @@ ${teSerializeBlocksComment(srcBlocks)}
 
     function _gsCopyApiKey() {
         const key = document.getElementById('gsApiKeyValue')?.textContent?.trim();
-        if (!key) return;
+        if (!key || key.startsWith('•')) { showToast('A chave está oculta — regenera para obteres uma nova.', 'info'); return; }
         navigator.clipboard.writeText(key).then(() => showToast('Chave copiada.')).catch(() => showToast('Erro ao copiar.', 'error'));
     }
 
     // ── Brand Settings: API key management ───────────────────────
-    function _bsShowApiKey(key) {
+    function _bsShowApiKey(key, configured) {
         const empty  = document.getElementById('bsApiKeyEmpty');
         const filled = document.getElementById('bsApiKeyFilled');
         const val    = document.getElementById('bsApiKeyValue');
         const label  = document.getElementById('bsApiKeyGenLabel');
-        if (!key) {
+        if (!key && !configured) {
             empty?.classList.remove('hidden');
             filled?.classList.add('hidden');
             if (label) label.textContent = 'Gerar chave';
@@ -7371,8 +7372,9 @@ ${teSerializeBlocksComment(srcBlocks)}
         }
         empty?.classList.add('hidden');
         filled?.classList.remove('hidden');
-        if (val) val.textContent = key;
+        if (val) val.textContent = key || '•••••••••••• chave oculta — regenera para obteres uma nova';
         if (label) label.textContent = 'Regenerar';
+        const docsKey = key || '<A_TUA_CHAVE>';
         // Fill code examples
         const base = window.location.origin;
         const post = document.getElementById('bsApiDocsPost');
@@ -7380,7 +7382,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const get  = document.getElementById('bsApiDocsGet');
         if (post) post.textContent =
 `curl -X POST ${base}/api/sync \\
-  -H "Authorization: Bearer ${key}" \\
+  -H "Authorization: Bearer ${docsKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "list_id": "<id_da_lista>",
@@ -7396,19 +7398,19 @@ ${teSerializeBlocksComment(srcBlocks)}
   }'`;
         if (del) del.textContent =
 `curl -X DELETE ${base}/api/sync \\
-  -H "Authorization: Bearer ${key}" \\
+  -H "Authorization: Bearer ${docsKey}" \\
   -H "Content-Type: application/json" \\
   -d '{ "emails": ["user@exemplo.pt"] }'`;
         if (get) get.textContent =
 `curl "${base}/api/sync?email=user@exemplo.pt" \\
-  -H "Authorization: Bearer ${key}"`;
+  -H "Authorization: Bearer ${docsKey}"`;
     }
 
     async function _bsLoadApiKey() {
         if (!_currentBrand?.id) return;
         try {
-            const { api_key } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=api_key`);
-            _bsShowApiKey(api_key);
+            const { api_key, configured } = await apiFetch(`/api/brands?id=${_currentBrand.id}&action=api_key`);
+            _bsShowApiKey(api_key, configured);
         } catch (err) { console.error('api_key load:', err); }
     }
 

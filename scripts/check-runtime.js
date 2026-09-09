@@ -133,6 +133,24 @@ const provas = [
       if(!/UPDATE email_send_log SET email = 'apagado@' \\|\\| md5\\(email\\)/.test(s))
         throw new Error(f+': o apagamento deixou de anonimizar o email em email_send_log');
     }`],
+  ['as API keys são guardadas como hash', `const fs=require('fs');
+    // S-6: as chaves estavam em texto claro e a API devolvia-as. Agora são
+    // SHA-256, nunca devolvidas, e a verificação aceita hash (ou o texto claro
+    // legado durante a transição).
+    const b=fs.readFileSync('api/brands/index.js','utf8');
+    if(/return res\\.status\\(200\\)\\.json\\(\\{ api_key: rows\\[0\\]\\?\\.api_key/.test(b))
+      throw new Error('a reveal por marca voltou a devolver a chave em texto claro');
+    if(!/api_key: null, configured/.test(b))
+      throw new Error('a reveal tem de devolver api_key:null (a chave não é legível)');
+    if(!/createHash\\('sha256'\\)\\.update\\(newKey\\)/.test(b))
+      throw new Error('a geração de chave deixou de guardar o hash');
+    if(!/api_key_hash=\\$1, api_key=NULL/.test(b))
+      throw new Error('a geração tem de guardar o hash e apagar o texto claro');
+    const sy=fs.readFileSync('api/sync/index.js','utf8');
+    if(!/createHash\\('sha256'\\)\\.update\\(key\\)/.test(sy))
+      throw new Error('a verificação da API deixou de calcular o hash da chave');
+    if(!/api_key_hash=\\$1 OR api_key=\\$2/.test(sy))
+      throw new Error('a verificação tem de aceitar hash OU texto claro legado')`],
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],

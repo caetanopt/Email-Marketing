@@ -185,8 +185,18 @@ module.exports = async function handler(req, res) {
       // API key — return current key for the brand (owner only)
       if (id && action === 'api_key') {
         if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
-        const rows = await query('SELECT api_key FROM brands WHERE id=$1', [id]);
-        return res.status(200).json({ api_key: rows[0]?.api_key || null });
+        // S-6: a chave nunca mais é devolvida — só se diz se existe. Vê-se uma
+        // vez, quando é gerada. A regeneração roda-a e mostra a nova.
+        let configured = false;
+        try {
+          const rows = await query('SELECT (api_key_hash IS NOT NULL OR api_key IS NOT NULL) AS configured FROM brands WHERE id=$1', [id]);
+          configured = !!rows[0]?.configured;
+        } catch (e) {
+          if (e.code !== '42703') throw e;
+          const rows = await query('SELECT (api_key IS NOT NULL) AS configured FROM brands WHERE id=$1', [id]);
+          configured = !!rows[0]?.configured;
+        }
+        return res.status(200).json({ api_key: null, configured });
       }
 
       // Global API key — single key for all brands (owner only)
@@ -194,10 +204,10 @@ module.exports = async function handler(req, res) {
         const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
         if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
         try {
-          const rows = await query('SELECT global_api_key FROM global_settings WHERE id=1');
-          return res.status(200).json({ api_key: rows[0]?.global_api_key || null });
+          const rows = await query('SELECT (global_api_key_hash IS NOT NULL OR global_api_key IS NOT NULL) AS configured FROM global_settings WHERE id=1');
+          return res.status(200).json({ api_key: null, configured: !!rows[0]?.configured });
         } catch (e) {
-          if (e.code === '42703' || e.code === '42P01') return res.status(200).json({ api_key: null });
+          if (e.code === '42703' || e.code === '42P01') return res.status(200).json({ api_key: null, configured: false });
           throw e;
         }
       }
@@ -633,7 +643,15 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && id && action === 'generate_api_key') {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
       const newKey = 'pm_' + crypto.randomBytes(32).toString('hex');
-      await query('UPDATE brands SET api_key=$1 WHERE id=$2', [newKey, id]);
+      const newHash = crypto.createHash('sha256').update(newKey).digest('hex');
+      try { await query('ALTER TABLE brands ADD COLUMN IF NOT EXISTS api_key_hash TEXT'); } catch (_) {}
+      // Guarda o hash e apaga o texto claro: a chave só existe nesta resposta.
+      try {
+        await query('UPDATE brands SET api_key_hash=$1, api_key=NULL WHERE id=$2', [newHash, id]);
+      } catch (e) {
+        if (e.code !== '42703') throw e;
+        await query('UPDATE brands SET api_key=$1 WHERE id=$2', [newKey, id]);   // schema antigo
+      }
       return res.status(200).json({ api_key: newKey });
     }
 
@@ -642,16 +660,20 @@ module.exports = async function handler(req, res) {
       const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
       if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
       const newKey = 'pmg_' + crypto.randomBytes(32).toString('hex');
+      const newHash = crypto.createHash('sha256').update(newKey).digest('hex');
+      try { await query('ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS global_api_key VARCHAR(72)'); } catch (_) {}
+      try { await query('ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS global_api_key_hash TEXT'); } catch (_) {}
       try {
         await query(
-          `ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS global_api_key VARCHAR(72)`,
+          `INSERT INTO global_settings (id, global_api_key_hash, global_api_key) VALUES (1, $1, NULL)
+           ON CONFLICT (id) DO UPDATE SET global_api_key_hash=$1, global_api_key=NULL`,
+          [newHash]
         );
-      } catch (_) { /* column may already exist */ }
-      await query(
-        `INSERT INTO global_settings (id, global_api_key) VALUES (1, $1)
-         ON CONFLICT (id) DO UPDATE SET global_api_key=$1`,
-        [newKey]
-      );
+      } catch (e) {
+        if (e.code !== '42703') throw e;
+        await query(`INSERT INTO global_settings (id, global_api_key) VALUES (1, $1)
+                     ON CONFLICT (id) DO UPDATE SET global_api_key=$1`, [newKey]);   // schema antigo
+      }
       return res.status(200).json({ api_key: newKey });
     }
 

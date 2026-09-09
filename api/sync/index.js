@@ -1,6 +1,7 @@
 const { query } = require('../../lib/db');
 const { cors } = require('../../lib/auth');
 const { upsertContactos, aplicarSupressao } = require('../../lib/contactos');
+const crypto = require('crypto');
 
 const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -20,18 +21,34 @@ async function autenticar(req, res) {
     return false;
   }
   const key = auth.slice(7).trim();
+  // S-6: as chaves são guardadas como hash. Aceita-se o hash e, durante a
+  // transição, o texto claro que ainda exista (chaves antigas por regenerar).
+  const hash = crypto.createHash('sha256').update(key).digest('hex');
 
   try {
-    const gs = await query('SELECT global_api_key FROM global_settings WHERE id=1');
-    if (gs[0]?.global_api_key && gs[0].global_api_key === key) return true;
+    const gs = await query('SELECT global_api_key, global_api_key_hash FROM global_settings WHERE id=1');
+    if (gs[0]) {
+      if (gs[0].global_api_key_hash && gs[0].global_api_key_hash === hash) return true;
+      if (gs[0].global_api_key && gs[0].global_api_key === key) return true;   // legado
+    }
   } catch (e) {
     if (e.code !== '42703' && e.code !== '42P01') throw e;
-    // global_api_key column/table not yet created — fall through
+    // coluna do hash ainda não existe — tentar só o texto claro
+    try {
+      const gs = await query('SELECT global_api_key FROM global_settings WHERE id=1');
+      if (gs[0]?.global_api_key && gs[0].global_api_key === key) return true;
+    } catch (_) {}
   }
 
-  const rows = await query('SELECT id FROM brands WHERE api_key=$1', [key]);
-  if (!rows[0]) { res.status(401).json({ error: 'API key inválida' }); return false; }
-  return true;
+  try {
+    const rows = await query('SELECT id FROM brands WHERE api_key_hash=$1 OR api_key=$2', [hash, key]);
+    if (rows[0]) return true;
+  } catch (e) {
+    if (e.code !== '42703') throw e;
+    const rows = await query('SELECT id FROM brands WHERE api_key=$1', [key]);   // schema antigo
+    if (rows[0]) return true;
+  }
+  res.status(401).json({ error: 'API key inválida' }); return false;
 }
 
 module.exports = async function handler(req, res) {
