@@ -3,6 +3,7 @@ const { SendEmailCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../lib/db');
 const { signToken, requireAuth, cors } = require('../lib/auth');
 const { getSESClient } = require('../lib/ses');
+const { rateLimit, clientIp } = require('../lib/ratelimit');
 
 const INIT_SQL = `
   CREATE TABLE IF NOT EXISTS magic_link_tokens (
@@ -94,6 +95,18 @@ module.exports = async function handler(req, res) {
 
     const emailNorm = email.toLowerCase().trim();
     const okResp = () => res.status(200).json({ ok: true });
+
+    // S-5: cada POST aqui envia um email de acesso por SES. Sem limite,
+    // qualquer pessoa que saiba um email pode encher a caixa dessa pessoa de
+    // links (mailbombing) e queimar a quota de SES. Limita-se por email e por
+    // IP. Excedido devolve 200 na mesma (não revela se o email existe) mas não
+    // envia — a resposta é indistinguível de um pedido normal.
+    const ip = clientIp(req);
+    const [porEmail, porIp] = await Promise.all([
+      rateLimit('magic', emailNorm, 5, 3600),  // 5 links/hora por email
+      rateLimit('magic', 'ip:' + ip, 20, 3600), // 20 links/hora por IP
+    ]);
+    if (!porEmail.ok || !porIp.ok) return okResp();
 
     try {
       await query(INIT_SQL);

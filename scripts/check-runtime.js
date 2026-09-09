@@ -198,6 +198,21 @@ const provas = [
     // sessão revogada não conseguia voltar a entrar).
     if(!/signToken\\(\\{ id: r\\.user_id[^}]*tv: tokenVersion/.test(fs.readFileSync('api/auth.js','utf8')))
       throw new Error('o login deixou de embutir token_version no token')`],
+  ['os endpoints públicos têm limite de ritmo', `const fs=require('fs');
+    // S-5: o pedido de link mágico envia um email por chamada — sem limite é
+    // um mailbomb. A API de sync é pública. Ambos limitam por IP (o login
+    // também por email); o limitador ABRE se a BD falhar (não nega o login).
+    const rl=fs.readFileSync('lib/ratelimit.js','utf8');
+    if(!/ON CONFLICT \\(bucket, key, window_start\\)/.test(rl))
+      throw new Error('o limitador deixou de contar de forma atómica (ON CONFLICT)');
+    if(!/return \\{ ok: true \\}; \\/\\/ qualquer erro da BD/.test(rl))
+      throw new Error('o limitador tem de ABRIR em erro da BD — senão um problema na BD nega o login');
+    const a=fs.readFileSync('api/auth.js','utf8');
+    if(!/rateLimit\\('magic', emailNorm/.test(a) || !/rateLimit\\('magic', 'ip:'/.test(a))
+      throw new Error('o pedido de link mágico deixou de limitar por email e por IP');
+    const sy=fs.readFileSync('api/sync/index.js','utf8');
+    if(!/rateLimit\\('sync', 'ip:'/.test(sy))
+      throw new Error('a API de sync deixou de limitar por IP')`],
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],

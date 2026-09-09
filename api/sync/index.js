@@ -1,6 +1,7 @@
 const { query } = require('../../lib/db');
 const { cors } = require('../../lib/auth');
 const { upsertContactos, aplicarSupressao } = require('../../lib/contactos');
+const { rateLimit, clientIp } = require('../../lib/ratelimit');
 const crypto = require('crypto');
 
 const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -53,6 +54,15 @@ async function autenticar(req, res) {
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
+
+  // S-5: API pública. Limita por IP antes de autenticar, para travar tanto
+  // tentativas de adivinhar chaves como abuso de uma integração. Generoso para
+  // não estorvar sincronizações legítimas: 600 pedidos/minuto por IP.
+  const rl = await rateLimit('sync', 'ip:' + clientIp(req), 600, 60);
+  if (!rl.ok) {
+    res.setHeader('Retry-After', String(rl.retryAfter));
+    return res.status(429).json({ error: 'Demasiados pedidos. Tenta mais tarde.' });
+  }
 
   try {
     // ── GET /api/sync?email=xxx — consultar estado de um contacto ──
