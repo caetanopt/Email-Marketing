@@ -327,6 +327,17 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['duplicar uma campanha clona o template', `const fs=require('fs');
+    // Duplicar uma campanha reutilizava o mesmo template_id da original. Como o
+    // editor grava por PUT no template, editar a cópia reescrevia o email de
+    // TODAS as campanhas que partilhavam esse template — e a pré-visualização
+    // mostrava sempre o mesmo. A duplicação tem de clonar o template primeiro.
+    const h=fs.readFileSync('email.html','utf8');
+    const dup=h.slice(h.indexOf('function dupBrandConfirm'), h.indexOf('function dupBrandConfirm')+2000);
+    if(/template_id: c\\.template_id/.test(dup))
+      throw new Error('duplicar campanha voltou a reutilizar o template_id da original — editar a cópia altera as outras');
+    if(!/\\/api\\/templates\\?id=\\$\\{c\\.template_id\\}&target_brand_id=/.test(dup))
+      throw new Error('duplicar campanha deixou de clonar o template antes de criar a cópia');`],
   ['uma linha má não faz perder o bloco na importação', `const fs=require('fs');
     // A transacção do bloco é toda-ou-nada: uma linha com um byte de controlo
     // (comum em exports de Excel) que o Postgres recusa rebentava-a e levava

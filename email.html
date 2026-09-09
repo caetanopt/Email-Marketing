@@ -1762,21 +1762,37 @@
         if (_dupMode === 'campaign') {
             const c = _dupCampaignData;
             dupBrandCancel();
-            apiFetch(`/api/campaigns?brand_id=${brand.id}`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    name: `Cópia de ${c.name}`,
-                    subject: c.subject || '',
-                    preview_text: c.preview_text || '',
-                    from_name: c.from_name || '',
-                    from_email: c.from_email || '',
-                    template_id: c.template_id || null,
-                    list_ids: (c.list_ids || []).filter(Boolean),
-                })
-            }).then(() => {
-                if (brand.id === _currentBrand.id) _loadCampaigns(_currentBrand.id);
-                showToast(`Campanha duplicada para ${brand.name}.`);
-            }).catch(e => showToast(e.message || 'Erro ao duplicar.', 'error'));
+            (async () => {
+                try {
+                    // Duplicar uma campanha tem de lhe dar um email PRÓPRIO. Antes
+                    // a cópia apontava para o mesmo template_id da original — e como
+                    // o editor grava por PUT no template, editar a cópia reescrevia
+                    // o email de todas as campanhas que partilhavam esse template
+                    // (e a pré-visualização mostrava sempre o mesmo). Clona-se o
+                    // template primeiro; a cópia fica independente.
+                    let newTemplateId = null;
+                    if (c.template_id) {
+                        const tplRes = await apiFetch(`/api/templates?id=${c.template_id}&target_brand_id=${brand.id}`, {
+                            method: 'POST', body: JSON.stringify({})
+                        });
+                        newTemplateId = tplRes.id || null;
+                    }
+                    await apiFetch(`/api/campaigns?brand_id=${brand.id}`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: `Cópia de ${c.name}`,
+                            subject: c.subject || '',
+                            preview_text: c.preview_text || '',
+                            from_name: c.from_name || '',
+                            from_email: c.from_email || '',
+                            template_id: newTemplateId,
+                            list_ids: (c.list_ids || []).filter(Boolean),
+                        })
+                    });
+                    if (brand.id === _currentBrand.id) _loadCampaigns(_currentBrand.id);
+                    showToast(`Campanha duplicada para ${brand.name}.`);
+                } catch (e) { showToast(e.message || 'Erro ao duplicar.', 'error'); }
+            })();
             return;
         }
         const newId = 'tpl' + Date.now();
