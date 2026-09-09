@@ -1,0 +1,22 @@
+-- E-1 (fiabilidade): estado 'sending' em campaign_recipients.
+--
+-- O problema do envio duplicado: a reivindicação de um lote carimbava apenas
+-- attempted_at e deixava o destinatário em 'pending'. Se o SES aceitava a
+-- mensagem mas a gravação de 'sent' falhava (BD indisponível 2 s, as 3
+-- tentativas esgotadas), a linha ficava 'pending'; passados 2 minutos o lease
+-- expirava, a linha era reclamada outra vez e o cliente recebia o email
+-- duas vezes.
+--
+-- Com um estado 'sending' próprio, a reivindicação move a linha para 'sending'
+-- ANTES de chamar o SES. A reivindicação seguinte só olha para 'pending'/'retry',
+-- por isso uma linha em 'sending' nunca é reclamada de novo — não há duplicado
+-- automático. As linhas reclamadas mas não entregues (quota, cancelamento) são
+-- devolvidas a 'pending' no fim do lote; só a rara linha "entregue mas não
+-- gravada" fica em 'sending', à espera de reconciliação explícita — nunca
+-- reenviada por engano.
+--
+-- ADD VALUE IF NOT EXISTS é idempotente. Tem de correr ANTES de qualquer envio
+-- usar o valor; o código faz fallback ao comportamento antigo enquanto o valor
+-- não existir.
+
+ALTER TYPE recipient_status ADD VALUE IF NOT EXISTS 'sending';

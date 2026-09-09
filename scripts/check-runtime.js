@@ -281,6 +281,30 @@ const provas = [
       if(linhas.join(' ').includes('DELETE FROM contacts'))
         throw new Error(f+' volta a apagar contactos durante o envio — isso apaga o relatório da campanha (CASCADE)');
     }`],
+  ['o envio não duplica nem ignora o cancelamento', `const fs=require('fs');
+    // E-1: reivindicar move a linha para 'sending'; a reivindicação seguinte só
+    // olha a 'pending'/'retry', por isso uma linha entregue ao SES nunca é
+    // reclamada de novo (era assim que se duplicava). E-2: reverifica-se o
+    // estado da campanha a cada onda para o cancelamento parar o lote em curso.
+    const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+    if(!/status = 'sending'/.test(s))
+      throw new Error(\"a reivindicação deixou de mover o destinatário para 'sending' (E-1: volta a poder duplicar)\");
+    if(!/estadoSendingDisponivel/.test(s))
+      throw new Error('perdeu-se o fallback para quando a migração 060 ainda não correu');
+    // a reivindicação (e a sua sub-selecção) só apanha pending/retry — nunca sending
+    if(/status IN \\('pending','retry','sending'\\)[\\s\\S]*FOR UPDATE SKIP LOCKED/.test(s))
+      throw new Error(\"a reivindicação passou a incluir 'sending' — uma linha em envio podia ser reclamada e duplicada\");
+    // as entregues ao SES são marcadas para o varrimento final não as reverter
+    if(!/dispatched\\.add\\(contact\\.contact_id\\)/.test(s))
+      throw new Error('as linhas entregues ao SES deixaram de ser protegidas do varrimento — risco de duplicado');
+    if(!/status='pending', attempted_at=NULL WHERE campaign_id=\\$1 AND status='sending'/.test(s))
+      throw new Error('o varrimento que devolve as não-entregues a pending desapareceu');
+    // E-2: releitura do estado a cada onda + paragem
+    if(!/SELECT status FROM campaigns WHERE id=\\$1/.test(s) || !/batchState\\.cancelled = true/.test(s))
+      throw new Error('o envio deixou de reverificar o cancelamento a cada onda (E-2)');
+    // a conclusão não ressuscita uma campanha cancelada
+    if(!/UPDATE campaigns SET status='sent'[^;]*WHERE id=\\$1 AND status='sending'/.test(s))
+      throw new Error(\"a conclusão do envio tem de exigir status='sending' — senão ressuscita uma campanha cancelada para 'sent'\");`],
   ['um ficheiro não cancela subscrições', `const fs=require('fs');
     // "não", "n" e "0" numa coluna "estado" valiam cancelamento. Uma coluna
     // dessas num ficheiro interno significa quase sempre outra coisa, e o
