@@ -875,6 +875,22 @@ const provas = [
       throw new Error('a taxa tem de usar os únicos (unique_opens/unique_clicks), não open_count/click_count');
     if(/c\\.total_recipients/.test(corpo))
       throw new Error('total_recipients como base dá uma taxa sobre endereços que não receberam nada')`],
+  ['a taxa média do painel não sub-conta com destinatários repetidos', `const fs=require('fs');
+    // "sent" no agregado do painel soma linhas de campaign_recipients: um
+    // contacto que recebeu duas campanhas do período conta duas vezes. Se o
+    // numerador (aberturas) contasse pessoas distintas em todas as campanhas
+    // JUNTAS, quem abriu as duas só entrava uma vez — sub-contando sempre que
+    // há sobreposição de destinatários (o caso comum: a mesma lista usada em
+    // vários envios). Deu 14,5% quando as duas campanhas do período tinham
+    // 25,9% e 16,3% — a média devia rondar os 21%, não ficar abaixo da mais
+    // baixa das duas. A contagem tem de ser por (campanha, contacto): uma
+    // abertura por pessoa E por campanha, a mesma unidade que "sent".
+    const api=fs.readFileSync('api/campaigns/index.js','utf8');
+    const dash=api.slice(api.indexOf(\"action === 'dashboard'\"), api.indexOf(\"action === 'dashboard'\")+3000);
+    if(/COUNT\\(DISTINCT contact_id\\) FILTER \\(WHERE type='open'/.test(dash))
+      throw new Error('o agregado do painel voltou a contar pessoas distintas em vez de pares (campanha,contacto) — sub-conta com destinatários repetidos');
+    if(!/SELECT DISTINCT campaign_id, contact_id, type/.test(dash))
+      throw new Error('o agregado do painel deixou de dedupicar por (campanha,contacto,tipo)')`],
   ['um CSV não perde linhas', `const fs=require('fs');
     // O mesmo ficheiro entrava com 1161 contactos em TXT e 630 em CSV. Não era
     // o servidor: eram linhas que nunca saíam do browser, porque o ficheiro era

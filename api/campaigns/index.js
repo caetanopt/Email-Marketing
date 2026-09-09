@@ -358,9 +358,25 @@ module.exports = async function handler(req, res) {
              FROM campaign_recipients WHERE campaign_id IN (SELECT id FROM sc)
            ),
            ev AS (
-             SELECT COUNT(DISTINCT contact_id) FILTER (WHERE type='open' )::int AS unique_opens,
-                    COUNT(DISTINCT contact_id) FILTER (WHERE type='click')::int AS unique_clicks
-             FROM email_events WHERE campaign_id IN (SELECT id FROM sc)
+             -- Uma pessoa que recebeu duas campanhas do período conta DUAS vezes
+             -- em "sent" (uma linha de campaign_recipients por campanha). Se aqui
+             -- se contasse "pessoas distintas que abriram" em todas as campanhas
+             -- juntas, quem abriu as duas só entrava uma vez — sub-contando as
+             -- aberturas sempre que há sobreposição de destinatários entre
+             -- campanhas (o caso comum: a mesma lista usada em vários envios). A
+             -- taxa agregada ficava sistematicamente abaixo da média das taxas
+             -- individuais, às vezes abaixo até da mais baixa delas.
+             -- Deduplicar por (campanha, contacto) em vez de só por contacto
+             -- mantém a mesma unidade de contagem que "sent": uma abertura por
+             -- pessoa e por campanha, tal como um envio por pessoa e por
+             -- campanha — e reproduz exactamente a soma das taxas por campanha.
+             SELECT COUNT(*) FILTER (WHERE ee.type='open' )::int AS unique_opens,
+                    COUNT(*) FILTER (WHERE ee.type='click')::int AS unique_clicks
+             FROM (
+               SELECT DISTINCT campaign_id, contact_id, type
+               FROM email_events
+               WHERE campaign_id IN (SELECT id FROM sc) AND type IN ('open','click')
+             ) ee
            )
            SELECT (SELECT COUNT(*)::int FROM sc) AS campaigns,
                   rc.sent, rc.bounced, rc.total_recipients,
