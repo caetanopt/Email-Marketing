@@ -1,5 +1,5 @@
 const { query, transaction } = require('../../lib/db');
-const { requireAuth, cors, requireBrand, hasAnyRole } = require('../../lib/auth');
+const { requireAuth, cors, requireBrand, hasAnyRole, requireWriteAny } = require('../../lib/auth');
 const { upsertContactos, aplicarSupressao, permitirContactosSemMarca, marcarOculto } = require('../../lib/contactos');
 
 const IMPORT_INIT_SQL = `
@@ -639,10 +639,16 @@ module.exports = async function handler(req, res) {
     if (req.method === 'DELETE') {
       const { ids } = req.body || {};
       if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids obrigatório' });
+      if (!await requireWriteAny(req, res, user.id)) return;   // S-8
+      const _ids = ids.map(Number);
+      // G-1: anonimizar o email no log de envio antes de apagar (ver contacts/[id].js).
+      try {
+        await query("UPDATE email_send_log SET email = 'apagado@' || md5(email), contact_id = NULL WHERE contact_id = ANY($1::int[])", [_ids]);
+      } catch (e) { if (e.code !== '42P01') throw e; }
       // email_events.contact_id não tem ON DELETE definido: sem anular antes,
       // o DELETE falha em contactos com eventos registados.
-      await query(`UPDATE email_events SET contact_id=NULL WHERE contact_id = ANY($1::int[])`, [ids.map(Number)]);
-      const apagados = await query(`DELETE FROM contacts WHERE id = ANY($1::int[]) RETURNING id`, [ids.map(Number)]);
+      await query(`UPDATE email_events SET contact_id=NULL WHERE contact_id = ANY($1::int[])`, [_ids]);
+      const apagados = await query(`DELETE FROM contacts WHERE id = ANY($1::int[]) RETURNING id`, [_ids]);
       return res.status(200).json({ ok: true, deleted: apagados.length });
     }
 

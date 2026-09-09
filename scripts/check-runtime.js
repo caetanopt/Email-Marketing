@@ -99,6 +99,40 @@ const provas = [
       throw new Error('o _csvCell deixou de passar por _csvSafe');
     if(!/l\\.map\\(c => \`"\\$\\{_csvSafe\\(c\\)/.test(h))
       throw new Error('o export dos excluídos deixou de passar por _csvSafe')`],
+  ['escrita exige papel no servidor', `const fs=require('fs');
+    // S-8: o frontend esconde botões a viewers, mas isso é cosmético — com o
+    // token, um viewer podia POST/PUT/DELETE directamente. As verificações de
+    // papel vivem agora no servidor.
+    const auth=fs.readFileSync('lib/auth.js','utf8');
+    if(!/async function requireWrite\\(/.test(auth) || !/async function requireWriteAny\\(/.test(auth))
+      throw new Error('faltam os helpers requireWrite/requireWriteAny');
+    if(!/role === 'owner' \\|\\| role === 'editor'/.test(auth))
+      throw new Error('requireWrite tem de permitir só owner/editor (viewer é leitura)');
+    // campanhas: criar e as acções de envio/edição exigem escrita
+    const cIdx=fs.readFileSync('api/campaigns/index.js','utf8');
+    if(!/if \\(!await requireWrite\\(req, res, user\\.id, brand_id\\)\\) return;/.test(cIdx))
+      throw new Error('criar campanha deixou de exigir papel de escrita');
+    const cId=fs.readFileSync('api/campaigns/[id].js','utf8');
+    if(!/_writeActions = new Set/.test(cId) || !/requireWrite\\(req, res, user\\.id, camp\\.brand_id\\)/.test(cId))
+      throw new Error('as acções de escrita/envio da campanha deixaram de exigir papel de escrita');
+    for(const a of ['send','send_batch','add_direct_recipients','remove_direct_recipients','cancel_send'])
+      if(!cId.includes("'"+a+"'"))throw new Error('a acção de escrita '+a+' saiu do conjunto protegido');
+    // templates: as quatro escritas
+    const t=fs.readFileSync('api/templates/index.js','utf8');
+    if((t.match(/requireWrite\\(req, res, user\\.id/g)||[]).length < 4)
+      throw new Error('nem todas as escritas de template exigem papel de escrita');
+    // contactos globais: os dois caminhos de apagar
+    for(const f of ['api/contacts/index.js','api/contacts/[id].js'])
+      if(!/requireWriteAny\\(req, res, user\\.id\\)/.test(fs.readFileSync(f,'utf8')))
+        throw new Error(f+': apagar contactos deixou de exigir papel de escrita')`],
+  ['apagar contacto anonimiza o log de envio', `const fs=require('fs');
+    // G-1: email_send_log.email é NOT NULL e sobrevivia ao apagamento do
+    // contacto (FK SET NULL só no contact_id). Anonimizar fecha a lacuna.
+    for(const f of ['api/contacts/index.js','api/contacts/[id].js']){
+      const s=fs.readFileSync(f,'utf8');
+      if(!/UPDATE email_send_log SET email = 'apagado@' \\|\\| md5\\(email\\)/.test(s))
+        throw new Error(f+': o apagamento deixou de anonimizar o email em email_send_log');
+    }`],
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],

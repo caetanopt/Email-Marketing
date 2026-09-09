@@ -1,5 +1,5 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, cors, requireWrite } = require('../../lib/auth');
 const Anthropic = require('@anthropic-ai/sdk');
 const mjml2html = require('mjml');
 
@@ -115,6 +115,7 @@ module.exports = async function handler(req, res) {
       if (req.method === 'GET') return res.status(200).json(tpl);
 
       if (req.method === 'PUT') {
+        if (!await requireWrite(req, res, user.id, tpl.brand_id)) return;   // S-8
         const { name, subject, preview_text, html_content } = req.body || {};
         await query(
           'UPDATE templates SET name=COALESCE($1,name), subject=$2, preview_text=$3, html_content=COALESCE($4,html_content), updated_at=NOW() WHERE id=$5 AND brand_id=$6',
@@ -124,6 +125,7 @@ module.exports = async function handler(req, res) {
       }
 
       if (req.method === 'DELETE') {
+        if (!await requireWrite(req, res, user.id, tpl.brand_id)) return;   // S-8
         await query('DELETE FROM templates WHERE id=$1 AND brand_id=$2', [id, tpl.brand_id]);
         return res.status(200).json({ ok: true });
       }
@@ -131,6 +133,7 @@ module.exports = async function handler(req, res) {
       if (req.method === 'POST') {
         if (!target_brand_id) return res.status(400).json({ error: 'target_brand_id obrigatório' });
         if (!await authorizeBrand(user.id, target_brand_id)) return res.status(403).json({ error: 'Sem permissão na marca destino' });
+        if (!await requireWrite(req, res, user.id, target_brand_id)) return;   // S-8
         const rows = await query(
           'INSERT INTO templates (brand_id, name, subject, preview_text, html_content, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
           [target_brand_id, `${tpl.name} (cópia)`, tpl.subject, tpl.preview_text, tpl.html_content, user.id]
@@ -158,6 +161,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      if (!await requireWrite(req, res, user.id, brand_id)) return;   // S-8
       const { name, subject, preview_text, html_content } = req.body || {};
       if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
       const rows = await query(

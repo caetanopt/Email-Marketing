@@ -1,5 +1,5 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, cors, requireWrite } = require('../../lib/auth');
 const { getSESClient } = require('../../lib/ses');
 const { SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
@@ -75,6 +75,15 @@ module.exports = async function handler(req, res) {
   try {
     const camp = await authorizeCampaign(user.id, id);
     if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+
+    // S-8: qualquer acção que MODIFIQUE a campanha ou dispare envio exige papel
+    // de escrita (owner/editor). authorizeCampaign já confirmou que o
+    // utilizador pertence à marca, mas um viewer pertence à mesma. Leituras
+    // (preview_token, recipient_summary, get_direct_recipients, send_log,
+    // export_recipients, same_name, GET) passam.
+    const _writeActions = new Set(['send', 'send_batch', 'add_direct_recipients', 'remove_direct_recipients', 'cancel_send']);
+    const _isWrite = req.method === 'PUT' || req.method === 'DELETE' || _writeActions.has(action);
+    if (_isWrite && !(await requireWrite(req, res, user.id, camp.brand_id))) return;
 
     if (req.method === 'GET' && action === 'preview_token') {
       const appUrl = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');

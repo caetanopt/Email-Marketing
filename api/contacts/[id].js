@@ -1,5 +1,5 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors, hasAnyRole } = require('../../lib/auth');
+const { requireAuth, cors, hasAnyRole, requireWriteAny } = require('../../lib/auth');
 
 // Os contactos são globais: não pertencem a nenhuma marca. O acesso exige
 // apenas que o utilizador pertença a alguma marca — a mesma verificação que
@@ -61,6 +61,13 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
+      if (!await requireWriteAny(req, res, user.id)) return;   // S-8
+      // G-1: o email fica em email_send_log (NOT NULL, FK a SET NULL) depois de
+      // o contacto ser apagado — dado pessoal que sobrevive ao apagamento.
+      // Anonimizar preserva a utilidade forense (houve envio) sem o email.
+      try {
+        await query("UPDATE email_send_log SET email = 'apagado@' || md5(email), contact_id = NULL WHERE contact_id = $1", [id]);
+      } catch (e) { if (e.code !== '42P01') throw e; }
       // email_events.contact_id não tem ON DELETE definido — anular primeiro.
       await query('UPDATE email_events SET contact_id=NULL WHERE contact_id = $1', [id]);
       await query('DELETE FROM contacts WHERE id = $1', [id]);

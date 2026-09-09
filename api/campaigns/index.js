@@ -1,7 +1,7 @@
 const { GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const { query } = require('../../lib/db');
 const { getSESClient } = require('../../lib/ses');
-const { requireAuth, cors, requireBrand } = require('../../lib/auth');
+const { requireAuth, cors, requireBrand, requireWrite } = require('../../lib/auth');
 const { gravarRodapeLegal } = require('../../lib/campanhas');
 
 module.exports = async function handler(req, res) {
@@ -458,11 +458,9 @@ module.exports = async function handler(req, res) {
               no_legal_notice } = req.body || {};
       if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
 
-      const brandAccess = await query(
-        'SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND brand_id=$2',
-        [user.id, brand_id]
-      );
-      if (!brandAccess[0]) return res.status(403).json({ error: 'Acesso negado a esta marca' });
+      // S-8: criar campanha exige papel de escrita (owner/editor), não só
+      // pertencer à marca — um viewer não cria campanhas.
+      if (!await requireWrite(req, res, user.id, brand_id)) return;
 
       const utmJson = utm_params && typeof utm_params === 'object' && Object.values(utm_params).some(Boolean)
         ? JSON.stringify(utm_params) : null;
