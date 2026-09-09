@@ -311,6 +311,22 @@ const provas = [
     // a conclusão não ressuscita uma campanha cancelada
     if(!/UPDATE campaigns SET status='sent'[^;]*WHERE id=\\$1 AND status='sending'/.test(s))
       throw new Error(\"a conclusão do envio tem de exigir status='sending' — senão ressuscita uma campanha cancelada para 'sent'\");`],
+  ['a importação em blocos não tranca a tabela', `const fs=require('fs');
+    // Importar para uma campanha corre dois blocos em paralelo. O
+    // garantirColunaOculto fazia um ALTER TABLE dentro da transacção de um
+    // bloco (via marcarOculto), e o ACCESS EXCLUSIVE lock chocava com o INSERT
+    // do bloco vizinho — a transacção rebentava e ~500 contactos voltavam como
+    // "falharam a gravar". O ALTER só pode correr se a coluna faltar mesmo, e
+    // fora da transacção.
+    const c=fs.readFileSync('lib/contactos.js','utf8');
+    const g=(c.match(/function garantirColunaOculto[\\s\\S]*?\\n\\}/)||[''])[0];
+    if(!/colunaExiste\\('contacts', 'hidden'/.test(g))
+      throw new Error('garantirColunaOculto voltou a fazer o ALTER sem verificar primeiro se a coluna existe — tranca a tabela a cada instância nova');
+    if(g.indexOf(\"q('ALTER TABLE contacts ADD COLUMN\") < g.indexOf(\"colunaExiste('contacts', 'hidden'\"))
+      throw new Error('o ALTER tem de vir depois da verificação, não antes');
+    const idx=fs.readFileSync('api/contacts/index.js','utf8');
+    if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
+      throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
   ['um ficheiro não cancela subscrições', `const fs=require('fs');
     // "não", "n" e "0" numa coluna "estado" valiam cancelamento. Uma coluna
     // dessas num ficheiro interno significa quase sempre outra coisa, e o

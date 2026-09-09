@@ -1,6 +1,6 @@
 const { query, transaction } = require('../../lib/db');
 const { requireAuth, cors, requireBrand, hasAnyRole, requireWriteAny } = require('../../lib/auth');
-const { upsertContactos, aplicarSupressao, permitirContactosSemMarca, marcarOculto } = require('../../lib/contactos');
+const { upsertContactos, aplicarSupressao, permitirContactosSemMarca, marcarOculto, garantirColunaOculto } = require('../../lib/contactos');
 
 const IMPORT_INIT_SQL = `
   CREATE TABLE IF NOT EXISTS import_jobs (
@@ -187,8 +187,14 @@ async function processBatch(listId, batch, { ocultarNovos = false } = {}) {
     try {
       // Fora da transacção: o ALTER TABLE que permite contactos sem marca
       // tranca a tabela, e dentro da transacção ficaria trancada até ao fim
-      // do lote.
+      // do lote. O mesmo vale para a coluna 'hidden' (garantirColunaOculto),
+      // que o upsertContactos toca lá dentro via marcarOculto quando
+      // ocultarNovos — sem a garantir aqui fora, o ALTER (ou até só o lock de
+      // um ADD COLUMN IF NOT EXISTS) chocava com o INSERT do bloco vizinho a
+      // correr em paralelo e rebentava a transacção. Agora corre uma vez, fora
+      // da transacção; depois de a coluna existir, nunca mais corre.
       await permitirContactosSemMarca();
+      if (ocultarNovos) await garantirColunaOculto();
       await transaction(async q => {
         // O ficheiro pode corrigir a data de subscrição e o estado; sem
         // valor, mantém-se o que já estava. O estado do ficheiro nunca
