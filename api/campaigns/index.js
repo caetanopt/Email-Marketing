@@ -70,7 +70,15 @@ module.exports = async function handler(req, res) {
          WHERE c.status='sending'
            AND EXISTS (
              SELECT 1 FROM campaign_recipients cr
-             WHERE cr.campaign_id=c.id AND cr.status IN ('pending','retry')
+             -- Qualquer estado NÃO terminal: pending, retry e — desde a Fase 3
+             -- (E-1) — também 'sending' (linhas reclamadas por um browser que
+             -- parou a meio). Sem apanhar o 'sending', uma campanha cujas
+             -- linhas que faltam já foram todas reclamadas ficava de fora deste
+             -- laço e só a rede de segurança dos 3 min a recuperava. Usa-se
+             -- NOT IN (terminais) para não nomear 'sending', que pode ainda
+             -- não existir no enum (migração 060 por correr).
+             WHERE cr.campaign_id=c.id
+               AND cr.status NOT IN ('sent','failed','bounced','suppressed')
            )
          LIMIT 5`
       );
