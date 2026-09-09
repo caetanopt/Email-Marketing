@@ -213,6 +213,28 @@ const provas = [
     const sy=fs.readFileSync('api/sync/index.js','utf8');
     if(!/rateLimit\\('sync', 'ip:'/.test(sy))
       throw new Error('a API de sync deixou de limitar por IP')`],
+  ['a evidência de consentimento é registada', `const fs=require('fs');
+    // G-3: cada contacto criado guarda origem+data do consentimento; a base
+    // legal (legal_basis) fica por classificar (NULL) — é decisão jurídica.
+    const c=fs.readFileSync('lib/contactos.js','utf8');
+    if(!/consent_source = COALESCE\\(consent_source, source\\)/.test(c))
+      throw new Error('os contactos criados deixaram de registar a evidência de consentimento');
+    const m=fs.readFileSync('migrations/059_evidencia_de_consentimento.sql','utf8');
+    if(!/legal_basis/.test(m)||!/consent_at/.test(m))
+      throw new Error('a migração 059 deixou de criar os campos de evidência de consentimento')`],
+  ['a limpeza de retenção é manual, dry-run e de owner', `const fs=require('fs');
+    // G-2: mecanismo manual (não agendado), por defeito dry_run, só owners, e
+    // anonimiza o log antes de apagar (não deixa email pessoal para trás).
+    const s=fs.readFileSync('api/contacts/index.js','utf8');
+    if(!/action === 'retention_cleanup'/.test(s))
+      throw new Error('a acção de limpeza de retenção desapareceu');
+    if(!/Apenas owners podem correr a limpeza/.test(s))
+      throw new Error('a limpeza de retenção deixou de exigir owner');
+    if(!/const dryRun = !\\(req\\.body && \\(req\\.body\\.dry_run === false/.test(s))
+      throw new Error('a limpeza de retenção tem de ser dry_run por defeito');
+    const rc=s.slice(s.indexOf("action === 'retention_cleanup'"));
+    if(!/UPDATE email_send_log SET email = 'apagado\\+' \\|\\| id \\|\\| '@anonimizado\\.local'[\\s\\S]{0,500}DELETE FROM contacts WHERE id = ANY/.test(rc))
+      throw new Error('a limpeza de retenção tem de anonimizar o log antes de apagar')`],
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],

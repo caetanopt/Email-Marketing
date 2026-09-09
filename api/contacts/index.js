@@ -616,6 +616,55 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Limpeza de retenção (G-2) ─────────────────────────────────────────────
+    //
+    // Mecanismo MANUAL — não está agendado. Apaga contactos sem qualquer
+    // actividade (nunca abriram, clicaram nem receberam nada) há mais de N
+    // meses, anonimizando primeiro o email no log de envio (G-1). Corre-se à
+    // mão, quando se decidir, e por defeito é dry_run: devolve quantos SERIAM
+    // afectados sem apagar nada. Só owners. O prazo (months) é parâmetro — a
+    // política de retenção fica a cargo de quem corre, não fixada no código.
+    if (action === 'retention_cleanup' && req.method === 'POST') {
+      const owner = await query(
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]
+      );
+      if (!owner[0]) return res.status(403).json({ error: 'Apenas owners podem correr a limpeza de retenção.' });
+
+      const months = Math.max(1, parseInt((req.body && req.body.months) || 36, 10));
+      const dryRun = !(req.body && (req.body.dry_run === false || req.body.dry_run === 'false'));
+
+      // Candidatos: a última actividade conhecida (o mais recente entre a data
+      // de criação, o último evento e o último envio) é anterior ao prazo.
+      const alvoSql = `
+        SELECT c.id FROM contacts c
+        WHERE GREATEST(
+                c.created_at,
+                COALESCE((SELECT MAX(ee.created_at) FROM email_events ee WHERE ee.contact_id=c.id), c.created_at),
+                COALESCE((SELECT MAX(sl.created_at) FROM email_send_log sl WHERE sl.contact_id=c.id), c.created_at)
+              ) < NOW() - ($1 || ' months')::interval`;
+
+      try {
+        if (dryRun) {
+          const [{ count }] = await query(`SELECT COUNT(*)::int AS count FROM (${alvoSql}) t`, [String(months)]);
+          return res.status(200).json({ dry_run: true, months, would_delete: count });
+        }
+        const apagados = await transaction(async (q) => {
+          const ids = (await q(alvoSql, [String(months)])).map(r => r.id);
+          if (!ids.length) return 0;
+          try {
+            await q("UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL WHERE contact_id = ANY($1::int[])", [ids]);
+          } catch (e) { if (e.code !== '42P01') throw e; }
+          await q('UPDATE email_events SET contact_id=NULL WHERE contact_id = ANY($1::int[])', [ids]);
+          await q('DELETE FROM contacts WHERE id = ANY($1::int[])', [ids]);
+          return ids.length;
+        });
+        return res.status(200).json({ dry_run: false, months, deleted: apagados });
+      } catch (e) {
+        if (e.code === '42P01') return res.status(200).json({ dry_run: dryRun, months, would_delete: 0, deleted: 0, _tabela_em_falta: true });
+        throw e;
+      }
+    }
+
     // ── Bulk import (direct, kept for small imports / campaign wizard) ────────
     if (action === 'bulk_import' && req.method === 'POST') {
       const { contacts: rows, list_id: listId, one_off } = req.body || {};
