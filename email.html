@@ -9910,6 +9910,11 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (zone) { zone.classList.remove('border-green-400','bg-green-50','border-slate-900','scale-[1.01]'); zone.classList.add('border-slate-200','bg-slate-50'); }
         const btn = document.getElementById(`wiz${T}ImportBtn`);
         if (btn) btn.disabled = true;
+        // Tirar o ficheiro também fecha o aviso da importação anterior — não faz
+        // sentido continuar a explicar o que ficou de fora de um ficheiro que já
+        // não está aqui. (No fim de um import corre antes do _wizMostrarFora, por
+        // isso não esconde um aviso acabado de mostrar.)
+        document.getElementById('wizImportFora')?.classList.add('hidden');
     }
 
     // Quem ficou de fora da última importação, com o motivo de cada um.
@@ -10261,6 +10266,11 @@ ${teSerializeBlocksComment(srcBlocks)}
             let erroAoAssociar = null;
             _wizImporting = true;
             _wizImportingCampaignId = campanhaId;
+            // Fechar o aviso da importação anterior: sem isto, um novo import
+            // (mesmo um que corre lindamente) deixava à vista o "X falharam"
+            // do anterior até se carregar em Fechar à mão. Reaparece no fim só
+            // se este import tiver mesmo algo a explicar.
+            document.getElementById('wizImportFora')?.classList.add('hidden');
             _wizUpdateProgress(0, rows.length);
 
             const blocos = [];
