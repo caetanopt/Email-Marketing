@@ -460,6 +460,11 @@ module.exports = async function handler(req, res) {
           [user.id, id]
         );
         if (!rows[0]) return res.status(404).json({ error: 'Marca não encontrada' });
+        // S-6: b.* traz api_key_hash (e a coluna legada api_key em texto). A
+        // chave nunca sai desta API — revela-se só se está configurada, via
+        // action=api_key. Nunca a devolver no objecto da marca.
+        delete rows[0].api_key;
+        delete rows[0].api_key_hash;
         return res.status(200).json(rows[0]);
       }
       // Owners see all active brands; others see only their assigned brands

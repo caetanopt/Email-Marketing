@@ -81,7 +81,7 @@ module.exports = async function handler(req, res) {
     // utilizador pertence à marca, mas um viewer pertence à mesma. Leituras
     // (preview_token, recipient_summary, get_direct_recipients, send_log,
     // export_recipients, same_name, GET) passam.
-    const _writeActions = new Set(['send', 'send_batch', 'add_direct_recipients', 'remove_direct_recipients', 'cancel_send']);
+    const _writeActions = new Set(['send', 'send_batch', 'add_direct_recipients', 'remove_direct_recipients', 'cancel_send', 'test']);
     const _isWrite = req.method === 'PUT' || req.method === 'DELETE' || _writeActions.has(action);
     if (_isWrite && !(await requireWrite(req, res, user.id, camp.brand_id))) return;
 

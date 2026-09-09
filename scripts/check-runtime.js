@@ -115,23 +115,43 @@ const provas = [
     const cId=fs.readFileSync('api/campaigns/[id].js','utf8');
     if(!/_writeActions = new Set/.test(cId) || !/requireWrite\\(req, res, user\\.id, camp\\.brand_id\\)/.test(cId))
       throw new Error('as acções de escrita/envio da campanha deixaram de exigir papel de escrita');
-    for(const a of ['send','send_batch','add_direct_recipients','remove_direct_recipients','cancel_send'])
+    // 'test' também: envia um email real por SES para um destino arbitrário —
+    // um viewer podia usá-lo para spam se não fosse escrita.
+    for(const a of ['send','send_batch','add_direct_recipients','remove_direct_recipients','cancel_send','test'])
       if(!cId.includes("'"+a+"'"))throw new Error('a acção de escrita '+a+' saiu do conjunto protegido');
     // templates: as quatro escritas
     const t=fs.readFileSync('api/templates/index.js','utf8');
     if((t.match(/requireWrite\\(req, res, user\\.id/g)||[]).length < 4)
       throw new Error('nem todas as escritas de template exigem papel de escrita');
-    // contactos globais: os dois caminhos de apagar
+    // contactos globais: apagar, mas também criar/importar/editar — todas as escritas
     for(const f of ['api/contacts/index.js','api/contacts/[id].js'])
       if(!/requireWriteAny\\(req, res, user\\.id\\)/.test(fs.readFileSync(f,'utf8')))
-        throw new Error(f+': apagar contactos deixou de exigir papel de escrita')`],
+        throw new Error(f+': escrever contactos deixou de exigir papel de escrita');
+    // supressão: adicionar/remover (e domínios inteiros) é escrita
+    const sup=fs.readFileSync('api/suppression/index.js','utf8');
+    if(!/requireWriteAny\\(req, res, user\\.id\\)/.test(sup))
+      throw new Error('escrever na lista de supressão deixou de exigir papel de escrita');
+    // listas: as escritas exigem papel; criar/apagar lista e limpar contactos são de owner
+    const l=fs.readFileSync('api/lists/index.js','utf8');
+    if((l.match(/requireWriteAny\\(req, res, user\\.id\\)/g)||[]).length < 3)
+      throw new Error('nem todas as escritas de lista exigem papel de escrita');
+    if(/role IN \\('owner','admin'\\)/.test(l))
+      throw new Error(\"'admin' não é um papel real — as verificações de owner têm de usar role='owner'\");
+    // marca: o GET de uma marca não pode devolver a chave (nem o hash)
+    const bg=fs.readFileSync('api/brands/index.js','utf8');
+    if(!/delete rows\\[0\\]\\.api_key_hash/.test(bg))
+      throw new Error('o GET de uma marca voltou a expor a api_key/api_key_hash')`],
   ['apagar contacto anonimiza o log de envio', `const fs=require('fs');
     // G-1: email_send_log.email é NOT NULL e sobrevivia ao apagamento do
-    // contacto (FK SET NULL só no contact_id). Anonimizar fecha a lacuna.
-    for(const f of ['api/contacts/index.js','api/contacts/[id].js']){
+    // contacto (FK SET NULL só no contact_id). Anonimizar fecha a lacuna. O
+    // token deriva da id da linha do log — não é reversível (md5(email) era
+    // atacável por dicionário). Os três caminhos de apagar têm de o fazer.
+    for(const f of ['api/contacts/index.js','api/contacts/[id].js','api/lists/index.js']){
       const s=fs.readFileSync(f,'utf8');
-      if(!/UPDATE email_send_log SET email = 'apagado@' \\|\\| md5\\(email\\)/.test(s))
-        throw new Error(f+': o apagamento deixou de anonimizar o email em email_send_log');
+      if(!/UPDATE email_send_log SET email = 'apagado\\+' \\|\\| id \\|\\| '@anonimizado\\.local'/.test(s))
+        throw new Error(f+': o apagamento deixou de anonimizar (de forma não reversível) o email em email_send_log');
+      if(/md5\\(email\\)/.test(s))
+        throw new Error(f+': md5(email) é reversível por dicionário — não serve para anonimizar');
     }`],
   ['as API keys são guardadas como hash', `const fs=require('fs');
     // S-6: as chaves estavam em texto claro e a API devolvia-as. Agora são

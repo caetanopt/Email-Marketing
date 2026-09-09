@@ -10,6 +10,11 @@
 
 ALTER TABLE email_events DROP COLUMN IF EXISTS ip;
 
--- Verificação (não deve devolver a linha 'ip'):
+-- Pela mesma razão: email_events.email. O evento já liga a contact_id; guardar
+-- também o email é uma segunda cópia do dado pessoal que nunca é escrita nem
+-- lida (confirmado por pesquisa a INSERT/SELECT em api/). Remove-se.
+ALTER TABLE email_events DROP COLUMN IF EXISTS email;
+
+-- Verificação (não deve devolver as linhas 'ip' nem 'email'):
 --   SELECT column_name FROM information_schema.columns
 --    WHERE table_name = 'email_events' ORDER BY ordinal_position;

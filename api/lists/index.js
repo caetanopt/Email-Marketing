@@ -1,5 +1,5 @@
-const { query, colunaExiste } = require('../../lib/db');
-const { withAuth, hasAnyRole } = require('../../lib/auth');
+const { query, colunaExiste, transaction } = require('../../lib/db');
+const { withAuth, hasAnyRole, requireWriteAny } = require('../../lib/auth');
 const { marcarOculto } = require('../../lib/contactos');
 
 // ── Segment rule builder ──────────────────────────────────────────────────────
@@ -85,6 +85,9 @@ module.exports = withAuth(async (req, res, user) => {
     if (!auth[0]) return res.status(404).json({ error: 'Segmento não encontrado' });
     const seg = auth[0];
 
+    // S-8: editar ou apagar um segmento é escrita — exige papel de escrita.
+    if ((req.method === 'PUT' || req.method === 'DELETE') && !(await requireWriteAny(req, res, user.id))) return;
+
     try {
       if (req.method === 'GET') {
         if (action === 'count') {
@@ -169,6 +172,8 @@ module.exports = withAuth(async (req, res, user) => {
       }
 
       if (action === 'segments' && req.method === 'POST') {
+        // S-8: criar segmento é escrita (segment_preview, abaixo, é só contar).
+        if (!await requireWriteAny(req, res, user.id)) return;
         const { name, description, rules, match } = req.body || {};
         if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
         const segBrand = brand_id || req.body?.brand_id || null;
@@ -216,6 +221,12 @@ module.exports = withAuth(async (req, res, user) => {
     const auth = await query(`SELECT l.* FROM lists l WHERE l.id = $1`, [id]);
     if (!auth[0]) return res.status(404).json({ error: 'Lista não encontrada' });
 
+    // S-8: qualquer escrita numa lista (editar, adicionar/remover contactos,
+    // apagar) exige papel de escrita. As acções mais destrutivas
+    // (clear_contacts, apagar a lista) ainda pedem 'owner' mais abaixo.
+    if ((req.method === 'PUT' || req.method === 'POST' || req.method === 'DELETE')
+        && !(await requireWriteAny(req, res, user.id))) return;
+
     try {
       if (req.method === 'GET') {
         // Sem a marca da lista: uma lista global não pertence a nenhuma. O
@@ -259,24 +270,38 @@ module.exports = withAuth(async (req, res, user) => {
         }
         if (action === 'clear_contacts') {
           // Acção destrutiva — apaga os contactos da base de dados, não apenas
-          // da lista. Restrita a owners/admins.
+          // da lista. Restrita a owners. ('admin' não é um papel que exista —
+          // os papéis são owner/editor/viewer; a verificação antiga deixava
+          // passar só os owners na mesma, mas por acidente.)
           const adm = await query(
-            `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role IN ('owner','admin') LIMIT 1`,
+            `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`,
             [user.id]
           );
           if (!adm[0]) return res.status(403).json({ error: 'Sem permissão para eliminar contactos.' });
-          // email_events.contact_id não tem ON DELETE — anular antes de apagar
-          await query(
-            `UPDATE email_events SET contact_id=NULL
-             WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
-            [id]
-          );
-          const del = await query(
-            `DELETE FROM contacts
-             WHERE id IN (SELECT contact_id FROM list_members WHERE list_id=$1)
-             RETURNING id`,
-            [id]
-          );
+          // G-1: anonimizar o email no log de envio antes de apagar — o mesmo
+          // que contacts/[id].js faz. Sem isto, este terceiro caminho de
+          // apagamento deixava o email pessoal para trás em email_send_log.
+          const del = await transaction(async (q) => {
+            try {
+              await q(
+                `UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL
+                 WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
+                [id]
+              );
+            } catch (e) { if (e.code !== '42P01') throw e; }
+            // email_events.contact_id não tem ON DELETE — anular antes de apagar
+            await q(
+              `UPDATE email_events SET contact_id=NULL
+               WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
+              [id]
+            );
+            return q(
+              `DELETE FROM contacts
+               WHERE id IN (SELECT contact_id FROM list_members WHERE list_id=$1)
+               RETURNING id`,
+              [id]
+            );
+          });
           return res.status(200).json({ ok: true, deleted: del.length });
         }
         // Apagar a própria lista — exclusivo de administradores e nunca as
@@ -286,7 +311,7 @@ module.exports = withAuth(async (req, res, user) => {
           return res.status(403).json({ error: 'As listas Marketing e Colaboradores são fixas e não podem ser apagadas.' });
         }
         const admDel = await query(
-          `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role IN ('owner','admin') LIMIT 1`,
+          `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`,
           [user.id]
         );
         if (!admDel[0]) return res.status(403).json({ error: 'Apenas administradores podem apagar listas.' });
@@ -373,9 +398,10 @@ module.exports = withAuth(async (req, res, user) => {
     }
 
     if (req.method === 'POST') {
-      // Criar listas é uma acção exclusiva de administradores (owner/admin).
+      // Criar listas é uma acção exclusiva de owners. ('admin' não é um papel
+      // real — owner/editor/viewer.)
       const adm = await query(
-        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role IN ('owner','admin') LIMIT 1`,
+        `SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`,
         [user.id]
       );
       if (!adm[0]) return res.status(403).json({ error: 'Apenas administradores podem criar listas.' });

@@ -1,4 +1,4 @@
-const { query } = require('../../lib/db');
+const { query, transaction } = require('../../lib/db');
 const { requireAuth, cors, hasAnyRole, requireWriteAny } = require('../../lib/auth');
 
 // Os contactos são globais: não pertencem a nenhuma marca. O acesso exige
@@ -36,6 +36,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
+      if (!await requireWriteAny(req, res, user.id)) return;   // S-8
       const { email, name, phone, company, status, custom_attributes } = req.body || {};
       const novoEmail = email?.toLowerCase().trim() || null;
       // Um email é um contacto: mudar para um que já existe fundiria dois
@@ -64,13 +65,19 @@ module.exports = async function handler(req, res) {
       if (!await requireWriteAny(req, res, user.id)) return;   // S-8
       // G-1: o email fica em email_send_log (NOT NULL, FK a SET NULL) depois de
       // o contacto ser apagado — dado pessoal que sobrevive ao apagamento.
-      // Anonimizar preserva a utilidade forense (houve envio) sem o email.
-      try {
-        await query("UPDATE email_send_log SET email = 'apagado@' || md5(email), contact_id = NULL WHERE contact_id = $1", [id]);
-      } catch (e) { if (e.code !== '42P01') throw e; }
-      // email_events.contact_id não tem ON DELETE definido — anular primeiro.
-      await query('UPDATE email_events SET contact_id=NULL WHERE contact_id = $1', [id]);
-      await query('DELETE FROM contacts WHERE id = $1', [id]);
+      // Anonimizar preserva a utilidade forense (houve envio) sem o email. O
+      // token usa a própria id da linha do log, que não tem relação com o
+      // email: não é reversível (ao contrário de um hash do email, atacável
+      // por dicionário para domínios conhecidos). Tudo numa transacção: ou o
+      // contacto desaparece e o log fica anónimo, ou não muda nada.
+      await transaction(async (q) => {
+        try {
+          await q("UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL WHERE contact_id = $1", [id]);
+        } catch (e) { if (e.code !== '42P01') throw e; }
+        // email_events.contact_id não tem ON DELETE definido — anular primeiro.
+        await q('UPDATE email_events SET contact_id=NULL WHERE contact_id = $1', [id]);
+        await q('DELETE FROM contacts WHERE id = $1', [id]);
+      });
       return res.status(200).json({ ok: true });
     }
 

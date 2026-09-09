@@ -1,5 +1,5 @@
 const { query } = require('../../lib/db');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, requireWriteAny, cors } = require('../../lib/auth');
 const crypto = require('crypto');
 
 function verifyToken(email, brandId, token) {
@@ -190,6 +190,12 @@ module.exports = async function handler(req, res) {
 
   const user = await requireAuth(req, res);
   if (!user) return;
+
+  // S-8: escrever na lista de supressão (adicionar/remover, e ainda mais um
+  // domínio inteiro de uma vez, ou reactivar quem estava suprimido) mexe em
+  // quem recebe e quem não recebe email em toda a empresa. Um papel de leitura
+  // não pode fazer isto. As leituras (GET) continuam abertas a qualquer sessão.
+  if ((req.method === 'POST' || req.method === 'DELETE') && !(await requireWriteAny(req, res, user.id))) return;
 
   try {
     if (req.method === 'GET') {
