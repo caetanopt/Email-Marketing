@@ -299,6 +299,12 @@ const provas = [
       throw new Error('as linhas entregues ao SES deixaram de ser protegidas do varrimento — risco de duplicado');
     if(!/status='pending', attempted_at=NULL WHERE campaign_id=\\$1 AND status='sending'/.test(s))
       throw new Error('o varrimento que devolve as não-entregues a pending desapareceu');
+    // recuperação de lote interrompido: 'sending' órfão (>2 min) volta a ser elegível
+    if(!/status = 'sending' AND attempted_at < NOW\\(\\) - INTERVAL '2 minutes'/.test(s))
+      throw new Error(\"as linhas 'sending' órfãs deixaram de ser recuperadas — um lote interrompido perdia destinatários\");
+    // a conclusão conta 'sending' como pendente (não conclui com linhas a meio)
+    if(!/status IN \\(\\$\\{outstanding\\}\\)/.test(s))
+      throw new Error('a contagem do que falta deixou de incluir sending — a campanha podia concluir com linhas por enviar');
     // E-2: releitura do estado a cada onda + paragem
     if(!/SELECT status FROM campaigns WHERE id=\\$1/.test(s) || !/batchState\\.cancelled = true/.test(s))
       throw new Error('o envio deixou de reverificar o cancelamento a cada onda (E-2)');
