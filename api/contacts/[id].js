@@ -1,4 +1,4 @@
-const { query, transaction } = require('../../lib/db');
+const { query, transaction, colunaExiste } = require('../../lib/db');
 const { requireAuth, cors, hasAnyRole, requireWriteAny } = require('../../lib/auth');
 
 // Os contactos são globais: não pertencem a nenhuma marca. O acesso exige
@@ -71,9 +71,12 @@ module.exports = async function handler(req, res) {
       // por dicionário para domínios conhecidos). Tudo numa transacção: ou o
       // contacto desaparece e o log fica anónimo, ou não muda nada.
       await transaction(async (q) => {
-        try {
+        // Verificar a existência por catálogo, e NÃO apanhar um 42P01 aqui: um
+        // erro dentro da transacção aborta-a inteira, e o DELETE a seguir
+        // rebentava com "current transaction is aborted".
+        if (await colunaExiste('email_send_log', 'email', q)) {
           await q("UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL WHERE contact_id = $1", [id]);
-        } catch (e) { if (e.code !== '42P01') throw e; }
+        }
         // email_events.contact_id não tem ON DELETE definido — anular primeiro.
         await q('UPDATE email_events SET contact_id=NULL WHERE contact_id = $1', [id]);
         await q('DELETE FROM contacts WHERE id = $1', [id]);

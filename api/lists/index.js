@@ -282,13 +282,15 @@ module.exports = withAuth(async (req, res, user) => {
           // que contacts/[id].js faz. Sem isto, este terceiro caminho de
           // apagamento deixava o email pessoal para trás em email_send_log.
           const del = await transaction(async (q) => {
-            try {
+            // Catálogo, não try/catch: um 42P01 apanhado aqui abortava a
+            // transacção e o DELETE a seguir rebentava.
+            if (await colunaExiste('email_send_log', 'email', q)) {
               await q(
                 `UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL
                  WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
                 [id]
               );
-            } catch (e) { if (e.code !== '42P01') throw e; }
+            }
             // email_events.contact_id não tem ON DELETE — anular antes de apagar
             await q(
               `UPDATE email_events SET contact_id=NULL

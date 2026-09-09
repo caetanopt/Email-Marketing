@@ -342,6 +342,27 @@ const provas = [
     // a bisecção tem de descer até à linha única e só aí dar como falhada
     if(!/if \\(linhas\\.length === 1\\)/.test(idx) || !/reason: 'falha_ao_gravar'/.test(idx))
       throw new Error('a bisecção tem de isolar a linha única e nomeá-la, não marcar o bloco todo');`],
+  ['nenhum erro de coluna/tabela é engolido dentro de uma transacção', `const fs=require('fs');
+    // Um erro dentro de uma transacção Postgres aborta-a INTEIRA: apanhar um
+    // 42703/42P01 e continuar a usar o mesmo 'q' faz a instrução seguinte (ou
+    // o COMMIT) rebentar com "current transaction is aborted". Foi isto que fez
+    // perder todos os blocos com contactos novos na importação. A evidência de
+    // consentimento (G-3) e a anonimização (G-1) verificam o catálogo ANTES,
+    // com colunaExiste, em vez de apanhar o erro lá dentro.
+    const c=fs.readFileSync('lib/contactos.js','utf8');
+    const up=c.slice(c.indexOf('async function upsertContactos'));
+    if(/catch \\(e\\) \\{ if \\(e\\.code !== '42703'\\) throw e; \\}/.test(up))
+      throw new Error('upsertContactos voltou a apanhar 42703 dentro da transacção — isso aborta-a e faz perder o bloco; usar colunaExiste antes');
+    if(!/colunaExiste\\('contacts', 'consent_source', q\\)/.test(up))
+      throw new Error('a evidência de consentimento tem de ser guardada por colunaExiste, não por try/catch dentro da transacção');
+    // anonimização (G-1): nos três caminhos de apagar, guardada por colunaExiste
+    for(const f of ['api/contacts/index.js','api/contacts/[id].js','api/lists/index.js']){
+      const s=fs.readFileSync(f,'utf8');
+      if(/catch \\(e\\) \\{ if \\(e\\.code !== '42P01'\\) throw e; \\}/.test(s))
+        throw new Error(f+': voltou a apanhar 42P01 à volta da anonimização dentro da transacção — aborta-a e o DELETE rebenta; usar colunaExiste');
+      if(/email_send_log SET email = 'apagado/.test(s) && !/colunaExiste\\('email_send_log', 'email', q\\)/.test(s))
+        throw new Error(f+': a anonimização deixou de ser guardada por colunaExiste');
+    }`],
   ['um ficheiro não cancela subscrições', `const fs=require('fs');
     // "não", "n" e "0" numa coluna "estado" valiam cancelamento. Uma coluna
     // dessas num ficheiro interno significa quase sempre outra coisa, e o
