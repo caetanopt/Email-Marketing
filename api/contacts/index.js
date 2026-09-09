@@ -375,7 +375,7 @@ module.exports = async function handler(req, res) {
   }
 
   // ── All other actions require user auth ───────────────────────────────────
-  const user = requireAuth(req, res);
+  const user = await requireAuth(req, res);
   if (!user) return;
 
   const { brand_id, search, status, list_id, page = 1, limit = 50, action, import_id,

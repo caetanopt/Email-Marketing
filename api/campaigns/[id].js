@@ -67,7 +67,7 @@ async function authorizeCampaign(userId, campaignId) {
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
-  const user = requireAuth(req, res);
+  const user = await requireAuth(req, res);
   if (!user) return;
 
   const { id, action } = req.query;

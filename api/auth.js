@@ -65,7 +65,17 @@ module.exports = async function handler(req, res) {
         brands = [{ brand_id: 'caetano', role: 'viewer' }];
       }
 
-      const jwtToken = signToken({ id: r.user_id, email: r.email, name: r.name });
+      // token_version vai no token para permitir revogação (S-3). Lê-se à
+      // parte para o SELECT principal tolerar a coluna ainda não existir
+      // (migração 057 por correr). É indispensável ler o valor REAL: se o
+      // utilizador teve a sessão revogada (versão incrementada), o token novo
+      // tem de trazer a versão actual, senão nem ele conseguia entrar.
+      let tokenVersion = 1;
+      try {
+        const tv = await query('SELECT token_version FROM users WHERE id=$1', [r.user_id]);
+        if (tv[0] && tv[0].token_version != null) tokenVersion = tv[0].token_version;
+      } catch (e) { if (e.code !== '42703') throw e; }
+      const jwtToken = signToken({ id: r.user_id, email: r.email, name: r.name, tv: tokenVersion });
       return res.status(200).json({
         token: jwtToken,
         user: { id: r.user_id, name: r.name, email: r.email, default_brand_id: r.default_brand_id || null, avatar_url: r.avatar_url || null },
@@ -134,7 +144,7 @@ module.exports = async function handler(req, res) {
 
   // GET — authenticated user info
   if (req.method === 'GET') {
-    const user = requireAuth(req, res);
+    const user = await requireAuth(req, res);
     if (!user) return;
     try {
       const users = await query(
@@ -155,7 +165,7 @@ module.exports = async function handler(req, res) {
 
   // PUT — update user profile
   if (req.method === 'PUT') {
-    const user = requireAuth(req, res);
+    const user = await requireAuth(req, res);
     if (!user) return;
     const body = req.body || {};
     const { default_brand_id, avatar_url, name } = body;

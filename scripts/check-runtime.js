@@ -151,6 +151,33 @@ const provas = [
       throw new Error('a verificação da API deixou de calcular o hash da chave');
     if(!/api_key_hash=\\$1 OR api_key=\\$2/.test(sy))
       throw new Error('a verificação tem de aceitar hash OU texto claro legado')`],
+  ['as sessões podem ser revogadas', `const fs=require('fs');
+    // S-3: o requireAuth só verificava a assinatura — um utilizador
+    // desactivado/apagado mantinha acesso 7 dias. Agora revalida na BD.
+    const auth=require(process.cwd()+'/lib/auth.js');
+    if(auth.requireAuth.constructor.name !== 'AsyncFunction')
+      throw new Error('requireAuth voltou a ser síncrono — deixa de revalidar na BD');
+    const s=fs.readFileSync('lib/auth.js','utf8');
+    if(!/SELECT active, token_version FROM users WHERE id=\\$1/.test(s))
+      throw new Error('requireAuth deixou de revalidar active/token_version na BD');
+    if(!/const user = await requireAuth/.test(s))
+      throw new Error('o withAuth deixou de esperar pelo requireAuth assíncrono');
+    // Nenhum handler pode voltar a chamar requireAuth sem await (senão user é
+    // uma Promise, sempre truthy, e a autenticação passa a ser cosmética).
+    const dirs=['api','api/campaigns','api/brands','api/templates','api/contacts','api/lists','api/sync','api/suppression'];
+    for(const d of dirs){ if(!fs.existsSync(d)) continue;
+      for(const f of fs.readdirSync(d)){ if(!f.endsWith('.js')) continue;
+        const t=fs.readFileSync(d+'/'+f,'utf8');
+        if(/[^.]\\brequireAuth\\(req, res\\)/.test(t) && !/await requireAuth\\(req, res\\)/.test(t.replace(/const user = requireAuth\\(req, res\\)/g,'')))
+          {}
+        const semAwait=(t.match(/(?<!await )\\brequireAuth\\(req, res\\)/g)||[]);
+        if(semAwait.length) throw new Error(d+'/'+f+' chama requireAuth sem await');
+      }
+    }
+    // O login tem de embutir a versão do token real (senão um utilizador com
+    // sessão revogada não conseguia voltar a entrar).
+    if(!/signToken\\(\\{ id: r\\.user_id[^}]*tv: tokenVersion/.test(fs.readFileSync('api/auth.js','utf8')))
+      throw new Error('o login deixou de embutir token_version no token')`],
   ['compilação MJML', `require('mjml')('<mjml><mj-body><mj-section><mj-column><mj-text>x</mj-text></mj-column></mj-section></mj-body></mjml>',{validationLevel:'soft'}).then(r=>{if(!r.html)throw new Error('sem html')})`],
   ['sanitize-html', `const s=require('./lib/emailFooter').sanitizeDisclaimer('<b>a</b><script>x</script>');if(s!=='<b>a</b>')throw new Error('resultado inesperado: '+s)`],
   ['rodapé legal', `const f=require('./lib/emailFooter').buildLegalFooter({globalDisclaimer:'x',email:'a@b.pt'});if(!/f1f1f1/.test(f))throw new Error('rodapé sem area cinzenta')`],

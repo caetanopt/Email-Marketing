@@ -188,7 +188,7 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  const user = requireAuth(req, res);
+  const user = await requireAuth(req, res);
   if (!user) return;
 
   try {
