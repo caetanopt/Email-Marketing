@@ -327,6 +327,21 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['uma linha má não faz perder o bloco na importação', `const fs=require('fs');
+    // A transacção do bloco é toda-ou-nada: uma linha com um byte de controlo
+    // (comum em exports de Excel) que o Postgres recusa rebentava-a e levava
+    // ~500 contactos bons à frente. Duas defesas: limpar os controlos, e
+    // bisecar o bloco em falha para isolar só a(s) linha(s) má(s).
+    const idx=fs.readFileSync('api/contacts/index.js','utf8');
+    if(!/function semControlo/.test(idx) || !/\\\\u0000-\\\\u0008/.test(idx))
+      throw new Error('a limpeza de caracteres de controlo (semControlo) desapareceu — um byte nulo volta a rebentar o bloco');
+    if(!/name: semControlo\\(c\\.name\\)/.test(idx))
+      throw new Error('os campos de texto do ficheiro deixaram de ser limpos antes de gravar');
+    if(!/gravarComBiseccao/.test(idx))
+      throw new Error('a importação deixou de bisecar em falha — uma linha má volta a fazer perder o bloco inteiro');
+    // a bisecção tem de descer até à linha única e só aí dar como falhada
+    if(!/if \\(linhas\\.length === 1\\)/.test(idx) || !/reason: 'falha_ao_gravar'/.test(idx))
+      throw new Error('a bisecção tem de isolar a linha única e nomeá-la, não marcar o bloco todo');`],
   ['um ficheiro não cancela subscrições', `const fs=require('fs');
     // "não", "n" e "0" numa coluna "estado" valiam cancelamento. Uma coluna
     // dessas num ficheiro interno significa quase sempre outra coisa, e o
