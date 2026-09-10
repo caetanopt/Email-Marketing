@@ -255,7 +255,17 @@
             localStorage.setItem('pm_brands', JSON.stringify(data.brands));
             _userBrandIds = new Set(data.brands.map(b => b.brand_id));
             _applySidebarUserAvatar();
-            _fetchApiBrands().then(() => _goToDefaultBrandOrSelect());
+            // Com .catch(): sem ele, um erro aqui era uma rejeição não tratada
+            // (o try/catch em volta não a apanha, a promessa está solta) e o
+            // ecrã ficava eternamente em "A verificar link de acesso…" sem dizer
+            // nada. Se falhar, ao menos diz-se e dá-se uma saída.
+            _fetchApiBrands()
+                .then(() => _goToDefaultBrandOrSelect())
+                .catch((e2) => {
+                    console.error('pós-login:', e2);
+                    if (form) form.innerHTML = `<p class="text-sm text-red-600 text-center mb-4">Entrámos, mas não foi possível abrir a aplicação: ${escHtml(e2?.message || 'erro inesperado')}</p>
+                        <button onclick="location.reload()" class="w-full py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg">Continuar</button>`;
+                });
         } catch (e) {
             if (e.message === 'ACCOUNT_INACTIVE') {
                 if (form) form.innerHTML = `
@@ -390,18 +400,34 @@
 
     function _goToDefaultBrandOrSelect() {
         const _u = (() => { try { return JSON.parse(localStorage.getItem('pm_user')||'{}'); } catch { return {}; } })();
-        const defId = _u.default_brand_id;
-        if (defId) {
-            const b = _allBrands.find(x => x.id === defId) || _apiBrands.find(x => x.id === defId);
-            if (b) { selectBrand(b.id, b.name, b.color); return; }
-        }
-        // Auto-select if user only has access to one brand
+        // Uma marca só serve se o utilizador ainda tiver acesso a ela: um papel
+        // pode ter sido retirado desde a última vez. Quando ainda não sabemos
+        // as marcas do utilizador, não se bloqueia nada.
+        const permitida = (bid) => !_userBrandIds.size || _userBrandIds.has(bid);
+        const irPara = (bid) => {
+            if (!bid || !permitida(bid)) return false;
+            const b = _apiBrands.find(x => x.id === bid) || _allBrands.find(x => x.id === bid);
+            if (!b) return false;
+            selectBrand(b.id, b.name, b.color);
+            return true;
+        };
+
+        // 1. A última marca em que trabalhou, guardada no servidor (segue-o para
+        //    qualquer browser). É escrita a cada troca de marca — antes só era
+        //    preenchida à mão nas preferências, e por isso quem nunca lá foi
+        //    caía sempre no ecrã de selecção, a cada acesso.
+        if (irPara(_u.default_brand_id)) return;
+
+        // 2. A última usada neste browser, para o caso de o servidor ainda não a
+        //    ter (conta antiga, ou a gravação falhou).
+        const ultima = (() => { try { return JSON.parse(localStorage.getItem('pm_current_brand')||'null'); } catch { return null; } })();
+        if (ultima && irPara(ultima.id)) return;
+
+        // 3. Só tem acesso a uma marca — não há nada a escolher.
         const userBrands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
-        if (userBrands.length === 1) {
-            const brandId = userBrands[0].brand_id;
-            const b = _allBrands.find(x => x.id === brandId) || _apiBrands.find(x => x.id === brandId);
-            if (b) { selectBrand(b.id, b.name, b.color); return; }
-        }
+        if (userBrands.length === 1 && irPara(userBrands[0].brand_id)) return;
+
+        // 4. Nunca escolheu nenhuma: aí sim, o ecrã de selecção.
         openBrandSwitchModal();
     }
 
@@ -12895,6 +12921,23 @@ ${sections.join('\n\n')}
         const ab = _apiBrands.find(x => x.id === id) || {};
         _currentBrand = { id, name, color, bg: hb.bg || '#FFFFFF', logo: ab.logo_url || hb.logo || '', invert: hb.invert || false };
         localStorage.setItem('pm_current_brand', JSON.stringify(_currentBrand));
+        // A marca escolhida passa a ser aquela onde o utilizador entra na próxima
+        // vez (ver _goToDefaultBrandOrSelect). Guarda-se também no servidor, para
+        // o acompanhar noutro computador. Só quando muda, para não escrever a
+        // cada arranque, e sem esperar pela resposta: se isto falhar, a troca de
+        // marca não pode ficar comprometida.
+        try {
+            const _uSel = JSON.parse(localStorage.getItem('pm_user') || '{}');
+            if (_uSel && _uSel.default_brand_id !== id) {
+                _uSel.default_brand_id = id;
+                localStorage.setItem('pm_user', JSON.stringify(_uSel));
+                if (getToken()) {
+                    apiFetch('/api/auth', {
+                        method: 'PUT', body: JSON.stringify({ default_brand_id: id })
+                    }).catch(() => { /* fica a valer a cópia local */ });
+                }
+            }
+        } catch (_) { /* localStorage indisponível — segue sem memorizar */ }
         applyBrandToSidebar();
         document.querySelectorAll('.brand-card').forEach(b => {
             b.classList.remove('brand-selected');
@@ -12940,7 +12983,15 @@ ${sections.join('\n\n')}
 
     function openBrandSwitchModal() {
         const active = document.querySelector('.screen.active')?.id || 'dashboard';
-        _switchTargetScreen = _SWITCH_SCREEN_MAP[active] || active;
+        // O ecrã de destino não pode ser o de login. A seguir ao magic link, o
+        // ecrã activo ainda é 'login', e o alvo saía 'login' — escolher a marca
+        // devolvia o utilizador ao ecrã de login, que continua a mostrar
+        // "A verificar link de acesso…". Ficava preso ali, sem erro nenhum e sem
+        // forma de avançar. Quem já tinha marca definida nunca passava por aqui,
+        // por isso só se via em contas novas.
+        _switchTargetScreen = (active === 'login')
+            ? 'dashboard'
+            : (_SWITCH_SCREEN_MAP[active] || active);
         const modal = document.getElementById('brandSwitchModal');
         _renderBrandSwitchGrid();
         if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }

@@ -327,6 +327,32 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['o login não fica preso a verificar o link', `const fs=require('fs');
+    // Dois buracos que prendiam uma conta nova em "A verificar link de acesso…":
+    // 1) o modal de marcas usava o ecrã activo como destino — no login isso dava
+    //    'login', e escolher a marca devolvia o utilizador ao ecrã de login;
+    // 2) o passo pós-login era uma promessa solta sem .catch, por isso qualquer
+    //    erro ali era uma rejeição não tratada e o ecrã ficava assim para sempre.
+    const h=fs.readFileSync('email.html','utf8');
+    const osw=h.slice(h.indexOf('function openBrandSwitchModal'), h.indexOf('function closeBrandSwitchModal'));
+    if(!/active === 'login'/.test(osw))
+      throw new Error("o modal de marcas voltou a poder ter o ecrã de login como destino — escolher a marca prende o utilizador no login");
+    const mt=h.slice(h.indexOf('async function _handleMagicToken'), h.indexOf('async function _handleMagicToken')+3000);
+    if(!/_fetchApiBrands\\(\\)[\\s\\S]{0,300}\\.catch\\(/.test(mt))
+      throw new Error('o passo pós-login voltou a ficar sem .catch — uma falha ali deixa o ecrã preso a verificar o link');`],
+  ['entra na última marca, selecção só para quem nunca escolheu', `const fs=require('fs');
+    // O ecrã de selecção de marca aparecia a cada acesso a quem nunca definiu a
+    // marca à mão nas preferências (o caso de qualquer conta nova). A marca
+    // escolhida passa a ser gravada a cada troca e usada no acesso seguinte.
+    const h=fs.readFileSync('email.html','utf8');
+    const g=h.slice(h.indexOf('function _goToDefaultBrandOrSelect'), h.indexOf('function _goToDefaultBrandOrSelect')+2200);
+    if(!/pm_current_brand/.test(g))
+      throw new Error('a entrada deixou de considerar a última marca usada — volta a mostrar a selecção a cada acesso');
+    if(!/permitida\\(/.test(g))
+      throw new Error('a última marca tem de ser validada contra as marcas do utilizador (um papel pode ter sido retirado)');
+    const sb=h.slice(h.indexOf('function selectBrand'), h.indexOf('function selectBrand')+2600);
+    if(!/default_brand_id: id/.test(sb))
+      throw new Error('trocar de marca deixou de a memorizar no servidor — o utilizador não volta a ela noutro computador');`],
   ['duplicar uma campanha clona o template', `const fs=require('fs');
     // Duplicar uma campanha reutilizava o mesmo template_id da original. Como o
     // editor grava por PUT no template, editar a cópia reescrevia o email de
