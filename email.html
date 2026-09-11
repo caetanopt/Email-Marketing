@@ -2527,7 +2527,11 @@
         button:  { text:'Clica aqui', href:'https://exemplo.pt', bgColor:'#0f172a', textColor:'#ffffff', fontSize:14, fontWeight:'600', fontFamily:'', target:'_blank', width:'', widthUnit:'px', align:'center', borderRadius:6, areaBgColor:'#ffffff', borderColor:'', borderWidth:2, paddingTop:14, paddingRight:14, paddingBottom:14, paddingLeft:14, innerPaddingTop:12, innerPaddingRight:28, innerPaddingBottom:12, innerPaddingLeft:28 },
         image:   { src:'https://placehold.co/600x250?text=Imagem', alt:'', width:600, align:'center', valign:'top', href:'', bgColor:'#ffffff', fluidOnMobile:false, imgBorderWidth:0, imgBorderColor:'#000000', imgBorderRadius:0, paddingTop:0, paddingRight:0, paddingBottom:0, paddingLeft:0 },
         divider: { color:'#e2e8f0', bgColor:'#ffffff', thickness:1, dividerWidth:'100%', borderStyle:'solid', align:'center', paddingTop:8, paddingRight:8, paddingBottom:8, paddingLeft:8 },
-        spacer:  { height:24 },
+        // bgColor vazio = sem cor, e o espaço deixa ver o fundo do email. É
+        // este o comportamento de sempre do espaçador, por isso é o que fica
+        // por omissão: dar-lhe uma cor mudaria o aspecto de todos os que já
+        // existem nas campanhas gravadas.
+        spacer:  { height:24, bgColor:'' },
         footer:  { text:'© 2026 A tua marca · Cancelar subscrição', color:'#64748b', bgColor:'#f8fafc', fontSize:11, fontFamily:'', lineHeight:1.6, paddingTop:20, paddingRight:20, paddingBottom:20, paddingLeft:20 },
         icon:      { iconKey:'star', iconSvg:'', color:'#334155', size:48, align:'center', bgColor:'#ffffff', href:'', paddingTop:16, paddingRight:16, paddingBottom:16, paddingLeft:16 },
         quote:     { text:'«Excelente serviço. Recomendo vivamente a todos.»', author:'— Cliente Satisfeito', color:'#1e293b', authorColor:'#64748b', bgColor:'#f1f5f9', borderColor:'#6366f1', fontSize:17, fontFamily:'', align:'center', paddingTop:32, paddingRight:40, paddingBottom:32, paddingLeft:40 },
@@ -2546,7 +2550,7 @@
         button:  ['text','href','target','width','widthUnit','bgColor','textColor','fontSize','fontWeight','fontFamily','align','borderRadius','areaBgColor','borderColor','borderWidth','innerPadding','padding'],
         image:   ['src','alt','href','width','align','valign','bgColor','fluidOnMobile','imgBorderWidth','imgBorderColor','imgBorderRadius','padding'],
         divider: ['color','bgColor','thickness','dividerWidth','borderStyle','align','padding'],
-        spacer:  ['height'],
+        spacer:  ['height','bgColor'],
         footer:  ['text','color','bgColor','fontSize','fontFamily','lineHeight','padding'],
         icon:      ['color','size','align','href','bgColor','padding'],
         quote:     ['text','author','color','authorColor','bgColor','borderColor','fontSize','fontFamily','align','padding'],
@@ -3454,7 +3458,7 @@
                 break;
             }
             case 'spacer':
-                d.style.cssText = `background:#ffffff;height:${b.height}px;`;
+                d.style.cssText = `background:${b.bgColor || '#ffffff'};height:${b.height}px;`;
                 break;
             case 'footer':
                 d.style.cssText = `background:${b.bgColor};color:${b.color};font-size:${b.fontSize}px;text-align:center;padding:${tePadding(b)};line-height:${b.lineHeight||1.6};${teFontFamilyCss(b)}`;
@@ -3990,6 +3994,21 @@
         }
         const v = b[key] ?? '';
         const handler = `oninput="teUpdateField('${b.id}','${key}',this.value)" onchange="teUpdateField('${b.id}','${key}',this.value)"`;
+        // Cor de fundo do espaço: opcional, ao contrário da dos outros blocos.
+        // Um espaço sem cor deixa ver o fundo do email, e é assim que sempre
+        // funcionou — dar-lhe uma cor por omissão mudava todos os espaços já
+        // gravados. Um <input type="color"> não sabe dizer "nenhuma" (tem
+        // sempre um valor), por isso o estado vive no botão: o rótulo diz o
+        // que ele faz, como no alternador dos cantos arredondados.
+        if (b.type === 'spacer' && key === 'bgColor') {
+            const tem = !!v;
+            const acao = tem ? "''" : "'#ffffff'";
+            const btn = `<button type="button" onclick="teUpdateField('${b.id}','${key}',${acao});teRenderProperties();" class="shrink-0 text-[9px] leading-none px-1.5 py-1 border border-slate-200 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900">${tem ? 'sem cor' : 'escolher cor'}</button>`;
+            const corpo = tem
+                ? `<input type="color" value="${v}" ${handler} class="w-full h-8 border border-slate-200 rounded cursor-pointer" />`
+                : `<p class="text-[9px] text-slate-400">Sem cor — o espaço deixa ver o fundo do email.</p>`;
+            return `<div><div class="flex items-start justify-between gap-2 mb-1"><label class="text-[10px] font-medium text-slate-500 leading-tight">${f.label}</label>${btn}</div>${corpo}</div>`;
+        }
         let input;
         if (f.type === 'textarea') {
             const rows = (b.type === 'button' || b.type === 'linkBlock') ? 2 : 5;
@@ -4110,7 +4129,13 @@
                 // antigo, em que o padding estava na secção.
                 return { id, type:'divider', color:el.getAttribute('border-color')||'#e2e8f0', thickness:parseInt(el.getAttribute('border-width'))||1, borderStyle:el.getAttribute('border-style')||'solid', dividerWidth:el.getAttribute('width')||'100%', bgColor:bg, ...pad };
             case 'mj-spacer':
-                return { id, type:'spacer', height:parseInt(el.getAttribute('height'))||24 };
+                // A cor pode estar no próprio elemento ou na secção — quando o
+                // espaço é o único bloco, a junção põe-na na secção. Vale
+                // qualquer das duas, mas SEM o branco de recurso do `bg`:
+                // um espaço sem cor declarada tem de voltar sem cor, senão
+                // passava a tapar o fundo do email.
+                return { id, type:'spacer', height:parseInt(el.getAttribute('height'))||24,
+                         bgColor:el.getAttribute('container-background-color') || sectionBg || '' };
         }
         return null;
     }
@@ -4171,7 +4196,11 @@
             const blocks = [];
             doc.querySelectorAll('mj-body > mj-section').forEach(section => {
                 const cols = [...section.querySelectorAll(':scope > mj-column')];
-                const sectionBg = section.getAttribute('background-color') || '#ffffff';
+                // Cru, sem o branco de recurso: é preciso distinguir "secção
+                // sem cor declarada" de "secção branca" para o espaçador, que
+                // pode não ter cor nenhuma. Quem precisa do branco por omissão
+                // aplica-o (ver o `bg` em teParseMjmlEl).
+                const sectionBg = section.getAttribute('background-color') || '';
                 const sectionPad = teParsePadAttr(section.getAttribute('padding'));
                 if (cols.length > 1) {
                     const b = { id:teId(), type:'columns', cols:cols.length, children:[] };
@@ -4295,7 +4324,15 @@
                 if (!innerTd) continue;
                 const inner = innerTd.innerHTML.trim();
                 const id = uid();
-                if (!inner) { blocks.push({ id, type: 'spacer', height: 24, bgColor: bg }); continue; }
+                // O espaço lê só a cor DECLARADA, não o '#ffffff' de recurso do
+                // `bg`: um espaço sem fundo declarado tem de voltar sem cor,
+                // senão um ciclo "Aplicar no visual" transformava-o num espaço
+                // branco e passava a tapar o fundo do email.
+                if (!inner) {
+                    const bgDecl = (outerTd.style.background || outerTd.style.backgroundColor || '').trim();
+                    blocks.push({ id, type: 'spacer', height: 24, bgColor: bgDecl });
+                    continue;
+                }
                 // Heading
                 const hEl = innerTd.querySelector('h1,h2,h3');
                 if (hEl) { blocks.push({ id, type: 'heading', level: hEl.tagName.toLowerCase(), text: hEl.textContent || '', bgColor: bg, color: hEl.style.color || '#1e293b' }); continue; }
@@ -4603,7 +4640,7 @@ ${body}
                         `<hr style="border:none;border-top:${b.thickness||1}px ${b.borderStyle==='rounded'?'solid':b.borderStyle||'solid'} ${b.color||'#e2e8f0'};width:${b.dividerWidth||'100%'};margin:${dMargin}">` };
                 }
                 case 'spacer':
-                    return { mergeable:false, full:`<tr><td height="${b.height||20}" style="font-size:1px;line-height:1px">&nbsp;</td></tr>` };
+                    return { mergeable:false, full:`<tr><td height="${b.height||20}"${b.bgColor?` bgcolor="${b.bgColor}"`:''} style="font-size:1px;line-height:1px${b.bgColor?`;background:${b.bgColor}`:''}">&nbsp;</td></tr>` };
                 case 'footer':
                     // b.text is already sanitised rich HTML — do not escape/nl2br.
                     return { mergeable:true, bg:b.bgColor||'#f8fafc', p:pad(b), inner:
@@ -4939,7 +4976,10 @@ ${teSerializeBlocksComment(srcBlocks)}
                 return { mergeable:true, padOnEl:true, bg:b.bgColor||'#ffffff', inner:`${i}    <mj-divider${TE_CBG_SLOT} border-color="${b.color}" border-style="${mjDs}" border-width="${b.thickness||1}px" width="${b.dividerWidth||'100%'}" align="${b.align||'center'}"${elPad()} />` };
             }
             case 'spacer':
-                return { mergeable:true, padOnEl:true, bg:null, inner:`${i}    <mj-spacer${TE_CBG_SLOT} height="${b.height}px" />` };
+                // Sem cor escolhida continua a devolver bg:null — é isso que
+                // faz a secção ficar sem fundo e o espaço deixar ver o fundo
+                // do email (ver a nota do semFundo na junção das secções).
+                return { mergeable:true, padOnEl:true, bg:b.bgColor||null, inner:`${i}    <mj-spacer${TE_CBG_SLOT} height="${b.height}px" />` };
             case 'footer':
                 // b.text is already sanitised rich HTML — do not escape/nl2brX.
                 return { mergeable:true, padOnEl:true, bg:b.bgColor, inner:`${i}    <mj-text${TE_CBG_SLOT} color="${b.color}" font-size="${b.fontSize}px" align="center" line-height="${b.lineHeight||1.6}"${b.fontFamily?` font-family="${b.fontFamily}"`:''}${elPad()}>${teCorLinksSemCor(teEnvolveContactos(teTextoLimpo(b.text), b.color), b.color)}</mj-text>` };

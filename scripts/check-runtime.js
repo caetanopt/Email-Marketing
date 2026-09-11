@@ -327,6 +327,21 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['o bloco de espaço aceita cor de fundo, e sem cor continua transparente', `const fs=require('fs');
+    // O espaço passou a ter cor de fundo opcional. VAZIO tem de continuar a
+    // significar "sem cor": é assim que o espaço deixa ver o fundo do email, e
+    // dar-lhe cor por omissão mudava o aspecto de todos os que já estão
+    // gravados nas campanhas.
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/spacer: *\\{ height:24, bgColor:'' \\}/.test(h))
+      throw new Error("o espaço tem de nascer sem cor (bgColor:'') — com cor por omissão passa a tapar o fundo do email");
+    if(!/spacer: *\\['height','bgColor'\\]/.test(h))
+      throw new Error('o campo de cor desapareceu do painel do bloco de espaço');
+    if(!/bg:b\\.bgColor\\|\\|null, inner:\\\`\\$\\{i\\}    <mj-spacer/.test(h))
+      throw new Error('o espaço sem cor tem de devolver bg:null — senão a secção ganha fundo e deixa de se ver o fundo do email');
+    // a leitura inversa não pode inventar branco num espaço sem cor declarada
+    if(/const sectionBg = section\\.getAttribute\\('background-color'\\) \\|\\| '#ffffff'/.test(h))
+      throw new Error("sectionBg voltou a ter '#ffffff' de recurso — um espaço sem cor volta branco no Aplicar no visual");`],
   ['o tamanho de letra do bloco não é anulado pelo texto colado', `const fs=require('fs');
     // O Word e o Outlook colam <span style="font-size:11.0pt"> (14.6667px) a
     // cobrir todo o texto, mesmo quando ninguém escolheu tamanho. Esse span
