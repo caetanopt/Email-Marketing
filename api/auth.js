@@ -201,18 +201,49 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // DELETE — admin setup actions (list_users, upsert_admin, delete_user).
-  // Protegido apenas pelo CRON_SECRET (comparação em tempo constante). Sem
-  // token fixo no código.
+  // DELETE — acções de administração (list_users, upsert_admin, update_role,
+  // delete_user, clear_list).
+  //
+  // S-2: isto estava autorizado apenas pelo CRON_SECRET. Esse segredo existe
+  // para um agendador externo o pôr no URL que chama — logo aparece em
+  // documentação, em histórico de comandos e nos logs de quem o invoca. Com
+  // ele, duas chamadas criavam uma conta e punham-na a owner (o update_role
+  // não filtra por marca: aplica o papel em TODAS), e a seguir bastava pedir
+  // um link de acesso para esse email e entrar com acesso total. Um segredo de
+  // agendamento não pode ser ao mesmo tempo a chave da administração.
+  //
+  // Passa a exigir UMA de duas coisas:
+  //   • sessão autenticada de owner — o caminho normal; ou
+  //   • ADMIN_SETUP_SECRET, um segredo PRÓPRIO desta função, para arrancar uma
+  //     instalação que ainda não tem utilizadores.
+  // O CRON_SECRET deixa de autorizar aqui o que quer que seja. Nenhum ecrã da
+  // aplicação usa este caminho (a gestão de utilizadores faz-se por
+  // /api/brands, com sessão), por isso nada no produto muda.
   if (req.method === 'DELETE') {
-    const auth = req.headers.authorization || '';
-    const secret = process.env.CRON_SECRET;
-    const expected = secret ? `Bearer ${secret}` : null;
-    const ok = expected
-      && auth.length === expected.length
-      && crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
-    if (!ok) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const segredo = process.env.ADMIN_SETUP_SECRET;
+    let autorizado = false;
+    if (segredo) {
+      // Buffers primeiro, e comparação por BYTES: o timingSafeEqual exige
+      // buffers do mesmo tamanho, e medir o comprimento em caracteres fazia um
+      // cabeçalho multi-byte forjado lançar 500 em vez de devolver 401 — a
+      // mesma armadilha já corrigida no webhook e no cron.
+      const dado = Buffer.from(req.headers.authorization || '');
+      const esperado = Buffer.from(`Bearer ${segredo}`);
+      autorizado = dado.length === esperado.length && crypto.timingSafeEqual(dado, esperado);
+    }
+    if (!autorizado) {
+      // Sem segredo válido, exige-se sessão de owner. O requireAuth já
+      // revalida a conta na base de dados (S-3), pelo que uma conta
+      // desactivada ou com a sessão revogada não passa por aqui.
+      const user = await requireAuth(req, res);
+      if (!user) return;
+      const owner = await query(
+        "SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1",
+        [user.id]
+      );
+      if (!owner[0]) {
+        return res.status(403).json({ error: 'Apenas administradores podem executar acções de administração.' });
+      }
     }
     const { action, email: targetEmail, old_email, name } = req.body || {};
 

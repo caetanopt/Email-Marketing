@@ -327,6 +327,24 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['o segredo do cron não abre a administração', `const fs=require('fs');
+    // S-2 (P0): as acções de administração do DELETE /api/auth (criar conta,
+    // pôr a owner, apagar) estavam autorizadas pelo CRON_SECRET — um segredo
+    // que vive no URL de um agendador externo e por isso aparece em
+    // documentação, histórico de comandos e logs. Com ele, duas chamadas
+    // criavam uma conta owner e davam acesso total. Exige-se agora um segredo
+    // PRÓPRIO (ADMIN_SETUP_SECRET) ou sessão de owner.
+    const a=fs.readFileSync('api/auth.js','utf8');
+    const del=a.slice(a.indexOf("if (req.method === 'DELETE')"));
+    if(/process\\.env\\.CRON_SECRET/.test(del))
+      throw new Error('o CRON_SECRET voltou a autorizar acções de administração — com ele cria-se uma conta owner');
+    if(!/process\\.env\\.ADMIN_SETUP_SECRET/.test(del))
+      throw new Error('desapareceu o segredo próprio da administração (ADMIN_SETUP_SECRET)');
+    if(!/role='owner'/.test(del))
+      throw new Error('a administração deixou de aceitar sessão de owner como alternativa ao segredo');
+    // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
+    if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
+      throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
   ['o bloco de espaço aceita cor de fundo, e sem cor continua transparente', `const fs=require('fs');
     // O espaço passou a ter cor de fundo opcional. VAZIO tem de continuar a
     // significar "sem cor": é assim que o espaço deixa ver o fundo do email, e
