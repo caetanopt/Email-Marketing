@@ -2032,7 +2032,14 @@
     // A é permitida para o botão de link. O href é validado em
     // teSafeHref (só http/https/mailto/tel) — um "javascript:" é descartado.
     const TE_RICH_ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','BR','SPAN','SUP','SUB','A']);
-    const TE_RICH_ALLOWED_STYLES = ['font-weight','font-size','font-style','text-decoration','color'];
+    // O font-size saiu daqui de propósito. O tamanho de letra de um bloco é
+    // definido no campo "Tamanho (px)" do painel, e não há (nem havia) nenhum
+    // controlo de tamanho na barra de formatação — o teWrapSelectionStyle só é
+    // usado para a cor. Logo, um font-size dentro deste texto nunca foi escolha
+    // de ninguém: vinha colado do Word/Outlook, que escreve sempre 11pt
+    // (14.6667px) nos spans que cola. Esse span cobria todo o texto e ganhava
+    // ao tamanho do bloco — punha-se 55 no painel e o email saía a 14.67px.
+    const TE_RICH_ALLOWED_STYLES = ['font-weight','font-style','text-decoration','color'];
     function teSafeHref(url) {
         const u = String(url || '').trim();
         return /^(https?:|mailto:|tel:)/i.test(u) ? u : '';
@@ -2137,8 +2144,9 @@
         return root.innerHTML.replace(/<br\s*\/?>/gi, '<br/>');
     }
     // Wrap the current text selection (must be inside containerEl) in a
-    // <span style="prop:value">, used for font-size/color since execCommand
-    // doesn't support arbitrary px sizes or gives inconsistent markup.
+    // <span style="prop:value">. Hoje só é usado para a cor: o execCommand
+    // dá marcação inconsistente (<font>) para isso. O tamanho de letra não
+    // passa por aqui — é do bloco inteiro, no campo "Tamanho (px)".
     function teWrapSelectionStyle(containerEl, styleProp, styleValue) {
         const sel = window.getSelection();
         if (!sel || !sel.rangeCount) return;
@@ -2225,6 +2233,27 @@
         teRenderCanvas();
         teRenderMjml();
         if (typeof _wizScheduleApiAutoSave === 'function') _wizScheduleApiAutoSave(true);
+    }
+    // Limpar o que vem colado no momento em que é colado, e não só ao sair do
+    // campo.
+    //
+    // O teRichInput guarda `el.innerHTML` cru a cada alteração, e o
+    // teSanitizeRichText só corria no onblur. Entre colar do Word e clicar
+    // fora, o bloco ficava com a marcação do Word gravada e já reflectida na
+    // pré-visualização e no MJML — e, se se gravasse nesse intervalo, era isso
+    // que ia para a base de dados. Limpando aqui, o que entra já está limpo.
+    function teRichPaste(ev, depois) {
+        const cb = ev.clipboardData;
+        if (!cb) return;   // sem acesso à área de transferência: deixa o browser fazer o seu
+        const html  = cb.getData('text/html');
+        const texto = cb.getData('text/plain');
+        if (!html && !texto) return;
+        ev.preventDefault();
+        const limpo = html
+            ? teSanitizeRichText(html)
+            : escHtml(texto).replace(/\r?\n/g, '<br/>');
+        document.execCommand('insertHTML', false, limpo);
+        if (typeof depois === 'function') depois();
     }
     function teRichBlur(blockId, el) {
         const f = teFind(blockId);
@@ -3900,6 +3929,7 @@
                 <div id="richtext-${b.id}" contenteditable="true"
                     onfocus="document.execCommand('defaultParagraphSeparator',false,'br')"
                     oninput="teRichInput('${b.id}',this)"
+                    onpaste="teRichPaste(event);teRichInput('${b.id}',this)"
                     onmouseup="teRichGuardaSelecao('${b.id}')"
                     onkeyup="teRichGuardaSelecao('${b.id}')"
                     onblur="teRichBlur('${b.id}',this)"
@@ -16696,6 +16726,7 @@ ${sections.join('\n\n')}
                             <div id="gsDisclaimer" contenteditable="true"
                                 onfocus="document.execCommand('defaultParagraphSeparator',false,'br')"
                                 oninput="_gsRenderFooterPreview()"
+                                onpaste="teRichPaste(event, _gsRenderFooterPreview)"
                                 onblur="_gsDiscBlur(this)"
                                 data-placeholder="Ex: A Caetano agrega as empresas do Grupo Salvador Caetano de distribuição e reparação automóvel…"
                                 class="w-full min-h-[120px] px-3 py-2 border border-slate-200 border-t-0 rounded-b-lg text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-slate-900 overflow-auto"></div>

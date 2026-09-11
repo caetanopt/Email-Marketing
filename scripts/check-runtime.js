@@ -327,6 +327,30 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['o tamanho de letra do bloco não é anulado pelo texto colado', `const fs=require('fs');
+    // O Word e o Outlook colam <span style="font-size:11.0pt"> (14.6667px) a
+    // cobrir todo o texto, mesmo quando ninguém escolheu tamanho. Esse span
+    // ganhava ao tamanho que a geração põe no elemento do bloco: punha-se 55
+    // no campo "Tamanho (px)" e o email saía a 14.67px, sem nada a explicar.
+    // O tamanho é do bloco inteiro (campo do painel) — não existe controlo de
+    // tamanho na barra de formatação —, por isso um font-size dentro do texto
+    // rico nunca é escolha de ninguém e não pode ser aceite.
+    const h=fs.readFileSync('email.html','utf8');
+    const permitidos=(h.match(/const TE_RICH_ALLOWED_STYLES = \\[[^\\]]*\\];/)||[''])[0];
+    if(!permitidos) throw new Error('não encontrei TE_RICH_ALLOWED_STYLES');
+    if(/['"]font-size['"]/.test(permitidos))
+      throw new Error('font-size voltou aos estilos permitidos no texto rico — o texto colado volta a anular o campo Tamanho (px)');
+    for(const p of ['font-weight','font-style','text-decoration','color'])
+      if(!permitidos.includes("'"+p+"'"))
+        throw new Error(p+' deixou de ser permitido — negrito/itálico/sublinhado/cor colados perdem-se');
+    // colar tem de ser limpo no momento, não só ao sair do campo (o
+    // teRichInput guarda innerHTML cru a cada alteração)
+    if(!/function teRichPaste/.test(h))
+      throw new Error('o tratamento de colar desapareceu — a marcação do Word volta a ser gravada até se clicar fora');
+    if(!/onpaste="teRichPaste\\(event\\);teRichInput/.test(h))
+      throw new Error('o editor de blocos deixou de limpar o que é colado');
+    if(!/onpaste="teRichPaste\\(event, _gsRenderFooterPreview\\)"/.test(h))
+      throw new Error('o editor do rodapé legal deixou de limpar o que é colado')`],
   ['o login não fica preso a verificar o link', `const fs=require('fs');
     // Dois buracos que prendiam uma conta nova em "A verificar link de acesso…":
     // 1) o modal de marcas usava o ecrã activo como destino — no login isso dava
