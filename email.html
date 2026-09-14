@@ -783,6 +783,7 @@
                 <td class="px-4 py-3">${_campTitulo(c)}</td>
                 <td class="px-4 py-3">
                     ${_statusBadge[c.status]||c.status}
+                    ${_campAgendadoPara(c)}
                     ${_campProgressoEnvio(c)}
                     ${_currentUserRole !== 'viewer' ? `<span id="camp-import-badge-${c.id}" class="${(_wizImporting && _wizImportingCampaignId == c.id) ? '' : 'hidden'}">
                         ${(_wizImporting && _wizImportingCampaignId == c.id) ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-600 whitespace-nowrap"><svg class="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>${_wizImportTotal ? Math.round(_wizImportDone/_wizImportTotal*100)+'%' : 'A importar…'}</span>` : ''}
@@ -791,7 +792,7 @@
                 <td class="px-4 py-3 text-slate-700">${c.total_recipients||0}</td>
                 <td class="px-4 py-3">${_campTaxa(c, 'abertura')}</td>
                 <td class="px-4 py-3">${_campTaxa(c, 'clique')}</td>
-                <td class="px-4 py-3 text-xs text-slate-500">${_fmtDateTime(c.sent_at||c.scheduled_at||c.created_at)}</td>
+                <td class="px-4 py-3 text-xs text-slate-500">${_campDataColuna(c)}</td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-1">
                         ${c.status === 'draft' && _currentUserRole !== 'viewer' ? `<button onclick="event.stopPropagation();_editCampaignFromList(${i})" title="Editar" class="p-[0.45rem] rounded border border-indigo-200 text-indigo-600 hover:bg-indigo-50"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>` : ''}
@@ -871,6 +872,40 @@
     // por isso a barra mostra o progresso verdadeiro, quer o envio esteja a
     // ser conduzido por este browser quer pelo cron — e é igual para quem
     // esteja a ver noutro computador.
+    // A coluna "Data" mostrava sent_at, scheduled_at ou created_at conforme o
+    // estado, sem dizer qual — a mesma data podia ser "criada em" ou "sai em",
+    // e não havia como saber. Passa a trazer a legenda por cima.
+    function _campDataColuna(c) {
+        const [rotulo, valor] = c.sent_at        ? ['enviada',      c.sent_at]
+                              : c.scheduled_at   ? ['sai em',       c.scheduled_at]
+                              : c.created_at     ? ['criada',       c.created_at]
+                              : ['', null];
+        if (!valor) return '—';
+        return `<span class="block text-[10px] uppercase tracking-wide text-slate-400">${rotulo}</span>${_fmtDateTime(valor)}`;
+    }
+    // Quando é que a campanha agendada sai, logo por baixo do estado.
+    //
+    // "Agendada" sozinha não diz quando — e a coluna Data mostra o sent_at, o
+    // scheduled_at ou o created_at conforme o estado, sem dizer qual: uma data
+    // ali tanto podia ser a de criação como a do envio. Quem olha para a lista
+    // quer saber "isto sai quando?" sem abrir a campanha.
+    //
+    // Passado: um agendamento que já devia ter saído e continua agendado é um
+    // envio que não arrancou (agendador em baixo, por exemplo). Fica em âmbar,
+    // porque é uma coisa que alguém tem de ir ver.
+    function _campAgendadoPara(c) {
+        if (c.status !== 'scheduled' || !c.scheduled_at) return '';
+        const quando = new Date(c.scheduled_at);
+        const atrasada = quando.getTime() < Date.now();
+        const cor = atrasada ? 'text-amber-600' : 'text-slate-500';
+        const titulo = atrasada
+            ? 'A hora agendada já passou e o envio não arrancou — verifica o agendador.'
+            : `Envio agendado para ${_fmtDateTime(c.scheduled_at)}`;
+        return `<div class="mt-1 flex items-center gap-1 ${cor}" title="${titulo}">
+            <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="text-[11px] whitespace-nowrap">${atrasada ? 'devia ter saído ' : ''}${_fmtDateTime(c.scheduled_at)}</span>
+        </div>`;
+    }
     function _campProgressoEnvio(c) {
         if (c.status !== 'sending') return '';
         const total = c.total_recipients || 0;
