@@ -631,9 +631,16 @@ const provas = [
     const f=h.slice(h.indexOf('function _campData'), h.indexOf('function _renderCampaignsPage'));
     if(!/c\\.sent_at \\|\\| c\\.scheduled_at \\|\\| c\\.created_at/.test(f))
       throw new Error('o filtro tem de usar a mesma data que a coluna da listagem');
-    const linha=(h.match(/\\$\\{_fmtDateTime\\(([^)]*)\\)\\}/)||[])[1]||'';
-    if(!/sent_at\\s*\\|\\|\\s*c\\.scheduled_at\\s*\\|\\|\\s*c\\.created_at/.test(linha))
-      throw new Error('a coluna Data mudou de critério: o filtro de mês tem de a acompanhar ('+linha+')');
+    // A coluna passou a ser desenhada pelo _campDataColuna (que traz também a
+    // legenda "enviada"/"sai em"/"criada"). O que tem de se manter é a ORDEM de
+    // preferência das datas, que é o que liga a coluna ao filtro.
+    const iCol=h.indexOf('function _campDataColuna');
+    if(iCol<0)throw new Error('não encontrei o _campDataColuna que desenha a coluna Data');
+    const col=h.slice(iCol, h.indexOf('function _campAgendadoPara'));
+    const vistos=[];
+    (col.match(/c\\.(?:sent_at|scheduled_at|created_at)/g)||[]).forEach(x=>{ if(!vistos.includes(x)) vistos.push(x); });
+    if(vistos.join(',')!=='c.sent_at,c.scheduled_at,c.created_at')
+      throw new Error('a coluna Data mudou de critério: o filtro de mês tem de a acompanhar (ordem encontrada: '+vistos.join(',')+')');
     // As opções vêm dos dados: uma lista fixa ofereceria meses sem campanhas.
     if(!/function _campPreencherMeses/.test(h)||!/_campPreencherMeses\\(\\);/.test(h))
       throw new Error('as opções do filtro têm de ser construídas a partir das campanhas existentes');
