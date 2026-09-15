@@ -51,6 +51,11 @@ module.exports = async function handler(req, res) {
     // the next invocation continue. Default 50 s — safe margin under maxDuration:60.
     // Override with CRON_MAX_SECONDS env var (e.g. 280 on a 300 s plan).
     const DEADLINE_MS = parseInt(process.env.CRON_MAX_SECONDS || '50', 10) * 1000;
+    // Tempo que um lote precisa para caber inteiro. Serve de mínimo para
+    // arrancar mais um: sem isto arrancavam-se lotes com 8 s de folga que
+    // depois eram mortos a meio. Ajustável por ambiente, para quem mexer no
+    // SES_BATCH_SIZE poder acompanhar.
+    const RESERVA_LOTE_MS = parseInt(process.env.CRON_BATCH_RESERVE_MS || '30000', 10);
     const cronStart = Date.now();
     const timeLeft = () => DEADLINE_MS - (Date.now() - cronStart);
 
@@ -119,11 +124,20 @@ module.exports = async function handler(req, res) {
         // Run batches until done, quota exhausted, or deadline approaching.
         let quotaExhausted = false;
         for (;;) {
-          if (timeLeft() < 8000) break;
-          const r = await runBatch(campId, null);
+          // Não arrancar um lote que não cabe no tempo que resta. Um lote de
+          // 500 leva 15–30 s (36 ondas de 14, com 280 ms entre ondas, mais o
+          // SES e as escritas); a guarda de 8 s deixava arrancar lotes que a
+          // função da Vercel matava a meio aos 60 s, e os destinatários já
+          // reclamados ficavam presos 2 minutos à espera do lease. Era isso que
+          // fazia os últimos emails demorarem vários minutos a sair.
+          if (timeLeft() < RESERVA_LOTE_MS) break;
+          // E, mesmo tendo arrancado, o lote pára sozinho ao chegar ao prazo e
+          // devolve o que não enviou — em vez de morrer com ele nas mãos.
+          const r = await runBatch(campId, null, { pararEm: cronStart + DEADLINE_MS });
           totalSent += r.sent || 0;
           totalFailed += r.failed || 0;
           if (r.done) break;
+          if (r.semTempo) break;
           if (r.quotaExhausted) { quotaExhausted = true; break; }
         }
         results.push({ id: campId, resuming, total, sent: totalSent, failed: totalFailed, ...(quotaExhausted ? { quotaExhausted: true } : {}) });
@@ -161,11 +175,14 @@ module.exports = async function handler(req, res) {
         try {
           let totalSent = 0, totalFailed = 0, quotaExhausted = false;
           for (;;) {
-            if (timeLeft() < 8000) break;
-            const r = await runBatch(campId, null);
+            // Mesma reserva do laço principal: um lote que não cabe no tempo
+            // que resta não arranca, e o que arranca pára a horas.
+            if (timeLeft() < RESERVA_LOTE_MS) break;
+            const r = await runBatch(campId, null, { pararEm: cronStart + DEADLINE_MS });
             totalSent += r.sent || 0;
             totalFailed += r.failed || 0;
             if (r.done) break;
+            if (r.semTempo) break;
             if (r.quotaExhausted) { quotaExhausted = true; break; }
           }
           results.push({ id: campId, resumed: true, sent: totalSent, failed: totalFailed, ...(quotaExhausted ? { quotaExhausted: true } : {}) });

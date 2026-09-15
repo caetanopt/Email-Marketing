@@ -327,6 +327,25 @@ const provas = [
     const idx=fs.readFileSync('api/contacts/index.js','utf8');
     if(!/if \\(ocultarNovos\\) await garantirColunaOculto\\(\\);/.test(idx))
       throw new Error('a coluna hidden deixou de ser garantida FORA da transacção — o ALTER volta a poder correr lá dentro e trancar a tabela');`],
+  ['o lote pára a horas em vez de morrer a meio', `const fs=require('fs');
+    // Um lote de 500 leva 15–30 s (36 ondas de 14, 280 ms entre ondas, mais o
+    // SES e as escritas), mas o cron arrancava um novo lote com apenas 8 s de
+    // folga. A função da Vercel morria aos 60 s a meio do lote, e os
+    // destinatários já reclamados ficavam presos em 'sending' até o lease de 2
+    // minutos expirar — era isso que fazia os últimos emails de cada campanha
+    // demorarem vários minutos a sair.
+    const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+    if(!/opcoes\\.pararEm/.test(s))
+      throw new Error('o runBatch deixou de aceitar um prazo (pararEm) — volta a poder ser morto a meio');
+    if(!/if \\(pararEm && Date\\.now\\(\\) >= pararEm\\) \\{ batchState\\.semTempo = true; break; \\}/.test(s))
+      throw new Error('o ciclo de ondas deixou de respeitar o prazo');
+    const c=fs.readFileSync('api/campaigns/index.js','utf8');
+    if(/timeLeft\\(\\) < 8000\\) break;\\s*\\n\\s*const r = await runBatch/.test(c))
+      throw new Error('o cron voltou a arrancar lotes com 8 s de folga — não cabem, e morrem a meio');
+    if((c.match(/timeLeft\\(\\) < RESERVA_LOTE_MS/g)||[]).length < 2)
+      throw new Error('os dois laços de envio do cron têm de reservar tempo para um lote inteiro');
+    if((c.match(/runBatch\\(campId, null, \\{ pararEm: cronStart \\+ DEADLINE_MS \\}\\)/g)||[]).length < 2)
+      throw new Error('o cron tem de passar o prazo aos lotes, nos dois laços');`],
   ['o segredo do cron não abre a administração', `const fs=require('fs');
     // S-2 (P0): as acções de administração do DELETE /api/auth (criar conta,
     // pôr a owner, apagar) estavam autorizadas pelo CRON_SECRET — um segredo
