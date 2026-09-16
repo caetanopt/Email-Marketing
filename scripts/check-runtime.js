@@ -379,6 +379,19 @@ const provas = [
     // a leitura inversa não pode inventar branco num espaço sem cor declarada
     if(/const sectionBg = section\\.getAttribute\\('background-color'\\) \\|\\| '#ffffff'/.test(h))
       throw new Error("sectionBg voltou a ter '#ffffff' de recurso — um espaço sem cor volta branco no Aplicar no visual");`],
+  ['um bloco de texto novo nasce com o texto a preto', `const fs=require('fs');
+    // Pedido do utilizador: o texto por omissão é preto (#000000), não o cinzento
+    // que vinha de origem. Vale para o bloco de texto e para os textos do preset
+    // de grelha — são os dois caminhos que criam blocos de texto novos.
+    const h=fs.readFileSync('email.html','utf8');
+    const m=h.match(/\\n *text: *\\{ text:'Escreve aqui o teu texto\\.', color:'(#[0-9a-fA-F]{6})'/);
+    if(!m) throw new Error('não encontrei o valor por omissão do bloco de texto em teDefaults');
+    if(m[1].toLowerCase()!=='#000000')
+      throw new Error('o bloco de texto tem de nascer a preto (#000000), está a '+m[1]);
+    const g=h.match(/type:'text', text:'Descrição do produto ou serviço\\.', color:'(#[0-9a-fA-F]{6})'/);
+    if(!g) throw new Error('não encontrei o texto do preset de grelha');
+    if(g[1].toLowerCase()!=='#000000')
+      throw new Error('o texto do preset de grelha tem de nascer a preto (#000000), está a '+g[1]);`],
   ['o tamanho de letra do bloco não é anulado pelo texto colado', `const fs=require('fs');
     // O Word e o Outlook colam <span style="font-size:11.0pt"> (14.6667px) a
     // cobrir todo o texto, mesmo quando ninguém escolheu tamanho. Esse span
