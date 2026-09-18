@@ -5,7 +5,39 @@ const crypto = require('crypto');
 const { query, colunaExiste } = require('../../lib/db');
 const { put } = require('@vercel/blob');
 const { getSESClient } = require('../../lib/ses');
-const { requireAuth, cors } = require('../../lib/auth');
+const { requireAuth, cors, roleInBrand, hasBrandAccess } = require('../../lib/auth');
+
+// Ler algo de uma marca exige ter algum papel nela. Escrever exige owner ou
+// editor. Vários ramos deste ficheiro recebiam o brand_id da query string e
+// não verificavam nada — chegavam lá só com uma sessão válida, o que permitia
+// a qualquer utilizador ler e escrever conteúdo de qualquer marca.
+// Revogar as sessões de um utilizador. A migração 057 criou users.token_version
+// e o requireAuth compara-o em cada pedido — mas NADA no código o incrementava,
+// por isso a revogação nunca acontecia: um JWT roubado, ou o de alguém que
+// acabou de ser removido, continuava válido os 7 dias todos e a única saída era
+// mexer no Supabase à mão. Chamado sempre que o acesso de alguém muda.
+async function revogarSessoes(userId) {
+  try {
+    await query('UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = $1', [userId]);
+  } catch (e) {
+    // 42703: migração 057 por correr. Não é motivo para falhar a operação
+    // principal (remover, desactivar, mudar papel) — essa tem de acontecer.
+    if (e.code !== '42703') throw e;
+    console.warn('revogarSessoes: coluna token_version não existe — corre migrations/057_revogacao_de_sessao.sql');
+  }
+}
+
+async function podeLer(res, userId, brandId) {
+  if (await hasBrandAccess(userId, brandId)) return true;
+  res.status(403).json({ error: 'Sem acesso a esta marca' });
+  return false;
+}
+async function podeEscrever(res, userId, brandId) {
+  const papel = await roleInBrand(userId, brandId);
+  if (papel === 'owner' || papel === 'editor') return true;
+  res.status(403).json({ error: 'Apenas leitura: o teu papel nesta marca não permite esta acção.' });
+  return false;
+}
 const { buildLegalFooter, sanitizeDisclaimer, sanitizeFooterSocials } = require('../../lib/emailFooter');
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -214,6 +246,7 @@ module.exports = async function handler(req, res) {
 
       // DNS health check — SPF / DKIM / DMARC verification for brand's from_email domain
       if (id && action === 'dns_check') {
+        if (!await podeLer(res, user.id, id)) return;
         const rows = await query('SELECT from_email FROM brands WHERE id=$1', [id]);
         if (!rows[0]?.from_email) return res.status(200).json({ error: 'from_email não configurado' });
         const domain = rows[0].from_email.split('@')[1]?.toLowerCase();
@@ -223,6 +256,7 @@ module.exports = async function handler(req, res) {
       }
 
       if (id && action === 'media') {
+        if (!await podeLer(res, user.id, id)) return;
         try {
           const rows = await query(
             `SELECT id, brand_id, name, url, mime_type, is_shared, created_at, updated_at
@@ -236,6 +270,7 @@ module.exports = async function handler(req, res) {
         }
       }
       if (id && action === 'blocks') {
+        if (!await podeLer(res, user.id, id)) return;
         try {
           const params = [id];
           let where = 'WHERE brand_id=$1';
@@ -300,6 +335,14 @@ module.exports = async function handler(req, res) {
       }
 
       if (id && action === 'team') {
+        // Directorio completo de utilizadores. Devolve nome e email de toda a
+        // gente, por isso exige ser owner nalguma marca — e nao apenas ter uma
+        // sessao valida, que era o que bastava. O ecra Equipa ja so e mostrado
+        // a owners no cliente; isto fecha o mesmo do lado do servidor.
+        const ownerAlgures = await query(
+          "SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1", [user.id]
+        );
+        if (!ownerAlgures[0]) return res.status(403).json({ error: 'Sem permissão' });
         // Global team: all users across all brands, deduped with highest role
         const rows = await query(
           `WITH ranked AS (
@@ -683,6 +726,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST' && id && action === 'block') {
+      if (!await podeEscrever(res, user.id, id)) return;
       const { type: bType, name, html_content } = req.body || {};
       if (!['header','footer'].includes(bType)) return res.status(400).json({ error: 'type deve ser header ou footer' });
       if (!name) return res.status(400).json({ error: 'name obrigatório' });
@@ -700,6 +744,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'PUT' && id && action === 'block' && block_id) {
+      if (!await podeEscrever(res, user.id, id)) return;
       const body = req.body || {};
       const sets = [];
       const params = [];
@@ -726,6 +771,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'DELETE' && id && action === 'block' && block_id) {
+      if (!await podeEscrever(res, user.id, id)) return;
       try {
         await query('DELETE FROM brand_blocks WHERE id=$1 AND brand_id=$2', [block_id, id]);
         return res.status(200).json({ ok: true });
@@ -736,6 +782,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST' && id && action === 'media-upload') {
+      if (!await podeEscrever(res, user.id, id)) return;
       if (!process.env.BLOB_READ_WRITE_TOKEN) {
         return res.status(503).json({ error: 'BLOB_READ_WRITE_TOKEN não configurado na Vercel.' });
       }
@@ -757,6 +804,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST' && id && action === 'media') {
+      if (!await podeEscrever(res, user.id, id)) return;
       const { name, url, mime_type, is_shared } = req.body || {};
       if (!name || !url) return res.status(400).json({ error: 'name e url obrigatórios' });
       try {
@@ -925,6 +973,10 @@ module.exports = async function handler(req, res) {
       if (!['owner','editor','viewer'].includes(role)) return res.status(400).json({ error: 'role inválido' });
       // Update role across ALL brands (global team)
       await query('UPDATE user_brand_roles SET role=$1 WHERE user_id=$2', [role, member_id]);
+      // Despromover alguém tem de ter efeito já. O papel é lido da base de
+      // dados a cada pedido, mas revoga-se na mesma para o cliente recarregar
+      // com o estado certo em vez de continuar a mostrar o que já não pode.
+      await revogarSessoes(member_id);
       // Promoção a administrador: garantir associação owner a TODAS as marcas
       // activas (o UPDATE acima só altera linhas existentes) e sem restrições.
       if (role === 'owner') {
@@ -975,6 +1027,14 @@ module.exports = async function handler(req, res) {
       // Remove from ALL brands (global team)
       try { await query('DELETE FROM user_brand_areas WHERE user_id=$1', [member_id]); } catch (_) {}
       await query('DELETE FROM user_brand_roles WHERE user_id=$1', [member_id]);
+      // Tirar os papéis não chegava: a conta ficava active=TRUE, o pedido de
+      // magic link só exige active, e o verificador re-provisionava 'viewer'
+      // em 'caetano' a quem entrasse sem papel nenhum. O removido voltava a
+      // entrar sozinho, com leitura da base de contactos global, e deixava de
+      // aparecer no ecrã Equipa (que faz INNER JOIN a user_brand_roles), por
+      // isso ninguém dava por isso.
+      await query('UPDATE users SET active = FALSE WHERE id = $1', [member_id]);
+      await revogarSessoes(member_id);
       return res.status(200).json({ ok: true });
     }
 
@@ -1021,6 +1081,9 @@ module.exports = async function handler(req, res) {
       if (parseInt(member_id) === user.id) return res.status(400).json({ error: 'Não podes desactivar a tua própria conta' });
       const { active } = req.body || {};
       await query('UPDATE users SET active=$1 WHERE id=$2', [!!active, member_id]);
+      // Desactivar só impedia o PEDIDO de um link novo — a sessão já emitida
+      // continuava a funcionar até expirar.
+      if (!active) await revogarSessoes(member_id);
       return res.status(200).json({ ok: true });
     }
 

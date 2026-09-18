@@ -289,6 +289,20 @@ async function processImportQueue({ jobId = null, brandId = null, deadlineMs = 8
   const DEADLINE = Date.now() + deadlineMs;
   let processed_jobs = 0;
 
+  // Importações abandonadas. Um job fica em 'uploading' entre o primeiro POST
+  // e o import_ready — se o browser for fechado, perder rede ou o utilizador
+  // mudar de página nesse intervalo, fica assim para sempre: nunca é
+  // processado, não aparece em lado nenhum, e os blocos já carregados guardam
+  // as linhas do ficheiro indefinidamente. O mesmo para um 'cancelled'.
+  // Sete dias é folga larga para qualquer upload legítimo.
+  try {
+    await query(
+      `DELETE FROM import_jobs
+       WHERE status IN ('uploading','cancelled')
+         AND COALESCE(updated_at, created_at) < NOW() - INTERVAL '7 days'`
+    );
+  } catch (_) { /* a FK leva os blocos em cascata; falhar aqui não trava a fila */ }
+
   while (Date.now() < DEADLINE) {
     const params = [];
     let where = `status IN ('queued','processing')`;
@@ -343,6 +357,11 @@ async function processImportQueue({ jobId = null, brandId = null, deadlineMs = 8
       );
       if (jobRow[0]) {
         const j = jobRow[0];
+        // Os blocos ja nao tem conteudo pessoal, mas as linhas em si nao
+        // servem para nada depois do job terminar e so fazem crescer a
+        // tabela. O historico da importacao fica em `imports`, que e o que os
+        // ecras mostram.
+        try { await query('DELETE FROM import_chunks WHERE job_id=$1', [job.id]); } catch (_) {}
         try {
           await query(
             `INSERT INTO imports (brand_id, file_name, list_id, list_name, total_rows, imported, skipped, failed, status, created_by)
@@ -362,8 +381,16 @@ async function processImportQueue({ jobId = null, brandId = null, deadlineMs = 8
     const contacts = Array.isArray(chunk.contacts) ? chunk.contacts : [];
     const result = await processBatch(job.list_id, contacts);
 
+    // O payload sai daqui assim que o bloco e processado. Ficava gravado tal
+    // e qual (email, nome, telefone, empresa) em import_chunks.contacts, para
+    // sempre: nao existia um unico DELETE sobre esta tabela em todo o
+    // repositorio, e nem o apagamento de um contacto nem a limpeza de
+    // retencao lhe tocavam. Era uma segunda copia integral dos dados
+    // pessoais, fora do modelo de contactos, que sobrevivia a qualquer
+    // pedido de apagamento do titular. As contagens ficam — sao o que
+    // alimenta o relatorio da importacao.
     await query(
-      `UPDATE import_chunks SET status='done', imported=$1, skipped=$2, failed=$3 WHERE id=$4`,
+      `UPDATE import_chunks SET status='done', contacts='[]'::jsonb, imported=$1, skipped=$2, failed=$3 WHERE id=$4`,
       [result.imported, result.skipped, result.failed, chunk.id]
     );
     await query(

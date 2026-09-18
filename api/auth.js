@@ -59,11 +59,17 @@ module.exports = async function handler(req, res) {
         );
       }
       if (!brands.length) {
-        await query(
-          `INSERT INTO user_brand_roles (user_id, brand_id, role) VALUES ($1, 'caetano', 'viewer') ON CONFLICT DO NOTHING`,
-          [r.user_id]
-        );
-        brands = [{ brand_id: 'caetano', role: 'viewer' }];
+        // Aqui havia um auto-provisionamento: quem entrasse sem papel nenhum
+        // recebia 'viewer' em 'caetano'. Isso tornava o botão "Remover da
+        // equipa" reversível pelo próprio removido — bastava-lhe pedir outro
+        // link de acesso — e dava-lhe de volta a leitura da base de contactos
+        // global, que não tem separação por marca.
+        //
+        // Nenhum utilizador legítimo depende disto: o convite (api/brands,
+        // action=invite) já cria os papéis em todas as marcas activas. Uma
+        // conta sem papel é uma conta a quem o acesso foi retirado.
+        console.warn('login recusado: utilizador', r.user_id, 'sem papel em nenhuma marca');
+        return res.status(403).json({ error: 'A tua conta não tem acesso a nenhuma marca. Fala com um administrador.' });
       }
 
       // token_version vai no token para permitir revogação (S-3). Lê-se à
@@ -259,11 +265,28 @@ module.exports = async function handler(req, res) {
         if (rows[0]) return res.status(200).json({ ok: true, action: 'updated', user: rows[0] });
       }
       const userName = name || emailNorm.split('@')[0];
+      // password_hash é NOT NULL no esquema (001), e este INSERT não a
+      // preenchia: para um email NOVO falhava sempre com 23502, e o arranque
+      // de uma instalação nunca funcionou. Não existe login por password em
+      // lado nenhum do backend — a entrada é só por magic link — por isso
+      // grava-se um valor aleatório que nunca corresponde a nada, em vez de
+      // uma password real.
+      const inutilizavel = crypto.randomBytes(32).toString('hex');
       const rows = await query(
-        `INSERT INTO users (name, email, active) VALUES ($1, $2, TRUE)
+        `INSERT INTO users (name, email, active, password_hash) VALUES ($1, $2, TRUE, $3)
          ON CONFLICT (email) DO UPDATE SET active=TRUE, name=EXCLUDED.name
          RETURNING id, email, name`,
-        [userName, emailNorm]
+        [userName, emailNorm, inutilizavel]
+      );
+      // E dar-lhe owner em todas as marcas activas. Sem isto a conta ficava
+      // sem papel nenhum, e como o login deixou de auto-provisionar papéis
+      // (ver a verificação do magic link), o administrador acabado de criar
+      // não conseguia entrar — o arranque criava uma conta inútil.
+      await query(
+        `INSERT INTO user_brand_roles (user_id, brand_id, role)
+         SELECT $1, id, 'owner'::user_role FROM brands WHERE active = TRUE
+         ON CONFLICT (user_id, brand_id) DO UPDATE SET role = 'owner'`,
+        [rows[0].id]
       );
       return res.status(201).json({ ok: true, action: 'created', user: rows[0] });
     }

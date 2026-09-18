@@ -7713,7 +7713,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             list.innerHTML = items.map(b => `
                 <div class="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors">
                     <div class="w-24 h-14 bg-slate-50 border border-slate-200 rounded overflow-hidden flex-shrink-0 cursor-pointer relative" onclick="_blockEdit(${b.id})">
-                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.25);transform-origin:top left;width:400%;height:400%"></iframe>
+                        <iframe sandbox="allow-same-origin" loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.25);transform-origin:top left;width:400%;height:400%"></iframe>
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</p>
@@ -7730,7 +7730,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             list.innerHTML = items.map(b => `
                 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                     <div class="h-32 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer relative" onclick="_blockEdit(${b.id})">
-                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                        <iframe sandbox="allow-same-origin" loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
                     </div>
                     <div class="p-4 flex-1 flex flex-col">
                         <p class="font-semibold text-slate-900 text-sm">${escHtml(b.name)}</p>
@@ -7757,7 +7757,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             list.innerHTML = items.map(b => `
                 <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
                     <div class="w-20 h-12 bg-slate-50 border border-slate-200 rounded overflow-hidden flex-shrink-0 cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
-                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.25);transform-origin:top left;width:400%;height:400%"></iframe>
+                        <iframe sandbox="allow-same-origin" loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.25);transform-origin:top left;width:400%;height:400%"></iframe>
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-medium text-slate-900 text-sm truncate">${escHtml(b.name)}</p>
@@ -7774,7 +7774,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             list.innerHTML = items.map(b => `
                 <div class="bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-sm transition-shadow flex flex-col">
                     <div class="h-24 bg-slate-50 border-b border-slate-100 overflow-hidden cursor-pointer" onclick="_blockEdit(${b.id},'brandSettings')">
-                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
+                        <iframe sandbox="allow-same-origin" loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="w-full pointer-events-none" style="border:none;transform:scale(0.5);transform-origin:top left;width:200%;height:200%"></iframe>
                     </div>
                     <div class="p-3 flex items-center justify-between gap-2">
                         <div class="min-w-0">
@@ -10708,7 +10708,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (previewEl) {
             const html = c.html_content;
             if (html && html.trim()) {
-                previewEl.innerHTML = `<iframe loading="lazy" srcdoc="${html.replace(/"/g,'&quot;')}" class="w-full bg-white rounded" style="height:520px;border:1px solid #e2e8f0"></iframe>`;
+                previewEl.innerHTML = `<iframe sandbox="allow-same-origin" loading="lazy" srcdoc="${html.replace(/"/g,'&quot;')}" class="w-full bg-white rounded" style="height:520px;border:1px solid #e2e8f0"></iframe>`;
             } else {
                 previewEl.innerHTML = `<p class="text-center text-sm py-12 sobre-tela-clara">Sem template associado a esta campanha.</p>`;
             }
@@ -11033,7 +11033,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             const detail = await apiFetch(`/api/campaigns/${c.id}`);
             const html = detail.html_content;
             if (html && html.trim()) {
-                body.innerHTML = `<iframe id="campPreviewIframe" loading="lazy" srcdoc="${html.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" class="w-full bg-white" style="height:560px;border:none;display:block"></iframe>`;
+                body.innerHTML = `<iframe id="campPreviewIframe" sandbox="allow-same-origin" loading="lazy" srcdoc="${html.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" class="w-full bg-white" style="height:560px;border:none;display:block"></iframe>`;
                 const ifr = document.getElementById('campPreviewIframe');
                 ifr.addEventListener('load', () => {
                     try {
@@ -11696,7 +11696,7 @@ function toggleExportMenu() {
                 list.innerHTML = data.map(b => `
                 <button data-block-id="${escAttr(String(b.id))}" onclick="pickBlock(this.dataset.blockId)" class="w-full flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 text-left transition-colors">
                     <div class="w-24 h-16 bg-slate-50 rounded overflow-hidden flex-shrink-0">
-                        <iframe loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
+                        <iframe sandbox="allow-same-origin" loading="lazy" srcdoc="${escAttr(b.html_content||'')}" class="pointer-events-none" style="border:none;transform:scale(0.3);transform-origin:top left;width:333%;height:333%"></iframe>
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-slate-900 text-sm truncate">${escHtml(b.name)}</p>

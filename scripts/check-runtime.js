@@ -364,6 +364,70 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['nenhuma marca é escrita por quem não tem papel nela', `const fs=require('fs');
+    // Cinco ramos de escrita e três de leitura recebiam o brand_id da query
+    // string e não verificavam nada além de haver sessão: qualquer utilizador
+    // — incluindo um viewer de outra marca — alterava os cabeçalhos e rodapés
+    // HTML que entram nos emails de qualquer marca.
+    const b=fs.readFileSync('api/brands/index.js','utf8');
+    const trecho=(marca)=>{const i=b.indexOf(marca); return i<0?'':b.slice(i,i+400);};
+    const exigeEscrita=(marca,nome)=>{ if(!/podeEscrever\\(res, user\\.id, id\\)/.test(trecho(marca))) throw new Error(nome+' voltou a aceitar escrita sem papel na marca'); };
+    exigeEscrita("=== 'POST' && id && action === 'block'", 'criar bloco');
+    exigeEscrita("=== 'PUT' && id && action === 'block'", 'editar bloco');
+    exigeEscrita("=== 'DELETE' && id && action === 'block'", 'apagar bloco');
+    exigeEscrita("action === 'media-upload'", 'upload de media');
+    if(!/action === 'team'[\\s\\S]{0,600}role='owner'/.test(b))
+      throw new Error('o directorio de utilizadores voltou a ser legivel por qualquer sessao');
+    const l=fs.readFileSync('api/lists/index.js','utf8');
+    if(!/seg\\.brand_id && !\\(await hasBrandAccess/.test(l))
+      throw new Error('os segmentos voltaram a ser acessiveis por id sem verificar a marca');`],
+  ['tirar o acesso a alguem corta mesmo a sessao', `const fs=require('fs');
+    // A migracao 057 criou token_version e o requireAuth compara-o a cada
+    // pedido, mas NADA o incrementava: a revogacao nunca acontecia. E remover
+    // da equipa deixava a conta activa, que o login re-provisionava como
+    // viewer — o removido voltava a entrar sozinho.
+    const b=fs.readFileSync('api/brands/index.js','utf8');
+    if(!/async function revogarSessoes/.test(b))
+      throw new Error('revogarSessoes desapareceu — voltar a remover alguem deixa a sessao dele viva 7 dias');
+    for(const [marca,nome] of [["action === 'remove_member'",'remover da equipa'],["action === 'set_active'",'desactivar conta'],["action === 'update_role'",'mudar papel']]){
+      const i=b.indexOf(marca); const t=i<0?'':b.slice(i,i+1400);
+      if(!/revogarSessoes\\(/.test(t)) throw new Error(nome+' deixou de revogar a sessao');
+    }
+    const i=b.indexOf("action === 'remove_member'");
+    if(!/UPDATE users SET active = FALSE/.test(b.slice(i,i+1400)))
+      throw new Error('remover da equipa voltou a deixar a conta activa — o removido pede outro link e volta a entrar');
+    const a=fs.readFileSync('api/auth.js','utf8');
+    if(/VALUES \\(\\$1, 'caetano', 'viewer'\\)/.test(a))
+      throw new Error('voltou o auto-provisionamento de viewer no login — torna o offboarding reversivel pelo proprio');
+    if(!/INSERT INTO users \\(name, email, active, password_hash\\)/.test(a))
+      throw new Error('o arranque de administracao voltou a nao preencher password_hash, que e NOT NULL');`],
+  ['o painel isola as pré-visualizações e o browser sabe para onde não enviar dados', `const fs=require('fs');
+    // O HTML guardado (templates e blocos de marca) nunca e sanitizado, e ate
+    // aqui era renderizado em iframes sem sandbox — heranca da origem da
+    // aplicacao, com acesso ao token em localStorage.
+    const h=fs.readFileSync('email.html','utf8');
+    const semSandbox=(h.match(/<iframe(?![^>]*sandbox)/g)||[]).length;
+    if(semSandbox) throw new Error(semSandbox+' iframe(s) de pre-visualizacao sem sandbox — o HTML guardado volta a correr na origem da aplicacao');
+    if(/sandbox="[^"]*allow-scripts/.test(h))
+      throw new Error('um iframe ganhou allow-scripts; com allow-same-origin isso anula o sandbox por completo');
+    const v=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+    const csp=(v.headers||[]).flatMap(x=>x.headers||[]).find(x=>x.key==='Content-Security-Policy');
+    if(!csp) throw new Error('a Content-Security-Policy desapareceu do vercel.json');
+    for(const d of ["connect-src 'self'","frame-ancestors 'none'","object-src 'none'","base-uri 'self'","form-action 'self'"])
+      if(!csp.value.includes(d)) throw new Error('a CSP perdeu a directiva: '+d);
+    const nosniff=(v.headers||[]).flatMap(x=>x.headers||[]).find(x=>x.key==='X-Content-Type-Options');
+    if(!nosniff) throw new Error('X-Content-Type-Options desapareceu');`],
+  ['o ficheiro importado não fica guardado depois de processado', `const fs=require('fs');
+    // import_chunks.contacts guardava email, nome, telefone e empresa de cada
+    // linha do CSV, para sempre: nao havia um unico DELETE sobre a tabela, e
+    // nem o apagamento de um contacto nem a limpeza de retencao lhe tocavam.
+    const c=fs.readFileSync('api/contacts/index.js','utf8');
+    if(!/contacts='\\[\\]'::jsonb/.test(c))
+      throw new Error('o payload do bloco de importacao voltou a ficar guardado depois de processado');
+    if(!/DELETE FROM import_chunks WHERE job_id/.test(c))
+      throw new Error('os blocos deixaram de ser apagados no fim do job');
+    if(!/status IN \\('uploading','cancelled'\\)/.test(c))
+      throw new Error('as importacoes abandonadas voltaram a ficar para sempre com as linhas do ficheiro');`],
   ['o tema escuro cobre as classes que o painel usa mesmo', `const fs=require('fs');
     // O tema escuro é uma lista de remapeamentos escrita à mão: uma classe
     // clara que não esteja lá fica clara, e só se vê abrindo o ecrã no escuro.

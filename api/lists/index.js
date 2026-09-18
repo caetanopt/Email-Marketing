@@ -1,5 +1,5 @@
 const { query, colunaExiste, transaction } = require('../../lib/db');
-const { withAuth, hasAnyRole, requireWriteAny } = require('../../lib/auth');
+const { withAuth, hasAnyRole, requireWriteAny, hasBrandAccess } = require('../../lib/auth');
 const { marcarOculto } = require('../../lib/contactos');
 
 // ── Segment rule builder ──────────────────────────────────────────────────────
@@ -84,6 +84,16 @@ module.exports = withAuth(async (req, res, user) => {
     const auth = await query(`SELECT s.* FROM segments s WHERE s.id = $1`, [segment_id]);
     if (!auth[0]) return res.status(404).json({ error: 'Segmento não encontrado' });
     const seg = auth[0];
+
+    // Os segmentos são POR MARCA (brand_id, migração 037) ao contrário das
+    // listas e dos contactos, que são globais de propósito. A listagem já
+    // respeitava isso, mas ler, editar e apagar um segmento pelo id não
+    // verificava nada além de "tem algum papel nalguma marca" — bastava
+    // trocar o id para chegar aos segmentos de outra marca. Um segmento sem
+    // brand_id é anterior à migração e continua visível a todos.
+    if (seg.brand_id && !(await hasBrandAccess(user.id, seg.brand_id))) {
+      return res.status(404).json({ error: 'Segmento não encontrado' });
+    }
 
     // S-8: editar ou apagar um segmento é escrita — exige papel de escrita.
     if ((req.method === 'PUT' || req.method === 'DELETE') && !(await requireWriteAny(req, res, user.id))) return;
