@@ -364,6 +364,53 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['o painel não imprime valores do servidor sem escapar', `const fs=require('fs');
+    // Fase 1 da auditoria. Quatro sinks de innerHTML recebiam texto vindo da
+    // BD sem passar por escHtml, na mesma linha em que o campo ao lado era
+    // escapado. Com o token de sessão em localStorage e sem CSP, cada um
+    // destes era roubo de sessão a partir de um papel de leitura.
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/replace\\(\\/'\\/g,'&#39;'\\)/.test(h))
+      throw new Error("escHtml deixou de escapar a plica — volta a haver injecção dentro de onclick=\\"f(1,'...')\\"");
+    if(/<p class="font-medium text-slate-900">\\\${m\\.name/.test(h))
+      throw new Error('o nome do membro voltou a ser impresso sem escHtml no ecrã Equipa');
+    if(/<p class="text-xs text-slate-400">\\\${m\\.email}/.test(h))
+      throw new Error('o email do membro voltou a ser impresso sem escHtml no ecrã Equipa');
+    if(/src="\\\${ic\\.data_url}"/.test(h))
+      throw new Error('o data_url do ícone voltou a entrar em src= sem escapar — XSS armazenado sem clique');
+    if(/title="\\\${l\\.url}"|>\\\${l\\.url}</.test(h))
+      throw new Error('o destino do clique voltou a ser impresso sem escapar no relatório da campanha');`],
+  ['o destino de um clique é validado antes de ser seguido e antes de ser gravado', `const fs=require('fs');
+    // O parâmetro url do redireccionador era gravado em bruto em
+    // email_events.url e reimpresso no relatório: escrita anónima por quem
+    // recebeu a campanha. E startsWith('http') aceitava httpx://.
+    const bruto=fs.readFileSync('api/track.js','utf8');
+    // Sem as linhas de comentário: o comentário que explica a correcção cita o
+    // código antigo, e a sonda apanhava-se a si própria.
+    const t=bruto.split('\\n').filter(l => !/^\\s*\\/\\//.test(l)).join('\\n');
+    if(!/function destinoSeguro/.test(t))
+      throw new Error('destinoSeguro desapareceu — o destino do clique volta a ser aceite sem validação');
+    if(/url\\.startsWith\\('http'\\)/.test(t))
+      throw new Error("voltou o teste startsWith('http'), que aceita httpx:// e valores relativos");
+    if(!/protocol !== 'http:' && u\\.protocol !== 'https:'/.test(t))
+      throw new Error('destinoSeguro deixou de restringir o esquema a http/https');
+    if(/tipo: 'click', url: url \\|\\| null/.test(t))
+      throw new Error('voltou a gravar-se o parâmetro em bruto em vez do destino validado');
+    if(!/tipo: 'click', url: dest !== '\\/' \\? dest : null/.test(t))
+      throw new Error('o evento de clique deixou de gravar o destino já validado');`],
+  ['criar um ícone exige papel de escrita e um data URI de imagem', `const fs=require('fs');
+    // api/icons era o endpoint esquecido do passe de autorização: só exigia
+    // "ter algum papel na marca", e um viewer gravava HTML arbitrário que
+    // corria no painel de TODAS as marcas (scope global => brand_id NULL).
+    const i=fs.readFileSync('api/icons/index.js','utf8');
+    if(!/requireWrite\\(req, res, user\\.id, brand_id\\)/.test(i))
+      throw new Error('o POST de ícones voltou a aceitar um viewer — falta requireWrite');
+    if(!/requireWriteAny\\(req, res, user\\.id\\)/.test(i))
+      throw new Error('o DELETE de ícones voltou a aceitar um viewer');
+    if(!/DATA_URL_IMAGEM/.test(i) || !/\\^data:image\\\\\\/\\(png\\|jpe\\?g\\|webp\\|gif\\);base64,/.test(i))
+      throw new Error('a validação do data_url desapareceu — volta a entrar qualquer texto no atributo src');
+    if(!/Só um administrador pode criar ícones partilhados/.test(i))
+      throw new Error('um ícone global voltou a poder ser criado por quem não é administrador');`],
   ['o bloco de espaço aceita cor de fundo, e sem cor continua transparente', `const fs=require('fs');
     // O espaço passou a ter cor de fundo opcional. VAZIO tem de continuar a
     // significar "sem cor": é assim que o espaço deixa ver o fundo do email, e

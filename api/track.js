@@ -17,6 +17,25 @@ function trackToken(campaignId, contactId) {
     .digest('hex');
 }
 
+// Destino de um clique. Devolve o URL normalizado se for um endereço web
+// legítimo, ou null.
+//
+// O teste anterior era `url.startsWith('http')`, que aceitava `httpx://` e
+// qualquer string começada por "http" — e, pior, o valor em bruto era gravado
+// em email_events.url e reimpresso no relatório da campanha. Passar pelo
+// construtor URL garante três coisas de uma vez: que é mesmo um endereço, que
+// o esquema é http(s) (fora javascript: e data:), e que não leva CR/LF que
+// pudesse partir o cabeçalho Location.
+const LIMITE_URL = 2048;
+function destinoSeguro(bruto) {
+  if (!bruto || typeof bruto !== 'string') return null;
+  if (bruto.length > LIMITE_URL) return null;
+  let u;
+  try { u = new URL(bruto); } catch { return null; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  return u.href;
+}
+
 // Agentes que vão buscar as imagens e seguem os links SEM ninguém ter aberto
 // o email: filtros de segurança que analisam tudo o que entra, e a
 // pré-visualização do Apple Mail Privacy Protection, que descarrega na
@@ -402,7 +421,7 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
         const valid = t.length === expected.length
           && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(expected));
         if (valid && !isNaN(campaignId) && !isNaN(contactId)) {
-          if (url && url.startsWith('http')) dest = url;
+          dest = destinoSeguro(url) || '/';
           // uid=0 é o clique de um email de teste: encaminha-se para o
           // destino, mas não se registra — não há contacto 0 e não deve
           // contar nas estatísticas da campanha.
@@ -415,8 +434,12 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
             // aberturas. Uma campanha deste mês mostrava 2,46% quando o número
             // real era 0,48%: de 31 que clicaram, 25 fizeram-no no primeiro
             // minuto após a entrega, e um deles clicou 25 vezes. Não era gente.
+            // Grava-se o destino JÁ VALIDADO, nunca o parâmetro em bruto. O
+            // que aqui entrasse voltava ao painel no relatório da campanha, e
+            // qualquer pessoa que tenha recebido a campanha pode escrever
+            // neste parâmetro — era XSS armazenado com um GET anónimo.
             await registarEvento({
-              campaignId, contactId, tipo: 'click', url: url || null,
+              campaignId, contactId, tipo: 'click', url: dest !== '/' ? dest : null,
               ua: req.headers['user-agent'] || '',
             });
           }
