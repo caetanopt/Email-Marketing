@@ -364,6 +364,28 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['o webhook de eventos exige assinatura da Amazon e falha fechado', `const fs=require('fs');
+    // O gate anterior era enforce-when-configured: sem SNS_WEBHOOK_SECRET
+    // definido, qualquer POST anónimo suprimia contactos globalmente. A
+    // variável NÃO estava definida em produção. A barreira passa a ser a
+    // assinatura, que não depende de nenhum segredo partilhado.
+    const t=fs.readFileSync('api/track.js','utf8');
+    const s=fs.readFileSync('lib/snsSignature.js','utf8');
+    if(!/verificarMensagemSns/.test(t))
+      throw new Error('o webhook deixou de verificar a assinatura SNS');
+    if(/SECURITY: \\/api\\/webhooks sem SNS_WEBHOOK_SECRET/.test(t))
+      throw new Error('voltou o gate que avisa e deixa passar — o webhook tem de falhar FECHADO');
+    if(!/if \\(!veredicto\\.valido\\)[\\s\\S]{0,200}status\\(403\\)/.test(t))
+      throw new Error('uma mensagem sem assinatura válida deixou de ser recusada com 403');
+    if(/hostname\\.endsWith\\('\\.amazonaws\\.com'\\)/.test(t))
+      throw new Error("voltou endsWith('.amazonaws.com'), que aceita qualquer host da AWS — usa HOST_CERT");
+    if(!/topic_not_allowlisted/.test(t))
+      throw new Error('voltou a confirmar-se subscrições SNS às cegas — permite inscrever este endpoint num tópico alheio');
+    // a string canónica é protocolo: a ordem dos campos faz parte da assinatura
+    if(!/'Message', 'MessageId', 'Subject', 'Timestamp', 'TopicArn', 'Type'/.test(s))
+      throw new Error('a ordem dos campos da assinatura de Notification mudou — invalida todas as mensagens');
+    if(!/\\^sns\\\\\\.\\[a-z0-9-\\]\\+\\\\\\.amazonaws\\\\\\.com\\$/.test(s))
+      throw new Error('o host do certificado deixou de estar restrito a sns.<regiao>.amazonaws.com — volta a ser SSRF');`],
   ['o painel não imprime valores do servidor sem escapar', `const fs=require('fs');
     // Fase 1 da auditoria. Quatro sinks de innerHTML recebiam texto vindo da
     // BD sem passar por escHtml, na mesma linha em que o campo ao lado era

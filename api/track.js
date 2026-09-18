@@ -3,6 +3,7 @@ const { buildLegalFooter, detectContentWidth } = require('../lib/emailFooter');
 const { lerRodapeLegal } = require('../lib/campanhas');
 const { previewTokenValido } = require('../lib/previewLink');
 const { stripEditorMetadata, updateSocialIcons } = require('../lib/emailHtml');
+const { verificarMensagemSns, HOST_CERT } = require('../lib/snsSignature');
 const APP_URL_PREVIEW = (process.env.APP_URL || 'https://emkt.caetano.pt').replace(/\/$/, '');
 const crypto = require('crypto');
 
@@ -107,37 +108,22 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-amz-sns-message-type');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    // Autenticação do webhook — mitigação do S-1 enquanto a validação da
-    // assinatura SNS completa não está feita. Sem isto, qualquer POST anónimo
-    // consegue suprimir contactos (forjando um bounce) e forjar aberturas e
-    // cliques. O SES/SNS passa a ser configurado com o endpoint
-    // …/api/webhooks?k=<segredo>; um pedido sem o segredo certo é recusado.
-    //
-    // Enforce-when-configured: só exige o segredo quando SNS_WEBHOOK_SECRET
-    // está definido. Assim o deploy não interrompe um webhook a funcionar — a
-    // protecção liga-se no momento em que se define a variável E se actualiza
-    // o URL da subscrição SNS para incluir ?k=<segredo>. Enquanto não estiver
-    // definida, cada pedido regista um aviso para a lacuna não passar
-    // despercebida. A comparação é em tempo constante.
+    // Segredo opcional no URL (?k=). Deixou de ser a barreira — é apenas uma
+    // camada extra para quem o queira usar. A barreira é a assinatura, logo a
+    // seguir. Quando definido, um ?k= errado é recusado já aqui.
     const _whSecret = process.env.SNS_WEBHOOK_SECRET;
     if (_whSecret) {
       // Buffers primeiro, e comparar por comprimento de BYTES: timingSafeEqual
       // rebenta com buffers de tamanhos diferentes, e String.length conta
-      // unidades UTF-16, não bytes. Um ?k= com o mesmo número de caracteres mas
-      // um char multi-byte (ex.: 'é') passaria o guard de char-length e faria
-      // o timingSafeEqual lançar — 500 e unhandled rejection em vez do 401.
+      // unidades UTF-16, não bytes.
       const fornecido = Buffer.from(String((req.query && req.query.k) || ''));
       const esperado = Buffer.from(String(_whSecret));
       const autorizado = fornecido.length === esperado.length
         && crypto.timingSafeEqual(fornecido, esperado);
       if (!autorizado) return res.status(401).json({ error: 'Unauthorized' });
-    } else {
-      console.warn('SECURITY: /api/webhooks sem SNS_WEBHOOK_SECRET — aceita eventos não autenticados. Define a variável e actualiza o URL da subscrição SNS para incluir ?k=<segredo>.');
     }
 
     try {
-      const msgType = req.headers['x-amz-sns-message-type'] || '';
-
       let body = req.body;
       if (typeof body === 'string') {
         try { body = JSON.parse(body); } catch { return res.status(400).end(); }
@@ -147,10 +133,39 @@ module.exports = async (req, res) => {
         try { body = JSON.parse(raw); } catch { return res.status(400).end(); }
       }
 
-      if (msgType === 'SubscriptionConfirmation' || body.Type === 'SubscriptionConfirmation') {
+      // ── A barreira ────────────────────────────────────────────────────────
+      // Toda a mensagem tem de vir num envelope SNS assinado pela Amazon, e o
+      // tópico tem de ser um dos nossos. Isto substitui o gate anterior, que
+      // só exigia um segredo no URL quando a variável de ambiente existisse —
+      // e que, não existindo, deixava qualquer pessoa suprimir contactos.
+      //
+      // Falha FECHADO: sem assinatura válida não se processa nada.
+      const veredicto = await verificarMensagemSns(body, {
+        arnsPermitidos: process.env.SNS_TOPIC_ARNS || '',
+      });
+      if (!veredicto.valido) {
+        console.warn('webhook SNS recusado:', veredicto.motivo);
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      if (!veredicto.arnsConfigurados) {
+        // Sem lista de tópicos, a assinatura prova que veio do SNS mas não de
+        // que conta. Registar o ARN real permite fixá-lo numa variável e
+        // fechar também essa porta.
+        console.warn('webhook SNS aceite sem lista de tópicos — define SNS_TOPIC_ARNS=' + veredicto.topicArn);
+      }
+
+      if (body.Type === 'SubscriptionConfirmation') {
+        // Só se confirma uma subscrição de um tópico explicitamente
+        // autorizado. Confirmar às cegas deixava qualquer pessoa inscrever
+        // este endpoint num tópico da conta AWS dela e, a partir daí, enviar
+        // eventos que passam na verificação da assinatura.
+        if (!veredicto.arnsConfigurados) {
+          console.warn('Subscrição SNS NÃO confirmada: define SNS_TOPIC_ARNS=' + veredicto.topicArn + ' e repete a subscrição.');
+          return res.status(202).json({ ok: true, confirmed: false, reason: 'topic_not_allowlisted' });
+        }
         try {
           const parsed = new URL(body.SubscribeURL || '');
-          if (parsed.protocol === 'https:' && parsed.hostname.endsWith('.amazonaws.com')) {
+          if (parsed.protocol === 'https:' && HOST_CERT.test(parsed.hostname)) {
             await fetch(parsed.href);
           }
         } catch {}
