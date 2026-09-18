@@ -364,6 +364,30 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['trocar de marca é um painel ancorado, e o ecrã de escolha fica para quem não tem marca', `const fs=require('fs');
+    // O modal de ecrã inteiro passou a painel ancorado à barra lateral. O
+    // modal continua a existir, mas só para quem TEM de escolher: primeira
+    // entrada sem marca definida, ou marca activa eliminada. Trocar as duas
+    // coisas volta a bloquear o ecrã em cada troca, ou — pior — deixa um
+    // utilizador sem marca a olhar para um painel ancorado a uma barra
+    // lateral que ainda não tem marca nenhuma.
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/id="brandSwitchPop"/.test(h))
+      throw new Error('o painel de troca de marca desapareceu');
+    if(!/onclick="toggleBrandSwitcher\\(this\\)"/.test(h))
+      throw new Error('o bloco da marca na barra lateral deixou de abrir o painel');
+    if(/onclick="openBrandSwitchModal\\(\\)" class="text-xs text-white\\/50/.test(h))
+      throw new Error('a barra lateral voltou a abrir o modal de ecrã inteiro em vez do painel');
+    // os dois caminhos que forçam escolha continuam a usar o modal
+    const forcado=(h.match(/openBrandSwitchModal\\(\\)/g)||[]).length;
+    if(forcado < 2)
+      throw new Error('o ecrã de escolha deixou de ser usado — quem entra sem marca definida fica sem forma de escolher');
+    if(!/_bswSemAcentos/.test(h))
+      throw new Error('a pesquisa do painel deixou de ignorar acentos — procurar "skoda" deixa de encontrar Škoda');
+    if(!/key === 'Escape'[\\s\\S]{0,120}closeBrandSwitcher/.test(h))
+      throw new Error('o painel deixou de fechar com Escape');
+    if(!/sidebar-brand-block/.test(h))
+      throw new Error('o painel perdeu a âncora: sem .sidebar-brand-block não sabe onde se posicionar');`],
   ['o webhook de eventos exige assinatura da Amazon e falha fechado', `const fs=require('fs');
     // O gate anterior era enforce-when-configured: sem SNS_WEBHOOK_SECRET
     // definido, qualquer POST anónimo suprimia contactos globalmente. A
@@ -492,9 +516,16 @@ const provas = [
     // 2) o passo pós-login era uma promessa solta sem .catch, por isso qualquer
     //    erro ali era uma rejeição não tratada e o ecrã ficava assim para sempre.
     const h=fs.readFileSync('email.html','utf8');
-    const osw=h.slice(h.indexOf('function openBrandSwitchModal'), h.indexOf('function closeBrandSwitchModal'));
+    // O cálculo do ecrã de destino vive em _computeSwitchTarget, partilhado
+    // pelo painel da barra lateral e pelo ecrã de escolha inicial — os dois
+    // caminhos que podem ser abertos com o ecrã de login activo.
+    const osw=h.slice(h.indexOf('function _computeSwitchTarget'), h.indexOf('function _computeSwitchTarget')+600);
     if(!/active === 'login'/.test(osw))
-      throw new Error("o modal de marcas voltou a poder ter o ecrã de login como destino — escolher a marca prende o utilizador no login");
+      throw new Error("o destino da troca de marca voltou a poder ser o ecrã de login — escolher a marca prende o utilizador no login");
+    if(!/_switchTargetScreen = _computeSwitchTarget\\(\\)/.test(h.slice(h.indexOf('function openBrandSwitchModal'), h.indexOf('function openBrandSwitchModal')+500)))
+      throw new Error('o ecrã de escolha deixou de usar _computeSwitchTarget');
+    if(!/_switchTargetScreen = _computeSwitchTarget\\(\\)/.test(h.slice(h.indexOf('function openBrandSwitcher'), h.indexOf('function openBrandSwitcher')+700)))
+      throw new Error('o painel da barra lateral deixou de usar _computeSwitchTarget');
     const mt=h.slice(h.indexOf('async function _handleMagicToken'), h.indexOf('async function _handleMagicToken')+3000);
     if(!/_fetchApiBrands\\(\\)[\\s\\S]{0,300}\\.catch\\(/.test(mt))
       throw new Error('o passo pós-login voltou a ficar sem .catch — uma falha ali deixa o ecrã preso a verificar o link');`],

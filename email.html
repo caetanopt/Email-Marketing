@@ -12260,19 +12260,21 @@ ${sections.join('\n\n')}
                 <span class="text-[9px] font-semibold tracking-widest text-white/50">eMKT</span>
             </div>
         </div>
-        <!-- Marca activa -->
-        <div class="px-5 py-4 border-b border-white/10">
-            <div class="flex items-center gap-3">
-                <div class="sidebar-brand-icon w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ring-1 ring-white/15" style="background-color: #FFFFFF">
+        <!-- Marca activa — o bloco inteiro abre o painel de troca -->
+        <div class="px-3 py-3 border-b border-white/10">
+            <button type="button" onclick="toggleBrandSwitcher(this)"
+                    class="sidebar-brand-block w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/10 transition-colors text-left">
+                <div class="sidebar-brand-icon w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ring-1 ring-white/15 flex-shrink-0" style="background-color: #FFFFFF">
                     <img src="https://caetano.pt/site/uploads/sites/27/2024/07/logo-bmw-300x300.png" alt="BMW" class="sidebar-brand-logo-img w-9 h-9 object-contain" loading="lazy"
                          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                     <span class="sidebar-brand-logo-fb hidden w-full h-full items-center justify-center text-[10px] font-bold tracking-wide" style="color:#1C69D4">BMW</span>
                 </div>
-                <div class="min-w-0">
-                    <p class="sidebar-brand-name text-white font-semibold text-sm">BMW</p>
-                    <button onclick="openBrandSwitchModal()" class="text-xs text-white/50 hover:text-white/80 transition-colors">Trocar de marca</button>
+                <div class="min-w-0 flex-1">
+                    <p class="sidebar-brand-name text-white font-semibold text-sm truncate">BMW</p>
+                    <span class="text-xs text-white/50">Trocar de marca</span>
                 </div>
-            </div>
+                <svg class="w-4 h-4 text-white/40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4M16 15l-4 4-4-4"/></svg>
+            </button>
         </div>
         <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             <a onclick="showScreen('dashboard')" data-nav class="nav-item nav-dashboard flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
@@ -13087,17 +13089,11 @@ ${sections.join('\n\n')}
     // Screens that don't make sense to restore when switching brands
     const _SWITCH_SCREEN_MAP = { campaignCreate: 'campaigns', templateEdit: 'templates' };
 
+    // Ecrã de escolha (modal grande). Usado só quando o utilizador TEM de
+    // escolher: primeira entrada sem marca definida, ou a marca activa foi
+    // eliminada. Para trocar no dia-a-dia há o painel da barra lateral.
     function openBrandSwitchModal() {
-        const active = document.querySelector('.screen.active')?.id || 'dashboard';
-        // O ecrã de destino não pode ser o de login. A seguir ao magic link, o
-        // ecrã activo ainda é 'login', e o alvo saía 'login' — escolher a marca
-        // devolvia o utilizador ao ecrã de login, que continua a mostrar
-        // "A verificar link de acesso…". Ficava preso ali, sem erro nenhum e sem
-        // forma de avançar. Quem já tinha marca definida nunca passava por aqui,
-        // por isso só se via em contas novas.
-        _switchTargetScreen = (active === 'login')
-            ? 'dashboard'
-            : (_SWITCH_SCREEN_MAP[active] || active);
+        _switchTargetScreen = _computeSwitchTarget();
         const modal = document.getElementById('brandSwitchModal');
         _renderBrandSwitchGrid();
         if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
@@ -13108,18 +13104,153 @@ ${sections.join('\n\n')}
         if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
     }
 
-    function _renderBrandSwitchGrid() {
-        const grid = document.getElementById('brandSwitchGrid');
-        if (!grid) return;
-        let brands;
+    // ── Painel de troca de marca (barra lateral) ─────────────────────────
+    // Ancorado ao bloco da marca em vez de bloquear o ecrã: continua a ver-se
+    // a página por trás, e trocar de marca deixa de parecer uma operação.
+    // O <aside> é fixed, por isso o painel também é — posiciona-se pelo
+    // rectângulo do bloco visível (há uma cópia da barra por ecrã, mas só uma
+    // está renderizada).
+    let _bswFiltro = '';
+    let _bswIdx = 0;
+
+    function _bswSemAcentos(s) {
+        return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    function _bswFiltradas() {
+        const todas = _brandSwitchList();
+        const q = _bswSemAcentos(_bswFiltro.trim());
+        return q ? todas.filter(b => _bswSemAcentos(b.name).includes(q)) : todas;
+    }
+
+    function openBrandSwitcher(anchor) {
+        const pop = document.getElementById('brandSwitchPop');
+        if (!pop) return;
+        _switchTargetScreen = _computeSwitchTarget();
+        _bswFiltro = '';
+        _bswIdx = 0;
+
+        // Âncora: o bloco da marca do ecrã visível. Se vier sem âncora (ou o
+        // elemento estiver escondido), cai-se no canto superior esquerdo.
+        const alvo = anchor?.closest('.sidebar-brand-block')
+            || [...document.querySelectorAll('.sidebar-brand-block')].find(el => el.offsetParent !== null);
+        const r = alvo ? alvo.getBoundingClientRect() : { left: 12, bottom: 120 };
+        const larguraPainel = Math.min(304, window.innerWidth - 24);
+        pop.style.width = larguraPainel + 'px';
+        pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - larguraPainel - 12)) + 'px';
+        pop.style.top = Math.min(r.bottom + 8, window.innerHeight - 220) + 'px';
+        pop.style.maxHeight = Math.max(240, window.innerHeight - r.bottom - 32) + 'px';
+
+        pop.classList.remove('hidden');
+        _renderBrandSwitcherRows();
+        setTimeout(() => document.getElementById('bswQuery')?.focus(), 0);
+    }
+
+    function closeBrandSwitcher() {
+        document.getElementById('brandSwitchPop')?.classList.add('hidden');
+    }
+
+    function toggleBrandSwitcher(anchor) {
+        const pop = document.getElementById('brandSwitchPop');
+        if (pop && !pop.classList.contains('hidden')) closeBrandSwitcher();
+        else openBrandSwitcher(anchor);
+    }
+
+    function _bswLogo(b) {
+        const fundo = b.bg || '#f1f1f1';
+        const sigla = escHtml(b.name.replace('Mercedes-Benz', 'MB').substring(0, 3).toUpperCase());
+        const img = b.logo
+            ? `<img src="${escHtml(b.logo)}" alt="" class="w-full h-full object-contain p-0.5 ${teLogoFilterClass(fundo)}" loading="lazy"
+                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <span class="hidden w-full h-full items-center justify-center text-[8px] font-bold" style="color:#0f172a">${sigla}</span>`
+            : `<span class="flex w-full h-full items-center justify-center text-[8px] font-bold" style="color:#0f172a">${sigla}</span>`;
+        return `<span class="flex-shrink-0 w-7 h-7 rounded-md overflow-hidden ring-1 ring-slate-200 flex items-center justify-center" style="background:${fundo}">${img}</span>`;
+    }
+
+    function _renderBrandSwitcherRows() {
+        const lista = document.getElementById('bswList');
+        if (!lista) return;
+        const brands = _bswFiltradas();
+        if (!brands.length) {
+            lista.innerHTML = `<p class="px-3 py-6 text-center text-xs text-slate-400">Nenhuma marca encontrada.</p>`;
+            return;
+        }
+        if (_bswIdx >= brands.length) _bswIdx = brands.length - 1;
+        lista.innerHTML = brands.map((b, i) => {
+            const atual = _currentBrand?.id === b.id;
+            const cor = b.color || '#0f172a';
+            const nome = escHtml(b.name);
+            return `<button type="button" data-bsw-i="${i}" data-bsw-id="${escHtml(b.id)}"
+                    class="bsw-row w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${i === _bswIdx ? 'bg-slate-100' : 'hover:bg-slate-50'}">
+                <span class="w-[3px] self-stretch rounded-full flex-shrink-0" style="min-height:22px;background:${cor}"></span>
+                ${_bswLogo(b)}
+                <span class="flex-1 min-w-0 text-[13px] font-semibold text-slate-800 truncate">${nome}</span>
+                ${atual ? `<span class="text-[9px] font-bold tracking-wider uppercase flex-shrink-0" style="color:${cor}">Actual</span>` : ''}
+            </button>`;
+        }).join('');
+    }
+
+    function _bswEscolher(i) {
+        const b = _bswFiltradas()[i];
+        if (!b) return;
+        closeBrandSwitcher();
+        selectBrand(b.id, b.name, b.color, _switchTargetScreen);
+    }
+
+    document.addEventListener('click', (e) => {
+        const pop = document.getElementById('brandSwitchPop');
+        if (!pop || pop.classList.contains('hidden')) return;
+        const linha = e.target.closest('.bsw-row');
+        if (linha) { _bswEscolher(parseInt(linha.dataset.bswI, 10)); return; }
+        // Clicar fora fecha — excepto no próprio painel e no bloco que o abre.
+        if (!e.target.closest('#brandSwitchPop') && !e.target.closest('.sidebar-brand-block')) closeBrandSwitcher();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        const pop = document.getElementById('brandSwitchPop');
+        if (!pop || pop.classList.contains('hidden')) return;
+        if (e.key === 'Escape') { closeBrandSwitcher(); return; }
+        const n = _bswFiltradas().length;
+        if (!n) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); _bswIdx = (_bswIdx + 1) % n; _renderBrandSwitcherRows(); _bswScrollParaSeleccionada(); }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); _bswIdx = (_bswIdx - 1 + n) % n; _renderBrandSwitcherRows(); _bswScrollParaSeleccionada(); }
+        if (e.key === 'Enter')     { e.preventDefault(); _bswEscolher(_bswIdx); }
+    });
+
+    function _bswScrollParaSeleccionada() {
+        document.querySelector(`#bswList [data-bsw-i="${_bswIdx}"]`)?.scrollIntoView({ block: 'nearest' });
+    }
+
+    function _bswPesquisar(valor) {
+        _bswFiltro = valor;
+        _bswIdx = 0;
+        _renderBrandSwitcherRows();
+    }
+
+    // As marcas a que o utilizador tem acesso, já normalizadas. Partilhado
+    // pelo painel da barra lateral e pelo ecrã de escolha inicial.
+    function _brandSwitchList() {
         if (_apiBrands.length) {
-            brands = _apiBrands.map(ab => {
+            return _apiBrands.map(ab => {
                 const hb = _allBrands.find(b => b.id === ab.id) || {};
                 return { ...hb, ...ab, logo: ab.logo_url || hb.logo || '', bg: hb.bg || '#f1f1f1', invert: hb.invert || false };
             });
-        } else {
-            brands = _userBrandIds.size > 0 ? _allBrands.filter(b => _userBrandIds.has(b.id)) : _allBrands;
         }
+        return _userBrandIds.size > 0 ? _allBrands.filter(b => _userBrandIds.has(b.id)) : _allBrands;
+    }
+
+    // Para onde ir depois de trocar. O ecrã de destino não pode ser o de login:
+    // a seguir ao magic link o ecrã activo ainda é 'login', e escolher a marca
+    // devolvia o utilizador a "A verificar link de acesso…", preso sem erro.
+    function _computeSwitchTarget() {
+        const active = document.querySelector('.screen.active')?.id || 'dashboard';
+        return (active === 'login') ? 'dashboard' : (_SWITCH_SCREEN_MAP[active] || active);
+    }
+
+    function _renderBrandSwitchGrid() {
+        const grid = document.getElementById('brandSwitchGrid');
+        if (!grid) return;
+        const brands = _brandSwitchList();
         grid.innerHTML = brands.map(b => {
             const isCurrent = _currentBrand?.id === b.id;
             const borderStyle = isCurrent ? `border-color:${b.color||'#0f172a'}` : '';
@@ -18567,6 +18698,19 @@ ${sections.join('\n\n')}
 </div>
 
 <!-- Modal trocar de marca -->
+<!-- ── Painel de troca de marca (ancorado à barra lateral) ───────────────── -->
+<div id="brandSwitchPop" class="hidden fixed z-[80] bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 flex flex-col overflow-hidden">
+    <div class="p-2 border-b border-slate-100 flex-shrink-0">
+        <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-50 ring-1 ring-slate-200 focus-within:ring-slate-400 transition-shadow">
+            <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+            <input id="bswQuery" type="text" placeholder="Procurar marca…" autocomplete="off" spellcheck="false"
+                   oninput="_bswPesquisar(this.value)"
+                   class="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px] text-slate-800 placeholder:text-slate-400">
+        </div>
+    </div>
+    <div id="bswList" class="overflow-y-auto p-1.5 space-y-0.5"></div>
+</div>
+
 <div id="brandSwitchModal" class="hidden fixed inset-0 z-[70] bg-slate-900/70 backdrop-blur-sm items-center justify-center p-6" onclick="if(event.target===this)closeBrandSwitchModal()">
     <div onclick="event.stopPropagation()" class="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden" style="max-width:860px;max-height:85vh">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
