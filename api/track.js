@@ -154,6 +154,31 @@ module.exports = async (req, res) => {
         console.warn('webhook SNS aceite sem lista de tópicos — define SNS_TOPIC_ARNS=' + veredicto.topicArn);
       }
 
+      // Idempotência. O SNS entrega PELO MENOS uma vez, e nada aqui detectava
+      // uma reentrega: o ramo de bounce transitório incrementa retry_count, por
+      // isso uma reentrega consumia tentativas de um destinatário que ainda as
+      // tinha e, à terceira, punha a linha em 'failed' — um envio perdido, não
+      // só um número errado. E os INSERTs de eventos duplicavam, porque
+      // email_events não tem restrição de unicidade nenhuma.
+      if (body.Type === 'Notification' && body.MessageId) {
+        try {
+          const novo = await query(
+            `INSERT INTO webhook_events (sns_message_id, tipo) VALUES ($1, $2)
+             ON CONFLICT (sns_message_id) DO NOTHING RETURNING sns_message_id`,
+            [String(body.MessageId), 'Notification']
+          );
+          if (!novo.length) {
+            console.warn('webhook SNS repetido, ignorado:', body.MessageId);
+            return res.status(200).json({ ok: true, duplicado: true });
+          }
+        } catch (e) {
+          // 42P01: migração 063 por correr. Continua-se — perder a
+          // idempotência é mau, perder os eventos todos é pior.
+          if (e.code !== '42P01') throw e;
+          console.warn('webhook_events não existe — corre migrations/063_eventos_do_webhook.sql');
+        }
+      }
+
       if (body.Type === 'SubscriptionConfirmation') {
         // Só se confirma uma subscrição de um tópico explicitamente
         // autorizado. Confirmar às cegas deixava qualquer pessoa inscrever
@@ -179,6 +204,25 @@ module.exports = async (req, res) => {
 
       const eventType = (sesEvent.eventType || sesEvent.notificationType || '').toLowerCase();
 
+      // Âmbito. Os UPDATE de bounce e de queixa filtravam só por email, sem
+      // qualquer referência a campanha ou mensagem — e o evento do SES traz o
+      // mail.messageId, que já é gravado em campaign_recipients.message_id no
+      // envio. A informação para delimitar existia e não era usada.
+      //
+      // Consequência: um bounce de HOJE reclassificava as linhas desse
+      // endereço em TODAS as campanhas em que alguma vez esteve, incluindo
+      // campanhas de outras marcas fechadas há meses. O ramo transitório era
+      // pior do que um número errado: consumia o retry_count de campanhas a
+      // decorrer e, à terceira, punha a linha em 'failed'.
+      //
+      // Quando o messageId não casa com nada (envios anteriores à gravação da
+      // coluna) recorre-se ao email, mas limitado a uma janela curta em vez de
+      // todo o histórico.
+      const msgId = sesEvent.mail?.messageId || null;
+      // `n` é o índice do próximo parâmetro em cada consulta.
+      const limite = (n) => msgId ? `AND message_id = $${n}` : `AND sent_at > NOW() - INTERVAL '7 days'`;
+      const limiteP = msgId ? [msgId] : [];
+
       if (eventType === 'bounce') {
         const bounce = sesEvent.bounce || {};
         const recipients = bounce.bouncedRecipients || [];
@@ -201,22 +245,23 @@ module.exports = async (req, res) => {
                  SET retry_count = COALESCE(retry_count, 0) + 1,
                      error_message = $2,
                      status = CASE WHEN COALESCE(retry_count, 0) >= 2 THEN 'failed' ELSE 'retry' END
-                 WHERE email=$1 AND status = 'retry'
+                 WHERE email=$1 AND status = 'retry' ${limite(3)}
                  RETURNING campaign_id, contact_id`,
-                [email, r.diagnosticCode || 'Soft bounce']
+                [email, r.diagnosticCode || 'Soft bounce', ...limiteP]
               );
               const sentRows = await q(
                 `UPDATE campaign_recipients SET error_message=$2
-                 WHERE email=$1 AND status = 'sent'
+                 WHERE email=$1 AND status = 'sent' ${limite(3)}
                  RETURNING campaign_id, contact_id`,
-                [email, r.diagnosticCode || 'Soft bounce']
+                [email, r.diagnosticCode || 'Soft bounce', ...limiteP]
               );
               eventRows.push(...retryRows, ...sentRows);
             } else {
               const rows = await q(
                 `UPDATE campaign_recipients SET status='bounced', error_message=$2
-                 WHERE email=$1 AND status IN ('sent','retry') RETURNING campaign_id, contact_id`,
-                [email, r.diagnosticCode || (isPermanent ? 'Hard bounce' : 'Bounce')]
+                 WHERE email=$1 AND status IN ('sent','retry') ${limite(3)}
+                 RETURNING campaign_id, contact_id`,
+                [email, r.diagnosticCode || (isPermanent ? 'Hard bounce' : 'Bounce'), ...limiteP]
               );
               eventRows.push(...rows);
             }
@@ -251,9 +296,15 @@ module.exports = async (req, res) => {
           for (const r of recipients) {
             const email = r.emailAddress?.toLowerCase();
             if (!email) continue;
+            // Uma queixa punha em 'failed' — estado terminal — as linhas
+            // 'sent' desse endereço em TODAS as campanhas passadas. Uma queixa
+            // de hoje apagava o registo de entrega de campanhas de há meses,
+            // atravessando a fronteira de marca.
             const rows = await q(
-              `UPDATE campaign_recipients SET status='failed' WHERE email=$1 AND status='sent' RETURNING campaign_id, contact_id`,
-              [email]
+              `UPDATE campaign_recipients SET status='failed'
+               WHERE email=$1 AND status='sent' ${limite(2)}
+               RETURNING campaign_id, contact_id`,
+              [email, ...limiteP]
             );
             eventRows.push(...rows);
           }

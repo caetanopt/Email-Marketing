@@ -364,6 +364,34 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['um email entregue nunca volta a ser enviado, e um evento repetido não conta duas vezes', `const fs=require('fs');
+    const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+    // A migração 060 prometia que uma linha entregue-mas-não-gravada ficava
+    // "à espera de reconciliação, nunca reenviada". Não era verdade: o
+    // attempted_at dela é o do CLAIM, e o mesmo predicado que recupera órfãs
+    // reclamava-a 2 minutos depois. A prova de entrega (062) e que distingue.
+    if(!/dispatched_at IS NULL/.test(s))
+      throw new Error('a recuperacao de orfas deixou de excluir quem ja foi entregue — volta o email duplicado');
+    if(!/SET dispatched_at=NOW\\(\\)/.test(s))
+      throw new Error('deixou de marcar-se a entrega antes de a onda sair — sem prova, nao ha como distinguir orfa de entregue');
+    const iMarca=s.indexOf('SET dispatched_at=NOW()'), iEnvio=s.indexOf('new SendRawEmailCommand');
+    if(iMarca<0||iEnvio<0||iMarca>iEnvio)
+      throw new Error('a marca de entrega tem de ser escrita ANTES do envio, senao nao prova nada');
+    // Classificacao de erros: lista de PERMANENTES, resto transitorio
+    if(!/ERROS_PERMANENTES/.test(s) || !/function erroTransitorio/.test(s))
+      throw new Error('a classificacao de erros do SES voltou a ser por regex sobre a mensagem');
+    if(/isTransient = \\/Throttling\\|ServiceUnavailable/.test(s))
+      throw new Error("voltou a lista fechada de cinco palavras: 'Maximum sending rate exceeded.' nao a contem e ia para failed definitivo");
+    if(!/\\$metadata\\?\\.httpStatusCode/.test(s))
+      throw new Error('o estado HTTP do erro voltou a ser ignorado');
+    // Webhook: idempotencia e ambito por mensagem
+    const t=fs.readFileSync('api/track.js','utf8');
+    if(!/INSERT INTO webhook_events/.test(t))
+      throw new Error('o webhook deixou de deduplicar — o SNS entrega pelo menos uma vez e o retry_count era consumido duas');
+    if(!/message_id = \\$\\$\\{n\\}|message_id = \\$/.test(t))
+      throw new Error('o webhook voltou a casar so por email — um bounce reescreve o historico de todas as campanhas');
+    if(!/sent_at > NOW\\(\\) - INTERVAL '7 days'/.test(t))
+      throw new Error('o recurso sem messageId deixou de ter janela — volta a apanhar o historico todo');`],
   ['há um só motor de envio, e o arranque não tem tecto de destinatários', `const fs=require('fs');
     // Havia dois motores quase iguais: o do cron (lib/sendCampaign.js) e um
     // proprio em api/campaigns/[id].js, usado por "Enviar agora". Quatro
