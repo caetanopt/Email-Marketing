@@ -364,6 +364,27 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['o tema escuro cobre as classes que o painel usa mesmo', `const fs=require('fs');
+    // O tema escuro é uma lista de remapeamentos escrita à mão: uma classe
+    // clara que não esteja lá fica clara, e só se vê abrindo o ecrã no escuro.
+    // text-slate-800 faltava e dava rácio 1,0 — texto invisível — em 29
+    // sítios. Esta sonda guarda as famílias que uma auditoria WCAG apanhou.
+    // Para reavaliar a sério: scripts/contraste.js.
+    const h=fs.readFileSync('email.html','utf8');
+    const dark=h.slice(h.indexOf('html.dark { color-scheme: dark; }'), h.indexOf('html.is-viewer .nav-team'));
+    const exige=(sel,porque)=>{ if(!dark.includes(sel)) throw new Error('o tema escuro deixou de remapear '+sel+' — '+porque); };
+    exige('.text-slate-800','texto escuro sobre fundo escuro, invisivel');
+    exige('.bg-slate-200','bloco claro que fica claro no tema escuro');
+    exige('.text-red-600','numeros e avisos a vermelho ilegiveis no escuro');
+    exige('.text-green-700','taxas de abertura ilegiveis no escuro');
+    exige('.text-blue-700','notas informativas ilegiveis no escuro');
+    exige('.text-amber-800','avisos ilegiveis no escuro');
+    // clarear o texto sem escurecer o fundo -100 inverte o problema
+    exige('.bg-green-100','badge solido claro com texto claro por cima');
+    exige('.bg-red-100','badge solido claro com texto claro por cima');
+    exige('.bg-blue-100','badge solido claro com texto claro por cima');
+    if(!/\\.sobre-tela-clara/.test(h))
+      throw new Error('sobre-tela-clara desapareceu — o texto sobre a tela do email volta a seguir o tema e fica cinzento sobre branco');`],
   ['trocar de marca é um painel ancorado, e o ecrã de escolha fica para quem não tem marca', `const fs=require('fs');
     // O modal de ecrã inteiro passou a painel ancorado à barra lateral. O
     // modal continua a existir, mas só para quem TEM de escolher: primeira

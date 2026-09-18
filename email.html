@@ -8947,7 +8947,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     teState.blocks.forEach(b => card.appendChild(teRenderBlockContent(b)));
                     previewBox.appendChild(card);
                 } else {
-                    previewBox.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">Sem blocos no template — volta ao passo 2 para adicionar conteúdo.</p>';
+                    previewBox.innerHTML = '<p class="text-center text-sm py-12 sobre-tela-clara">Sem blocos no template — volta ao passo 2 para adicionar conteúdo.</p>';
                 }
             }
         }
@@ -10710,7 +10710,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             if (html && html.trim()) {
                 previewEl.innerHTML = `<iframe loading="lazy" srcdoc="${html.replace(/"/g,'&quot;')}" class="w-full bg-white rounded" style="height:520px;border:1px solid #e2e8f0"></iframe>`;
             } else {
-                previewEl.innerHTML = `<p class="text-center text-sm text-slate-400 py-12">Sem template associado a esta campanha.</p>`;
+                previewEl.innerHTML = `<p class="text-center text-sm py-12 sobre-tela-clara">Sem template associado a esta campanha.</p>`;
             }
         }
         // Performance — fetch report metrics if sent
@@ -11012,7 +11012,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         document.body.style.overflow = '';
         document.documentElement.style.overflow = '';
         const body = document.getElementById('campPreviewModalBody');
-        if (body) body.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">A carregar…</p>';
+        if (body) body.innerHTML = '<p class="text-center text-sm py-12 sobre-tela-clara">A carregar…</p>';
     }
     async function openCampPreviewModal(idx) {
         const c = window._campaignsCache?.[idx];
@@ -11028,7 +11028,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         document.getElementById('campPreviewModalTitle').textContent = nomeProprio || assunto || '—';
         document.getElementById('campPreviewModalSubject').textContent = (nomeProprio && assunto) ? `Assunto: ${assunto}` : '';
         const body = document.getElementById('campPreviewModalBody');
-        body.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">A carregar…</p>';
+        body.innerHTML = '<p class="text-center text-sm py-12 sobre-tela-clara">A carregar…</p>';
         try {
             const detail = await apiFetch(`/api/campaigns/${c.id}`);
             const html = detail.html_content;
@@ -11042,7 +11042,7 @@ ${teSerializeBlocksComment(srcBlocks)}
                     } catch (_) {}
                 });
             } else {
-                body.innerHTML = '<p class="text-center text-sm text-slate-400 py-12">Sem template associado a esta campanha.</p>';
+                body.innerHTML = '<p class="text-center text-sm py-12 sobre-tela-clara">Sem template associado a esta campanha.</p>';
             }
         } catch (e) {
             body.innerHTML = `<p class="text-center text-sm text-red-400 py-12">${escHtml(e.message)}</p>`;
@@ -12110,6 +12110,56 @@ ${sections.join('\n\n')}
         html.dark .bg-violet-50, html.dark .bg-purple-50 { background-color: rgba(139,92,246,0.12) !important; }
         html.dark .bg-green-50   { background-color: rgba(16,185,129,0.10) !important; }
 
+        /* ── Lacunas do tema escuro, medidas com uma auditoria de contraste ──
+           O tema escuro é uma lista de remapeamentos escrita à mão: uma classe
+           clara que não esteja aqui fica clara. As regras abaixo fecham o que
+           uma medição WCAG de todos os ecrãs apanhou. */
+
+        /* text-slate-800 não estava na lista (900, 700, 600, 500, 400 e 300
+           estavam). Dava rácio 1.0 — texto da mesma cor do fundo, invisível —
+           em 29 sítios, incluindo a lista de marcas. */
+        html.dark .text-slate-800                     { color: #e2e8f0 !important; }
+        /* #94a3b8 sobre o #334155 de bg-slate-100 dava 4,04 — abaixo do mínimo
+           de 4,5 para texto pequeno. */
+        html.dark .text-slate-500, html.dark .text-slate-400 { color: #a9b6c7 !important; }
+        html.dark .bg-slate-200                       { background-color: #334155 !important; }
+        html.dark .bg-slate-300                       { background-color: #475569 !important; }
+        html.dark .hover\:text-slate-700:hover        { color: #e2e8f0 !important; }
+        html.dark .hover\:text-slate-600:hover        { color: #e2e8f0 !important; }
+        html.dark .hover\:text-slate-900:hover        { color: #f1f5f9 !important; }
+
+        /* Badges e números coloridos. Os fundos -50 já eram escurecidos acima,
+           mas o texto ficava na tonalidade escura e deixava de se ler (entre
+           2,2 e 3,0 de rácio). Sobe-se o texto para a tonalidade 400 e
+           escurecem-se também os fundos -100 — mexer só no texto tornaria os
+           badges sólidos ilegíveis ao contrário. */
+        html.dark .bg-green-100, html.dark .bg-emerald-100 { background-color: rgba(16,185,129,0.18) !important; }
+        html.dark .bg-red-100                              { background-color: rgba(239,68,68,0.18) !important; }
+        html.dark .bg-blue-100                             { background-color: rgba(59,130,246,0.18) !important; }
+        html.dark .bg-amber-100, html.dark .bg-yellow-100  { background-color: rgba(245,158,11,0.18) !important; }
+        html.dark .bg-violet-100, html.dark .bg-purple-100 { background-color: rgba(139,92,246,0.18) !important; }
+
+        html.dark .text-red-500, html.dark .text-red-600,
+        html.dark .text-red-700, html.dark .text-red-800        { color: #f87171 !important; }
+        html.dark .text-green-600, html.dark .text-green-700, html.dark .text-green-800,
+        html.dark .text-emerald-600, html.dark .text-emerald-700,
+        html.dark .text-emerald-800                             { color: #34d399 !important; }
+        html.dark .text-blue-600, html.dark .text-blue-700,
+        html.dark .text-blue-800                                { color: #60a5fa !important; }
+        html.dark .text-amber-600, html.dark .text-amber-700, html.dark .text-amber-800,
+        html.dark .text-yellow-600, html.dark .text-yellow-700,
+        html.dark .text-yellow-800                              { color: #fbbf24 !important; }
+        html.dark .text-violet-500, html.dark .text-violet-600, html.dark .text-violet-700,
+        html.dark .text-purple-500, html.dark .text-purple-600,
+        html.dark .text-purple-700                              { color: #a78bfa !important; }
+
+        /* Texto da aplicação colocado por cima da tela do email (a área que
+           mostra a campanha). Essa tela é clara nos dois temas, porque
+           representa o email e não o painel — por isso este texto não pode
+           seguir o remapeamento do tema escuro, ou fica cinzento-claro sobre
+           branco. */
+        .sobre-tela-clara { color: #55606f; }
+
         /* ── Viewer role: synchronous hide before first paint ── */
         html.is-viewer .nav-team,
         html.is-viewer .nav-globalSettings { display: none !important; }
@@ -12257,7 +12307,7 @@ ${sections.join('\n\n')}
             <div class="flex items-center gap-2">
                 <img src="https://caetano.pt/site/uploads/2026/01/caetano-002e5d.svg" alt="Caetano" class="h-4 w-auto brightness-0 invert">
                 <div class="w-px h-4 bg-white/25"></div>
-                <span class="text-[9px] font-semibold tracking-widest text-white/50">eMKT</span>
+                <span class="text-[9px] font-semibold tracking-widest text-white/60">eMKT</span>
             </div>
         </div>
         <!-- Marca activa — o bloco inteiro abre o painel de troca -->
@@ -12271,45 +12321,45 @@ ${sections.join('\n\n')}
                 </div>
                 <div class="min-w-0 flex-1">
                     <p class="sidebar-brand-name text-white font-semibold text-sm truncate">BMW</p>
-                    <span class="text-xs text-white/50">Trocar de marca</span>
+                    <span class="text-xs text-white/60">Trocar de marca</span>
                 </div>
                 <svg class="w-4 h-4 text-white/40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4M16 15l-4 4-4-4"/></svg>
             </button>
         </div>
         <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            <a onclick="showScreen('dashboard')" data-nav class="nav-item nav-dashboard flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('dashboard')" data-nav class="nav-item nav-dashboard flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
                 Dashboard
             </a>
-            <a onclick="showScreen('lists')" data-nav class="nav-item nav-lists flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('lists')" data-nav class="nav-item nav-lists flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
                 Listas
             </a>
-            <a onclick="showScreen('media')" data-nav class="nav-item nav-media flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('media')" data-nav class="nav-item nav-media flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                 Multimédia
             </a>
-            <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('campaigns')" data-nav class="nav-item nav-campaigns flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Campanhas
             </a>
-            <a onclick="showScreen('statistics')" data-nav class="nav-item nav-statistics flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('statistics')" data-nav class="nav-item nav-statistics flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                 Estatísticas
             </a>
-            <a onclick="showScreen('suppression')" data-nav class="nav-item nav-suppression flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('suppression')" data-nav class="nav-item nav-suppression flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                 Supressão
             </a>
-            <a onclick="showScreen('team')" data-nav class="nav-item nav-team flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('team')" data-nav class="nav-item nav-team flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Equipa
             </a>
-            <a onclick="showScreen('brandSettings')" data-nav class="nav-item nav-brandSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('brandSettings')" data-nav class="nav-item nav-brandSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Definições
             </a>
-            <a onclick="showScreen('globalSettings')" data-nav class="nav-item nav-globalSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/50 hover:bg-white/10 hover:text-white">
+            <a onclick="showScreen('globalSettings')" data-nav class="nav-item nav-globalSettings flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-white/10 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Definições Globais
             </a>
@@ -12413,11 +12463,11 @@ ${sections.join('\n\n')}
             const navKey = _navParent[id] || id;
             document.querySelectorAll('.nav-item').forEach(n => {
                 n.classList.remove('bg-white/15', 'text-white', 'font-semibold');
-                n.classList.add('text-white/50');
+                n.classList.add('text-white/60');
             });
             document.querySelectorAll('.nav-' + navKey).forEach(n => {
                 n.classList.add('bg-white/15', 'text-white', 'font-semibold');
-                n.classList.remove('text-white/50');
+                n.classList.remove('text-white/60');
             });
             // Reset campaign wizard to step 1 whenever the create screen opens
             if (id === 'campaignCreate') {
@@ -13156,9 +13206,30 @@ ${sections.join('\n\n')}
         else openBrandSwitcher(anchor);
     }
 
+    // Cor de marca legível sobre o fundo actual. Dez das marcas têm a cor
+    // gravada como preto (#1B1B1B e vizinhos), o que no tema escuro as torna
+    // invisíveis — a faixa de cor desaparecia contra o painel. Quando a cor é
+    // demasiado escura e o tema é escuro, clareia-se o suficiente para se ver.
+    function _corLegivel(cor) {
+        const c = String(cor || '').trim();
+        const m = /^#([0-9a-f]{6})$/i.exec(c);
+        if (!m || !document.documentElement.classList.contains('dark')) return c || '#0f172a';
+        const n = parseInt(m[1], 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        // Luminância relativa aproximada; abaixo deste valor não se distingue
+        // do fundo #1e293b do painel.
+        const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        if (lum > 0.32) return c;
+        const clarear = (v) => Math.round(v + (255 - v) * 0.55);
+        return `rgb(${clarear(r)}, ${clarear(g)}, ${clarear(b)})`;
+    }
+
     function _bswLogo(b) {
         const fundo = b.bg || '#f1f1f1';
         const sigla = escHtml(b.name.replace('Mercedes-Benz', 'MB').substring(0, 3).toUpperCase());
+        // A sigla de recurso fica sobre o fundo claro do próprio chip (b.bg),
+        // que não muda com o tema — por isso a cor é escura nos dois temas, de
+        // propósito.
         const img = b.logo
             ? `<img src="${escHtml(b.logo)}" alt="" class="w-full h-full object-contain p-0.5 ${teLogoFilterClass(fundo)}" loading="lazy"
                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
@@ -13178,14 +13249,14 @@ ${sections.join('\n\n')}
         if (_bswIdx >= brands.length) _bswIdx = brands.length - 1;
         lista.innerHTML = brands.map((b, i) => {
             const atual = _currentBrand?.id === b.id;
-            const cor = b.color || '#0f172a';
+            const cor = _corLegivel(b.color);
             const nome = escHtml(b.name);
             return `<button type="button" data-bsw-i="${i}" data-bsw-id="${escHtml(b.id)}"
                     class="bsw-row w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${i === _bswIdx ? 'bg-slate-100' : 'hover:bg-slate-50'}">
                 <span class="w-[3px] self-stretch rounded-full flex-shrink-0" style="min-height:22px;background:${cor}"></span>
                 ${_bswLogo(b)}
                 <span class="flex-1 min-w-0 text-[13px] font-semibold text-slate-800 truncate">${nome}</span>
-                ${atual ? `<span class="text-[9px] font-bold tracking-wider uppercase flex-shrink-0" style="color:${cor}">Actual</span>` : ''}
+                ${atual ? `<span class="text-[9px] font-bold tracking-wider uppercase flex-shrink-0 text-slate-500">Actual</span>` : ''}
             </button>`;
         }).join('');
     }
@@ -15203,7 +15274,7 @@ ${sections.join('\n\n')}
                                 <span class="text-xs text-slate-500 ml-2">Email renderizado</span>
                             </div>
                             <div id="campShowPreviewBody" class="p-8" style="background: #f5f7fa">
-                                <p class="text-center text-sm text-slate-400 py-12">Sem template associado.</p>
+                                <p class="text-center text-sm py-12 sobre-tela-clara">Sem template associado.</p>
                             </div>
                         </div>
                     </div>
@@ -18592,7 +18663,7 @@ ${sections.join('\n\n')}
         </div>
         <div class="flex-1 overflow-y-auto p-4 bg-slate-50">
             <div id="campPreviewModalBody" class="bg-white rounded-lg overflow-hidden shadow-sm">
-                <p class="text-center text-sm text-slate-400 py-12">A carregar…</p>
+                <p class="text-center text-sm py-12 sobre-tela-clara">A carregar…</p>
             </div>
         </div>
         <div class="px-6 py-4 border-t border-slate-100 flex justify-end flex-shrink-0">
