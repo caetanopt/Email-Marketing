@@ -665,367 +665,49 @@ module.exports = async function handler(req, res) {
 
       // ── Enviar batch (chamado repetidamente pelo frontend) ──────
       if (action === 'send_batch') {
+        // Este endpoint tinha um motor de envio PRÓPRIO, quase igual ao de
+        // lib/sendCampaign.js mas sempre um passo atrás: ao longo dos meses
+        // quatro correcções foram aplicadas só ao outro — o estado 'sending'
+        // contra duplicados (E-1), a releitura do cancelamento a meio do lote
+        // (E-2), o prazo de paragem antes de a função morrer, e a leitura da
+        // taxa de envio configurada. Os dois liam até a mesma variável de
+        // ambiente para o tamanho do lote com valores por omissão diferentes,
+        // 50 aqui e 500 lá.
+        //
+        // Como os dois correm em PARALELO sobre a mesma campanha (o cron
+        // apanha deliberadamente campanhas já em 'sending'), a divergência
+        // não era teórica: quando o cron reivindicava a cauda, este motor via
+        // zero pendentes e dava a campanha por enviada — com centenas de
+        // pessoas por enviar e nenhum mecanismo a apanhá-las depois, porque
+        // os dois laços de recuperação exigem status='sending'.
+        //
+        // Passa a delegar. É o mesmo ficheiro, por isso não custa nenhuma das
+        // 12 funções serverless: só apaga código e acaba com a divergência.
         const camp = await query(
-          `SELECT c.*, t.html_content,
-                  b.from_name AS brand_from_name, b.from_email AS brand_from_email,
-                  b.reply_to AS brand_reply_to, b.variables
-           FROM campaigns c
-           JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
-           LEFT JOIN templates t ON t.id=c.template_id
-           LEFT JOIN brands b ON b.id=c.brand_id
-           WHERE c.id=$1`, [id, user.id]
+          `SELECT c.id, c.status
+             FROM campaigns c
+             JOIN user_brand_roles ubr ON ubr.brand_id = c.brand_id AND ubr.user_id = $2
+            WHERE c.id = $1`, [id, user.id]
         );
         if (!camp[0]) return res.status(404).json({ error: 'Campanha não encontrada' });
-        const footerCfgBatch = await loadFooterConfig();
         if (camp[0].status === 'sent')
-          return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
+          return res.status(200).json({ ok: true, done: true, sent: 0, failed: 0, remaining: 0 });
         if (camp[0].status !== 'sending')
           return res.status(400).json({ error: `Campanha não está em envio (status: ${camp[0].status})` });
 
-        // A mesma barreira do motor principal, e pela mesma função: quem
-        // cancelou entretanto não recebe (ver lib/campanhas.js).
-        await bloquearCancelados(id);
-
-        const BATCH = parseInt(process.env.SES_BATCH_SIZE || '50', 10);
-        // Claim atomically — see sendCampaign.js runBatch for the full rationale.
-        let claimedRows;
+        // A função tem maxDuration de 60 s; o lote pára aos 45 e devolve o que
+        // não enviou a 'pending', em vez de ser morto a meio com as linhas
+        // reivindicadas presas.
         try {
-          claimedRows = await query(
-            `WITH claimed AS (
-               UPDATE campaign_recipients
-               SET attempted_at = NOW()
-               WHERE campaign_id = $1
-                 AND ctid IN (
-                   SELECT ctid FROM campaign_recipients
-                   WHERE campaign_id = $1 AND status IN ('pending','retry')
-                     AND (attempted_at IS NULL OR attempted_at < NOW() - INTERVAL '2 minutes')
-                   ORDER BY status DESC, contact_id ASC
-                   LIMIT $2
-                   FOR UPDATE SKIP LOCKED
-                 )
-               RETURNING contact_id, email, retry_count
-             )
-             SELECT c.contact_id, c.email, c.retry_count,
-                    con.name, con.phone, con.company,
-                    COALESCE((
-                      SELECT jsonb_object_agg(key, value)
-                      FROM (
-                        SELECT key, value
-                        FROM list_members lm2
-                        JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
-                        CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
-                        WHERE lm2.contact_id = c.contact_id
-                      ) ed
-                    ), '{}'::jsonb) AS extra_data
-             FROM claimed c
-             JOIN contacts con ON con.id = c.contact_id`,
-            [id, BATCH]
-          );
-        } catch (e) {
-          if (e.code !== '42703') throw e;
-          claimedRows = await query(
-            `SELECT cr.contact_id, cr.email, cr.retry_count,
-                    con.name, con.phone, con.company,
-                    COALESCE((
-                      SELECT jsonb_object_agg(key, value)
-                      FROM (
-                        SELECT key, value
-                        FROM list_members lm2
-                        JOIN campaign_lists cl ON cl.list_id = lm2.list_id AND cl.campaign_id = $1
-                        CROSS JOIN jsonb_each(COALESCE(lm2.extra_data, '{}'))
-                        WHERE lm2.contact_id = cr.contact_id
-                      ) ed
-                    ), '{}'::jsonb) AS extra_data
-             FROM campaign_recipients cr
-             JOIN contacts con ON con.id = cr.contact_id
-             WHERE cr.campaign_id = $1 AND cr.status IN ('pending','retry')
-             ORDER BY cr.status DESC, cr.contact_id ASC
-             LIMIT $2`,
-            [id, BATCH]
-          );
+          const r = await runBatch(id, user.id, { pararEm: Date.now() + 45000 });
+          return res.status(200).json({ ok: true, ...r });
+        } catch (err) {
+          // Falta de configuração do SES passou a ser erro em vez de "campanha
+          // concluída" — tem de chegar ao utilizador com a causa, e não como
+          // um 500 genérico.
+          if (err.code === 'ses_nao_configurado') return res.status(503).json({ error: err.message });
+          throw err;
         }
-        const pending = claimedRows;
-
-        if (!pending.length) {
-          await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          return res.status(200).json({ done: true, sent: 0, failed: 0, remaining: 0 });
-        }
-
-        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-          await query(
-            "UPDATE campaign_recipients SET status='sent', sent_at=NOW() WHERE campaign_id=$1 AND status='pending'",
-            [id]
-          );
-          await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          return res.status(200).json({ done: true, sent: pending.length, failed: 0, remaining: 0, warning: 'AWS SES não configurado' });
-        }
-
-        const c = camp[0];
-        const sesClient = getSESClient();
-
-        // Pre-flight quota check — same logic as runBatch in sendCampaign.js
-        let quotaRemaining = Infinity;
-        try {
-          const quotaInfo = await sesClient.send(new GetSendQuotaCommand({}));
-          quotaRemaining = Math.max(0, Math.floor(quotaInfo.Max24HourSend - quotaInfo.SentLast24Hours));
-          if (quotaRemaining < 1) {
-            const [{ remaining }] = await query(
-              "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
-              [id]
-            );
-            return res.status(200).json({ done: false, sent: 0, failed: 0, remaining, quotaExhausted: true });
-          }
-        } catch (e) {
-          console.warn('send_batch: quota pre-check failed, proceeding:', e.message);
-        }
-
-        const toSend = quotaRemaining < pending.length ? pending.slice(0, quotaRemaining) : pending;
-
-        const fromName   = c.from_name  || c.brand_from_name  || 'eMKT';
-        const fromEmail  = c.from_email || c.brand_from_email || `info@${FROM_DOMAIN}`;
-        const replyTo    = c.reply_to   || c.brand_reply_to   || undefined;
-
-        const utmParams = c.utm_params || {};
-        const utmStr = Object.entries(utmParams).filter(([, v]) => v)
-          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-
-        const injectTracking = (html, campaignId, contactId) => injectarLinks(html, {
-          appUrl: APP_URL, campaignId, contactId, token: trackToken(campaignId, contactId), utm: utmStr,
-        });
-
-        const RATE = parseInt(process.env.SES_RATE || '14', 10);
-        // Largura do rodapé: a do HTML desta campanha, não a definida hoje em
-        // Definições Globais — uma campanha gravada com outra largura ficava
-        // com o rodapé mais largo do que o corpo. É igual para todos os
-        // destinatários, por isso calcula-se uma vez.
-        const larguraConteudoBatch = detectContentWidth(c.html_content) || footerCfgBatch.email_width;
-        let sent = 0, failed = 0;
-        const batchState = { quotaHit: false };
-
-        for (let i = 0; i < toSend.length; i += RATE) {
-          if (batchState.quotaHit) break;
-          await Promise.all(toSend.slice(i, i + RATE).map(async contact => {
-            if (batchState.quotaHit) return;
-            try {
-              const token = unsubToken(contact.email, c.brand_id);
-              const unsubUrl = `${APP_URL}/api/suppression?brand_id=${c.brand_id}&action=unsubscribe&c=${id}&email=${encodeURIComponent(contact.email)}&token=${token}`;
-              const trackTok = trackToken(id, contact.contact_id);
-              const pixelUrl = `${APP_URL}/api/track?type=open&cid=${id}&uid=${contact.contact_id}&t=${trackTok}`;
-              const unsubBlock = buildLegalFooter({
-                globalDisclaimer: footerCfgBatch.disclaimer,
-                footerLogoUrl: footerCfgBatch.footer_logo_url,
-                footerSocials: footerCfgBatch.footer_socials || {},
-                width: larguraConteudoBatch,
-                variables: c.variables || {},
-                email: contact.email,
-                unsubUrl,
-                previewUrl: previewUrl(APP_URL, id),
-                semRodapeLegal: semRodapeLegal(c),
-              });
-              const vars = { company_address: DEFAULT_COMPANY_ADDRESS, ...(c.variables || {}) };
-              // Guard: if html_content is MJML (legacy), log a warning — template needs re-saving
-              // Fora o marcador dos blocos do editor: pertence à base de
-              // dados, não ao email enviado.
-              const rawContent = updateSocialIcons(stripEditorMetadata(c.html_content || ''));
-              if (rawContent.trimStart().startsWith('<mjml>')) {
-                console.warn(`Campaign ${id}: template stored as MJML — re-save to convert to HTML.`);
-              }
-              let rawHtml = rawContent;
-              // Use function replacer to avoid $& / $1 interpolation on variable values
-              for (const [k, v] of Object.entries(vars)) {
-                const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                rawHtml = rawHtml.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => escHtml(v || ''));
-              }
-              rawHtml = rawHtml
-                .replace(/\{\{name\}\}/g, () => escHtml(contact.name || contact.email))
-                .replace(/\{\{email\}\}/g, () => escHtml(contact.email))
-                .replace(/\{\{phone\}\}/g, () => escHtml(contact.phone || ''))
-                .replace(/\{\{company\}\}/g, () => escHtml(contact.company || ''))
-                .replace(/\{\{unsubscribe_url\}\}/g, () => unsubUrl);
-              // Replace list extra_data fields (e.g. {{cargo}}, {{departamento}})
-              if (contact.extra_data && typeof contact.extra_data === 'object') {
-                for (const [k, v] of Object.entries(contact.extra_data)) {
-                  const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                  rawHtml = rawHtml.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => escHtml(v || ''));
-                }
-              }
-              rawHtml = injectTracking(rawHtml, id, contact.contact_id);
-              rawHtml = injectPreviewText(rawHtml, c.preview_text);
-              rawHtml = injectTitle(rawHtml, c.subject);
-              // O rodapé no fim; o pixel no início. Se o Gmail cortar a
-              // mensagem, perde-se o rodapé (que já era assim) mas não a
-              // abertura. Ver injectOpenPixel.
-              const comRodape = rawHtml.includes('</body>')
-                ? rawHtml.replace('</body>', unsubBlock + '</body>')
-                : rawHtml + unsubBlock;
-              const finalHtml = injectOpenPixel(comRodape, pixelUrl);
-              // Personalise subject line
-              let personalizedSubject = c.subject || '(sem assunto)';
-              for (const [k, v] of Object.entries(vars)) {
-                const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                personalizedSubject = personalizedSubject.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => v || '');
-              }
-              personalizedSubject = personalizedSubject
-                .replace(/\{\{name\}\}/g, () => contact.name || contact.email)
-                .replace(/\{\{email\}\}/g, () => contact.email)
-                .replace(/\{\{phone\}\}/g, () => contact.phone || '')
-                .replace(/\{\{company\}\}/g, () => contact.company || '');
-              if (contact.extra_data && typeof contact.extra_data === 'object') {
-                for (const [k, v] of Object.entries(contact.extra_data)) {
-                  const safeK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                  personalizedSubject = personalizedSubject.replace(new RegExp(`\\{\\{${safeK}\\}\\}`, 'g'), () => v || '');
-                }
-              }
-              const campAttachments = c.attachments || [];
-              let msgId = null;
-              // Um só caminho, com ou sem anexos: é a mensagem MIME que
-              // leva os cabeçalhos List-Unsubscribe, que o SendEmailCommand
-              // não aceita.
-              const rawMsg = buildRawEmail({
-                fromName, fromEmail, toEmail: contact.email, replyTo,
-                subject: personalizedSubject,
-                htmlBody: finalHtml,
-                textBody: htmlToText(finalHtml) + `\n\nCancelar subscrição: ${unsubUrl}`,
-                attachments: campAttachments,
-                headers: listUnsubscribeHeaders(unsubUrl),
-              });
-              const info = await sesClient.send(new SendRawEmailCommand({
-                RawMessage: { Data: Buffer.from(rawMsg) },
-                Tags: [
-                  { Name: 'campaign_id', Value: String(id) },
-                  { Name: 'contact_id',  Value: String(contact.contact_id) },
-                ],
-              }));
-              msgId = info?.MessageId || null;
-              // ── The email is now genuinely delivered (SES accepted it) ────
-              // Everything below is DB bookkeeping only. A failure here must
-              // NEVER be reclassified as a send failure (that risks a
-              // duplicate send to a real customer on the next retry) — retry
-              // the bookkeeping write a few times against transient DB
-              // blips, and if it still can't be recorded, log loudly but
-              // still count the contact as sent.
-              let recorded = false;
-              for (let attempt = 0; attempt < 3 && !recorded; attempt++) {
-                try {
-                  await query(
-                    "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW(),attempted_at=NOW(),error_message=NULL WHERE campaign_id=$2 AND contact_id=$3",
-                    [msgId, id, contact.contact_id]
-                  );
-                  recorded = true;
-                } catch (e1) {
-                  if (e1.code === '42703') {
-                    await query(
-                      "UPDATE campaign_recipients SET status='sent',message_id=$1,sent_at=NOW() WHERE campaign_id=$2 AND contact_id=$3",
-                      [msgId, id, contact.contact_id]
-                    );
-                    recorded = true;
-                  } else if (attempt < 2) {
-                    await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-                  } else {
-                    console.error(`Campaign ${id}: contact ${contact.contact_id} — email DELIVERED (SES id ${msgId}) but failed to record status='sent' after retries:`, e1.message);
-                  }
-                }
-              }
-              try {
-                await query(
-                  `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, message_id, created_by)
-                   VALUES ($1,$2,$3,$4,'sent',$5,$6)`,
-                  [c.brand_id, id, contact.contact_id, contact.email, msgId, user.id]
-                );
-              } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
-              sent++;
-            } catch (err) {
-              console.error('SES send error:', err?.message);
-              const errMsg = (err?.message || 'unknown').slice(0, 500);
-              const isQuotaError = /Daily message quota exceeded|quota.*exceeded|DailyQuota/i.test(errMsg)
-                || err?.name === 'LimitExceededException';
-              if (isQuotaError) {
-                batchState.quotaHit = true;
-                return; // leave recipient as 'pending'
-              }
-              const isTransient = /Throttling|ServiceUnavailable|RequestTimeout|ECONNRESET|ETIMEDOUT/i.test(errMsg);
-              const currentRetry = contact.retry_count || 0;
-              const newStatus = (isTransient && currentRetry < 2) ? 'retry' : 'failed';
-              try {
-                await query(
-                  `UPDATE campaign_recipients
-                   SET status=$4::recipient_status, attempted_at=NOW(), error_message=$3,
-                       retry_count = COALESCE(retry_count,0) + CASE WHEN $4::text='retry' THEN 1 ELSE 0 END
-                   WHERE campaign_id=$1 AND contact_id=$2`,
-                  [id, contact.contact_id, errMsg, newStatus]
-                );
-              } catch (e2) {
-                if (e2.code === '42703') {
-                  await query(
-                    "UPDATE campaign_recipients SET status='failed' WHERE campaign_id=$1 AND contact_id=$2",
-                    [id, contact.contact_id]
-                  );
-                } else { throw e2; }
-              }
-              try {
-                await query(
-                  `INSERT INTO email_send_log (brand_id, campaign_id, contact_id, email, event_type, error, created_by)
-                   VALUES ($1,$2,$3,$4,'failed',$5,$6)`,
-                  [c.brand_id, id, contact.contact_id, contact.email, errMsg, user.id]
-                );
-              } catch (err) { if (err.code !== '42P01') console.error('send log:', err); }
-              failed++;
-            }
-          }));
-          if (batchState.quotaHit) break;
-          if (i + RATE < toSend.length) await new Promise(r => setTimeout(r, 1000));
-        }
-
-        const [{ remaining }] = await query(
-          "SELECT COUNT(*)::int AS remaining FROM campaign_recipients WHERE campaign_id=$1 AND status IN ('pending','retry')",
-          [id]
-        );
-
-        if (remaining === 0) {
-          await query("UPDATE campaigns SET status='sent', sent_at=NOW() WHERE id=$1", [id]);
-          // Os contactos vindos de um ficheiro (is_temp=true nos destinatários)
-          // NÃO são apagados no fim do envio. Já foram, e apagá-los levava
-          // atrás o relatório: campaign_recipients.contact_id é
-          // ON DELETE CASCADE, por isso o DELETE nos contactos apagava as
-          // linhas dos destinatários acabadas de escrever — a campanha ficava
-          // com 0 enviados, sem registo de erros e sem actividade, logo depois
-          // de ter sido enviada.
-          //
-          // O comentário a dizer isto já estava aqui, mas o DELETE também: o
-          // motor principal (lib/sendCampaign.js) tinha-o removido e este não,
-          // e os dois caminhos de envio comportavam-se de forma diferente —
-          // um envio agendado guardava os contactos, um envio manual
-          // apagava-os e perdia o relatório. Agora fazem os dois o mesmo.
-          //
-          // Os contactos importados ficam em Contactos e podem ser apagados de
-          // lá quando não forem precisos. O is_temp continua a ser gravado nos
-          // destinatários: é o registo de que aquele endereço veio de um
-          // ficheiro e não de uma lista.
-          try {
-            const [totals] = await query(
-              `SELECT COUNT(*) FILTER (WHERE status='sent')::int AS total_sent,
-                      COUNT(*) FILTER (WHERE status='failed')::int AS total_failed
-               FROM campaign_recipients WHERE campaign_id=$1`, [id]
-            );
-            await query(
-              `INSERT INTO email_send_log (brand_id, campaign_id, email, event_type, created_by)
-               VALUES ($1,$2,$3,'campaign_completed',$4)`,
-              [c.brand_id, id, `enviados=${totals.total_sent} falhados=${totals.total_failed}`, user.id]
-            );
-            await sendCampaignCompletionNotification({
-              campaignId:   id,
-              campaignName: c.name || `#${id}`,
-              brandId:      c.brand_id,
-              totalSent:    totals.total_sent,
-              totalFailed:  totals.total_failed,
-            });
-          } catch (err) { if (err.code !== '42P01') console.error('send log end:', err); }
-        }
-
-        if (batchState.quotaHit) {
-          return res.status(200).json({ ok: true, sent, failed, remaining, done: false, quotaExhausted: true });
-        }
-        return res.status(200).json({ ok: true, sent, failed, remaining, done: remaining === 0 });
       }
 
 

@@ -364,6 +364,39 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['há um só motor de envio, e o arranque não tem tecto de destinatários', `const fs=require('fs');
+    // Havia dois motores quase iguais: o do cron (lib/sendCampaign.js) e um
+    // proprio em api/campaigns/[id].js, usado por "Enviar agora". Quatro
+    // correcções foram aplicadas só ao primeiro, e como os dois correm em
+    // paralelo sobre a mesma campanha, o segundo dava-a por enviada com
+    // centenas de pessoas por enviar.
+    const b=fs.readFileSync('api/campaigns/[id].js','utf8');
+    const i=b.indexOf("action === 'send_batch'");
+    if(i<0) throw new Error('o send_batch desapareceu');
+    const sb=b.slice(i, i+2600);
+    if(!/runBatch\\(id, user\\.id/.test(sb))
+      throw new Error('o send_batch deixou de delegar em runBatch — volta a haver dois motores a divergir');
+    // O envio de teste (action=test) continua aqui de propósito: manda UMA
+    // mensagem, não é um lote. O que não pode voltar é a maquinaria de lotes.
+    if(/FOR UPDATE SKIP LOCKED/.test(b))
+      throw new Error('api/campaigns/[id].js voltou a reivindicar destinatários — a maquinaria de lotes tem de viver só em lib/sendCampaign.js');
+    if(/UPDATE campaigns SET status='sent'/.test(b))
+      throw new Error('api/campaigns/[id].js voltou a concluir campanhas por sua conta, sem guarda de estado');
+    if(!/pararEm/.test(sb))
+      throw new Error('o lote do browser deixou de ter prazo — a função morre aos 60 s e prende os reclamados');
+    // Arranque: sem parametros por contacto, nao ha tecto de 21.845
+    const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+    if(!/INSERT INTO campaign_recipients \\(campaign_id, contact_id, email\\)\\s*\\n\\s*SELECT DISTINCT ON/.test(s))
+      throw new Error('o arranque voltou a montar o INSERT em memoria — acima de 21.845 contactos a campanha nao arranca');
+    if(/const vals = listContacts\\.map/.test(s))
+      throw new Error('voltou o INSERT com tres parametros por contacto, que rebenta no limite do protocolo');
+    if(!/UPDATE campaigns SET status='draft' WHERE id=\\$1 AND status='sending'[\\s\\S]{0,120}throw err/.test(s))
+      throw new Error('uma falha no arranque volta a deixar a campanha presa em sending sem destinatarios');
+    // Sem credenciais nao se marca nada como enviado
+    if(/AWS_SECRET_ACCESS_KEY\\)[\\s\\S]{0,400}SET status='sent'/.test(s))
+      throw new Error('sem credenciais AWS voltou a marcar os destinatarios como enviados — destroi a campanha');
+    if(!/ses_nao_configurado/.test(s))
+      throw new Error('a falta de credenciais deixou de ser erro');`],
   ['nenhuma marca é escrita por quem não tem papel nela', `const fs=require('fs');
     // Cinco ramos de escrita e três de leitura recebiam o brand_id da query
     // string e não verificavam nada além de haver sessão: qualquer utilizador
@@ -721,13 +754,13 @@ const provas = [
     if(!/<body style="margin:0">/.test(r))throw new Error('os atributos do <body> foram perdidos');
     if(!injectOpenPixel('<table></table>',px).startsWith('<img'))
       throw new Error('sem <body> o pixel tem de ir à frente de tudo');
-    // E nenhum dos dois motores de envio pode voltar a pendurá-lo no rodapé.
-    for(const f of ['lib/sendCampaign.js','api/campaigns/[id].js']){
-      const s=fs.readFileSync(f,'utf8');
+    // E o motor de envio não pode voltar a pendurá-lo no rodapé.
+    {
+      const s=fs.readFileSync('lib/sendCampaign.js','utf8');
       if(!/injectOpenPixel\\(comRodape, pixelUrl\\)/.test(s))
-        throw new Error(f+' deixou de pôr o pixel no início do email');
+        throw new Error('o motor deixou de pôr o pixel no início do email');
       if(/\\}\\) \\+ \`<img src="\\$\\{pixelUrl\\}"/.test(s))
-        throw new Error(f+' voltou a juntar o pixel ao rodapé, onde o Gmail o corta');
+        throw new Error('o motor voltou a juntar o pixel ao rodapé, onde o Gmail o corta');
     }`],
   ['aberturas do Gmail contam', `const fs=require('fs');
     // O proxy do Gmail e do Yahoo estava na lista de agentes ignorados. Ao
@@ -1257,10 +1290,13 @@ const provas = [
   ['ninguém cancelado recebe', `const fs=require('fs');
     // A barreira antes de cada lote tem de ser a mesma nos dois motores de
     // envio: já divergiram, e um verificava o que o outro não verificava.
-    for(const f of ['lib/sendCampaign.js','api/campaigns/[id].js']){
-      const s=fs.readFileSync(f,'utf8');
-      if(!/bloquearCancelados\\(/.test(s))throw new Error(f+' não usa a barreira partilhada antes do lote');
-      if(/error_message='Endereço na lista de supressão'/.test(s))throw new Error(f+' voltou a ter a sua própria barreira');
+    // Havia dois motores de envio e a barreira tinha de estar nos dois. Agora
+    // há um só: o api/campaigns/[id].js delega em runBatch. Verifica-se o
+    // motor, e verifica-se que o outro caminho continua a delegar.
+    {
+      const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+      if(!/bloquearCancelados\\(/.test(s))throw new Error('lib/sendCampaign.js não usa a barreira partilhada antes do lote');
+      if(/error_message='Endereço na lista de supressão'/.test(s))throw new Error('lib/sendCampaign.js voltou a ter a sua própria barreira');
     }
     const c=fs.readFileSync('lib/campanhas.js','utf8');
     if(!/FROM suppression/.test(c))throw new Error('a barreira deixou de consultar a lista de supressão');
