@@ -12026,6 +12026,31 @@ ${sections.join('\n\n')}
            Azul cyan      #00AEEF  →  accent secundário
         ─────────────────────────────────────────────────────────────────── */
 
+        /* ─── Contraste do tema claro ──────────────────────────────────────
+           Os tons por omissão do Tailwind para texto secundário não chegam ao
+           mínimo WCAG AA (4,5:1) sobre os fundos claros da aplicação:
+           text-slate-400 dava 2,56 sobre branco, e é o tom mais usado em
+           rótulos, colunas de tabela e texto de apoio — 453 elementos.
+
+           Verifiquei antes de mexer que nenhuma destas classes é usada sobre
+           fundo escuro em lado nenhum (774 ocorrências, todas sobre claro),
+           por isso escurecer é seguro. O tema escuro remapeia-as a seguir com
+           html.dark, que tem mais especificidade e ganha.
+
+           Para reavaliar: TEMA=light node scripts/contraste.js
+        ─────────────────────────────────────────────────────────────────── */
+        .text-slate-400 { color: #667085 !important; }
+        .text-slate-500 { color: #55606f !important; }
+        .text-red-400,
+        .text-red-500   { color: #dc2626 !important; }
+        .text-amber-500 { color: #b45309 !important; }
+        .text-blue-500  { color: #1d4ed8 !important; }
+        .text-violet-500{ color: #7c3aed !important; }
+
+        /* NÃO se escurece o #00AEEF do bloco "Caetano | eMKT" no login: é
+           parte do logótipo, e a norma isenta expressamente logótipos e nomes
+           de marca do requisito de contraste. */
+
         /* slate-900 → Azul profundo */
         .bg-slate-900                { background-color: #002E5D !important; }
         .hover\:bg-slate-900:hover   { background-color: #002E5D !important; }
@@ -12139,8 +12164,13 @@ ${sections.join('\n\n')}
         html.dark .bg-amber-100, html.dark .bg-yellow-100  { background-color: rgba(245,158,11,0.18) !important; }
         html.dark .bg-violet-100, html.dark .bg-purple-100 { background-color: rgba(139,92,246,0.18) !important; }
 
-        html.dark .text-red-500, html.dark .text-red-600,
+        /* As variantes -400/-500 entram aqui porque o tema claro as escureceu
+           para chegar ao mínimo AA — sem este remapeamento ficavam escuras
+           sobre fundo escuro. */
+        html.dark .text-red-400, html.dark .text-red-500, html.dark .text-red-600,
         html.dark .text-red-700, html.dark .text-red-800        { color: #f87171 !important; }
+        html.dark .text-blue-500                                { color: #60a5fa !important; }
+        html.dark .text-amber-500                               { color: #fbbf24 !important; }
         html.dark .text-green-600, html.dark .text-green-700, html.dark .text-green-800,
         html.dark .text-emerald-600, html.dark .text-emerald-700,
         html.dark .text-emerald-800                             { color: #34d399 !important; }

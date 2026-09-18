@@ -384,7 +384,19 @@ const provas = [
     exige('.bg-red-100','badge solido claro com texto claro por cima');
     exige('.bg-blue-100','badge solido claro com texto claro por cima');
     if(!/\\.sobre-tela-clara/.test(h))
-      throw new Error('sobre-tela-clara desapareceu — o texto sobre a tela do email volta a seguir o tema e fica cinzento sobre branco');`],
+      throw new Error('sobre-tela-clara desapareceu — o texto sobre a tela do email volta a seguir o tema e fica cinzento sobre branco');
+    // Tema claro: os tons por omissão do Tailwind para texto secundário não
+    // chegam ao mínimo AA sobre branco (text-slate-400 dava 2,56 em 453
+    // elementos). O bloco da marca escurece-os.
+    const claro=h.slice(h.indexOf('Contraste do tema claro'), h.indexOf('slate-900 → Azul profundo'));
+    for(const sel of ['.text-slate-400','.text-slate-500','.text-red-500','.text-amber-500','.text-blue-500'])
+      if(!claro.includes(sel))
+        throw new Error('o tema claro deixou de escurecer '+sel+' — volta a falhar o minimo de contraste sobre branco');
+    // E o escuro tem de remapear as MESMAS variantes, senao ficam escuras
+    // sobre fundo escuro — foi a regressao que a medicao apanhou.
+    for(const sel of ['.text-red-400','.text-blue-500','.text-amber-500'])
+      if(!dark.includes(sel))
+        throw new Error('o tema escuro nao remapeia '+sel+', que o tema claro escureceu — fica escuro sobre escuro');`],
   ['trocar de marca é um painel ancorado, e o ecrã de escolha fica para quem não tem marca', `const fs=require('fs');
     // O modal de ecrã inteiro passou a painel ancorado à barra lateral. O
     // modal continua a existir, mas só para quem TEM de escolher: primeira
