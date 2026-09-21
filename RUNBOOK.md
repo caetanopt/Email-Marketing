@@ -151,6 +151,50 @@ O destino de eventos deve ser **CloudWatch**, e **não SNS**. Três razões, tod
 
 > **Atenção:** um nome que não exista na conta faz o SES rejeitar *todos* os envios (`ConfigurationSetDoesNotExistException`). É por isso que a variável não tem valor por omissão, e é por isso que o envio de teste passa pelo mesmo caminho — para a configuração errada aparecer num teste e não numa campanha.
 
+Pela consola: SES → Configuration sets → *Create set*, ligar *Reputation metrics*, e depois *Event destinations* → *Add destination* com destino **CloudWatch** e os tipos de evento acima (sem Open nem Click — é não os marcar que impede o SES de reescrever os links).
+
+Ou, mais depressa e sem cliques, no **AWS CloudShell** (canto superior direito da consola, já autenticado):
+
+```bash
+REGIAO=eu-west-1            # tem de ser igual a AWS_REGION na Vercel
+CONJUNTO=emkt-eventos
+
+aws sesv2 create-configuration-set \
+  --region "$REGIAO" \
+  --configuration-set-name "$CONJUNTO" \
+  --reputation-options ReputationMetricsEnabled=true
+
+# OPEN e CLICK ficam DE FORA: é a ausência deles que impede o SES de
+# inserir o pixel e reescrever os links por cima dos da plataforma.
+aws sesv2 create-configuration-set-event-destination \
+  --region "$REGIAO" \
+  --configuration-set-name "$CONJUNTO" \
+  --event-destination-name cloudwatch \
+  --event-destination '{
+    "Enabled": true,
+    "MatchingEventTypes": ["SEND","DELIVERY","BOUNCE","COMPLAINT","REJECT","RENDERING_FAILURE","DELIVERY_DELAY"],
+    "CloudWatchDestination": {
+      "DimensionConfigurations": [
+        {"DimensionName":"campaign_id","DimensionValueSource":"MESSAGE_TAG","DefaultDimensionValue":"none"}
+      ]
+    }
+  }'
+
+# Confirmar
+aws sesv2 get-configuration-set --region "$REGIAO" --configuration-set-name "$CONJUNTO"
+aws sesv2 get-configuration-set-event-destinations --region "$REGIAO" --configuration-set-name "$CONJUNTO"
+```
+
+A dimensão `campaign_id` funciona porque `lib/sendCampaign.js` já marca cada mensagem com `Tags: [campaign_id, contact_id]` — as métricas saem separadas por campanha sem mais nada.
+
+Desfazer (por esta ordem — um conjunto com destinos não se apaga):
+
+```bash
+aws sesv2 delete-configuration-set-event-destination \
+  --region "$REGIAO" --configuration-set-name "$CONJUNTO" --event-destination-name cloudwatch
+aws sesv2 delete-configuration-set --region "$REGIAO" --configuration-set-name "$CONJUNTO"
+```
+
 > **Nota de código:** `api/track.js` tem ramos para os eventos `open` e `click` do SES que lêem os cabeçalhos `X-Campaign-Id`/`X-Contact-Id`. Esses cabeçalhos **nunca são enviados** (`lib/rawEmail.js` só acrescenta os de `List-Unsubscribe`), por isso os ramos não fazem nada. São código morto, não uma funcionalidade a activar.
 
 **MAIL FROM próprio** (~20 min + propagação de DNS). Por omissão o `Return-Path` das mensagens aponta para `amazonses.com`, o que enfraquece o alinhamento de SPF e é visível para quem inspeccione o cabeçalho. Em SES → Verified identities → o domínio → Custom MAIL FROM, definir um subdomínio (ex.: `mail.caetano.pt`) e acrescentar os registos MX e TXT que a AWS indica. Escolher «Reject the message» só depois de o DNS propagar — antes disso, «Use default» evita cortar envios.
