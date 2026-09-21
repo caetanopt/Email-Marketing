@@ -141,9 +141,17 @@ Sem a variável definida não há tecto nenhum além do da AWS — que é o comp
 
 Nenhum destes é código. Estão aqui porque sem eles a entregabilidade fica pior do que precisa de ser.
 
-**Configuration set** (~10 min). Em SES → Configuration sets, criar um (ex.: `emkt-eventos`) e ligar-lhe um destino de eventos — SNS para o tópico que já alimenta `/api/webhooks`, ou o Firehose/CloudWatch se quiser histórico. Depois definir `SES_CONFIGURATION_SET` na Vercel com esse nome **exacto** e fazer um envio de teste antes de uma campanha.
+**Configuration set** (~10 min). Em SES → Configuration sets, criar um (ex.: `emkt-eventos`), depois definir `SES_CONFIGURATION_SET` na Vercel com esse nome **exacto** e fazer um envio de teste antes de uma campanha.
+
+O destino de eventos deve ser **CloudWatch**, e **não SNS**. Três razões, todas concretas neste sistema:
+
+- **Bounces e queixas já chegam** por notificações da identidade verificada. Publicá-los também pelo configuration set gera duas mensagens SNS por evento real, com `MessageId` diferentes — a idempotência da migração 063 é por `sns_message_id` e **não** as apanha. Um bounce transitório passaria a consumir dois `retry_count` em vez de um, e à segunda ocorrência punha o destinatário em `failed`. É exactamente a avaria que a 063 veio corrigir.
+- **Open e click** têm de ficar **desligados** no configuration set. A plataforma tem o seu próprio pixel e o seu próprio redireccionador; com os do SES ligados, o SES reescreve os links (passam a apontar para `…awstrack.me`) por cima da reescrita que já foi feita, o que acrescenta um salto, tira a marca do endereço e baralha o relatório.
+- Os restantes eventos (`Delivery`, `Reject`, `Rendering Failure`, `DeliveryDelay`) **não são tratados pelo webhook** — caem no fim da cadeia de `if` e devolvem 200 sem fazer nada. Mandá-los por SNS não traria informação nenhuma; em CloudWatch tornam-se métricas e alarmes.
 
 > **Atenção:** um nome que não exista na conta faz o SES rejeitar *todos* os envios (`ConfigurationSetDoesNotExistException`). É por isso que a variável não tem valor por omissão, e é por isso que o envio de teste passa pelo mesmo caminho — para a configuração errada aparecer num teste e não numa campanha.
+
+> **Nota de código:** `api/track.js` tem ramos para os eventos `open` e `click` do SES que lêem os cabeçalhos `X-Campaign-Id`/`X-Contact-Id`. Esses cabeçalhos **nunca são enviados** (`lib/rawEmail.js` só acrescenta os de `List-Unsubscribe`), por isso os ramos não fazem nada. São código morto, não uma funcionalidade a activar.
 
 **MAIL FROM próprio** (~20 min + propagação de DNS). Por omissão o `Return-Path` das mensagens aponta para `amazonses.com`, o que enfraquece o alinhamento de SPF e é visível para quem inspeccione o cabeçalho. Em SES → Verified identities → o domínio → Custom MAIL FROM, definir um subdomínio (ex.: `mail.caetano.pt`) e acrescentar os registos MX e TXT que a AWS indica. Escolher «Reject the message» só depois de o DNS propagar — antes disso, «Use default» evita cortar envios.
 
