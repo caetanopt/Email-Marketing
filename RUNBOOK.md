@@ -167,7 +167,7 @@ v=DMARC1; p=reject; adkim=s; aspf=s; fo=1; sp=none; rua=mailto:dmarc@rigorcg.pt
 - **`sp=none`** — subdomínios estão isentos. Enviar de `@emkt.caetano.pt` não seria abrangido por esta política.
 - Os relatórios vão para `dmarc@rigorcg.pt` — **quem gere o DNS é externo**. Qualquer alteração aos registos passa por lá.
 
-As campanhas chegam, logo o DKIM com `d=caetano.pt` está montado e a alinhar — é o que mantém o DMARC de pé, já que o `Return-Path` do SES aponta para `amazonses.com` e por isso o SPF **não** alinha em modo estrito.
+O DKIM de `caetano.pt` foi confirmado como **`Successful`** no SES (Setembro de 2026). É ele que mantém o DMARC de pé, já que o `Return-Path` do SES aponta para `amazonses.com` e por isso o SPF **não** alinha em modo estrito.
 
 > **O risco que isto cria:** o DKIM é o **único** ponto de apoio. Se esses registos forem removidos ou expirarem — numa limpeza de DNS, numa rotação de chaves do SES, numa migração —, com `p=reject` **todos os emails passam a ser recusados de imediato**, campanhas e magic links de login incluídos. E como não há palavra-passe de recurso, ninguém entra na plataforma. Vale a pena confirmar com quem gere o DNS que os CNAME de DKIM do SES para `caetano.pt` estão lá e assinalados como não removíveis.
 
@@ -189,6 +189,18 @@ CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --limpar
 Usa uma variável própria, e não `DATABASE_URL`, precisamente para não poder apontar para produção por distracção; um URL que se pareça com o do Supabase é recusado. Semeia centenas de milhares de linhas e **não as apaga sozinho** — o `--limpar` é um passo à parte. Correr contra uma cópia descartável.
 
 ### 4.5 O que continua por fazer
+
+**Adiado por decisão, não por esquecimento** (Setembro de 2026). Os dois pontos abaixo são portas a fechar, não avarias: o sistema envia correctamente sem eles. Ficam registados com a consequência de continuarem por fazer, para a decisão poder ser revista com conhecimento de causa.
+
+- **`CRON_TRIGGER_SECRET` não está definida** → o `/api/cron` aceita chamadas de qualquer origem. Não permite enviar nada que não esteja já agendado, mas permite a um estranho consumir invocações da Vercel e acelerar o gasto da quota do SES. O código escreve `SECURITY: /api/cron sem CRON_TRIGGER_SECRET` no log a cada passagem — esse aviso vai continuar a aparecer, e é esperado.
+
+  Quando se avançar, **a ordem importa**: primeiro acrescentar `?k=<segredo>` (ou o cabeçalho `Authorization: Bearer <segredo>`) no agendador externo — enquanto a variável não existe, o parâmetro é ignorado — e **só depois** criar a variável na Vercel e redesdobrar. Pela ordem inversa, os envios agendados param até alguém reparar.
+
+- **`SNS_TOPIC_ARNS` não está definida** → o webhook aceita qualquer mensagem validamente assinada pelo SNS, sem confirmar de que conta AWS veio. Alguém com conta própria poderia fabricar eventos de bounce ou de queixa para endereços à escolha e vê-los entrar na tabela de supressão, impedindo envios para clientes reais. O pior cenário já está fechado — o código recusa confirmar subscrições de tópicos não autorizados —, fica só o caso de mensagens forjadas à mão.
+
+  O valor a usar é impresso pelo próprio código quando chega um evento: procurar nos logs da função `api/track` a linha `webhook SNS aceite sem lista de tópicos — define SNS_TOPIC_ARNS=…`. Aqui não há ordem crítica: o tópico já existe e definir a variável apenas restringe o que já acontece.
+
+**Por fazer, sem decisão tomada:**
 
 - **Limitação por ISP** (ritmos diferentes para Gmail, Outlook, Sapo). Exigiria reordenar os destinatários por domínio dentro do motor de envio — a parte com mais risco de todo o sistema. Não foi feito.
 - **Alertas activos.** O diagnóstico existe mas é preciso alguém abrir o ecrã. Um alerta por email ou Slack quando o pulso envelhece implicaria um endpoint novo, e a Vercel já está no limite de 12 funções.
