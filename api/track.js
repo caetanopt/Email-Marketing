@@ -37,6 +37,38 @@ function destinoSeguro(bruto) {
   return u.href;
 }
 
+// O destino pertence mesmo a esta campanha?
+//
+// Devolve o destino se sim, ou '/' se não. Compara por HOST: o injectTracking
+// acrescenta parâmetros UTM ao endereço, e há templates com links montados a
+// partir de variáveis do contacto — comparar o URL inteiro recusaria links
+// legítimos. Contra phishing o que conta é o domínio que a pessoa vê.
+//
+// Uma campanha SEM destinos registados não é validada. É o que mantém a
+// funcionar os links das campanhas enviadas antes da migração 064, que estão
+// nas caixas de correio das pessoas e não se podem invalidar.
+async function destinoDaCampanha(campaignId, dest) {
+  let host;
+  try { host = new URL(dest).hostname.toLowerCase(); } catch { return '/'; }
+  try {
+    const linhas = await query(
+      'SELECT 1 FROM campaign_links WHERE campaign_id=$1 LIMIT 1', [campaignId]
+    );
+    if (!linhas.length) return dest;   // campanha sem registo: comportamento antigo
+    const casa = await query(
+      'SELECT 1 FROM campaign_links WHERE campaign_id=$1 AND host=$2 LIMIT 1', [campaignId, host]
+    );
+    if (casa.length) return dest;
+    console.warn(`clique recusado: destino ${host} não pertence à campanha ${campaignId}`);
+    return '/';
+  } catch (e) {
+    // 42P01: migração 064 por correr. Não se trava um clique legítimo por
+    // causa disso — volta-se ao comportamento anterior.
+    if (e.code !== '42P01') console.error('validação do destino falhou:', e?.message);
+    return dest;
+  }
+}
+
 // Agentes que vão buscar as imagens e seguem os links SEM ninguém ter aberto
 // o email: filtros de segurança que analisam tudo o que entra, e a
 // pré-visualização do Apple Mail Privacy Protection, que descarrega na
@@ -488,6 +520,20 @@ p{font-size:15px}small{color:#94a3b8;font-size:12px}</style></head>
           && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(expected));
         if (valid && !isNaN(campaignId) && !isNaN(contactId)) {
           dest = destinoSeguro(url) || '/';
+          // O token autentica o PAR (campanha, contacto), não o DESTINO — o
+          // comentário acima dizia que prevenia open redirect, mas o `url`
+          // não entra no HMAC. Quem tenha recebido um email tem um par válido
+          // e permanente e podia mandar o domínio da plataforma redireccionar
+          // para qualquer sítio, incluindo uma página de phishing com a marca
+          // da Caetano no endereço.
+          //
+          // Valida-se contra os destinos que a própria campanha contém
+          // (migração 064, registados no arranque do envio). Campanhas sem
+          // registo — todas as anteriores a isto — não são validadas, para os
+          // links já entregues continuarem a funcionar.
+          if (dest !== '/') {
+            dest = await destinoDaCampanha(campaignId, dest);
+          }
           // uid=0 é o clique de um email de teste: encaminha-se para o
           // destino, mas não se registra — não há contacto 0 e não deve
           // contar nas estatísticas da campanha.

@@ -364,6 +364,35 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['o redireccionador só aceita destinos da própria campanha', `const fs=require('fs');
+    // O token do clique e HMAC sobre "track:<campanha>:<contacto>": autentica
+    // o PAR, nao o DESTINO. Quem recebeu um email tinha um par valido e
+    // permanente e podia mandar o dominio da plataforma redireccionar para
+    // qualquer sitio — phishing com a marca da Caetano no endereco.
+    const t=fs.readFileSync('api/track.js','utf8');
+    if(!/async function destinoDaCampanha/.test(t))
+      throw new Error('a validacao do destino desapareceu — volta o open redirect');
+    if(!/FROM campaign_links WHERE campaign_id=\\$1 AND host=\\$2/.test(t))
+      throw new Error('o destino deixou de ser confrontado com os da campanha');
+    if(!/if \\(!linhas\\.length\\) return dest/.test(t))
+      throw new Error('campanhas sem destinos registados deixaram de ser toleradas — invalida os links ja entregues');
+    // O extractor e o injectTracking tem de concordar nas excepcoes: um link
+    // que o injectTracking reescreve mas o extractor nao regista fica
+    // bloqueado no clique.
+    const e=fs.readFileSync('lib/emailHtml.js','utf8');
+    const ext=e.slice(e.indexOf('function extrairDestinos'), e.indexOf('function injectTracking'));
+    const inj=e.slice(e.indexOf('function injectTracking'));
+    for(const excepcao of ['action=unsubscribe', 'action=resubscribe', '/api/track?']){
+      if(ext.includes(excepcao) !== inj.includes(excepcao))
+        throw new Error('extrairDestinos e injectTracking divergiram na excepcao "'+excepcao+'" — links legitimos passam a ser bloqueados');
+    }
+    if(!/if \\(incerto\\) return null/.test(ext))
+      throw new Error('o extractor deixou de desistir perante hrefs com variaveis — passa a registar so parte dos hosts e bloqueia o resto');
+    const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+    if(!/INSERT INTO campaign_links/.test(s))
+      throw new Error('os destinos deixaram de ser registados no arranque');
+    if(!/destinos === null/.test(s))
+      throw new Error('o arranque deixou de tratar o caso de links com variaveis');`],
   ['um GET não cancela subscrições, e o one-click continua a funcionar', `const fs=require('fs');
     // A escrita acontecia logo a seguir a validar o token; a primeira vez que
     // o codigo olhava para req.method era 80 linhas abaixo, so para escolher o
