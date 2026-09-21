@@ -154,9 +154,28 @@ Contra isso, um destino de eventos no CloudWatch tem custo recorrente: as métri
 
 Se um dia a decisão mudar, o apêndice 4.6 tem os passos e as armadilhas.
 
-**MAIL FROM próprio** (~20 min + propagação de DNS). Por omissão o `Return-Path` das mensagens aponta para `amazonses.com`, o que enfraquece o alinhamento de SPF e é visível para quem inspeccione o cabeçalho. Em SES → Verified identities → o domínio → Custom MAIL FROM, definir um subdomínio (ex.: `mail.caetano.pt`) e acrescentar os registos MX e TXT que a AWS indica. Escolher «Reject the message» só depois de o DNS propagar — antes disso, «Use default» evita cortar envios.
+**Autenticação: o que está montado, e onde é frágil.** O `_dmarc.caetano.pt` é:
+
+```
+v=DMARC1; p=reject; adkim=s; aspf=s; fo=1; sp=none; rua=mailto:dmarc@rigorcg.pt
+```
+
+É a política mais estrita possível, e o que dela decorre não é óbvio:
+
+- **`p=reject`** — correio que não alinhe é **recusado**, não entregue em spam. Não há meio-termo nem aviso.
+- **`adkim=s` / `aspf=s`** — alinhamento **estrito**: o domínio não pode ser um subdomínio do `From:`, tem de ser **exactamente igual**.
+- **`sp=none`** — subdomínios estão isentos. Enviar de `@emkt.caetano.pt` não seria abrangido por esta política.
+- Os relatórios vão para `dmarc@rigorcg.pt` — **quem gere o DNS é externo**. Qualquer alteração aos registos passa por lá.
+
+As campanhas chegam, logo o DKIM com `d=caetano.pt` está montado e a alinhar — é o que mantém o DMARC de pé, já que o `Return-Path` do SES aponta para `amazonses.com` e por isso o SPF **não** alinha em modo estrito.
+
+> **O risco que isto cria:** o DKIM é o **único** ponto de apoio. Se esses registos forem removidos ou expirarem — numa limpeza de DNS, numa rotação de chaves do SES, numa migração —, com `p=reject` **todos os emails passam a ser recusados de imediato**, campanhas e magic links de login incluídos. E como não há palavra-passe de recurso, ninguém entra na plataforma. Vale a pena confirmar com quem gere o DNS que os CNAME de DKIM do SES para `caetano.pt` estão lá e assinalados como não removíveis.
+
+**MAIL FROM próprio — não vale a pena neste domínio.** A ideia seria alinhar também o SPF. Mas com `aspf=s`, o alinhamento estrito exige que o domínio do `Return-Path` seja **exactamente** `caetano.pt`; um `mail.caetano.pt` **não alinha**, e é precisamente um subdomínio que a AWS pede para o custom MAIL FROM. Daria um `Return-Path` mais apresentável nos cabeçalhos e nada mais — não acrescenta um segundo caminho de alinhamento, que era a única razão para o fazer. Só passaria a valer se a política fosse relaxada para `aspf=r`, e isso é uma decisão de quem gere o DMARC, não desta plataforma.
 
 **Separar transaccional de marketing.** Hoje os magic links de login saem pelo mesmo domínio e reputação das campanhas. Uma campanha com muitas queixas pode impedir as pessoas de entrar na plataforma — e como não há login por palavra-passe, isso tranca toda a gente ao mesmo tempo. A separação faz-se com um subdomínio e uma identidade SES próprios para o transaccional (ex.: `login.caetano.pt`), e depois `MAGIC_LINK_FROM` a apontar para lá. **Isto ainda não está feito.**
+
+Nota sobre a ordem das coisas: isto é seguro contra uma **degradação de reputação**, que é gradual e dá sinais no painel de saúde. Não protege do modo de falha descrito acima — se o DKIM de `caetano.pt` cair, um subdomínio novo teria de ter o seu próprio DKIM montado para escapar, e `sp=none` só o isenta do `p=reject`, não o faz chegar. Confirmar o DKIM vem primeiro, e é de graça.
 
 ### 4.4 Teste de carga
 
