@@ -31,13 +31,31 @@ INSERT INTO brands (id, name, color, from_name, from_email) VALUES
   ('caetanoparts','Caetano Parts', '#E63946', 'Caetano Parts',  'newsletter@caetanoparts.pt')
 ON CONFLICT (id) DO NOTHING;
 
+-- ⚠ NÃO VOLTAR A CORRER ESTE BLOCO EM PRODUÇÃO.
+--
+-- A conta admin@primemail.io foi DESACTIVADA em produção (Setembro de 2026):
+-- era uma conta de arranque, com papel de owner em todas as marcas, ligada a um
+-- domínio que não é do grupo — primemail era o nome do protótipo anterior.
+-- Ver scripts/desactivar-conta-orfa.sql.
+--
+-- O INSERT dos utilizadores é inofensivo numa segunda passagem (o
+-- ON CONFLICT (email) DO NOTHING não reactiva nada), mas o INSERT dos papéis
+-- NÃO é: se os papéis tiverem sido apagados, este bloco volta a dar owner em
+-- todas as marcas a uma conta que ninguém reclama.
+--
+-- O password_hash abaixo é de uma palavra-passe conhecida. É inerte — não
+-- existe login por palavra-passe em lado nenhum do backend, só magic link —
+-- mas não deve ser reutilizado noutro sítio.
 INSERT INTO users (name, email, password_hash) VALUES
   ('Administrador', 'admin@primemail.io', '$2a$10$dILi66UINh/EBnA6.VrvOu9cxl/K0QkW.bo8nN9jRpPqBRGX46F5S')
 ON CONFLICT (email) DO NOTHING;
 
 -- Dar acesso owner a todas as marcas ao admin
+-- (ver o aviso acima antes de correr)
 INSERT INTO user_brand_roles (user_id, brand_id, role)
 SELECT u.id, b.id, 'owner'
 FROM users u, brands b
 WHERE u.email = 'admin@primemail.io'
+  -- Uma conta desactivada não volta a receber papéis por uma re-execução.
+  AND u.active = TRUE
 ON CONFLICT (user_id, brand_id) DO NOTHING;
