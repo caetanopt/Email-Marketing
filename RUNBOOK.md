@@ -143,7 +143,21 @@ Nenhum destes é código. Estão aqui porque sem eles a entregabilidade fica pio
 
 **Configuration set** (~10 min). Em SES → Configuration sets, criar um (ex.: `emkt-eventos`), depois definir `SES_CONFIGURATION_SET` na Vercel com esse nome **exacto** e fazer um envio de teste antes de uma campanha.
 
-O destino de eventos deve ser **CloudWatch**, e **não SNS**. Três razões, todas concretas neste sistema:
+> **Antes de avançar — isto é preciso?** A plataforma **já calcula** as taxas de rejeição e de queixa a partir da sua própria base de dados, no painel de saúde do ecrã de Estatísticas (secção 4.1), sem custo nenhum. E o SES já mostra os números oficiais da conta no painel de reputação, também sem custo. Um configuration set acrescenta sobretudo **atribuição por conjunto do lado da AWS**. Se não precisa disso, o passo mais barato é não o fazer.
+
+**Um destino de eventos CloudWatch custa dinheiro, e a factura depende das dimensões.** As métricas publicadas por um event destination são *custom metrics*, cobradas **por métrica e por mês**, e o número de métricas é o produto dos tipos de evento pelos valores distintos de cada dimensão. Com uma dimensão de alta cardinalidade como `campaign_id`, **cada campanha nova cria um conjunto de métricas novo** — sete tipos de evento vezes cem campanhas são setecentas métricas a serem cobradas, todos os meses, para sempre. Foi por isso que a recomendação de usar `campaign_id` como dimensão foi retirada deste documento.
+
+Se ainda assim quiser o configuration set, há três níveis, do mais barato para o mais caro:
+
+| Nível | O que dá | Custo |
+|---|---|---|
+| **Conjunto sem destino de eventos** | Reputação por conjunto no painel do SES. Nenhum evento novo chega ao webhook. | Sem *custom metrics* |
+| Destino CloudWatch **sem dimensões** | O mesmo, mais gráficos e alarmes agregados | Poucas métricas, custo fixo e pequeno |
+| Destino CloudWatch **com `campaign_id`** | Atribuição por campanha na AWS | Cresce com o número de campanhas — **evitar** |
+
+Confirme os valores na página de preços do CloudWatch para `eu-west-1` e no Cost Explorer: não consigo ver a facturação da vossa conta e os preços mudam.
+
+Se o destino for mesmo criado, tem de ser **CloudWatch** e **não SNS**. Três razões, todas concretas neste sistema:
 
 - **Bounces e queixas já chegam** por notificações da identidade verificada. Publicá-los também pelo configuration set gera duas mensagens SNS por evento real, com `MessageId` diferentes — a idempotência da migração 063 é por `sns_message_id` e **não** as apanha. Um bounce transitório passaria a consumir dois `retry_count` em vez de um, e à segunda ocorrência punha o destinatário em `failed`. É exactamente a avaria que a 063 veio corrigir.
 - **Open e click** têm de ficar **desligados** no configuration set. A plataforma tem o seu próprio pixel e o seu próprio redireccionador; com os do SES ligados, o SES reescreve os links (passam a apontar para `…awstrack.me`) por cima da reescrita que já foi feita, o que acrescenta um salto, tira a marca do endereço e baralha o relatório.
@@ -151,9 +165,9 @@ O destino de eventos deve ser **CloudWatch**, e **não SNS**. Três razões, tod
 
 > **Atenção:** um nome que não exista na conta faz o SES rejeitar *todos* os envios (`ConfigurationSetDoesNotExistException`). É por isso que a variável não tem valor por omissão, e é por isso que o envio de teste passa pelo mesmo caminho — para a configuração errada aparecer num teste e não numa campanha.
 
-Pela consola: SES → Configuration sets → *Create set*, ligar *Reputation metrics*, e depois *Event destinations* → *Add destination* com destino **CloudWatch** e os tipos de evento acima (sem Open nem Click — é não os marcar que impede o SES de reescrever os links).
+Pela consola: SES → Configuration sets → *Create set*, ligar *Reputation metrics*, e **parar aí**. Não adicionar destino de eventos.
 
-Ou, mais depressa e sem cliques, no **AWS CloudShell** (canto superior direito da consola, já autenticado):
+Ou, no **AWS CloudShell** (canto superior direito da consola, já autenticado):
 
 ```bash
 REGIAO=eu-west-1            # tem de ser igual a AWS_REGION na Vercel
@@ -164,30 +178,26 @@ aws sesv2 create-configuration-set \
   --configuration-set-name "$CONJUNTO" \
   --reputation-options ReputationMetricsEnabled=true
 
-# OPEN e CLICK ficam DE FORA: é a ausência deles que impede o SES de
-# inserir o pixel e reescrever os links por cima dos da plataforma.
+# Confirmar
+aws sesv2 get-configuration-set --region "$REGIAO" --configuration-set-name "$CONJUNTO"
+```
+
+Sem destino de eventos não há *custom metrics*, não há eventos novos a chegar ao webhook, e o SES **não** reescreve os links — porque é a subscrição de `OPEN`/`CLICK` num destino que o leva a fazê-lo, e aqui não há destino nenhum.
+
+Se mais tarde quiser gráficos e alarmes, acrescente um destino CloudWatch **sem `DimensionConfigurations`**, para o número de métricas não crescer com o catálogo de campanhas:
+
+```bash
 aws sesv2 create-configuration-set-event-destination \
-  --region "$REGIAO" \
-  --configuration-set-name "$CONJUNTO" \
+  --region "$REGIAO" --configuration-set-name "$CONJUNTO" \
   --event-destination-name cloudwatch \
   --event-destination '{
     "Enabled": true,
     "MatchingEventTypes": ["SEND","DELIVERY","BOUNCE","COMPLAINT","REJECT","RENDERING_FAILURE","DELIVERY_DELAY"],
-    "CloudWatchDestination": {
-      "DimensionConfigurations": [
-        {"DimensionName":"campaign_id","DimensionValueSource":"MESSAGE_TAG","DefaultDimensionValue":"none"}
-      ]
-    }
+    "CloudWatchDestination": { "DimensionConfigurations": [] }
   }'
-
-# Confirmar
-aws sesv2 get-configuration-set --region "$REGIAO" --configuration-set-name "$CONJUNTO"
-aws sesv2 get-configuration-set-event-destinations --region "$REGIAO" --configuration-set-name "$CONJUNTO"
 ```
 
-A dimensão `campaign_id` funciona porque `lib/sendCampaign.js` já marca cada mensagem com `Tags: [campaign_id, contact_id]` — as métricas saem separadas por campanha sem mais nada.
-
-Desfazer (por esta ordem — um conjunto com destinos não se apaga):
+Desfazer (se tiver criado um destino, apagá-lo primeiro — um conjunto com destinos não se apaga):
 
 ```bash
 aws sesv2 delete-configuration-set-event-destination \
