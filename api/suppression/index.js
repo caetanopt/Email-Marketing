@@ -2,6 +2,14 @@ const { query } = require('../../lib/db');
 const { requireAuth, requireWriteAny, cors } = require('../../lib/auth');
 const crypto = require('crypto');
 
+// A página de confirmação recebe o email e o token do URL. Sem escape, um
+// link forjado injectava HTML na própria página de cancelamento.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function verifyToken(email, brandId, token) {
   if (!process.env.JWT_SECRET) return false;
   const expected = crypto.createHmac('sha256', process.env.JWT_SECRET)
@@ -63,13 +71,52 @@ module.exports = async function handler(req, res) {
   }
 
   // Public one-click unsubscribe — no auth required, token-protected.
-  // Accepts both GET (one-click from email client) and POST (form submit with reason).
+  // POST consuma; GET pergunta primeiro.
   if (action === 'unsubscribe' && brand_id && qEmail) {
     if (!token || !verifyToken(qEmail, brand_id, token)) {
       const isJson = (req.headers.accept || '').includes('application/json');
       if (isJson) return res.status(400).json({ error: 'Link inválido ou expirado.' });
       return res.status(400).send('<p>Link inválido ou expirado.</p>');
     }
+
+    // Um GET deixa de cancelar. A escrita acontecia logo a seguir a validar o
+    // token, e a primeira vez que o código olhava para req.method era 80
+    // linhas abaixo — só para escolher o formato da resposta. Ou seja, um GET
+    // (ou um HEAD) cancelava.
+    //
+    // Isso não é teórico neste contexto: o próprio repositório tem uma lista
+    // de agentes automáticos (Mimecast, Proofpoint, Barracuda, IronPort…) e um
+    // comentário a explicar que esses gateways SEGUEM TODOS OS LINKS do corpo
+    // antes de entregarem a mensagem. A protecção existia para as métricas de
+    // abertura e clique, e não existia para a acção destrutiva. Pior: o
+    // redireccionador de cliques passa expressamente ao lado deste link, por
+    // isso o analisador batia no endpoint real.
+    //
+    // O one-click do RFC 8058 NÃO parte com isto: o Gmail e o Yahoo fazem
+    // POST, que continua a consumar sem perguntar nada. É exactamente a
+    // separação que a norma pressupõe.
+    if (req.method !== 'POST') {
+      const isJson = (req.headers.accept || '').includes('application/json');
+      if (isJson) return res.status(200).json({ ok: true, confirmacao_necessaria: true });
+      const eSeguro = escapeHtml(qEmail);
+      const accao = `/api/suppression?action=unsubscribe&brand_id=${encodeURIComponent(brand_id)}&email=${encodeURIComponent(qEmail)}&token=${encodeURIComponent(token)}${campaignParam ? `&c=${encodeURIComponent(campaignParam)}` : ''}`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).send(`<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta name="robots" content="noindex,nofollow">
+        <title>Cancelar subscrição</title></head>
+        <body style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f6f7f9;margin:0;padding:48px 20px;color:#1f2937">
+        <div style="max-width:440px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:32px;text-align:center">
+          <h1 style="font-size:1.25rem;margin:0 0 12px">Cancelar subscrição</h1>
+          <p style="margin:0 0 24px;color:#4b5563;line-height:1.6">Confirmas que queres deixar de receber estes emails em <strong>${eSeguro}</strong>?</p>
+          <form method="POST" action="${escapeHtml(accao)}">
+            <button type="submit" style="background:#b91c1c;color:#fff;border:0;border-radius:8px;padding:12px 24px;font-size:0.95rem;font-weight:600;cursor:pointer;width:100%">Sim, cancelar subscrição</button>
+          </form>
+          <p style="margin:18px 0 0;font-size:0.8rem;color:#9ca3af">Se não foste tu, podes fechar esta página — não é feita nenhuma alteração.</p>
+        </div></body></html>`);
+    }
+
     try {
       const e = qEmail.toLowerCase().trim();
       const userReason = (req.body && req.body.reason) || (req.query.reason) || '';

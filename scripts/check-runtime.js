@@ -364,6 +364,50 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['um GET não cancela subscrições, e o one-click continua a funcionar', `const fs=require('fs');
+    // A escrita acontecia logo a seguir a validar o token; a primeira vez que
+    // o codigo olhava para req.method era 80 linhas abaixo, so para escolher o
+    // formato da resposta. Um GET — ou um HEAD — cancelava. E o proprio
+    // repositorio documenta que os gateways de seguranca (Mimecast,
+    // Proofpoint, Barracuda) seguem TODOS os links do corpo antes de entregar.
+    const s=fs.readFileSync('api/suppression/index.js','utf8');
+    const i=s.indexOf("action === 'unsubscribe' && brand_id && qEmail");
+    if(i<0) throw new Error('o ramo de cancelamento desapareceu');
+    const antes=s.slice(i, s.indexOf('INSERT INTO suppression', i));
+    if(!/req\\.method !== 'POST'/.test(antes))
+      throw new Error('o cancelamento voltou a consumar sem exigir POST — qualquer analisador de seguranca desinscreve contactos reais');
+    if(!/<form method="POST"/.test(antes))
+      throw new Error('a pagina de confirmacao perdeu o formulario');
+    // e o one-click do RFC 8058 nao pode partir: o cabecalho tem de continuar la
+    const r=fs.readFileSync('lib/rawEmail.js','utf8');
+    if(!/List-Unsubscribe-Post/.test(r))
+      throw new Error('o cabecalho List-Unsubscribe-Post desapareceu — o one-click do Gmail deixa de funcionar');`],
+  ['o que protege a campanha do erro humano', `const fs=require('fs');
+    // Tres armadilhas do dia-a-dia, sem atacante nenhum.
+    const b=fs.readFileSync('api/campaigns/[id].js','utf8');
+    const i=b.indexOf("action === 'remove_direct_recipients'");
+    const rd=b.slice(i, i+1200);
+    if(!/is_temp = TRUE/.test(rd) || !/status NOT IN \\('sent','sending'\\)/.test(rd))
+      throw new Error('"remover contactos importados" volta a apagar o historico de quem ja recebeu — o envio seguinte reenvia a todos');
+    if(!/scheduled_at=COALESCE\\(\\$7,scheduled_at\\)/.test(b))
+      throw new Error('editar uma campanha agendada volta a apagar-lhe a data em silencio');
+    const t=fs.readFileSync('api/templates/index.js','utf8');
+    if(!/status IN \\('draft','scheduled','sending'\\)/.test(t))
+      throw new Error('apagar um template em uso deixa de ser recusado — a campanha envia um email vazio');
+    const s=fs.readFileSync('lib/sendCampaign.js','utf8');
+    if(!/A campanha não tem conteúdo/.test(s))
+      throw new Error('o envio deixou de recusar arrancar sem corpo');
+    const c=fs.readFileSync('lib/campanhas.js','utf8');
+    if(!/status IN \\('pending','retry'\\) OR \\$\\{orfa\\}/.test(c))
+      throw new Error('a barreira de supressao deixou de cobrir as linhas orfas em sending');
+    const idx=fs.readFileSync('api/campaigns/index.js','utf8');
+    if(/\\|\\| 'NULL'/.test(idx))
+      throw new Error("voltou o NOT IN (NULL): o detector de campanhas encalhadas fica desligado quando nao ha campanhas na fila");
+    if(!/dada por enviada com destinatários por enviar/.test(idx))
+      throw new Error('a reconciliacao desapareceu do cron');
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/_snmCarregarDestinatarios/.test(h))
+      throw new Error('o modal de confirmacao voltou a somar listas em vez de contar destinatarios');`],
   ['um email entregue nunca volta a ser enviado, e um evento repetido não conta duas vezes', `const fs=require('fs');
     const s=fs.readFileSync('lib/sendCampaign.js','utf8');
     // A migração 060 prometia que uma linha entregue-mas-não-gravada ficava

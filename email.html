@@ -8562,6 +8562,29 @@ ${teSerializeBlocksComment(srcBlocks)}
         const m = tz.match(/GMT([+-])(\d+)/);
         return m ? `${m[1]}${String(+m[2]).padStart(2,'0')}:00` : '+00:00';
     }
+    // Repõe data, hora e o radio a partir do scheduled_at da campanha.
+    function _wizReporAgendamento(quando) {
+        const radios = document.querySelectorAll('input[name="wizSendType"]');
+        const picker = document.getElementById('wizSchedulePicker');
+        const dEl = document.getElementById('wizScheduleDate');
+        const tEl = document.getElementById('wizScheduleTime');
+        if (!quando) {
+            radios.forEach(r => { r.checked = (r.value === 'now'); });
+            picker?.classList.add('hidden');
+            if (dEl) dEl.value = '';
+            if (tEl) tEl.value = '';
+            return;
+        }
+        const d = new Date(quando);
+        if (isNaN(d)) return;
+        const p = (n) => String(n).padStart(2, '0');
+        if (dEl) dEl.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        if (typeof _wizUpdateTimeSelect === 'function' && dEl) { try { _wizUpdateTimeSelect(dEl.value); } catch (_) {} }
+        if (tEl) tEl.value = `${p(d.getHours())}:${p(d.getMinutes())}`;
+        radios.forEach(r => { r.checked = (r.value === 'schedule'); });
+        picker?.classList.remove('hidden');
+    }
+
     function _wizInitSchedulePicker() {
         const dateEl = document.getElementById('wizScheduleDate');
         if (!dateEl) return;
@@ -9877,6 +9900,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                 const t = document.getElementById('wizScheduleTime')?.value;
                 return (d && t) ? `${d}T${t}:00${_lisbonOffset(d)}` : null;
             })();
+            // O servidor deixou de apagar o agendamento quando scheduled_at vem
+            // a null — passou a exigir este sinal. Só se limpa quando o
+            // utilizador escolheu mesmo "Enviar agora", nunca por omissão.
+            const tipoEnvio = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
+            const limpar_agendamento = tipoEnvio === 'now';
 
             let templateId = _editingTemplateId || null;
             if (teState.blocks.length) {
@@ -9897,7 +9925,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             }
 
             const eraNova = !_editingCampaignId;
-            await _wizGravarCampanha({ name, subject, preview_text: previewText, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: eraNova ? null : scheduled_at, template_id: templateId, utm_params, attachments: _wizAttachments, status: 'draft' });
+            await _wizGravarCampanha({ name, subject, preview_text: previewText, from_name: fromName, from_email: fromEmail, list_ids: listIds, scheduled_at: eraNova ? null : scheduled_at, limpar_agendamento, template_id: templateId, utm_params, attachments: _wizAttachments, status: 'draft' });
             if (eraNova) {
                 _editingTemplateId = templateId;
                 // A lista mostra o rascunho novo de imediato.
@@ -10848,6 +10876,13 @@ ${teSerializeBlocksComment(srcBlocks)}
             _wizExistingContacts = [];
             _wizSaveDraft(); // persist editing ID immediately so refresh restores this session
             showScreen('campaignCreate');
+            // Repor o agendamento nos campos. Sem isto ficavam vazios, o radio
+            // continuava em "Enviar agora", e o auto-save — que dispara 1,5 s
+            // depois de qualquer alteração, até de mexer num bloco — apagava a
+            // data. A campanha voltava a rascunho sem aviso e o envio não
+            // acontecia; só se percebia quando alguém perguntava porque é que
+            // a newsletter não tinha saído.
+            _wizReporAgendamento(c.scheduled_at);
             _wizUpdateDirectNotice();
             _wizRenderDirectPanel();
             wizUpdateListsTotal();
@@ -11345,13 +11380,56 @@ function toggleExportMenu() {
 
     function openSendNowModal()  {
         const c = _currentCampaign || {};
-        const totalRecipients = (c.lists||[]).reduce((s,l) => s + (parseInt(l.total)||0), 0);
+        // Este é o último ecrã antes de uma acção irreversível, e o número que
+        // mostrava não era o dos destinatários: somava os membros BRUTOS das
+        // listas. Ignorava os contactos importados de ficheiro (que vivem em
+        // campaign_recipients, não em listas), contava duas vezes quem está em
+        // duas listas, e contava quem cancelou ou está na supressão.
+        //
+        // O caso extremo é o mais comum aqui: uma campanha montada a partir de
+        // um Excel, sem listas nenhumas, mostrava "Destinatários: 0" e
+        // "Listas: —" e enviava para as dezenas de milhares de linhas do
+        // ficheiro.
+        //
+        // A consulta certa já existia — action=recipient_summary, escrita
+        // precisamente para corrigir esta soma no ecrã dos destinatários. Este
+        // modal é que não a usava. Mostra-se a soma bruta enquanto a resposta
+        // não chega, e o botão fica travado até haver um número real.
         const listsLabel = (c.lists||[]).map(l => l.name).join(', ') || '—';
         const senderLabel = (c.from_name && c.from_email) ? `${c.from_name} <${c.from_email}>` : (c.from_email || '—');
-        _setText('snmRecipients', totalRecipients.toLocaleString('pt-PT'));
+        _setText('snmRecipients', '—');
         _setText('snmLists', listsLabel);
         _setText('snmSender', senderLabel);
         const m=document.getElementById('sendNowModal');  m.classList.remove('hidden'); m.classList.add('flex');
+        _snmCarregarDestinatarios(c);
+    }
+
+    // Vai buscar a contagem verdadeira e só então liberta o botão de confirmar.
+    async function _snmCarregarDestinatarios(c) {
+        const btn = document.querySelector('#sendNowModal button[onclick*="confirmSendNow"]');
+        if (btn) { btn.disabled = true; }
+        try {
+            const listIds = (c.lists||[]).map(l => l.id).filter(Boolean).join(',');
+            const r = await apiFetch(`/api/campaigns/${c.id}?action=recipient_summary&list_ids=${encodeURIComponent(listIds)}`);
+            const n = r?.vao_receber ?? 0;
+            _setText('snmRecipients', Number(n).toLocaleString('pt-PT'));
+            // As três linhas que o resumo devolve, para o número ser
+            // verificável em vez de ter de se acreditar nele.
+            const detalhe = [];
+            if (r?.do_ficheiro)     detalhe.push(`${Number(r.do_ficheiro).toLocaleString('pt-PT')} do ficheiro`);
+            if (r?.nos_dois)        detalhe.push(`${Number(r.nos_dois).toLocaleString('pt-PT')} em duas listas, contados uma vez`);
+            if (r?.fora_estado)     detalhe.push(`${Number(r.fora_estado).toLocaleString('pt-PT')} excluídos por estado`);
+            if (r?.fora_supressao)  detalhe.push(`${Number(r.fora_supressao).toLocaleString('pt-PT')} na supressão`);
+            const el = document.getElementById('snmDetalhe');
+            if (el) el.textContent = detalhe.join(' · ');
+            if (btn) btn.disabled = false;
+        } catch (e) {
+            // Sem número de confiança não se deixa enviar às cegas.
+            _setText('snmRecipients', 'indisponível');
+            const el = document.getElementById('snmDetalhe');
+            if (el) el.textContent = 'Não foi possível confirmar quantas pessoas vão receber. Tenta de novo antes de enviar.';
+            if (btn) btn.disabled = true;
+        }
     }
     function closeSendNowModal() {
         const m = document.getElementById('sendNowModal');
@@ -18611,7 +18689,8 @@ ${sections.join('\n\n')}
                 ⚠️ Esta acção não pode ser desfeita. A campanha será enviada para todas as listas seleccionadas.
             </div>
             <div class="mt-4 space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-slate-500">Destinatários estimados:</span><span id="snmRecipients" class="font-semibold text-slate-900">—</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Vão receber:</span><span id="snmRecipients" class="font-semibold text-slate-900">—</span></div>
+                <p id="snmDetalhe" class="text-xs text-slate-500 -mt-1"></p>
                 <div class="flex justify-between"><span class="text-slate-500">Listas:</span><span id="snmLists" class="font-semibold text-slate-900">—</span></div>
                 <div class="flex justify-between"><span class="text-slate-500">Remetente:</span><span id="snmSender" class="font-semibold text-slate-900">—</span></div>
             </div>

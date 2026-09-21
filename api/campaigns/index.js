@@ -166,7 +166,12 @@ module.exports = async function handler(req, res) {
                AND COALESCE(cr.attempted_at, cr.sent_at) > NOW() - INTERVAL '3 minutes'
            )
            -- exclude campaigns already queued for processing above
-           AND c.id NOT IN (${due.map((_, i) => `$${i+1}`).join(',') || 'NULL'})
+           -- '-1' e nao 'NULL': quando due vem vazio, um NOT IN (NULL)
+           -- avalia a NULL para TODAS as linhas e nunca a verdadeiro, por isso
+           -- o filtro eliminava tudo. A rede de seguranca estava desligada
+           -- exactamente quando era mais precisa — quando nao havia campanhas
+           -- na fila.
+           AND c.id NOT IN (${due.map((_, i) => `$${i+1}`).join(',') || '-1'})
          LIMIT 3`,
         due.map(d => d.id)
       );
@@ -195,8 +200,54 @@ module.exports = async function handler(req, res) {
       if (err.code !== '42703') console.error('Cron: stuck campaign scan failed:', err.message);
     }
 
+    // ── Reconciliação ────────────────────────────────────────────────────
+    // Dois estados que ninguém detectava e dos quais não havia saída:
+    //
+    //  a) campanha em 'sent' com destinatários por enviar. Era o desfecho do
+    //     problema dos dois motores: o do browser concluía cedo e a campanha
+    //     saía do alcance dos dois laços acima, que exigem 'sending'. Ninguém
+    //     recebia e o relatório dizia "Enviada". Agora que há um só motor isto
+    //     não devia voltar a acontecer — mas as campanhas a que já aconteceu
+    //     continuam assim, e uma rede de segurança que só apanha o que já
+    //     sabemos não serve de rede.
+    //
+    //  b) campanha em 'sending' sem nenhuma linha em campaign_recipients.
+    //     Acontecia quando o arranque falhava depois do claim — o caso do
+    //     tecto dos 65535 parâmetros. Invisível para os dois laços, porque
+    //     ambos exigem que exista pelo menos um destinatário.
+    //
+    // A reconciliação não envia: repõe o estado para os mecanismos normais
+    // voltarem a pegar nelas, e regista o que fez.
+    const reconciliadas = [];
+    try {
+      const orfas = await query(
+        `UPDATE campaigns c SET status='sending'
+          WHERE c.status='sent'
+            AND EXISTS (
+              SELECT 1 FROM campaign_recipients cr
+               WHERE cr.campaign_id=c.id AND cr.status IN ('pending','retry')
+            )
+          RETURNING c.id`
+      );
+      for (const { id: cid } of orfas) reconciliadas.push({ id: cid, motivo: 'dada por enviada com destinatários por enviar' });
+
+      const vazias = await query(
+        `UPDATE campaigns c SET status='draft'
+          WHERE c.status='sending'
+            AND c.updated_at < NOW() - INTERVAL '15 minutes'
+            AND NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id=c.id)
+          RETURNING c.id`
+      );
+      for (const { id: cid } of vazias) reconciliadas.push({ id: cid, motivo: 'presa em envio sem destinatários' });
+
+      if (reconciliadas.length) console.warn('Cron: reconciliação repôs', JSON.stringify(reconciliadas));
+    } catch (err) {
+      console.error('Cron: reconciliação falhou:', err.message);
+    }
+
     return res.status(200).json({
-      ok: true, processed: results.length, elapsed_ms: Date.now() - cronStart, results
+      ok: true, processed: results.length, reconciliadas,
+      elapsed_ms: Date.now() - cronStart, results
     });
   }
 

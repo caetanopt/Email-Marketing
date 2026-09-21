@@ -179,8 +179,24 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'DELETE' && action === 'remove_direct_recipients') {
       if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível modificar uma campanha já enviada.' });
-      await query(`DELETE FROM campaign_recipients WHERE campaign_id=$1`, [id]);
-      return res.status(200).json({ ok: true });
+      if (camp.status === 'sending') return res.status(409).json({ error: 'A campanha está a enviar. Interrompe o envio antes de mexer nos destinatários.' });
+      // Isto apagava TODOS os destinatários da campanha — sem filtrar por
+      // origem e sem filtrar por estado. Numa campanha interrompida a meio,
+      // levava atrás as linhas 'sent', que são o único registo de quem já
+      // recebeu; o envio seguinte reconstruía a lista das listas e reenviava
+      // a toda a gente.
+      //
+      // E o botão que chama isto diz "Remover todos os contactos importados
+      // directamente desta campanha", porque a contagem ao lado também não
+      // filtrava por is_temp: uma campanha que nunca importou ficheiro nenhum
+      // mostrava "2.000 contactos importados" e um botão para os apagar.
+      const r = await query(
+        `DELETE FROM campaign_recipients
+          WHERE campaign_id=$1 AND is_temp = TRUE
+            AND status NOT IN ('sent','sending')`,
+        [id]
+      );
+      return res.status(200).json({ ok: true, removidos: r.rowCount ?? r.length ?? 0 });
     }
 
     // Todos os destinatários, com abertura e clique. Sem os 500 do log.
@@ -474,19 +490,39 @@ module.exports = async function handler(req, res) {
       if (camp.status === 'sent') return res.status(409).json({ error: 'Não é possível editar uma campanha já enviada.' });
       const { name, subject, preview_text, from_name, from_email,
               template_id, scheduled_at, status, list_ids, utm_params, attachments,
-              no_legal_notice } = req.body || {};
+              no_legal_notice, limpar_agendamento } = req.body || {};
+
+      // Editar uma campanha AGENDADA desagendava-a em silêncio. O auto-save do
+      // assistente dispara 1,5 s depois de qualquer alteração — basta mexer num
+      // bloco — e envia sempre status:'draft' e scheduled_at:null, porque os
+      // campos de data e hora nunca são preenchidos ao abrir uma campanha
+      // existente. Aqui, o scheduled_at era gravado sem COALESCE: ia a NULL
+      // incondicionalmente.
+      //
+      // A campanha voltava a rascunho, perdia a data, e o aviso âmbar "devia
+      // ter saído" nunca aparecia porque depende da data que acabara de ser
+      // apagada. Só se percebia quando alguém perguntava porque é que a
+      // newsletter não saiu.
+      //
+      // Agora o scheduled_at só é alterado quando vem um valor; limpá-lo exige
+      // um sinal explícito. E um auto-save não pode arrastar uma campanha
+      // agendada de volta a rascunho — isso é uma acção deliberada.
+      if (limpar_agendamento) {
+        await query('UPDATE campaigns SET scheduled_at=NULL WHERE id=$1 AND brand_id=$2', [id, camp.brand_id]);
+      }
+      const estadoPedido = (status === 'draft' && camp.status === 'scheduled') ? null : status;
       await query(
         `UPDATE campaigns SET
          name=COALESCE($1,name), subject=COALESCE($2,subject),
          preview_text=COALESCE($3,preview_text),
          from_name=COALESCE($4,from_name), from_email=COALESCE($5,from_email),
          template_id=COALESCE($6,template_id),
-         scheduled_at=$7, status=COALESCE($8,status),
+         scheduled_at=COALESCE($7,scheduled_at), status=COALESCE($8,status),
          utm_params=COALESCE($9,utm_params),
          attachments=COALESCE($10,attachments),
          updated_at=NOW() WHERE id=$11 AND brand_id=$12`,
         [name||null, subject||null, preview_text||null, from_name||null, from_email||null,
-         template_id||null, scheduled_at||null, status||null,
+         template_id||null, scheduled_at||null, estadoPedido||null,
          utm_params != null ? JSON.stringify(utm_params) : null,
          attachments != null ? JSON.stringify(attachments) : null,
          id, camp.brand_id]

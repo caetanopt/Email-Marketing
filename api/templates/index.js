@@ -126,6 +126,25 @@ module.exports = async function handler(req, res) {
 
       if (req.method === 'DELETE') {
         if (!await requireWrite(req, res, user.id, tpl.brand_id)) return;   // S-8
+        // campaigns.template_id é ON DELETE SET NULL, e os caminhos que montam
+        // o email lêem o conteúdo por LEFT JOIN com COALESCE para string
+        // vazia. Apagar um template em uso deixava a campanha ligada a nada e
+        // ela ENVIAVA na mesma: assunto, pixel e rodapé legal, sem corpo
+        // nenhum. A confirmação no ecrã não dizia que campanhas usavam o
+        // template, e como o editor grava um template por campanha
+        // ("<Nome> — Template"), limpar a biblioteca é uma acção natural.
+        const emUso = await query(
+          `SELECT id, name FROM campaigns
+            WHERE template_id = $1 AND status IN ('draft','scheduled','sending')
+            ORDER BY id LIMIT 10`,
+          [id]
+        );
+        if (emUso.length) {
+          return res.status(409).json({
+            error: 'Este template está a ser usado por campanhas que ainda não foram enviadas. Troca o template nessas campanhas antes de o apagar.',
+            campanhas: emUso.map(c => ({ id: c.id, name: c.name })),
+          });
+        }
         await query('DELETE FROM templates WHERE id=$1 AND brand_id=$2', [id, tpl.brand_id]);
         return res.status(200).json({ ok: true });
       }
