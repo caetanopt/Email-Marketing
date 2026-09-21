@@ -261,9 +261,32 @@ module.exports = async function handler(req, res) {
       console.error('Cron: reconciliação falhou:', err.message);
     }
 
+    // ── Pulso ────────────────────────────────────────────────────────────
+    // Marca que o agendador externo chegou aqui. Não serve para nada durante
+    // esta invocação: serve para a AUSÊNCIA dele ser detectável. Ver a
+    // migração 066 e o action=saude.
+    //
+    // Escrever isto nunca pode travar o cron nem alterar o que ele devolve:
+    // o pulso é diagnóstico, o envio é o trabalho. Qualquer erro — tabela por
+    // criar (42P01), sem privilégio de escrita, base de dados a recusar —
+    // fica no log e mais nada.
+    const elapsedMs = Date.now() - cronStart;
+    try {
+      await query(
+        `INSERT INTO cron_heartbeat (id, last_run_at, elapsed_ms, processed, detalhe)
+         VALUES (1, NOW(), $1, $2, $3::jsonb)
+         ON CONFLICT (id) DO UPDATE
+            SET last_run_at = NOW(), elapsed_ms = EXCLUDED.elapsed_ms,
+                processed   = EXCLUDED.processed, detalhe = EXCLUDED.detalhe`,
+        [elapsedMs, results.length, JSON.stringify({ results, reconciliadas }).slice(0, 8000)]
+      );
+    } catch (err) {
+      if (err.code !== '42P01') console.error('Cron: pulso não gravado:', err.message);
+    }
+
     return res.status(200).json({
       ok: true, processed: results.length, reconciliadas,
-      elapsed_ms: Date.now() - cronStart, results
+      elapsed_ms: elapsedMs, results
     });
   }
 
@@ -285,6 +308,139 @@ module.exports = async function handler(req, res) {
     } catch (err) {
       return res.status(200).json({ configured: true, error: err.message });
     }
+  }
+
+  // ── Saúde da operação ─────────────────────────────────────────────────
+  //
+  // Quatro perguntas que ninguém conseguia responder sem abrir o Supabase, e
+  // cujas respostas erradas só apareciam quando já era tarde:
+  //
+  //   1. o agendador externo ainda está vivo?  (se parou, os envios agendados
+  //      simplesmente não acontecem e nada acusa)
+  //   2. há alguma campanha encravada a meio?
+  //   3. a reputação está dentro dos limites da AWS?
+  //   4. quanto é que está a falhar?
+  //
+  // Só lê. Cada consulta é limitada de propósito — arranca-se sempre pelas
+  // campanhas (tabela pequena) e só depois se tocam as tabelas grandes pelas
+  // suas chaves estrangeiras, para isto não se tornar aquilo que veio
+  // diagnosticar. Cada bloco falha para o seu lado: uma parte indisponível
+  // devolve `null` e as outras três continuam a responder.
+  if (action === 'saude' && req.method === 'GET') {
+    const dias = Math.min(Math.max(parseInt(req.query.dias, 10) || 7, 1), 90);
+    const saude = { dias };
+
+    // 1. Agendador
+    try {
+      const [hb] = await query(
+        `SELECT last_run_at, elapsed_ms, processed,
+                EXTRACT(EPOCH FROM (NOW() - last_run_at))::int AS ha_segundos
+           FROM cron_heartbeat WHERE id = 1`
+      );
+      const [{ atrasadas }] = await query(
+        `SELECT COUNT(*)::int AS atrasadas FROM campaigns
+          WHERE status = 'scheduled' AND scheduled_at < NOW() - INTERVAL '15 minutes'`
+      );
+      // Sem pulso ainda (tabela acabada de criar, ou cron nunca chamado) o
+      // ha_segundos é enorme por causa da semente em 'epoch' — é o que se
+      // quer: um agendador do qual nunca se ouviu falar não é um agendador
+      // saudável.
+      const s = hb ? hb.ha_segundos : null;
+      saude.agendador = {
+        ultima_execucao: hb ? hb.last_run_at : null,
+        ha_segundos: s,
+        duracao_ms: hb ? hb.elapsed_ms : null,
+        campanhas_processadas: hb ? hb.processed : null,
+        campanhas_atrasadas: atrasadas,
+        // O agendador costuma correr a cada minuto. 15 min sem pulso é muito
+        // mais do que qualquer falha pontual de rede; 60 min é uma paragem.
+        estado: s === null ? 'desconhecido'
+              : s > 3600 ? 'alarme'
+              : s > 900  ? 'aviso'
+              : atrasadas > 0 ? 'aviso' : 'ok',
+      };
+    } catch (err) {
+      if (err.code !== '42P01') console.error('saude/agendador:', err.message);
+      saude.agendador = { estado: 'desconhecido', erro: err.code === '42P01' ? 'migração 066 por correr' : 'indisponível' };
+    }
+
+    // 2. Fila
+    try {
+      const [fila] = await query(
+        `SELECT COUNT(*) FILTER (
+                  WHERE cr.status NOT IN ('sent','failed','bounced','suppressed')
+                )::int AS por_enviar,
+                COUNT(DISTINCT c.id)::int AS campanhas,
+                EXTRACT(EPOCH FROM (
+                  NOW() - MAX(COALESCE(cr.attempted_at, cr.sent_at))
+                ))::int AS sem_actividade_ha
+           FROM campaign_recipients cr
+           JOIN campaigns c ON c.id = cr.campaign_id
+          WHERE c.status = 'sending'`
+      );
+      saude.fila = {
+        por_enviar: fila.por_enviar,
+        campanhas_em_envio: fila.campanhas,
+        sem_actividade_ha: fila.sem_actividade_ha,
+        // Enquanto houver campanhas a enviar, a última tentativa devia ser de
+        // há segundos. Passados 5 min sem nada, ou o cron parou ou o envio
+        // rebentou — a rede de segurança dos 3 min já devia ter pegado nela.
+        estado: fila.por_enviar === 0 ? 'ok'
+              : (fila.sem_actividade_ha ?? 0) > 600 ? 'alarme'
+              : (fila.sem_actividade_ha ?? 0) > 300 ? 'aviso' : 'ok',
+      };
+    } catch (err) {
+      if (err.code !== '42703') console.error('saude/fila:', err.message);
+      saude.fila = { estado: 'desconhecido', erro: 'indisponível' };
+    }
+
+    // 3. Entregabilidade + 4. falhas
+    //
+    // Aproximação deliberada, e convém saber qual: a AWS calcula as taxas
+    // sobre uma janela móvel do volume TOTAL da conta, incluindo o que não
+    // sai daqui. Isto conta só as campanhas desta plataforma. Serve para ver
+    // a tendência e apanhar uma campanha má a tempo — o número oficial é o do
+    // painel de reputação do SES, e é esse que manda.
+    try {
+      const [d] = await query(
+        `WITH sc AS (
+           SELECT id FROM campaigns
+            WHERE status = 'sent' AND sent_at >= NOW() - ($1 * INTERVAL '1 day')
+         )
+         SELECT (SELECT COUNT(*) FROM campaign_recipients cr JOIN sc ON sc.id = cr.campaign_id
+                  WHERE cr.status IN ('sent','bounced','failed'))::int AS enviados,
+                (SELECT COUNT(*) FROM campaign_recipients cr JOIN sc ON sc.id = cr.campaign_id
+                  WHERE cr.status = 'failed')::int AS falhados,
+                (SELECT COUNT(*) FROM email_events ee JOIN sc ON sc.id = ee.campaign_id
+                  WHERE ee.type = 'bounce')::int AS bounces,
+                (SELECT COUNT(*) FROM email_events ee JOIN sc ON sc.id = ee.campaign_id
+                  WHERE ee.type = 'spam')::int  AS queixas`,
+        [dias]
+      );
+      const taxa = (n) => d.enviados ? +((n / d.enviados) * 100).toFixed(2) : 0;
+      const tBounce  = taxa(d.bounces);
+      const tQueixa  = taxa(d.queixas);
+      saude.entregabilidade = {
+        enviados: d.enviados, bounces: d.bounces, queixas: d.queixas, falhados: d.falhados,
+        taxa_bounce: tBounce, taxa_queixa: tQueixa, taxa_falha: taxa(d.falhados),
+        // Limites publicados pela AWS: acima de 5% de bounce ou 0,1% de
+        // queixas a conta entra em revisão, e acima de 10% / 0,5% pode ser
+        // suspensa. Avisa-se a meio do caminho, não em cima da linha.
+        limites: { bounce_revisao: 5, bounce_aviso: 2, queixa_revisao: 0.1, queixa_aviso: 0.05 },
+        estado: !d.enviados ? 'ok'
+              : (tBounce >= 5 || tQueixa >= 0.1)     ? 'alarme'
+              : (tBounce >= 2 || tQueixa >= 0.05)    ? 'aviso' : 'ok',
+      };
+    } catch (err) {
+      console.error('saude/entregabilidade:', err.message);
+      saude.entregabilidade = { estado: 'desconhecido', erro: 'indisponível' };
+    }
+
+    const estados = Object.values(saude).map(v => v && v.estado).filter(Boolean);
+    saude.estado = estados.includes('alarme') ? 'alarme'
+                 : estados.includes('aviso')  ? 'aviso'
+                 : estados.includes('desconhecido') ? 'desconhecido' : 'ok';
+    return res.status(200).json(saude);
   }
 
   // Global stats across all brands the user has access to

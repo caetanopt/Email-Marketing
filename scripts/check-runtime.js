@@ -390,6 +390,58 @@ const provas = [
       throw new Error('voltou o filtro que so esconde linhas no DOM');
     if(!/_ultimoRefrescoLista/.test(h))
       throw new Error('a lista de campanhas volta a ser recarregada a cada lote durante o envio');`],
+  ['o que a Fase 5 acrescentou fica desligado sem variável de ambiente', `const fs=require('fs');
+    // A exigencia era explicita: nenhuma destas alteracoes pode mudar o
+    // comportamento de quem nao as configurou.
+    const s=fs.readFileSync('lib/ses.js','utf8');
+    if(!/function opcoesDeEnvio/.test(s))
+      throw new Error('opcoesDeEnvio desapareceu');
+    // Um ConfigurationSetName que nao exista na conta faz o SES REJEITAR o
+    // envio inteiro. Por isso nao pode ter valor por omissao nenhum.
+    if(/SES_CONFIGURATION_SET \\|\\|/.test(s))
+      throw new Error('o configuration set ganhou um valor por omissao — um nome que nao exista na conta rejeita TODOS os envios');
+    if(!/return cs \\? \\{ ConfigurationSetName: cs \\} : \\{\\}/.test(s))
+      throw new Error('opcoesDeEnvio deixou de devolver {} quando a variavel nao esta definida');
+    // Os dois caminhos de envio: campanha e teste. Se o teste nao passar pelo
+    // mesmo configuration set, so se descobre que esta mal com uma campanha.
+    const sc=fs.readFileSync('lib/sendCampaign.js','utf8');
+    const cid=fs.readFileSync('api/campaigns/[id].js','utf8');
+    for(const [nome, texto] of [['envio de campanha', sc], ['envio de teste', cid]])
+      if(!/\\.\\.\\.opcoesDeEnvio\\(\\)/.test(texto))
+        throw new Error('o '+nome+' deixou de passar pelo opcoesDeEnvio');
+    // Tecto de aquecimento: aplica-se POR CIMA da quota da AWS, nunca contra
+    // ela. Um Math.max aqui mandaria enviar acima do que a AWS permite.
+    if(!/Math\\.min\\(quotaInfo\\.Max24HourSend, tectoDiario\\)/.test(sc))
+      throw new Error('o tecto de aquecimento deixou de ser o MENOR dos dois — pode passar a quota real da AWS');
+    if(!/SES_LIMITE_DIARIO \\|\\| '0'/.test(sc))
+      throw new Error('SES_LIMITE_DIARIO ganhou um valor por omissao — passa a travar envios em instalacoes que nao o pediram');
+    // O pulso e diagnostico; o envio e o trabalho. Uma falha a gravar o pulso
+    // nunca pode travar o cron.
+    const ci=fs.readFileSync('api/campaigns/index.js','utf8');
+    const iPulso=ci.indexOf('INSERT INTO cron_heartbeat');
+    if(iPulso<0) throw new Error('o pulso do agendador desapareceu — uma paragem do agendador externo volta a ser invisivel');
+    const volta=ci.slice(iPulso-400, iPulso+700);
+    if(!/try \\{/.test(volta) || !/42P01/.test(volta))
+      throw new Error('a gravacao do pulso deixou de tolerar erro — uma tabela em falta passa a travar o cron');
+    // O diagnostico so le. Um endpoint de saude que escreve e uma forma nova
+    // de partir aquilo que veio vigiar.
+    const iS=ci.indexOf("action === 'saude'");
+    if(iS<0) throw new Error('o endpoint de saude desapareceu');
+    const bloco=ci.slice(iS, ci.indexOf("action === 'global_stats'"));
+    if(/INSERT INTO|UPDATE |DELETE FROM|ALTER TABLE/.test(bloco))
+      throw new Error('o endpoint de saude passou a escrever — tem de ser so leitura');
+    if(!/Math\\.min\\(Math\\.max\\(parseInt\\(req\\.query\\.dias/.test(bloco))
+      throw new Error('a janela do diagnostico deixou de ser limitada — passa a aceitar um varrimento arbitrario');
+    // O painel e um extra: se o diagnostico falhar, as estatisticas tem de
+    // carregar na mesma.
+    const h=fs.readFileSync('email.html','utf8');
+    if(!/async function _carregarSaude/.test(h))
+      throw new Error('o painel de saude desapareceu do ecra de estatisticas');
+    if(!/_carregarSaude\\(\\);/.test(h))
+      throw new Error('o painel de saude deixou de ser pedido');
+    const iCS=h.indexOf('async function _carregarSaude');
+    if(!/catch \\(e\\)/.test(h.slice(iCS, iCS+600)))
+      throw new Error('o painel de saude deixou de apanhar o erro — uma falha do diagnostico passa a partir o ecra');`],
   ['o redireccionador só aceita destinos da própria campanha', `const fs=require('fs');
     // O token do clique e HMAC sobre "track:<campanha>:<contacto>": autentica
     // o PAR, nao o DESTINO. Quem recebeu um email tinha um par valido e

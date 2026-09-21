@@ -9,11 +9,13 @@ URL: email-marketing-eta.vercel.app *(ou o domínio próprio configurado em `APP
 
 Toda a informação da plataforma (utilizadores, marcas, contactos, listas, campanhas, templates, log de envios, supressões) vive numa base de dados **PostgreSQL no Supabase**, acedida via `pg` (`lib/db.js`) através do pooler de ligação (porta 6543). Logos/media de marca são guardados no **Vercel Blob** (`@vercel/blob`) — **anexos de campanhas NÃO usam o Blob**: ficam em base64 numa coluna JSONB (`campaigns.attachments`, migração 038) e são enviados inline como MIME raw via SES (ver risco abaixo).
 
-Variáveis de ambiente relevantes (Vercel): `DATABASE_URL`, `JWT_SECRET`, `BLOB_READ_WRITE_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `SES_RATE`, `SES_RATE_PER_SECOND`, `SES_BATCH_SIZE`, `APP_URL`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `MAGIC_LINK_FROM`, `FROM_DOMAIN`, `COMPANY_ADDRESS`, `CRON_MAX_SECONDS`. **Nota:** `.env.example` está desactualizado — lista variáveis `SMTP_*` que já não são usadas em lado nenhum (o envio é feito directamente via AWS SDK/SES, não SMTP) e omite todas as variáveis reais acima.
+Variáveis de ambiente relevantes (Vercel): `DATABASE_URL`, `JWT_SECRET`, `BLOB_READ_WRITE_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `SES_RATE`, `SES_RATE_PER_SECOND`, `SES_BATCH_SIZE`, `APP_URL`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, `CRON_TRIGGER_SECRET`, `MAGIC_LINK_FROM`, `FROM_DOMAIN`, `COMPANY_ADDRESS`, `CRON_MAX_SECONDS`, `CRON_BATCH_RESERVE_MS`, `SNS_TOPIC_ARNS`, `SES_CONFIGURATION_SET`, `SES_LIMITE_DIARIO`. **Nota:** `.env.example` está desactualizado — lista variáveis `SMTP_*` que já não são usadas em lado nenhum (o envio é feito directamente via AWS SDK/SES, não SMTP) e omite todas as variáveis reais acima.
+
+As três últimas são **opcionais e sem valor por omissão**: enquanto não forem definidas, o sistema comporta-se exactamente como antes de existirem. Ver a secção 4.
 
 ### Migrações de base de dados
 
-O esquema é gerido por ficheiros SQL numerados em `migrations/` (001 a 039, 41 ficheiros no total — os números 030 e 031 estão duplicados: `030_admins_all_brands.sql`/`030_brand_api_key.sql` e `031_cleanup_orphan_templates.sql`/`031_domain_whitelist.sql`). **Não há execução automática**: sempre que uma alteração de código inclui uma nova migração, é preciso abrir o Supabase → SQL Editor e correr o conteúdo do ficheiro manualmente. O código tem alguns fallbacks defensivos (`_migration_pending: true` quando apanha o erro Postgres `42P01 — undefined_table`), mas isso só evita um crash total; a funcionalidade em si não funciona até a migração ser corrida.
+O esquema é gerido por ficheiros SQL numerados em `migrations/` (001 a 066 — os números 030 e 031 estão duplicados: `030_admins_all_brands.sql`/`030_brand_api_key.sql` e `031_cleanup_orphan_templates.sql`/`031_domain_whitelist.sql`). **Não há execução automática**: sempre que uma alteração de código inclui uma nova migração, é preciso abrir o Supabase → SQL Editor e correr o conteúdo do ficheiro manualmente. O código tem alguns fallbacks defensivos (`_migration_pending: true` quando apanha o erro Postgres `42P01 — undefined_table`), mas isso só evita um crash total; a funcionalidade em si não funciona até a migração ser corrida.
 
 ### O que pode correr mal
 
@@ -46,18 +48,20 @@ Aplicação Node.js sem framework, funções serverless puras (`module.exports =
 | `lib/ses.js` | Cliente Amazon SES |
 | `lib/sendCampaign.js` | Motor de envio: batching, rate limit, quota SES, tracking, retries |
 | `lib/auth.js` | Helpers de autenticação/CORS partilhados pelas rotas |
+| `lib/snsSignature.js` | Validação da assinatura das notificações SNS da Amazon |
 | `migrations/` | Esquema da BD (correr manualmente no Supabase) |
-| `primemail/` | Protótipo Laravel/Vue anterior — **não está em produção**, ver nota abaixo |
+| `scripts/check-runtime.js` | Sondas de regressão estáticas — correr antes de cada entrega |
+| `scripts/carga.js` | Arnês de carga (ver o cabeçalho: **não correr contra produção**) |
 
-> **Nota:** a pasta `docs/` e o `README.md` descrevem uma arquitetura-alvo em Laravel + Vue + MySQL + Redis que nunca chegou a substituir a implementação actual. O que está realmente em produção é o stack Node.js + Postgres (Supabase) + `email.html` descrito acima.
+> **Nota:** a pasta `docs/` descreve uma arquitetura-alvo em Laravel + Vue + MySQL + Redis que nunca chegou a substituir a implementação actual. Vale como intenção de produto, não como descrição do sistema: o que está em produção é o stack Node.js + Postgres (Supabase) + `email.html` descrito acima. A pasta `primemail/`, com o protótipo Laravel/Vue, foi retirada do repositório — ia em cada deploy sem nunca ser servida. Continua no histórico de git — `git checkout 1e49f29 -- primemail` traz a pasta de volta tal como estava.
 
 ### Regras de negócio principais
 
 - **Autenticação** — **só por magic link** (não existe login por palavra-passe; não há campo de password nem hashing no schema/código). `api/auth.js` envia um link por email com token válido 15 min; a sessão resultante é um JWT válido 7 dias (`JWT_SECRET`). Roles por marca em `user_brand_roles`, valores exactos `owner`/`editor`/`viewer` (a role `admin` existiu e foi removida na migração 025).
 - **Multi-marca** — as campanhas e os templates estão associados a uma `brand_id`; os utilizadores podem ter acesso a várias marcas com roles diferentes em cada. **As listas de email e os contactos são globais**: não pertencem a nenhuma marca (migrações 049 e 051). Um email é um contacto só, partilhado por todas as marcas — era assim que o envio já os tratava, juntando-os com `DISTINCT ON (lower(email))`. Nas APIs `/api/contacts` e `/api/sync` o `brand_id` deixou de ser obrigatório e deixou de filtrar contactos; continua a ser exigido nas acções de importação (`?action=import_*`, `?action=imports`), porque o histórico de importações é que é por marca.
 - **Cancelamentos via `DELETE /api/sync`** — com `list_id` remove a pessoa **só daquela lista** (apaga a linha de `list_members`) e não toca na supressão, por isso continua a receber das outras listas; a resposta traz `scope: "lista"`. Sem `list_id` é cancelamento total: marca o contacto `unsubscribed` e insere o email em `suppression`, que é global — deixa de receber de qualquer lista e de qualquer marca, o mesmo efeito do link de cancelamento nos emails; a resposta traz `scope: "global"`. A supressão não se desfaz pela API (só em Supressões, na aplicação).
-- **Envio de campanhas** — motor em `lib/sendCampaign.js`, via Amazon SES. Lê o rate limit em `global_settings.ses_rate_per_second` (fallback `SES_RATE_PER_SECOND`, depois 50/s), limitado também por `SES_RATE`/`SES_BATCH_SIZE` (default 500 por lote) para caber no timeout de 60s da função Vercel (`maxDuration` definido em `vercel.json` só para `campaigns/*`). Antes de cada lote verifica a quota diária do SES; se esgotada, o código **não agenda retoma nenhuma** — só marca `quotaExhausted` e deixa os destinatários `pending`. A retoma depende inteiramente do cron externo continuar a chamar `/api/cron` depois da quota SES resetar à meia-noite UTC; se o cron parar, os envios ficam presos indefinidamente sem qualquer alerta automático.
-- **Cron / agendamento** — `/api/cron` (→ `campaigns?action=process-scheduled`) e `/api/cron/import` (→ `contacts?action=import_process`) são chamados por um agendador **externo** (não há cron nativo da Vercel configurado neste projecto). **Assimetria de segurança**: `/api/cron` está deliberadamente **sem autenticação** (endpoint público, é idempotente/no-op se nada estiver agendado); `/api/cron/import` **exige** o header `CRON_SECRET`. Se campanhas agendadas não saírem à hora certa, verificar primeiro se o serviço de cron externo está a chamar estes endpoints.
+- **Envio de campanhas** — motor em `lib/sendCampaign.js`, via Amazon SES. Lê o rate limit em `global_settings.ses_rate_per_second` (fallback `SES_RATE_PER_SECOND`, depois 50/s), limitado também por `SES_RATE`/`SES_BATCH_SIZE` (default 500 por lote) para caber no timeout de 60s da função Vercel (`maxDuration` definido em `vercel.json` só para `campaigns/*`). Antes de cada lote verifica a quota diária do SES (e o tecto de aquecimento `SES_LIMITE_DIARIO`, se definido); se esgotada, o código **não agenda retoma nenhuma** — só marca `quotaExhausted` e devolve os destinatários a `pending`. A retoma depende inteiramente do cron externo continuar a chamar `/api/cron` depois da quota SES resetar à meia-noite UTC. **Se o cron parar, os envios ficam presos** — mas isso deixou de ser invisível: ver o pulso do agendador na secção 4.
+- **Cron / agendamento** — `/api/cron` (→ `campaigns?action=process-scheduled`) e `/api/cron/import` (→ `contacts?action=import_process`) são chamados por um agendador **externo** (não há cron nativo da Vercel configurado neste projecto). `/api/cron` exige `CRON_TRIGGER_SECRET` **quando essa variável está definida** (por cabeçalho `Authorization: Bearer …` ou por `?k=`, porque nem todos os agendadores enviam cabeçalhos); sem ela definida aceita chamadas anónimas e deixa um aviso no log, para um deploy não parar os envios antes de o agendador ser actualizado. `/api/cron/import` exige o header `CRON_SECRET`, que é uma variável **diferente** — sobrecarregar um segredo com dois fins foi parte do problema original. Se campanhas agendadas não saírem à hora certa, verificar primeiro se o serviço de cron externo está a chamar estes endpoints.
 - **Rodapé legal** — montado em `lib/emailFooter.js` e acrescentado a todos os envios (envio real, envio de teste e versão web). Tem três partes: a área cinzenta com o disclaimer da marca ou global, a **frase legal** (destinatário, ano, sede e NIPC) e a linha de links (Política de privacidade | Versão web | Cancelar subscrição). A frase legal **e a linha de links** podem ser desligadas em conjunto **por campanha**, no ecrã de envio → cartão "Rodapé legal" (coluna `campaigns.no_legal_notice`, migração 052; por omissão FALSE, ou seja são enviadas). O disclaimer da área cinzenta não é afectado. **Risco assumido:** sem o link visível de cancelamento no corpo há mais probabilidade de os emails serem marcados como spam — o Gmail e o Yahoo pedem-no desde Fevereiro de 2024. O cabeçalho `List-Unsubscribe` continua a ser enviado em todos os casos (`lib/rawEmail.js`), por isso o botão de cancelamento desses clientes continua a funcionar.
 - **Contactos de um ficheiro no envio** — ao carregar um ficheiro no passo dos destinatários, cada endereço é gravado em `contacts` (é assim que passa a ser destinatário) mas fica marcado `hidden=TRUE` (migração 053) e **não aparece na página de Contactos**. Deixa de estar marcado se entrar numa lista, por importação ou à mão. Nunca se marca um contacto que já existia. Não são apagados no fim do envio: `campaign_recipients.contact_id` é `ON DELETE CASCADE`, e apagá-los levava atrás o relatório da campanha (0 enviados, sem registo de erros) — chegou a acontecer, e os dois motores de envio comportavam-se de forma diferente. Para ver os não listados na API: `GET /api/contacts?mostrar_ocultos=1`.
 - **Ninguém cancelado recebe** — antes de cada lote, `bloquearCancelados` (em `lib/campanhas.js`, partilhada pelos dois motores de envio) marca como falhados os destinatários pendentes que estejam na tabela `suppression` (por email ou por domínio, gravado como `@dominio.pt`) **ou** cujo contacto tenha `status` em `unsubscribed`/`bounced`/`suppressed`/`complained`. As duas verificações são precisas: cancelar pelo link do email põe o endereço na supressão, mas mudar o estado à mão na aplicação não — e durante um tempo esse caso passava. Antes desta há duas barreiras anteriores: as listas só contribuem contactos `active` e não suprimidos (`initCampaignSend`), e os destinatários directos são filtrados pelas mesmas duas condições ao serem ligados à campanha (`add_direct_recipients`).
@@ -91,6 +95,75 @@ IDs Vercel: equipa `team_jf00Jpfp6cElvXAfxaxVal0Q`, projecto `prj_8h1BsSA38ium1K
 - **Deploy só corre nas branches listadas** — um commit numa branch nova/diferente não dispara nada; é preciso adicionar a branch ao `on.push.branches` do `deploy.yml`.
 - **Função de campanhas atinge timeout** — `api/campaigns/index.js` e `api/campaigns/[id].js` têm `maxDuration: 60`; envios muito grandes devem ser processados em lotes (já é o comportamento por defeito) em várias invocações sucessivas do cron, não numa só chamada.
 - **CORS bloqueado numa chamada à API** — os headers CORS globais estão definidos em `vercel.json` para `/api/(.*)`; se um endpoint novo não herdar isto, confirmar que está dentro de `api/`.
+
+---
+
+## 4. Operação e entregabilidade
+
+### 4.1 Saber que está tudo a andar
+
+O ecrã **Estatísticas** abre com quatro indicadores no topo (`GET /api/campaigns?action=saude`). São só leitura e existem porque, antes deles, a única forma de saber que alguma coisa tinha parado era reparar que uma campanha não saiu.
+
+| Indicador | Verde | Amarelo | Vermelho |
+|---|---|---|---|
+| **Agendador** | pulso com menos de 15 min | >15 min, ou campanhas agendadas por processar | >1 h sem pulso |
+| **Fila** | nada por enviar, ou a enviar normalmente | 5 min sem uma tentativa | 10 min sem uma tentativa |
+| **Rejeições** | <2% | ≥2% | ≥5% — limite da AWS |
+| **Queixas de spam** | <0,05% | ≥0,05% | ≥0,1% — limite da AWS |
+
+O **pulso** é uma linha em `cron_heartbeat` (migração 066) reescrita a cada invocação de `/api/cron`. Se marcar «nunca», ou se o agendador aparecer a vermelho:
+
+1. Confirmar no serviço de agendamento externo que o job está activo e a apontar para `https://<domínio>/api/cron`.
+2. Se `CRON_TRIGGER_SECRET` estiver definida na Vercel, confirmar que o agendador a envia — em `Authorization: Bearer <segredo>` ou em `?k=<segredo>`. Um segredo errado devolve 401 e o job parece correr bem do lado do agendador.
+3. Chamar o endpoint à mão para ver a resposta. Depois disso o pulso deve ficar verde.
+
+As taxas de rejeição e queixa contam **só as campanhas desta plataforma**; a AWS calcula as dela sobre o volume total da conta. Servem para apanhar uma campanha má a tempo — **o número que manda é o do painel de reputação do SES**.
+
+### 4.2 Aquecimento de IP e tecto diário
+
+Um domínio que passa de mil emails por mês para cem mil de um dia para o outro é tratado pelos grandes fornecedores como suspeito: o correio vai para spam ou é recusado em bloco, e recuperar reputação demora semanas. A prática é subir por degraus ao longo de 4 a 6 semanas.
+
+`SES_LIMITE_DIARIO` dá a esse plano uma trava real. Aplica-se **por cima** da quota da AWS — toma-se sempre o menor dos dois — e atingi-lo **não é um erro**: os destinatários que não couberam voltam a `pending` e saem na invocação seguinte, pelo mesmo caminho da quota esgotada.
+
+Um degrau plausível, a ajustar conforme o painel de reputação (só se sobe se as taxas estiverem verdes):
+
+| Semana | `SES_LIMITE_DIARIO` |
+|---|---|
+| 1 | 5 000 |
+| 2 | 15 000 |
+| 3 | 40 000 |
+| 4 | 80 000 |
+| 5+ | remover a variável |
+
+Sem a variável definida não há tecto nenhum além do da AWS — que é o comportamento de hoje.
+
+### 4.3 Passos que só se fazem na consola da AWS
+
+Nenhum destes é código. Estão aqui porque sem eles a entregabilidade fica pior do que precisa de ser.
+
+**Configuration set** (~10 min). Em SES → Configuration sets, criar um (ex.: `emkt-eventos`) e ligar-lhe um destino de eventos — SNS para o tópico que já alimenta `/api/webhooks`, ou o Firehose/CloudWatch se quiser histórico. Depois definir `SES_CONFIGURATION_SET` na Vercel com esse nome **exacto** e fazer um envio de teste antes de uma campanha.
+
+> **Atenção:** um nome que não exista na conta faz o SES rejeitar *todos* os envios (`ConfigurationSetDoesNotExistException`). É por isso que a variável não tem valor por omissão, e é por isso que o envio de teste passa pelo mesmo caminho — para a configuração errada aparecer num teste e não numa campanha.
+
+**MAIL FROM próprio** (~20 min + propagação de DNS). Por omissão o `Return-Path` das mensagens aponta para `amazonses.com`, o que enfraquece o alinhamento de SPF e é visível para quem inspeccione o cabeçalho. Em SES → Verified identities → o domínio → Custom MAIL FROM, definir um subdomínio (ex.: `mail.caetano.pt`) e acrescentar os registos MX e TXT que a AWS indica. Escolher «Reject the message» só depois de o DNS propagar — antes disso, «Use default» evita cortar envios.
+
+**Separar transaccional de marketing.** Hoje os magic links de login saem pelo mesmo domínio e reputação das campanhas. Uma campanha com muitas queixas pode impedir as pessoas de entrar na plataforma — e como não há login por palavra-passe, isso tranca toda a gente ao mesmo tempo. A separação faz-se com um subdomínio e uma identidade SES próprios para o transaccional (ex.: `login.caetano.pt`), e depois `MAGIC_LINK_FROM` a apontar para lá. **Isto ainda não está feito.**
+
+### 4.4 Teste de carga
+
+`scripts/carga.js` mede os quatro caminhos que decidem o tecto: arranque do envio, reclamação de lote, paginação de contactos e agregação do painel.
+
+```
+CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --contactos 100000
+CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --limpar
+```
+
+Usa uma variável própria, e não `DATABASE_URL`, precisamente para não poder apontar para produção por distracção; um URL que se pareça com o do Supabase é recusado. Semeia centenas de milhares de linhas e **não as apaga sozinho** — o `--limpar` é um passo à parte. Correr contra uma cópia descartável.
+
+### 4.5 O que continua por fazer
+
+- **Limitação por ISP** (ritmos diferentes para Gmail, Outlook, Sapo). Exigiria reordenar os destinatários por domínio dentro do motor de envio — a parte com mais risco de todo o sistema. Não foi feito.
+- **Alertas activos.** O diagnóstico existe mas é preciso alguém abrir o ecrã. Um alerta por email ou Slack quando o pulso envelhece implicaria um endpoint novo, e a Vercel já está no limite de 12 funções.
 
 ---
 

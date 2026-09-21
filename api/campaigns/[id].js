@@ -1,6 +1,6 @@
 const { query } = require('../../lib/db');
 const { requireAuth, cors, requireWrite } = require('../../lib/auth');
-const { getSESClient } = require('../../lib/ses');
+const { getSESClient, opcoesDeEnvio } = require('../../lib/ses');
 const { SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
@@ -848,6 +848,10 @@ module.exports = async function handler(req, res) {
           });
           info = await sesClientTest.send(new SendRawEmailCommand({
             RawMessage: { Data: Buffer.from(rawMsg) },
+            // O envio de teste passa pelo mesmo configuration set do envio a
+            // sério: é o que permite validar a configuração sem queimar uma
+            // campanha inteira para descobrir que estava errada.
+            ...opcoesDeEnvio(),
           }));
           try {
             await query(

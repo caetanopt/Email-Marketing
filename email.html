@@ -362,6 +362,9 @@
             btn.className = `stats-range-btn px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
         });
         const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        // Fora do fluxo das estatísticas de propósito: é um pedido
+        // independente, e um erro seu não pode impedir o resto de carregar.
+        _carregarSaude();
         const tbody = document.getElementById('statsBrandsTbody');
         const cacheKey = `stats_${_currentBrand?.id}_${_statsRange}`;
         const cached = _cacheGet(cacheKey);
@@ -382,6 +385,88 @@
                 setEl('statsTotalSent','—');
                 if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(e.message)}</td></tr>`;
             }
+        }
+    }
+
+    // ── Saúde da operação ──────────────────────────────────────────────
+    //
+    // Quatro números que dizem se a máquina está a trabalhar: o agendador
+    // externo, a fila, a reputação e as falhas. Antes disto, a única forma de
+    // saber que o agendador tinha parado era reparar que uma campanha
+    // agendada não saiu.
+    //
+    // Nada aqui é crítico para o ecrã: se falhar, o painel fica escondido e
+    // as estatísticas carregam na mesma.
+    function _saudeCor(estado) {
+        return ({
+            ok:           { fundo: 'bg-emerald-50 border-emerald-200', ponto: 'bg-emerald-500', texto: 'text-emerald-700' },
+            aviso:        { fundo: 'bg-amber-50 border-amber-200',     ponto: 'bg-amber-500',   texto: 'text-amber-700'   },
+            alarme:       { fundo: 'bg-red-50 border-red-200',         ponto: 'bg-red-500',     texto: 'text-red-700'     },
+            desconhecido: { fundo: 'bg-slate-50 border-slate-200',     ponto: 'bg-slate-400',   texto: 'text-slate-500'   },
+        })[estado] || { fundo: 'bg-slate-50 border-slate-200', ponto: 'bg-slate-400', texto: 'text-slate-500' };
+    }
+
+    function _saudeHa(segundos) {
+        if (segundos === null || segundos === undefined) return '—';
+        // A semente da migração 066 é 'epoch': qualquer coisa acima de um ano
+        // quer dizer "nunca correu", não "correu há 56 anos".
+        if (segundos > 31536000) return 'nunca';
+        if (segundos < 90)    return `há ${Math.max(0, segundos)} s`;
+        if (segundos < 5400)  return `há ${Math.round(segundos / 60)} min`;
+        if (segundos < 172800) return `há ${Math.round(segundos / 3600)} h`;
+        return `há ${Math.round(segundos / 86400)} dias`;
+    }
+
+    function _renderSaude(s) {
+        const painel = document.getElementById('saudePainel');
+        if (!painel) return;
+        const ag = s.agendador || {}, fi = s.fila || {}, en = s.entregabilidade || {};
+        // Vírgula decimal: 0,15% e não 0.15%.
+        const pct = n => `${Number(n ?? 0).toLocaleString('pt-PT', { maximumFractionDigits: 2 })}%`;
+        const cartao = (titulo, estado, valor, nota) => {
+            const c = _saudeCor(estado);
+            return `<div class="border rounded-xl p-4 ${c.fundo}">
+                <div class="flex items-center gap-2 mb-1.5">
+                    <span class="w-2 h-2 rounded-full ${c.ponto}"></span>
+                    <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide">${escHtml(titulo)}</p>
+                </div>
+                <p class="text-lg font-bold ${c.texto}">${escHtml(String(valor))}</p>
+                <p class="text-xs text-slate-500 mt-0.5">${escHtml(String(nota))}</p>
+            </div>`;
+        };
+        painel.innerHTML = `
+            <div class="flex items-center gap-3 mb-3">
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Saúde da operação</p>
+                <span class="text-xs text-slate-400">últimos ${escHtml(String(s.dias))} dias</span>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                ${cartao('Agendador', ag.estado,
+                    _saudeHa(ag.ha_segundos),
+                    ag.erro ? ag.erro
+                        : ag.campanhas_atrasadas ? `${ag.campanhas_atrasadas} campanha(s) agendada(s) por processar`
+                        : 'última execução')}
+                ${cartao('Fila', fi.estado,
+                    fi.erro ? '—' : `${(fi.por_enviar ?? 0).toLocaleString('pt-PT')}`,
+                    fi.erro ? fi.erro
+                        : fi.por_enviar ? `em ${fi.campanhas_em_envio} campanha(s) · actividade ${_saudeHa(fi.sem_actividade_ha)}`
+                        : 'nada por enviar')}
+                ${cartao('Rejeições', en.estado,
+                    en.erro ? '—' : pct(en.taxa_bounce),
+                    en.erro ? en.erro : `limite AWS ${pct(en.limites?.bounce_revisao ?? 5)} · ${(en.bounces ?? 0).toLocaleString('pt-PT')} em ${(en.enviados ?? 0).toLocaleString('pt-PT')}`)}
+                ${cartao('Queixas de spam', en.estado,
+                    en.erro ? '—' : pct(en.taxa_queixa),
+                    en.erro ? en.erro : `limite AWS ${pct(en.limites?.queixa_revisao ?? 0.1)} · ${(en.queixas ?? 0).toLocaleString('pt-PT')} queixa(s)`)}
+            </div>`;
+        painel.classList.remove('hidden');
+    }
+
+    async function _carregarSaude() {
+        try {
+            const s = await apiFetch(`/api/campaigns?action=saude&brand_id=${encodeURIComponent(_currentBrand?.id || '')}`);
+            _renderSaude(s);
+        } catch (e) {
+            // Sem diagnóstico não se inventa um: o painel fica escondido.
+            console.warn('saúde indisponível:', e?.message);
         }
     }
 
@@ -18125,6 +18210,11 @@ ${sections.join('\n\n')}
                 </div>
             </header>
             <main class="flex-1 px-8 py-6 space-y-6">
+
+                <!-- Saúde da operação. Começa escondido: só aparece quando o
+                     servidor responde, para uma falha do diagnóstico não
+                     estragar o ecrã que veio diagnosticar. -->
+                <div id="saudePainel" class="hidden"></div>
 
                 <!-- KPI cards — totais Caetano -->
                 <div>

@@ -1,80 +1,54 @@
 # Caetano eMKT
 
-> **Plataforma SaaS de Email Marketing Multi-Marca para o Grupo Caetano**
+> Plataforma de email marketing multi-marca do Grupo Caetano. **Em produção.**
+
+Serve as marcas do grupo (BMW, Hyundai, BYD, Audi, Alpine, Dacia, Caetano Parts, entre outras) com uma base de contactos partilhada e campanhas, templates e segmentos por marca.
 
 ---
 
-## O que é o Caetano eMKT?
+## Como isto está feito
 
-O **Caetano eMKT** é uma plataforma profissional de email marketing construída especificamente para operar num ambiente **multi-marca** (multi-brand), servindo as diferentes marcas do Grupo Caetano (BMW, Hyundai, BYD, Audi, Alpine, Dacia, Caetano Parts, entre outras).
+Não há framework, nem build step, nem workers. É deliberado, e tem consequências que convém conhecer antes de mexer.
 
-A plataforma combina a usabilidade de ferramentas como Mailchimp com o controlo e soberania de dados de soluções auto-hospedadas como o Sendy, adaptada às necessidades operacionais de um grupo automóvel com múltiplas marcas, bases de dados extensas e requisitos rigorosos de segurança e conformidade RGPD.
+| Camada | O que é |
+|---|---|
+| Frontend | `email.html` — uma SPA num único ficheiro, ~19 000 linhas, Tailwind por CDN, sem compilação |
+| Backend | Funções serverless Node.js na Vercel, uma por ficheiro em `api/` — **12 de 12 usadas** |
+| Base de dados | PostgreSQL no Supabase, via `pg` (`lib/db.js`), pelo pooler na porta 6543 |
+| Envio | Amazon SES (`SendRawEmailCommand`), eventos de volta por SNS → `api/track.js` |
+| Ficheiros | Vercel Blob para logos e media de marca; anexos de campanha vão em base64 numa coluna JSONB |
+| Esquema | Ficheiros SQL numerados em `migrations/`, **corridos à mão** no Supabase |
+| Deploy | Push em `claude/email-marketing-saas-M2qZP` → GitHub Action → `vercel --prod` |
 
----
+Três restrições que explicam quase todas as decisões do código:
 
-## Documentação do Projeto
+1. **12 funções na Vercel, todas ocupadas.** Uma funcionalidade nova entra como `action=` numa rota existente, não como ficheiro novo. Os `rewrites` no `vercel.json` disfarçam isto (`/api/cron` é `campaigns?action=process-scheduled`).
+2. **Não há fila nem workers.** A tabela `campaign_recipients` *é* a fila, e cada invocação reclama um lote com `FOR UPDATE SKIP LOCKED`. Os 60 s de limite da função são o que divide um envio em lotes.
+3. **O agendamento depende de um cron externo** chamar `/api/cron`. Não há Vercel Cron. Se esse agendador parar, as campanhas agendadas não saem — ver o indicador «Agendador» no ecrã de Estatísticas.
 
-| # | Documento | Descrição |
-|---|-----------|-----------|
-| 01 | [Visão do Produto](docs/01-product-vision.md) | Objetivo, proposta de valor, diferenciais, papel da lógica multi-marca |
-| 02 | [Funcionalidades Principais](docs/02-features.md) | Módulos funcionais detalhados |
-| 03 | [Definição de MVP](docs/03-mvp.md) | MVP obrigatório e roadmap V2+ |
-| 04 | [Arquitetura Técnica](docs/04-technical-architecture.md) | Stack, infraestrutura, serviços |
-| 05 | [Arquitetura de Dados](docs/05-data-architecture.md) | Entidades, relações, índices, estratégia multi-marca |
-| 06 | [Estratégia de Performance](docs/06-performance-strategy.md) | Grandes volumes, queries, cache, workers |
-| 07 | [Fluxo de Importação](docs/07-import-flow.md) | Pipeline completo de importação de contactos |
-| 08 | [Autenticação e Login](docs/08-authentication-flow.md) | Fluxo seguro de autenticação e sessões |
-| 09 | [Segurança e Proteção de Dados](docs/09-security.md) | RGPD, proteção de endpoints, auditoria |
-| 10 | [UX / Dashboard / Backoffice](docs/10-ux-dashboard.md) | Estrutura da interface, navegação, contexto de marca |
-| 11 | [API e Organização do Código](docs/11-api-code-organization.md) | Estrutura Laravel, padrões, testes |
-| 12 | [Roadmap por Fases](docs/12-roadmap.md) | Fase 1 MVP → Fase 2 Otimização → Fase 3 Escala |
-| 13 | [Riscos e Mitigação](docs/13-risks.md) | Tabela de riscos técnicos e estratégias |
-| 14 | [Resumo Executivo](docs/14-summary.md) | Stack, arquitetura, MVP e prioridades do dia 1 |
-| 15 | [User Stories](docs/15-user-stories.md) | Histórias de utilizador iniciais |
-| 16 | [Requisitos Não Funcionais](docs/16-non-functional-requirements.md) | Performance, segurança, disponibilidade |
-| 17 | [Ordem de Desenvolvimento](docs/17-development-order.md) | Sequência recomendada de implementação |
+## Por onde começar
 
----
+| Quero… | Ler |
+|---|---|
+| perceber o sistema, operá-lo, ou desencravar alguma coisa | **[RUNBOOK.md](RUNBOOK.md)** — é o documento a sério |
+| mexer no motor de envio | `lib/sendCampaign.js` |
+| mexer no editor ou em qualquer ecrã | `email.html` |
+| perceber tracking, webhooks e cancelamentos | `api/track.js`, `api/suppression/` |
 
-## Stack Tecnológica (Resumo)
+## Antes de entregar alterações
 
-| Camada | Tecnologia |
-|--------|-----------|
-| Backend | PHP 8.3 + Laravel 11 |
-| Frontend | Inertia.js + Vue 3 + Tailwind CSS |
-| Base de dados | MySQL 8.0 (principal) + Redis 7 |
-| Filas / Workers | Laravel Queues + Redis + Horizon |
-| Ficheiros | S3-compatible (MinIO local / AWS S3 prod) |
-| Emails transacionais | Mailgun / SES via Laravel Mail |
-| Envio de campanhas | SMTP próprio ou SES + Mailgun |
-| Infraestrutura | Docker + Docker Compose (dev) / AWS ou VPS (prod) |
-| Observabilidade | Laravel Telescope (dev) + Sentry + Grafana |
-| Auth | Laravel Sanctum (sessões web) + política por marca |
+```bash
+node scripts/check-runtime.js
+```
+
+São sondas estáticas sobre o código: cada uma guarda uma correcção que já custou um incidente, e a mensagem de erro diz qual. Se uma falhar, não é ruído.
+
+Uma alteração que traga uma migração nova **não está terminada** até o SQL ser corrido no Supabase → SQL Editor. Não há execução automática. O código tolera migrações por correr (fallbacks de `42P01`/`42703`) para não rebentar entre o deploy e a migração — não porque seja opcional.
+
+## Nota sobre `docs/`
+
+A pasta `docs/` é o PRD original de Abril de 2026 e descreve uma arquitectura em Laravel + Vue + MySQL + Redis + Horizon que **nunca foi construída**. Vale como intenção de produto — funcionalidades, regras de negócio, prioridades. Não descreve este sistema, e nada lá dentro deve ser lido como referência técnica.
 
 ---
 
-## Princípios Fundamentais
-
-1. **Performance First** — Nenhuma operação pesada bloqueia a interface. Tudo processado de forma assíncrona.
-2. **Security First** — Autenticação obrigatória, autorização granular, RGPD nativo.
-3. **Brand Context** — Todo o dado, campanha, lista e métrica está sempre associado a uma marca.
-4. **Scalability by Design** — Índices compostos, paginação, workers, cache desde o dia 1.
-5. **PHP Backend** — Laravel como framework principal, seguindo as melhores práticas do ecossistema.
-
----
-
-## Contexto de Execução
-
-Este documento foi produzido como **PRD + Blueprint Técnico** base para a equipa de produto, design e desenvolvimento do Grupo Caetano.
-
-Destina-se a:
-- Equipa de desenvolvimento (backend + frontend)
-- Equipa de produto / design
-- Responsável técnico / CTO
-- Stakeholders do projeto
-
----
-
-*Versão: 1.0 — Abril 2026*
-*Plataforma: Caetano eMKT*
-*Grupo: Salvador Caetano*
+*Grupo Salvador Caetano*
