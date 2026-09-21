@@ -139,25 +139,68 @@ Sem a variável definida não há tecto nenhum além do da AWS — que é o comp
 
 ### 4.3 Passos que só se fazem na consola da AWS
 
-Nenhum destes é código. Estão aqui porque sem eles a entregabilidade fica pior do que precisa de ser.
+Nenhum destes é código. Estão aqui porque a entregabilidade depende deles e não se resolvem no repositório. Nenhum dos que ficam por fazer tem custo: são registos de DNS e configuração de identidades, não serviços facturados.
 
-**Configuration set** (~10 min). Em SES → Configuration sets, criar um (ex.: `emkt-eventos`), depois definir `SES_CONFIGURATION_SET` na Vercel com esse nome **exacto** e fazer um envio de teste antes de uma campanha.
+**Configuration set — decidido NÃO fazer.** Fica aqui a decisão e a razão, para não voltar a ser discutida do zero.
 
-> **Antes de avançar — isto é preciso?** A plataforma **já calcula** as taxas de rejeição e de queixa a partir da sua própria base de dados, no painel de saúde do ecrã de Estatísticas (secção 4.1), sem custo nenhum. E o SES já mostra os números oficiais da conta no painel de reputação, também sem custo. Um configuration set acrescenta sobretudo **atribuição por conjunto do lado da AWS**. Se não precisa disso, o passo mais barato é não o fazer.
+O que um configuration set acrescentaria é **atribuição das métricas do lado da AWS**. Não é preciso, porque essa informação já existe em dois sítios que não custam nada:
 
-**Um destino de eventos CloudWatch custa dinheiro, e a factura depende das dimensões.** As métricas publicadas por um event destination são *custom metrics*, cobradas **por métrica e por mês**, e o número de métricas é o produto dos tipos de evento pelos valores distintos de cada dimensão. Com uma dimensão de alta cardinalidade como `campaign_id`, **cada campanha nova cria um conjunto de métricas novo** — sete tipos de evento vezes cem campanhas são setecentas métricas a serem cobradas, todos os meses, para sempre. Foi por isso que a recomendação de usar `campaign_id` como dimensão foi retirada deste documento.
+- o **painel de saúde** do ecrã de Estatísticas (secção 4.1), que calcula as taxas de rejeição e de queixa a partir da base de dados da própria plataforma;
+- o **painel de reputação do SES**, que dá os números oficiais ao nível da conta.
 
-Se ainda assim quiser o configuration set, há três níveis, do mais barato para o mais caro:
+Contra isso, um destino de eventos no CloudWatch tem custo recorrente: as métricas de um *event destination* são *custom metrics*, cobradas **por métrica e por mês**, e o número delas é o produto dos tipos de evento pelos valores distintos de cada dimensão. Com uma dimensão de alta cardinalidade como `campaign_id` cada campanha nova cria um conjunto de métricas novo — sete tipos de evento vezes cem campanhas são setecentas métricas cobradas todos os meses, e a crescer com o catálogo.
 
-| Nível | O que dá | Custo |
-|---|---|---|
-| **Conjunto sem destino de eventos** | Reputação por conjunto no painel do SES. Nenhum evento novo chega ao webhook. | Sem *custom metrics* |
-| Destino CloudWatch **sem dimensões** | O mesmo, mais gráficos e alarmes agregados | Poucas métricas, custo fixo e pequeno |
-| Destino CloudWatch **com `campaign_id`** | Atribuição por campanha na AWS | Cresce com o número de campanhas — **evitar** |
+**O código continua preparado.** `SES_CONFIGURATION_SET` existe em `lib/ses.js` e aplica-se ao envio de campanha e ao de teste. Enquanto a variável não estiver definida, o campo não é incluído no pedido ao SES e não há diferença nenhuma — não há nada a remover, e a opção fica aberta sem custo.
 
-Confirme os valores na página de preços do CloudWatch para `eu-west-1` e no Cost Explorer: não consigo ver a facturação da vossa conta e os preços mudam.
+Se um dia a decisão mudar, o apêndice 4.6 tem os passos e as armadilhas.
 
-Se o destino for mesmo criado, tem de ser **CloudWatch** e **não SNS**. Três razões, todas concretas neste sistema:
+**MAIL FROM próprio** (~20 min + propagação de DNS). Por omissão o `Return-Path` das mensagens aponta para `amazonses.com`, o que enfraquece o alinhamento de SPF e é visível para quem inspeccione o cabeçalho. Em SES → Verified identities → o domínio → Custom MAIL FROM, definir um subdomínio (ex.: `mail.caetano.pt`) e acrescentar os registos MX e TXT que a AWS indica. Escolher «Reject the message» só depois de o DNS propagar — antes disso, «Use default» evita cortar envios.
+
+**Separar transaccional de marketing.** Hoje os magic links de login saem pelo mesmo domínio e reputação das campanhas. Uma campanha com muitas queixas pode impedir as pessoas de entrar na plataforma — e como não há login por palavra-passe, isso tranca toda a gente ao mesmo tempo. A separação faz-se com um subdomínio e uma identidade SES próprios para o transaccional (ex.: `login.caetano.pt`), e depois `MAGIC_LINK_FROM` a apontar para lá. **Isto ainda não está feito.**
+
+### 4.4 Teste de carga
+
+`scripts/carga.js` mede os quatro caminhos que decidem o tecto: arranque do envio, reclamação de lote, paginação de contactos e agregação do painel.
+
+```
+CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --contactos 100000
+CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --limpar
+```
+
+Usa uma variável própria, e não `DATABASE_URL`, precisamente para não poder apontar para produção por distracção; um URL que se pareça com o do Supabase é recusado. Semeia centenas de milhares de linhas e **não as apaga sozinho** — o `--limpar` é um passo à parte. Correr contra uma cópia descartável.
+
+### 4.5 O que continua por fazer
+
+- **Limitação por ISP** (ritmos diferentes para Gmail, Outlook, Sapo). Exigiria reordenar os destinatários por domínio dentro do motor de envio — a parte com mais risco de todo o sistema. Não foi feito.
+- **Alertas activos.** O diagnóstico existe mas é preciso alguém abrir o ecrã. Um alerta por email ou Slack quando o pulso envelhece implicaria um endpoint novo, e a Vercel já está no limite de 12 funções.
+
+### 4.6 Apêndice — configuration set, se a decisão mudar
+
+Os passos ficam registados para não terem de ser redescobertos. A decisão em vigor é a da secção 4.3: **não fazer**.
+
+Pela consola: SES → Configuration sets → *Create set*, ligar *Reputation metrics*, e **parar aí** — não adicionar destino de eventos. Depois definir `SES_CONFIGURATION_SET` na Vercel com o nome exacto, **redesdobrar** (uma variável nova só entra num deploy novo) e fazer um **envio de teste pela plataforma** antes de qualquer campanha.
+
+No **AWS CloudShell**:
+
+```bash
+REGIAO=eu-west-1            # tem de ser igual a AWS_REGION na Vercel
+CONJUNTO=emkt-eventos
+
+aws sesv2 create-configuration-set \
+  --region "$REGIAO" \
+  --configuration-set-name "$CONJUNTO" \
+  --reputation-options ReputationMetricsEnabled=true
+
+aws sesv2 get-configuration-set --region "$REGIAO" --configuration-set-name "$CONJUNTO"
+```
+
+Desfazer: apagar a variável na Vercel e redesdobrar — só isso já repõe tudo. Apagar o conjunto na AWS é opcional:
+
+```bash
+aws sesv2 delete-configuration-set --region eu-west-1 --configuration-set-name emkt-eventos
+```
+
+As armadilhas, se alguma vez se acrescentar um destino de eventos:
 
 - **Bounces e queixas já chegam** por notificações da identidade verificada. Publicá-los também pelo configuration set gera duas mensagens SNS por evento real, com `MessageId` diferentes — a idempotência da migração 063 é por `sns_message_id` e **não** as apanha. Um bounce transitório passaria a consumir dois `retry_count` em vez de um, e à segunda ocorrência punha o destinatário em `failed`. É exactamente a avaria que a 063 veio corrigir.
 - **Open e click** têm de ficar **desligados** no configuration set. A plataforma tem o seu próprio pixel e o seu próprio redireccionador; com os do SES ligados, o SES reescreve os links (passam a apontar para `…awstrack.me`) por cima da reescrita que já foi feita, o que acrescenta um salto, tira a marca do endereço e baralha o relatório.
@@ -207,25 +250,7 @@ aws sesv2 delete-configuration-set --region "$REGIAO" --configuration-set-name "
 
 > **Nota de código:** `api/track.js` tem ramos para os eventos `open` e `click` do SES que lêem os cabeçalhos `X-Campaign-Id`/`X-Contact-Id`. Esses cabeçalhos **nunca são enviados** (`lib/rawEmail.js` só acrescenta os de `List-Unsubscribe`), por isso os ramos não fazem nada. São código morto, não uma funcionalidade a activar.
 
-**MAIL FROM próprio** (~20 min + propagação de DNS). Por omissão o `Return-Path` das mensagens aponta para `amazonses.com`, o que enfraquece o alinhamento de SPF e é visível para quem inspeccione o cabeçalho. Em SES → Verified identities → o domínio → Custom MAIL FROM, definir um subdomínio (ex.: `mail.caetano.pt`) e acrescentar os registos MX e TXT que a AWS indica. Escolher «Reject the message» só depois de o DNS propagar — antes disso, «Use default» evita cortar envios.
-
-**Separar transaccional de marketing.** Hoje os magic links de login saem pelo mesmo domínio e reputação das campanhas. Uma campanha com muitas queixas pode impedir as pessoas de entrar na plataforma — e como não há login por palavra-passe, isso tranca toda a gente ao mesmo tempo. A separação faz-se com um subdomínio e uma identidade SES próprios para o transaccional (ex.: `login.caetano.pt`), e depois `MAGIC_LINK_FROM` a apontar para lá. **Isto ainda não está feito.**
-
-### 4.4 Teste de carga
-
-`scripts/carga.js` mede os quatro caminhos que decidem o tecto: arranque do envio, reclamação de lote, paginação de contactos e agregação do painel.
-
-```
-CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --contactos 100000
-CARGA_DATABASE_URL=postgres://…  node scripts/carga.js --limpar
-```
-
-Usa uma variável própria, e não `DATABASE_URL`, precisamente para não poder apontar para produção por distracção; um URL que se pareça com o do Supabase é recusado. Semeia centenas de milhares de linhas e **não as apaga sozinho** — o `--limpar` é um passo à parte. Correr contra uma cópia descartável.
-
-### 4.5 O que continua por fazer
-
-- **Limitação por ISP** (ritmos diferentes para Gmail, Outlook, Sapo). Exigiria reordenar os destinatários por domínio dentro do motor de envio — a parte com mais risco de todo o sistema. Não foi feito.
-- **Alertas activos.** O diagnóstico existe mas é preciso alguém abrir o ecrã. Um alerta por email ou Slack quando o pulso envelhece implicaria um endpoint novo, e a Vercel já está no limite de 12 funções.
+> **Atenção:** um nome que não exista na conta faz o SES rejeitar *todos* os envios (`ConfigurationSetDoesNotExistException`). É por isso que a variável não tem valor por omissão, e é por isso que o envio de teste passa pelo mesmo caminho — para a configuração errada aparecer num teste e não numa campanha.
 
 ---
 
