@@ -527,6 +527,13 @@
         return `${date} ${time}`;
     }
 
+    // Filtro actual da lista de contactos. Declarado aqui, e não junto do
+    // filterContacts, porque o _loadContacts precisa dele para montar o
+    // pedido e a chave de cache — e corre antes.
+    // Última vez que a lista de campanhas foi recarregada durante um envio.
+    // Serve para não a pedir a cada lote — ver a nota no ciclo de envio.
+    let _ultimoRefrescoLista = 0;
+    let _contactsFiltro = { q: '', estado: '' };
     let _contactsApiTotal = 0;
     let _contactsSelected = new Set();
     function _contactsUpdateBulkBar() {
@@ -591,7 +598,7 @@
         _contactsUpdateBulkBar();
         const el = document.getElementById('contactsTbody');
         if (!el) return;
-        const cacheKey = `contacts_${brandId}_p${page}`;
+        const cacheKey = `contacts_${brandId}_p${page}_${_contactsFiltro.q}_${_contactsFiltro.estado}`;
         const cached = page === 1 ? _cacheGet(cacheKey) : null;
         if (!cached) {
             el.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-sm">A carregar…</td></tr>`;
@@ -621,7 +628,16 @@
             _updateContactsPagination();
         }
         try {
-            const { data, total } = await apiFetch(`/api/contacts?brand_id=${brandId}&limit=${_contactsPerPage}&page=${page}`);
+            // A pesquisa e o filtro de estado vão para o SERVIDOR. A caixa de
+            // pesquisa limitava-se a esconder linhas já desenhadas, ou seja
+            // procurava dentro das 50 da página actual: numa base grande, não
+            // havia forma de encontrar uma pessoa pela interface. A API já
+            // suportava os dois parâmetros; o ecrã é que nunca lhos passava.
+            // Também é o que torna possível responder a um pedido de acesso.
+            const qs = new URLSearchParams({ brand_id: brandId, limit: _contactsPerPage, page });
+            if (_contactsFiltro.q)      qs.set('search', _contactsFiltro.q);
+            if (_contactsFiltro.estado) qs.set('status', _contactsFiltro.estado);
+            const { data, total } = await apiFetch(`/api/contacts?${qs}`);
             _contactsApiTotal = total || 0;
             const sBadge = { active:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Ativo</span>', unsubscribed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Cancelado</span>', bounced:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Rejeitado</span>', complained:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700">Marcado como spam</span>', suppressed:'<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Suprimido</span>' };
             if (!data.length) {
@@ -9410,8 +9426,19 @@ ${teSerializeBlocksComment(srcBlocks)}
                         const r = await _pedirLoteDeEnvio(campaignId);
                         totalSent   += r.sent   || 0;
                         totalFailed += r.failed || 0;
-                        // A cada lote, a lista mostra o número novo.
-                        if (document.querySelector('.screen.active')?.id === 'campaigns' && _currentBrand?.id) {
+                        // Mostrar o progresso na lista, mas no máximo de 4 em
+                        // 4 segundos. É este recarregamento que dá o número
+                        // novo — não há poll nenhum por trás — por isso não
+                        // pode desaparecer; o que não pode é correr a cada
+                        // lote. A listagem leva três LEFT JOIN LATERAL por
+                        // campanha, até 200 por pedido, e competia pelas
+                        // mesmas ligações à base de dados de que o envio
+                        // precisa.
+                        const agora = Date.now();
+                        if (agora - _ultimoRefrescoLista > 4000
+                            && document.querySelector('.screen.active')?.id === 'campaigns'
+                            && _currentBrand?.id) {
+                            _ultimoRefrescoLista = agora;
                             _loadCampaigns(_currentBrand.id);
                         }
                         if (r.done || r.warning) break;
@@ -11709,15 +11736,15 @@ function toggleExportMenu() {
     }
 
     function filterContacts() {
-        const q   = (document.getElementById('contactSearch')?.value || '').toLowerCase();
-        const lst = document.getElementById('contactListFilter')?.value || '';
-        const st  = document.getElementById('contactStatusFilter')?.value || '';
-        document.querySelectorAll('#contactsTbody tr').forEach(tr => {
-            const ok = (!q  || (tr.dataset.name||'').toLowerCase().includes(q) || (tr.dataset.email||'').toLowerCase().includes(q))
-                    && (!lst || tr.dataset.list === lst)
-                    && (!st  || tr.dataset.status === st);
-            tr.style.display = ok ? '' : 'none';
-        });
+        const q  = (document.getElementById('contactSearch')?.value || '').trim();
+        const st = document.getElementById('contactStatusFilter')?.value || '';
+        // Só recarrega se algo mudou — a caixa dispara a cada tecla (com
+        // atraso), e teclas que não alteram o valor não devem gerar pedidos.
+        if (q === _contactsFiltro.q && st === _contactsFiltro.estado) return;
+        _contactsFiltro = { q, estado: st };
+        // Filtrar volta sempre à primeira página: a paginação é do resultado
+        // filtrado, não da lista toda.
+        _loadContacts(_currentBrand?.id, 1);
     }
 
     function contactsGoPage(p) {

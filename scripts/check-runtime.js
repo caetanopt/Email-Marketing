@@ -364,6 +364,32 @@ const provas = [
     // bytes, não caracteres: senão um cabeçalho multi-byte forjado dá 500
     if(!/Buffer\\.from\\(req\\.headers\\.authorization/.test(del) || !/dado\\.length === esperado\\.length/.test(del))
       throw new Error('a comparação do segredo tem de ser por bytes (Buffer primeiro) — em caracteres, um cabeçalho multi-byte lança 500 em vez de 401');`],
+  ['as consultas do painel não varrem o histórico todo', `const fs=require('fs');
+    const i=fs.readFileSync('api/campaigns/index.js','utf8');
+    // Sem range no pedido, o painel caia em 'all' e agregava
+    // campaign_recipients e email_events INTEIRAS, sem cache, a cada
+    // carregamento — e piorava sozinho com o historico.
+    if(!/JANELAS/.test(i) || !/hasOwnProperty\\.call\\(JANELAS, range\\)/.test(i))
+      throw new Error('o painel global voltou a poder correr sem filtro de data por omissao');
+    if(/\\{ '7d': 7, '30d': 30, '90d': 90, '12m': 365 \\}\\)\\[range \\|\\| 'all'\\]/.test(i))
+      throw new Error("voltou o default 'all' — o painel varre as duas maiores tabelas a cada carregamento");
+    // O ALTER/CREATE INDEX corria em cada gravacao do assistente (auto-save de
+    // 1,5 em 1,5 s) e pega um lock exclusivo mesmo sem nada para alterar.
+    if(!/function garantirClientKey/.test(i))
+      throw new Error('o ALTER TABLE do client_key voltou ao caminho quente da criacao de campanhas');
+    const d=fs.readFileSync('lib/db.js','utf8');
+    for(const opcao of ['connectionTimeoutMillis','statement_timeout','idleTimeoutMillis'])
+      if(!d.includes(opcao))
+        throw new Error('o pool perdeu '+opcao+' — sob carga os pedidos empilham em vez de falharem depressa');
+    const h=fs.readFileSync('email.html','utf8');
+    // A pesquisa de contactos tem de ir ao servidor: e tambem o que permite
+    // encontrar um titular para responder a um pedido de acesso.
+    if(!/qs\\.set\\('search'/.test(h))
+      throw new Error('a pesquisa de contactos voltou a filtrar so as linhas ja desenhadas');
+    if(/document\\.querySelectorAll\\('#contactsTbody tr'\\)\\.forEach/.test(h))
+      throw new Error('voltou o filtro que so esconde linhas no DOM');
+    if(!/_ultimoRefrescoLista/.test(h))
+      throw new Error('a lista de campanhas volta a ser recarregada a cada lote durante o envio');`],
   ['o redireccionador só aceita destinos da própria campanha', `const fs=require('fs');
     // O token do clique e HMAC sobre "track:<campanha>:<contacto>": autentica
     // o PAR, nao o DESTINO. Quem recebeu um email tinha um par valido e

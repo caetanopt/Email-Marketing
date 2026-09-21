@@ -1,8 +1,24 @@
 const { GetSendQuotaCommand } = require('@aws-sdk/client-ses');
-const { query } = require('../../lib/db');
+const { query, colunaExiste } = require('../../lib/db');
 const { getSESClient } = require('../../lib/ses');
 const { requireAuth, cors, requireBrand, requireWrite } = require('../../lib/auth');
 const { gravarRodapeLegal } = require('../../lib/campanhas');
+
+// A coluna client_key (migração 048) e o índice que a torna única. Uma vez
+// por instância, e só quando falta — ver a nota no sítio onde é chamada.
+let _clientKeyGarantida = null;
+function garantirClientKey() {
+  if (!_clientKeyGarantida) {
+    _clientKeyGarantida = (async () => {
+      if (await colunaExiste('campaigns', 'client_key')) return;
+      await query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS client_key TEXT`);
+      // O índice é o que resolve duas tentativas verdadeiramente simultâneas;
+      // o SELECT no sítio da chamada resolve a repetição sequencial.
+      await query(`CREATE UNIQUE INDEX IF NOT EXISTS campaigns_client_key_uniq ON campaigns (client_key) WHERE client_key IS NOT NULL`).catch(() => {});
+    })().catch(() => { /* sem privilégio: segue-se sem idempotência */ });
+  }
+  return _clientKeyGarantida;
+}
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
@@ -273,7 +289,17 @@ module.exports = async function handler(req, res) {
 
   // Global stats across all brands the user has access to
   if (action === 'global_stats' && req.method === 'GET') {
-    const days = ({ '7d': 7, '30d': 30, '90d': 90, '12m': 365 })[range || 'all'] || null;
+    // Sem `range` no pedido, isto caía em 'all' — que não existe na tabela —
+    // e a cláusula de data ficava VAZIA: o painel agregava campaign_recipients
+    // e email_events inteiras, as duas maiores tabelas do sistema, em tempo
+    // real e sem cache, a cada carregamento. Era a primeira coisa a ficar
+    // lenta, e piorava sozinha com o histórico.
+    //
+    // Por omissão passa a 12 meses. 'all' continua disponível, mas tem de ser
+    // pedido explicitamente — quem o pede sabe que está a mandar varrer tudo.
+    const JANELAS = { '7d': 7, '30d': 30, '90d': 90, '12m': 365, 'all': null };
+    const chave = Object.prototype.hasOwnProperty.call(JANELAS, range) ? range : '12m';
+    const days = JANELAS[chave];
     const sinceClause = days ? `AND c.sent_at >= NOW() - ($1 * INTERVAL '1 day')` : '';
 
     // Global admin = owner in ANY brand (not tied to the current brand)
@@ -586,10 +612,14 @@ module.exports = async function handler(req, res) {
       const chave = (typeof client_key === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(client_key)) ? client_key : null;
       if (chave) {
         try {
-          await query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS client_key TEXT`);
-          // O índice é o que resolve duas tentativas verdadeiramente
-          // simultâneas; o SELECT abaixo resolve a repetição sequencial.
-          await query(`CREATE UNIQUE INDEX IF NOT EXISTS campaigns_client_key_uniq ON campaigns (client_key) WHERE client_key IS NOT NULL`).catch(() => {});
+          // O ALTER e o CREATE INDEX corriam em TODOS os pedidos com
+          // client_key — e o editor manda-o sempre. Um `ADD COLUMN IF NOT
+          // EXISTS` pega um lock ACCESS EXCLUSIVE sobre `campaigns` mesmo
+          // quando não há nada para alterar: cada gravação do assistente
+          // (auto-save de 1,5 em 1,5 segundos) parava a tabela por um
+          // instante. Passa a correr uma vez por instância, e só se a coluna
+          // faltar mesmo.
+          await garantirClientKey();
           const jaExiste = await query('SELECT id FROM campaigns WHERE client_key=$1 AND brand_id=$2', [chave, brand_id]);
           if (jaExiste[0]) return res.status(200).json({ id: jaExiste[0].id, deduplicated: true });
         } catch (_) { /* sem a coluna, segue-se sem idempotência */ }
