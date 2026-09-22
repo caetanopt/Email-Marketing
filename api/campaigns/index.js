@@ -67,11 +67,21 @@ module.exports = async function handler(req, res) {
     // the next invocation continue. Default 50 s — safe margin under maxDuration:60.
     // Override with CRON_MAX_SECONDS env var (e.g. 280 on a 300 s plan).
     const DEADLINE_MS = parseInt(process.env.CRON_MAX_SECONDS || '50', 10) * 1000;
-    // Tempo que um lote precisa para caber inteiro. Serve de mínimo para
-    // arrancar mais um: sem isto arrancavam-se lotes com 8 s de folga que
-    // depois eram mortos a meio. Ajustável por ambiente, para quem mexer no
-    // SES_BATCH_SIZE poder acompanhar.
-    const RESERVA_LOTE_MS = parseInt(process.env.CRON_BATCH_RESERVE_MS || '30000', 10);
+    // Folga mínima para arrancar mais um lote.
+    //
+    // Esteve em 30 s, e foi conservadorismo a mais: 30 s é o tempo de um lote
+    // INTEIRO, e no mesmo commit em que isso foi posto o runBatch aprendeu a
+    // parar sozinho ao chegar ao prazo (`pararEm`), devolvendo a 'pending' o
+    // que reclamou e não entregou. Exigir espaço para um lote inteiro quando
+    // um lote parcial já é seguro significava que, dos 50 s de orçamento, só
+    // os primeiros 25 eram usados — metade do débito por invocação deitada
+    // fora. Era isso que fazia um envio agendado parar sempre em múltiplos
+    // exactos de 500.
+    //
+    // 12 s chega para a preparação do lote (reivindicação, dados da campanha),
+    // pelo menos uma onda, e o varrimento final. Continua ajustável por
+    // ambiente para quem mexer no SES_BATCH_SIZE poder acompanhar.
+    const RESERVA_LOTE_MS = parseInt(process.env.CRON_BATCH_RESERVE_MS || '12000', 10);
     const cronStart = Date.now();
     const timeLeft = () => DEADLINE_MS - (Date.now() - cronStart);
 
@@ -83,24 +93,49 @@ module.exports = async function handler(req, res) {
     //     (10-minute window), making large sends extremely slow.
     let due;
     try {
+      // A ORDEM IMPORTA, e não tinha nenhuma.
+      //
+      // Cada invocação gasta o orçamento na primeira campanha da lista e só
+      // passa à seguinte se ainda sobrar tempo — o que, na prática, quase
+      // nunca acontece. Sem ORDER BY, o Postgres é livre de devolver sempre a
+      // mesma primeiro: duas campanhas a decorrer e uma podia ficar horas sem
+      // avançar enquanto a outra consumia todas as invocações. Baixar a
+      // reserva acima agrava isto, porque cada invocação passa a fazer dois
+      // lotes — os dois para a mesma campanha.
+      //
+      // Ordena-se por quem espera há mais tempo: uma campanha agendada e ainda
+      // não começada pela hora a que devia ter saído, uma a decorrer pela
+      // última tentativa de entrega. Assim que uma avança, a sua vez passa
+      // para o fim — é justo sem precisar de guardar estado nenhum.
       due = await query(
-        `SELECT id, false AS resuming FROM campaigns
-         WHERE status='scheduled' AND scheduled_at <= NOW()
-         UNION ALL
-         SELECT c.id, true AS resuming FROM campaigns c
-         WHERE c.status='sending'
-           AND EXISTS (
-             SELECT 1 FROM campaign_recipients cr
-             -- Qualquer estado NÃO terminal: pending, retry e — desde a Fase 3
-             -- (E-1) — também 'sending' (linhas reclamadas por um browser que
-             -- parou a meio). Sem apanhar o 'sending', uma campanha cujas
-             -- linhas que faltam já foram todas reclamadas ficava de fora deste
-             -- laço e só a rede de segurança dos 3 min a recuperava. Usa-se
-             -- NOT IN (terminais) para não nomear 'sending', que pode ainda
-             -- não existir no enum (migração 060 por correr).
-             WHERE cr.campaign_id=c.id
-               AND cr.status NOT IN ('sent','failed','bounced','suppressed')
-           )
+        `SELECT id, resuming FROM (
+           SELECT c.id, false AS resuming, c.scheduled_at AS espera_desde
+             FROM campaigns c
+            WHERE c.status='scheduled' AND c.scheduled_at <= NOW()
+           UNION ALL
+           SELECT c.id, true AS resuming,
+                  COALESCE(
+                    (SELECT MAX(COALESCE(cr.attempted_at, cr.sent_at))
+                       FROM campaign_recipients cr WHERE cr.campaign_id = c.id),
+                    c.updated_at
+                  ) AS espera_desde
+             FROM campaigns c
+            WHERE c.status='sending'
+              AND EXISTS (
+                SELECT 1 FROM campaign_recipients cr
+                -- Qualquer estado NÃO terminal: pending, retry e — desde a Fase 3
+                -- (E-1) — também 'sending' (linhas reclamadas por um browser que
+                -- parou a meio). Sem apanhar o 'sending', uma campanha cujas
+                -- linhas que faltam já foram todas reclamadas ficava de fora deste
+                -- laço e só a rede de segurança dos 3 min a recuperava. Usa-se
+                -- NOT IN (terminais) para não nomear 'sending', que pode ainda
+                -- não existir no enum (migração 060 por correr).
+                WHERE cr.campaign_id=c.id
+                  AND cr.status NOT IN ('sent','failed','bounced','suppressed')
+              )
+         ) t
+         -- NULLS FIRST: sem data conhecida, assume-se que espera desde sempre.
+         ORDER BY espera_desde ASC NULLS FIRST
          LIMIT 5`
       );
     } catch (err) {

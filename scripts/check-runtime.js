@@ -390,6 +390,33 @@ const provas = [
       throw new Error('voltou o filtro que so esconde linhas no DOM');
     if(!/_ultimoRefrescoLista/.test(h))
       throw new Error('a lista de campanhas volta a ser recarregada a cada lote durante o envio');`],
+  ['o cron usa o orçamento todo e não deixa nenhuma campanha à fome', `const fs=require('fs');
+    const i=fs.readFileSync('api/campaigns/index.js','utf8');
+    // A reserva esteve em 30 s — o tempo de um lote INTEIRO — quando o
+    // runBatch ja sabia parar sozinho ao chegar ao prazo. Resultado: dos 50 s
+    // de orcamento so os primeiros 25 eram usados, e um envio agendado parava
+    // sempre em multiplos exactos de 500.
+    const m=/CRON_BATCH_RESERVE_MS \\|\\| '(\\d+)'/.exec(i);
+    if(!m) throw new Error('a reserva do lote deixou de ser configuravel');
+    if(parseInt(m[1],10) > 15000)
+      throw new Error('a reserva do lote voltou a exigir espaco para um lote inteiro ('+m[1]+' ms) — metade do orcamento por invocacao fica por usar');
+    // O pararEm e o que torna seguro arrancar um lote parcial. Sem ele, baixar
+    // a reserva volta a matar lotes a meio.
+    if(!/pararEm: cronStart \\+ DEADLINE_MS/.test(i))
+      throw new Error('o cron deixou de passar pararEm ao runBatch — um lote parcial passa a morrer a meio em vez de parar a horas');
+    // Sem ORDER BY, o Postgres pode devolver sempre a mesma campanha primeiro
+    // e uma campanha fica horas sem avancar enquanto outra consome todas as
+    // invocacoes. Agrava-se com a reserva baixa, porque cada invocacao passa a
+    // fazer varios lotes — todos para a primeira da fila.
+    const iFila=i.indexOf('due = await query');
+    if(iFila<0) throw new Error('a consulta da fila de campanhas desapareceu');
+    const fila=i.slice(iFila, i.indexOf('} catch', iFila));
+    if(!/ORDER BY espera_desde/.test(fila))
+      throw new Error('a fila de campanhas do cron perdeu a ordenacao — volta a poder deixar uma campanha a fome');
+    if(fila.indexOf('ORDER BY') < fila.indexOf('UNION ALL'))
+      throw new Error('o ORDER BY tem de vir DEPOIS da uniao, senao ordena so metade da fila');
+    if(!/LIMIT 5/.test(fila))
+      throw new Error('a fila deixou de estar limitada — uma invocacao pode tentar abracar campanhas a mais');`],
   ['o que a Fase 5 acrescentou fica desligado sem variável de ambiente', `const fs=require('fs');
     // A exigencia era explicita: nenhuma destas alteracoes pode mudar o
     // comportamento de quem nao as configurou.
