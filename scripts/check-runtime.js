@@ -390,6 +390,29 @@ const provas = [
       throw new Error('voltou o filtro que so esconde linhas no DOM');
     if(!/_ultimoRefrescoLista/.test(h))
       throw new Error('a lista de campanhas volta a ser recarregada a cada lote durante o envio');`],
+  ['esvaziar uma lista grande não bate no limite de tempo, e os erros ficam nos logs', `const fs=require('fs');
+    const l=fs.readFileSync('api/lists/index.js','utf8');
+    // Era um DELETE unico de todos os contactos da lista, numa so transaccao.
+    // Na lista Marketing batia no limite de 20 s por consulta, era revertido,
+    // e nao ficava nada apagado — reproduzido: 30 000 contactos, falha aos 20 s.
+    if(/DELETE FROM contacts\\s+WHERE id IN \\(SELECT contact_id FROM list_members WHERE list_id=\\$1\\)/.test(l))
+      throw new Error('clear_contacts voltou a apagar a lista inteira de uma vez — numa lista grande bate no statement_timeout e nao apaga nada');
+    if(!/DELETE FROM contacts WHERE id = ANY\\(\\$1::int\\[\\]\\)/.test(l) || !/LIMIT \\$2/.test(l))
+      throw new Error('clear_contacts deixou de apagar em lotes');
+    if(!/remaining: faltam/.test(l))
+      throw new Error('clear_contacts deixou de dizer quantos faltam — o browser nao sabe continuar');
+    // A rota deitava o erro fora: respondia "Erro de servidor" e nos logs da
+    // Vercel so aparecia um aviso de depreciacao sem relacao nenhuma.
+    if(!/console\\.error\\(\`lists \\$\\{req\\.method\\}/.test(l))
+      throw new Error('a rota das listas voltou a engolir os erros sem os registar');
+    const v=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+    if(!(v.functions['api/lists/index.js']||{}).maxDuration)
+      throw new Error('api/lists perdeu o maxDuration — o apagamento em lotes conta com 60 s por invocacao');
+    const h=fs.readFileSync('email.html','utf8');
+    if((h.match(/async function apiClearListContacts\\(/g)||[]).length!==1)
+      throw new Error('apiClearListContacts esta definida mais do que uma vez — a segunda substitui a primeira em silencio');
+    if(!/r\\.done \\|\\| !r\\.remaining/.test(h))
+      throw new Error('o ecra deixou de voltar a pedir ate a lista ficar vazia');`],
   ['o cron usa o orçamento todo e não deixa nenhuma campanha à fome', `const fs=require('fs');
     const i=fs.readFileSync('api/campaigns/index.js','utf8');
     // A reserva esteve em 30 s — o tempo de um lote INTEIRO — quando o
@@ -922,7 +945,9 @@ const provas = [
       const s=fs.readFileSync(f,'utf8');
       if(/catch \\(e\\) \\{ if \\(e\\.code !== '42P01'\\) throw e; \\}/.test(s))
         throw new Error(f+': voltou a apanhar 42P01 à volta da anonimização dentro da transacção — aborta-a e o DELETE rebenta; usar colunaExiste');
-      if(/email_send_log SET email = 'apagado/.test(s) && !/colunaExiste\\('email_send_log', 'email', q\\)/.test(s))
+      // Dentro da transaccao (com q) ou antes dela — o que importa e ser o
+      // catalogo a decidir, e nao um try/catch que aborta a transaccao.
+      if(/email_send_log SET email = 'apagado/.test(s) && !/colunaExiste\\('email_send_log', 'email'(, q)?\\)/.test(s))
         throw new Error(f+': a anonimização deixou de ser guardada por colunaExiste');
     }`],
   ['um ficheiro não cancela subscrições', `const fs=require('fs');

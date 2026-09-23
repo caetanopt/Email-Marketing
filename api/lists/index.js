@@ -288,33 +288,74 @@ module.exports = withAuth(async (req, res, user) => {
             [user.id]
           );
           if (!adm[0]) return res.status(403).json({ error: 'Sem permissão para eliminar contactos.' });
-          // G-1: anonimizar o email no log de envio antes de apagar — o mesmo
-          // que contacts/[id].js faz. Sem isto, este terceiro caminho de
-          // apagamento deixava o email pessoal para trás em email_send_log.
-          const del = await transaction(async (q) => {
-            // Catálogo, não try/catch: um 42P01 apanhado aqui abortava a
-            // transacção e o DELETE a seguir rebentava.
-            if (await colunaExiste('email_send_log', 'email', q)) {
-              await q(
-                `UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL
-                 WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
-                [id]
-              );
-            }
-            // email_events.contact_id não tem ON DELETE — anular antes de apagar
-            await q(
-              `UPDATE email_events SET contact_id=NULL
-               WHERE contact_id IN (SELECT contact_id FROM list_members WHERE list_id=$1)`,
-              [id]
+
+          // AOS BOCADOS, e não numa transacção só.
+          //
+          // Era um único DELETE de todos os contactos da lista. Numa lista
+          // grande (a Marketing) isso são milhares de cascatas para
+          // campaign_recipients e verificações em email_events, e sem índice
+          // por contact_id cada uma lia a tabela inteira. Batia no limite de
+          // 20 s por consulta (lib/db.js), a transacção era revertida, e não
+          // ficava nada apagado — com "Erro de servidor" no ecrã e nada nos
+          // logs.
+          //
+          // Agora: lotes pequenos, cada um na sua transacção, até se esgotar
+          // o tempo desta invocação. Devolve quantos faltam; o browser volta a
+          // pedir até não faltar nenhum. Um lote interrompido não deixa nada a
+          // meio — ou foi todo, ou nada — e repetir continua de onde ficou.
+          //
+          // Sem a migração 067 os índices não existem e cada lote é caro:
+          // encolhe-se o lote para caber no limite por consulta, em vez de
+          // falhar. Funciona na mesma, só mais devagar.
+          let comIndices = false;
+          try {
+            const [ix] = await query(
+              `SELECT COUNT(*)::int AS n FROM pg_indexes
+                WHERE indexname IN ('idx_campaign_recipients_contact','idx_email_events_contact')`
             );
-            return q(
-              `DELETE FROM contacts
-               WHERE id IN (SELECT contact_id FROM list_members WHERE list_id=$1)
-               RETURNING id`,
-              [id]
-            );
-          });
-          return res.status(200).json({ ok: true, deleted: del.length });
+            comIndices = !!ix && ix.n === 2;
+          } catch (_) { /* sem acesso ao catálogo: assume-se o caminho lento, que é o seguro */ }
+          if (!comIndices) console.warn('clear_contacts: migração 067 por correr — a apagar em lotes pequenos.');
+          const LOTE = comIndices ? 1000 : 50;
+          const prazo = Date.now() + 40000;
+          const temEmailNoLog = await colunaExiste('email_send_log', 'email');
+          let apagados = 0;
+          let terminou = false;
+
+          while (Date.now() < prazo) {
+            const r = await transaction(async (q) => {
+              const ids = (await q(
+                `SELECT contact_id FROM list_members WHERE list_id=$1 ORDER BY contact_id LIMIT $2`,
+                [id, LOTE]
+              )).map(x => x.contact_id);
+              if (!ids.length) return { vistos: 0, apagados: 0 };
+              // G-1: anonimizar o email no log de envio antes de apagar — o
+              // mesmo que contacts/[id].js faz. Sem isto, este caminho de
+              // apagamento deixava o email pessoal para trás em email_send_log.
+              if (temEmailNoLog) {
+                await q(
+                  `UPDATE email_send_log SET email = 'apagado+' || id || '@anonimizado.local', contact_id = NULL
+                    WHERE contact_id = ANY($1::int[])`,
+                  [ids]
+                );
+              }
+              // email_events.contact_id não tem ON DELETE — anular antes de apagar
+              await q(`UPDATE email_events SET contact_id=NULL WHERE contact_id = ANY($1::int[])`, [ids]);
+              const del = await q(`DELETE FROM contacts WHERE id = ANY($1::int[]) RETURNING id`, [ids]);
+              // Garantia de progresso: uma ligação à lista sem contacto por trás
+              // (não devia existir, a chave estrangeira impede-o) seria escolhida
+              // em todos os lotes para sempre.
+              await q(`DELETE FROM list_members WHERE list_id=$1 AND contact_id = ANY($2::int[])`, [id, ids]);
+              return { vistos: ids.length, apagados: del.length };
+            });
+            apagados += r.apagados;
+            if (r.vistos < LOTE) { terminou = true; break; }
+          }
+
+          const [{ faltam }] = await query(
+            `SELECT COUNT(*)::int AS faltam FROM list_members WHERE list_id=$1`, [id]
+          );
+          return res.status(200).json({ ok: true, deleted: apagados, remaining: faltam, done: terminou || faltam === 0 });
         }
         // Apagar a própria lista — exclusivo de administradores e nunca as
         // listas fixas (Marketing/Colaboradores). Os contactos permanecem na
@@ -355,7 +396,16 @@ module.exports = withAuth(async (req, res, user) => {
 
       return res.status(405).json({ error: 'Método não permitido' });
     } catch (err) {
-      return res.status(500).json({ error: 'Erro de servidor' });
+      // Registar SEMPRE. Esta rota respondia "Erro de servidor" e deitava o
+      // erro fora — nos logs da Vercel não aparecia nada, e a única linha
+      // visível era um aviso de depreciação que não tinha nada a ver.
+      console.error(`lists ${req.method} id=${id} action=${action || '-'}:`, err?.code || '', err?.message);
+      const porTempo = err?.code === '57014';   // statement_timeout
+      return res.status(500).json({
+        error: porTempo
+          ? 'A operação demorou demasiado e foi interrompida. Nada ficou a meio — tenta outra vez.'
+          : 'Erro de servidor',
+      });
     }
   }
 
