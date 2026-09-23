@@ -1474,6 +1474,47 @@ const provas = [
       throw new Error('o agregado do painel voltou a contar pessoas distintas em vez de pares (campanha,contacto) — sub-conta com destinatários repetidos');
     if(!/SELECT DISTINCT campaign_id, contact_id, type/.test(dash))
       throw new Error('o agregado do painel deixou de dedupicar por (campanha,contacto,tipo)')`],
+  ['a ajuda da importação só anuncia colunas que o leitor aceita mesmo', `const fs=require('fs');
+    // A tabela de colunas no ecra de importacao e uma lista escrita a mao, ao
+    // lado das listas de nomes que o leitor usa. Esta sonda passa cada nome
+    // anunciado (coluna e alternativas) pelo leitor VERDADEIRO. Se alguem
+    // mudar o leitor e nao a ajuda, ou o contrario, falha aqui.
+    const h=fs.readFileSync('email.html','utf8');
+    const bloco=(inicio)=>{const i=h.indexOf(inicio);
+      if(i<0)throw new Error('nao encontrei '+inicio+' no email.html');
+      let d=0;for(let k=h.indexOf('{',i);k<h.length;k++){
+        if(h[k]==='{')d++;else if(h[k]==='}'){d--;if(!d)return h.slice(i,k+1)+';';}}
+      throw new Error(inicio+' sem fecho');};
+    const ate=(inicio)=>{const i=h.indexOf(inicio);if(i<0)throw new Error('nao encontrei '+inicio);return h.slice(i,h.indexOf('];',i)+2);};
+    const src=[ate('const _IMP_STATUS_HEADERS'),ate('const _IMP_DATE_HEADERS'),ate('const _COLUNAS_IMPORTACAO'),
+      bloco('const _IMP_STATUS ='),
+      ...['function _isValidEmail','function _impStatus','function _impDate','function _normCabecalho',
+          'function _csvRegistos','function _csvDelimitador','function _emailNaLinha','function _parseCsv',
+          'function _parseRegistos'].map(bloco)].join('\\n');
+    const m=new Function(src+';return {_parseCsv,_impStatus,_COLUNAS_IMPORTACAO};')();
+    const campo={email:'email',nome:'name',apelido:'name',telefone:'phone',empresa:'company',estado:'status','data de subscrição':'subscribed_at'};
+    const valor={nome:'Joao',apelido:'Silva',telefone:'912345678',empresa:'Caetano',estado:'cancelado','data de subscrição':'23/09/2026'};
+    for(const c of m._COLUNAS_IMPORTACAO){
+      if(!campo[c.col]) throw new Error('coluna '+c.col+' anunciada na ajuda mas sem correspondencia nesta sonda — acrescentar aqui');
+      for(const nome of [c.col, ...c.alt.split(',').map(x=>x.trim()).filter(Boolean)]){
+        let csv, info={};
+        if(c.col==='email') csv='nome;'+nome+'\\nJoao;x@caetano.pt';
+        else csv='email;'+nome+'\\nx@caetano.pt;'+valor[c.col];
+        const r=m._parseCsv(csv,[],info)[0]||{};
+        const ok = c.col==='email'
+          ? (r.email==='x@caetano.pt' && info.colunaAdivinhada===undefined)
+          : !!r[campo[c.col]];
+        if(!ok) throw new Error('a ajuda anuncia a coluna "'+nome+'" ('+c.col+'), mas o leitor nao a reconhece');
+      }
+    }
+    // Os valores de estado anunciados tem de ser aceites.
+    const est=m._COLUNAS_IMPORTACAO.find(c=>c.col==='estado');
+    for(const v of est.nota.split('.')[0].replace(' ou ',', ').split(',').map(x=>x.trim()).filter(Boolean))
+      if(!m._impStatus(v)) throw new Error('a ajuda anuncia o estado "'+v+'", que o leitor nao aceita');
+    // E o Excel passa pelo mesmo leitor, nao por um a parte.
+    const li=h.slice(h.indexOf('async function _liStartImport'), h.indexOf('async function _liStartImport')+3000);
+    if(!/_parseRegistos\\(await _excelRegistos\\(_liFile\\), _listExtraFields\\)/.test(li))
+      throw new Error('a importacao da lista deixou de ler Excel pelo mesmo leitor do CSV');`],
   ['um CSV não perde linhas', `const fs=require('fs');
     // O mesmo ficheiro entrava com 1161 contactos em TXT e 630 em CSV. Não era
     // o servidor: eram linhas que nunca saíam do browser, porque o ficheiro era
@@ -1488,7 +1529,7 @@ const provas = [
       throw new Error(inicio+' sem fecho');};
     const src=['function _isValidEmail','function _impStatus','function _impDate',
       'function _normCabecalho','function _csvRegistos','function _csvDelimitador',
-      'function _emailNaLinha','function _parseCsv'].map(bloco).join('\\n');
+      'function _emailNaLinha','function _parseCsv','function _parseRegistos'].map(bloco).join('\\n');
     const pre='const _IMP_STATUS_HEADERS=["estado"];const _IMP_DATE_HEADERS=["data"];';
     const {_parseCsv,_emailNaLinha}=new Function(pre+src+';return {_parseCsv,_emailNaLinha};')();
     const conta=(t)=>_parseCsv(t).length;

@@ -5647,6 +5647,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         const btn = document.getElementById('liSubmitBtn');
         if (btn) btn.disabled = true;
         _liSetTab('csv');
+        _liRenderColunas();
         m.classList.remove('hidden'); m.classList.add('flex');
     }
 
@@ -5669,16 +5670,108 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (csvBtn) csvBtn.className = isTxt ? inactive : active;
         if (txtBtn) txtBtn.className = isTxt ? active : inactive;
         const hint = document.getElementById('liDropHint');
-        if (hint) hint.textContent = isTxt ? 'Ficheiro .txt — um email por linha' : 'Ficheiro .csv — separador auto-detectado';
+        if (hint) hint.textContent = isTxt ? 'Ficheiro .txt — um email por linha' : 'Ficheiro Excel (.xlsx) ou .csv';
         const infoCsv = document.getElementById('liInfoCsv');
         const infoTxt = document.getElementById('liInfoTxt');
         if (infoCsv) infoCsv.classList.toggle('hidden', isTxt);
         if (infoTxt) infoTxt.classList.toggle('hidden', !isTxt);
     }
 
+    // ── Colunas que a importação reconhece ──────────────────────────────
+    //
+    // A ajuda dizia "first_name, last_name, phone, company" — quatro das sete
+    // colunas que o leitor aceita, só com os nomes ingleses, e sem os campos
+    // adicionais da lista, que são justamente os que variam de lista para
+    // lista.
+    //
+    // Cada nome aqui (coluna e alternativas) tem de ser aceite pelo leitor
+    // (_parseRegistos). Não é derivado dele — são duas listas — mas há uma
+    // sonda em scripts/check-runtime.js que passa cada um pelo leitor
+    // verdadeiro e falha se algum deixar de ser reconhecido.
+    const _COLUNAS_IMPORTACAO = [
+        { col: 'email',              alt: 'e-mail, mail, endereço de email',          nota: 'obrigatório' },
+        { col: 'nome',               alt: 'name, first_name, primeiro nome',          nota: '' },
+        { col: 'apelido',            alt: 'last_name, sobrenome, último nome',        nota: 'junta-se ao nome' },
+        { col: 'telefone',           alt: 'telemovel, phone, tel, mobile',            nota: '' },
+        { col: 'empresa',            alt: 'company',                                  nota: '' },
+        { col: 'estado',             alt: 'status',                                   nota: 'ativo, cancelado, rejeitado ou suprimido. Vazio = ativo. Quem já cancelou não é reactivado' },
+        { col: 'data de subscrição', alt: 'subscrito em, subscribed_at, criado em, data', nota: 'DD/MM/AAAA. Vazio = data da importação' },
+    ];
+
+    function _liRenderColunas() {
+        const el = document.getElementById('liInfoCsv');
+        if (!el) return;
+        const extra = (_listExtraFields || []).map(f => f.name).filter(Boolean);
+        const linha = (c, alt, nota) => `<tr class="border-t border-slate-100">
+            <td class="py-1.5 pr-3 font-mono text-slate-800 whitespace-nowrap">${escHtml(c)}</td>
+            <td class="py-1.5 pr-3 text-slate-500">${escHtml(alt)}</td>
+            <td class="py-1.5 text-slate-500">${escHtml(nota)}</td></tr>`;
+        el.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <p class="font-medium text-slate-700">Colunas reconhecidas</p>
+                <button type="button" onclick="_liDescarregarModelo()" class="text-xs font-medium text-slate-700 border border-slate-200 rounded-lg px-2.5 py-1 hover:bg-slate-50 flex items-center gap-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    Descarregar modelo
+                </button>
+            </div>
+            <p class="mb-2">A primeira linha do ficheiro tem os nomes das colunas. Maiúsculas e acentos não importam; colunas com outros nomes são ignoradas.</p>
+            <div class="max-h-80 overflow-y-auto thin-scroll">
+            <table class="w-full text-left">
+                <thead><tr class="text-slate-400"><th class="pb-1 pr-3 font-medium">Coluna</th><th class="pb-1 pr-3 font-medium">Também aceite</th><th class="pb-1 font-medium"></th></tr></thead>
+                <tbody>
+                    ${_COLUNAS_IMPORTACAO.map(c => linha(c.col, c.alt, c.nota)).join('')}
+                    ${extra.map(n => linha(n, '—', 'campo adicional desta lista')).join('')}
+                </tbody>
+            </table>
+            </div>
+            ${extra.length ? '' : '<p class="mt-2 text-slate-400">Esta lista não tem campos adicionais. Para importar outras colunas, cria-os primeiro em «Campos adicionais», com o mesmo nome da coluna.</p>'}`;
+    }
+
+    // Modelo em Excel com as colunas certas, já com os campos adicionais desta
+    // lista. Só cabeçalhos, sem linha de exemplo: uma linha de exemplo
+    // esquecida seria importada como contacto.
+    function _liDescarregarModelo() {
+        const cab = [..._COLUNAS_IMPORTACAO.map(c => c.col), ...(_listExtraFields || []).map(f => f.name).filter(Boolean)];
+        const nomeLista = (document.getElementById('listEditName')?.value || 'lista').trim().replace(/[^\p{L}\p{N}]+/gu, '_') || 'lista';
+        if (typeof XLSX !== 'undefined' && XLSX.utils?.aoa_to_sheet && XLSX.writeFile) {
+            const ws = XLSX.utils.aoa_to_sheet([cab]);
+            ws['!cols'] = cab.map(c => ({ wch: Math.max(14, c.length + 4) }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Contactos');
+            XLSX.writeFile(wb, `modelo_importacao_${nomeLista}.xlsx`);
+            return;
+        }
+        // Sem o leitor de Excel carregado: CSV com BOM e ponto-e-vírgula, que é
+        // o que o Excel português abre já separado em colunas.
+        const csv = '﻿' + cab.map(c => /[;"\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(';') + '\r\n';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = `modelo_importacao_${nomeLista}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    // A primeira folha de um Excel, como linhas de células de texto — a mesma
+    // forma que o leitor de CSV produz. As datas vêm como data do Excel e são
+    // escritas em DD/MM/AAAA, o formato que o leitor reconhece.
+    async function _excelRegistos(file) {
+        if (typeof XLSX === 'undefined') throw new Error('O leitor de Excel não carregou. Recarrega a página, ou guarda o ficheiro como CSV.');
+        let wb;
+        try { wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }); }
+        catch (e) { throw new Error('Não foi possível ler este ficheiro Excel. Guarda-o como .xlsx ou como CSV e tenta outra vez.'); }
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        if (!ws) throw new Error('O ficheiro Excel não tem folhas.');
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
+        const p2 = n => String(n).padStart(2, '0');
+        return raw.map(r => r.map(c => c instanceof Date
+            ? `${p2(c.getDate())}/${p2(c.getMonth() + 1)}/${c.getFullYear()}`
+            : String(c ?? '').trim()));
+    }
+    const _ehExcel = (nome) => /\.(xlsx|xlsm|xls)$/i.test(nome || '');
+
     function _liPickFile() {
         const inp = document.createElement('input');
-        inp.type = 'file'; inp.accept = '.csv,.txt';
+        inp.type = 'file'; inp.accept = '.xlsx,.xls,.csv,.txt';
         inp.onchange = () => {
             const f = inp.files?.[0];
             if (!f) return;
@@ -5918,12 +6011,22 @@ ${teSerializeBlocksComment(srcBlocks)}
         if (!btn || btn.disabled) return;
         if (!_liFile) { showToast('Selecciona um ficheiro primeiro.', 'error'); return; }
 
-        const text = await _readTextSmart(_liFile);
-        const isTxt = _liTab === 'txt';
-        let rows = isTxt
-            ? text.split(/\r\n|\r|\n/).map(l=>l.trim()).map(l=>_isValidEmail(l)?l.toLowerCase():_emailNaLinha(l)).filter(Boolean).map(email=>({email}))
-            : _parseCsv(text, _listExtraFields);
-        if (!rows.length) { showToast('Sem contactos válidos no ficheiro.', 'error'); return; }
+        // Um Excel lido como texto é lixo binário: dava "Sem contactos
+        // válidos" sem explicar porquê. Passa pelo mesmo leitor de colunas do
+        // CSV, independentemente do separador escolhido.
+        const isTxt = _liTab === 'txt' && !_ehExcel(_liFile.name);
+        let rows;
+        try {
+            if (_ehExcel(_liFile.name)) {
+                rows = _parseRegistos(await _excelRegistos(_liFile), _listExtraFields);
+            } else {
+                const text = await _readTextSmart(_liFile);
+                rows = isTxt
+                    ? text.split(/\r\n|\r|\n/).map(l=>l.trim()).map(l=>_isValidEmail(l)?l.toLowerCase():_emailNaLinha(l)).filter(Boolean).map(email=>({email}))
+                    : _parseCsv(text, _listExtraFields);
+            }
+        } catch (e) { showToast(e.message, 'error'); return; }
+        if (!rows.length) { showToast('Sem contactos válidos no ficheiro. Confirma que há uma coluna «email» na primeira linha.', 'error'); return; }
 
         const CHUNK = 500;
         const chunks = [];
@@ -14229,7 +14332,16 @@ ${sections.join('\n\n')}
     function _parseCsv(text, extraFields = [], info = null) {
         const delim = _csvDelimitador(text);
         const registos = _csvRegistos(text, delim);
-        if (info) { info.delimitador = delim; info.registos = registos.length; info.resgatados = 0; info.semEmail = 0; }
+        if (info) info.delimitador = delim;
+        return _parseRegistos(registos, extraFields, info);
+    }
+
+    // A interpretação das colunas, separada da leitura do ficheiro: o CSV e o
+    // Excel chegam aqui já como linhas de células, e reconhecem exactamente os
+    // mesmos cabeçalhos. Antes o Excel tinha um leitor à parte, com menos
+    // nomes aceites e sem os campos adicionais da lista.
+    function _parseRegistos(registos, extraFields = [], info = null) {
+        if (info) { info.registos = registos.length; info.resgatados = 0; info.semEmail = 0; }
         if (!registos.length) return [];
         const headers = registos[0].map(_normCabecalho);
         const qq = (...nomes) => headers.findIndex(h => nomes.includes(h));
@@ -17984,12 +18096,12 @@ ${sections.join('\n\n')}
 
 <!-- ── List Import Modal ─────────────────────────────────────────── -->
 <div id="listImportModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4" onclick="if(event.target===this)closeListImportModal()">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
         <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
             <div class="flex items-center gap-3">
                 <h2 class="text-base font-semibold text-slate-900">Importar contactos</h2>
                 <div class="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                    <button onclick="_liSetTab('csv')" id="liTabCsv" class="px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-900 shadow-sm transition-colors">CSV</button>
+                    <button onclick="_liSetTab('csv')" id="liTabCsv" class="px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-900 shadow-sm transition-colors">Excel / CSV</button>
                     <button onclick="_liSetTab('txt')" id="liTabTxt" class="px-3 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">TXT (só emails)</button>
                 </div>
             </div>
@@ -18028,9 +18140,8 @@ ${sections.join('\n\n')}
                 </div>
             </div>
             <!-- Info CSV/TXT -->
-            <div id="liInfoCsv" class="text-xs text-slate-500">
-                <span class="font-medium text-slate-700">CSV:</span> colunas detectadas automaticamente — <em>email</em> obrigatório; <em>first_name, last_name, phone, company</em> opcionais.
-            </div>
+            <!-- Preenchido por _liRenderColunas() ao abrir, com os campos adicionais da lista. -->
+            <div id="liInfoCsv" class="text-xs text-slate-500"></div>
             <div id="liInfoTxt" class="hidden text-xs text-slate-500">
                 <span class="font-medium text-slate-700">TXT:</span> um endereço de email por linha. Linhas em branco são ignoradas.
             </div>
