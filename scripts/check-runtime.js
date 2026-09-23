@@ -1492,8 +1492,8 @@ const provas = [
           'function _csvRegistos','function _csvDelimitador','function _emailNaLinha','function _parseCsv',
           'function _parseRegistos'].map(bloco)].join('\\n');
     const m=new Function(src+';return {_parseCsv,_impStatus,_COLUNAS_IMPORTACAO};')();
-    const campo={email:'email',nome:'name',apelido:'name',telefone:'phone',empresa:'company',estado:'status','data de subscrição':'subscribed_at'};
-    const valor={nome:'Joao',apelido:'Silva',telefone:'912345678',empresa:'Caetano',estado:'cancelado','data de subscrição':'23/09/2026'};
+    const campo={email:'email',nome:'name',apelido:'name',telefone:'phone',estado:'status','data de subscrição':'subscribed_at'};
+    const valor={nome:'Joao',apelido:'Silva',telefone:'912345678',estado:'cancelado','data de subscrição':'23/09/2026'};
     for(const c of m._COLUNAS_IMPORTACAO){
       if(!campo[c.col]) throw new Error('coluna '+c.col+' anunciada na ajuda mas sem correspondencia nesta sonda — acrescentar aqui');
       for(const nome of [c.col, ...c.alt.split(',').map(x=>x.trim()).filter(Boolean)]){
@@ -1511,7 +1511,16 @@ const provas = [
     const est=m._COLUNAS_IMPORTACAO.find(c=>c.col==='estado');
     for(const v of est.nota.split('.')[0].replace(' ou ',', ').split(',').map(x=>x.trim()).filter(Boolean))
       if(!m._impStatus(v)) throw new Error('a ajuda anuncia o estado "'+v+'", que o leitor nao aceita');
-    // E o Excel passa pelo mesmo leitor, nao por um a parte.
+    // A empresa do contacto foi retirada do projecto: nao se anuncia nem se le.
+    if(m._COLUNAS_IMPORTACAO.some(c=>c.col==='empresa'))
+      throw new Error('a coluna empresa voltou a ser anunciada na importacao — foi retirada do projecto');
+    const rE=m._parseCsv('email;empresa\\nx@caetano.pt;Caetano')[0]||{};
+    if(rE.company) throw new Error('o leitor voltou a importar a coluna empresa — foi retirada do projecto');
+    // E o Excel passa pelo mesmo leitor, nao por um a parte — nos tres ecras.
+    if(/type === 'excel'[\\s\\S]{0,400}XLSX\\.read\\(ab/.test(h))
+      throw new Error('o assistente de campanhas voltou a ter um leitor de Excel a parte (perdia os nomes: devolvia first_name, o servidor le name)');
+    if(!/rows = _parseRegistos\\(await _excelRegistos\\(_importFile\\)\\)/.test(h))
+      throw new Error('a importacao no ecra de Contactos deixou de ler Excel pelo leitor comum');
     const li=h.slice(h.indexOf('async function _liStartImport'), h.indexOf('async function _liStartImport')+3000);
     if(!/_parseRegistos\\(await _excelRegistos\\(_liFile\\), _listExtraFields\\)/.test(li))
       throw new Error('a importacao da lista deixou de ler Excel pelo mesmo leitor do CSV');`],
