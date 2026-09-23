@@ -411,8 +411,8 @@ const provas = [
     const iFila=i.indexOf('due = await query');
     if(iFila<0) throw new Error('a consulta da fila de campanhas desapareceu');
     const fila=i.slice(iFila, i.indexOf('} catch', iFila));
-    if(!/ORDER BY espera_desde/.test(fila))
-      throw new Error('a fila de campanhas do cron perdeu a ordenacao — volta a poder deixar uma campanha a fome');
+    if(!/ORDER BY resuming ASC, espera_desde/.test(fila))
+      throw new Error('a fila do cron perdeu a ordenacao: as agendadas tem de vir antes das que ja vao a meio, e depois por quem espera ha mais tempo');
     if(fila.indexOf('ORDER BY') < fila.indexOf('UNION ALL'))
       throw new Error('o ORDER BY tem de vir DEPOIS da uniao, senao ordena so metade da fila');
     if(!/LIMIT 5/.test(fila))

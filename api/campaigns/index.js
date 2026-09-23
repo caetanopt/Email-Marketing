@@ -134,8 +134,19 @@ module.exports = async function handler(req, res) {
                   AND cr.status NOT IN ('sent','failed','bounced','suppressed')
               )
          ) t
+         -- Primeiro as que ainda NÃO começaram (resuming = false ordena antes
+         -- de true). Uma campanha agendada tem uma hora prometida a alguém; uma
+         -- que já vai a meio, não — o mal de esperar mais uma passagem é
+         -- diferente nos dois casos. Sem isto, uma campanha grande a arrastar
+         -- desde ontem ficava sempre à frente da agendada de hoje, porque
+         -- esperava há mais tempo, e empurrava-a uma passagem do cron para a
+         -- frente.
+         --
+         -- Não faz fome ao contrário: uma agendada passa a 'sending' no
+         -- primeiro lote, e a partir daí entra na segunda fila como as outras.
+         --
          -- NULLS FIRST: sem data conhecida, assume-se que espera desde sempre.
-         ORDER BY espera_desde ASC NULLS FIRST
+         ORDER BY resuming ASC, espera_desde ASC NULLS FIRST
          LIMIT 5`
       );
     } catch (err) {
