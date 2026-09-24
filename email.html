@@ -9663,6 +9663,10 @@ ${teSerializeBlocksComment(srcBlocks)}
         // Passa a true quando o envio arranca no servidor: a partir daí, um
         // erro no browser não significa que o envio tenha parado.
         let _envioArrancou = false;
+        // Passa a true quando o assistente é devolvido ao utilizador enquanto
+        // os lotes continuam em segundo plano. A partir daí o finally não pode
+        // mexer no _wizSubmitting nem no botão: já pertencem à campanha nova.
+        let _wizLibertado = false;
         const sendType = document.querySelector('input[name="wizSendType"]:checked')?.value || 'now';
         const subject = document.getElementById('wizSubject')?.value.trim();
         const name    = document.getElementById('wizName')?.value.trim() || subject || 'Campanha';
@@ -9786,6 +9790,11 @@ ${teSerializeBlocksComment(srcBlocks)}
                     wizShowStep(1);
                     _loadCampaigns(_currentBrand.id);
                     showToast(`Envio iniciado: ${(init.total || 0).toLocaleString('pt-PT')} destinatários. Podes acompanhar o progresso aqui.`, 'info');
+                    // Liberta o assistente já: o ciclo abaixo dura o envio
+                    // inteiro, e com o _wizSubmitting a true o botão Seguinte de
+                    // uma campanha nova não fazia nada até este acabar.
+                    _wizSubmitting = false;
+                    _wizLibertado = true;
 
                     let totalSent = 0, totalFailed = 0, _batches = 0;
                     while (_batches++ < 500) {
@@ -9841,8 +9850,10 @@ ${teSerializeBlocksComment(srcBlocks)}
             else showToast(e.message, 'error');
         }
         finally {
-            _wizSubmitting = false;
-            if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
+            if (!_wizLibertado) {
+                _wizSubmitting = false;
+                if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
+            }
         }
     }
     // Pede um lote de envio, repetindo em falhas de rede.
