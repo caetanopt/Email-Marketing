@@ -416,7 +416,29 @@ const provas = [
     // No browser, a regra diaria que so existia la nao pode voltar.
     const h=fs.readFileSync('email.html','utf8');
     if(/savedDay !== _todayStr\\(\\)/.test(h))
-      throw new Error('voltou a regra diaria do browser — a sessao passa a acabar todos os dias em vez de a segunda-feira');`],
+      throw new Error('voltou a regra diaria do browser — a sessao passa a acabar todos os dias em vez de a segunda-feira');
+    // O browser repete o calculo da semana (para mandar para o login antes de
+    // desenhar o painel). As duas copias tem de coincidir: corre-se a do
+    // email.html contra a de lib/auth.js ao longo de dois anos.
+    const bloco=(inicio)=>{const i=h.indexOf(inicio); if(i<0) throw new Error('nao encontrei '+inicio+' no email.html');
+      let d=0; for(let k=h.indexOf('{',i);k<h.length;k++){ if(h[k]==='{')d++; else if(h[k]==='}'){d--; if(!d) return h.slice(i,k+1);} } };
+    const iFmt=h.indexOf('const _fmtLisboa'); const fmt=h.slice(iFmt, h.indexOf('})();', iFmt)+5);
+    const cli=new Function(fmt+'\\n'+bloco('function _paredeLisboa')+'\\n'+bloco('function _inicioDaSemanaLisboa')+'\\nreturn _inicioDaSemanaLisboa;')();
+    for(let T=Date.parse('2026-01-01T00:00:00Z'); T<Date.parse('2028-01-01T00:00:00Z'); T+=13*3600e3+17*60e3)
+      if(cli(T)!==inicioDaSemana(T)) throw new Error('o browser e o servidor discordam do inicio da semana em '+new Date(T).toISOString()+' — um manda para o login e o outro nao, ou o contrario');
+    // Revisao adversarial: um link magico reutilizado dava 401 numa rota que a
+    // comparacao exacta com '/api/auth' nao excluia, e apagava a sessao valida.
+    if(!/path\\.startsWith\\('\\/api\\/auth\\?token='\\)/.test(h))
+      throw new Error('o 401 de um link magico ja usado voltou a ser tratado como fim de sessao — apaga uma sessao ainda valida');
+    // E uma sessao que acaba com trabalho por gravar nao pode recarregar a pagina.
+    const st=bloco('function _sessaoTerminou');
+    if(!/_haTrabalhoPorGravar\\(\\)/.test(st) || st.indexOf('_haTrabalhoPorGravar()') > st.indexOf('location.reload'))
+      throw new Error('o fim de sessao voltou a recarregar a pagina sem ver se ha trabalho por gravar — perde-se o que esta no editor');
+    if(!/_ECRAS_DE_EDICAO\\.has\\(ecra\\)/.test(bloco('function _haTrabalhoPorGravar')))
+      throw new Error('o trabalho por gravar deixou de exigir um editor aberto — o _teDirty fica a true no painel e toda a gente veria o aviso');
+    // O iat tambem conta no browser, senao os tokens antigos abrem o painel e levam 401.
+    if(!/p\\.iat \\* 1000 >= _inicioDaSemanaLisboa\\(\\)/.test(bloco('function _sessaoValida')))
+      throw new Error('o browser deixou de verificar o iat — um token antigo de 7 dias abre o painel e e expulso logo a seguir');`],
   ['esvaziar uma lista grande não bate no limite de tempo, e os erros ficam nos logs', `const fs=require('fs');
     const l=fs.readFileSync('api/lists/index.js','utf8');
     // Era um DELETE unico de todos os contactos da lista, numa so transaccao.

@@ -147,10 +147,10 @@ module.exports = async function handler(req, res) {
               <h2 style="margin:0 0 8px">O teu link de acesso ao eMKT</h2>
               <p style="color:#64748b;margin:0 0 24px">Clica no botão abaixo para acederes. O link é válido durante <strong>15 minutos</strong>.</p>
               <a href="${magicUrl}" style="display:inline-block;padding:12px 28px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Aceder ao eMKT</a>
-              <p style="margin-top:24px;font-size:13px;color:#64748b">Depois de entrares, o acesso fica activo até ao fim da semana. À segunda-feira é preciso pedir um link novo.</p>
+              <p style="margin-top:24px;font-size:13px;color:#64748b">Este link só funciona uma vez. Depois de entrares, o acesso fica activo até ao fim da semana: volta directamente a <a href="${appUrl}/email" style="color:#64748b">${appUrl.replace(/^https?:\/\//, '')}/email</a>, sem o link. À segunda-feira é preciso pedir um link novo.</p>
               <p style="margin-top:16px;font-size:12px;color:#94a3b8">Se não pediste este acesso, ignora este email.</p>
             </body></html>` },
-            Text: { Data: `O teu link de acesso ao eMKT (válido 15 min):\n${magicUrl}\n\nDepois de entrares, o acesso fica activo até ao fim da semana. À segunda-feira é preciso pedir um link novo.\n\nSe não pediste este acesso, ignora este email.` },
+            Text: { Data: `O teu link de acesso ao eMKT (válido 15 min):\n${magicUrl}\n\nEste link só funciona uma vez. Depois de entrares, o acesso fica activo até ao fim da semana: volta directamente a ${appUrl}/email, sem o link. À segunda-feira é preciso pedir um link novo.\n\nSe não pediste este acesso, ignora este email.` },
           },
         },
       }));

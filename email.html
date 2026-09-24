@@ -156,6 +156,116 @@
     // guardava o dia do login para uma regra diária que só existia aqui — já
     // não se grava, mas continua a ser apagado para limpar browsers antigos.
     const setToken  = t  => { localStorage.setItem('pm_token', t); };
+
+    // ── Sessão semanal, do lado do browser ──────────────────────────────
+    //
+    // A mesma regra que o servidor aplica (lib/auth.js): a sessão acaba à
+    // segunda-feira às 00:00 de Lisboa, e um token emitido antes do início da
+    // semana corrente já não vale, mesmo que o exp esteja no futuro (é o caso
+    // dos tokens do formato antigo, de 7 dias). O browser só a repete para
+    // mandar para o login ANTES de desenhar o painel — quem decide é o
+    // servidor. O cálculo tem de coincidir com o de lib/auth.js; há uma sonda
+    // em scripts/check-runtime.js que compara os dois.
+    const _fmtLisboa = (() => { try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Lisbon', hourCycle: 'h23',
+        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'short' }); } catch { return null; } })();
+    function _paredeLisboa(t) {
+        const p = {};
+        for (const { type, value } of _fmtLisboa.formatToParts(new Date(t))) p[type] = value;
+        return { ano: +p.year, mes: +p.month, dia: +p.day, hora: +p.hour, min: +p.minute, seg: +p.second,
+                 diaDaSemana: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(p.weekday) };
+    }
+    function _inicioDaSemanaLisboa(agora = Date.now()) {
+        const w = _paredeLisboa(agora);
+        const s = new Date(Date.UTC(w.ano, w.mes - 1, w.dia - w.diaDaSemana));
+        const guess = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate(), 0, 0, 0);
+        const desvio = (t) => { const x = _paredeLisboa(t); return Date.UTC(x.ano, x.mes - 1, x.dia, x.hora, x.min, x.seg) - t; };
+        return guess - desvio(guess - desvio(guess));
+    }
+    // O payload do JWT é base64url; atob precisa de base64 normal.
+    function _payloadDoToken(t) {
+        try { return JSON.parse(atob(String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return null; }
+    }
+    function _sessaoValida(t) {
+        const p = t && _payloadDoToken(t);
+        if (!p || !p.exp || p.exp * 1000 <= Date.now()) return false;
+        // Sem Intl com fusos (browser muito antigo) não se consegue calcular a
+        // semana: fica só o exp, e o servidor faz o resto.
+        if (!_fmtLisboa) return true;
+        return !!p.iat && p.iat * 1000 >= _inicioDaSemanaLisboa();
+    }
+
+    // Há trabalho por gravar nos editores (template, bloco) ou no assistente?
+    //
+    // Só conta com um editor ABERTO. O _teDirty sozinho não serve: fica a
+    // true logo no arranque, no painel, sem ninguém a editar — e sem este
+    // filtro toda a gente via o aviso em vez de ir para o login. O mesmo
+    // critério do aviso de saída do assistente (showScreen).
+    const _ECRAS_DE_EDICAO = new Set(['templateEdit', 'campaignCreate']);
+    function _haTrabalhoPorGravar() {
+        try {
+            const ecra = (typeof _currentScreen !== 'undefined' && _currentScreen)
+                || document.querySelector('.screen.active')?.id;
+            if (!_ECRAS_DE_EDICAO.has(ecra)) return false;
+            return typeof _wizHasUnsavedChanges === 'function' && !!_wizHasUnsavedChanges();
+        } catch { return false; }
+    }
+
+    // A sessão terminou a meio do trabalho. Recarregar deitava fora tudo o que
+    // não estava gravado — foi o que a revisão apanhou com um separador aberto
+    // de sexta para segunda. Em vez disso, avisa-se e espera-se: um login feito
+    // noutro separador grava o token novo no localStorage, que este separador
+    // lê a cada pedido, e basta voltar a carregar em Guardar.
+    function _avisarSessaoTerminadaComTrabalho() {
+        if (document.getElementById('avisoSessao')) return;
+        const d = document.createElement('div');
+        d.id = 'avisoSessao';
+        d.setAttribute('role', 'alert');
+        // O estilo todo vem da regra #avisoSessao na folha de estilos, sem
+        // classes do Tailwind: no tema escuro bg-amber-50 passa a um âmbar
+        // translúcido e o aviso ficava ilegível, e o aviso tem de aparecer
+        // mesmo que o CDN do Tailwind não carregue.
+        d.innerHTML = `<p class="aviso-titulo">A sessão desta semana terminou</p>
+            <p>Tens alterações por gravar, por isso esta página não foi recarregada. Abre o eMKT noutro separador, pede um link novo e entra. Depois volta aqui e carrega outra vez em Guardar.</p>
+            <a href="/email" target="_blank" rel="noopener">Abrir o eMKT noutro separador</a>`;
+        document.body.appendChild(d);
+    }
+    // Quando o outro separador entra, este fica a saber pelo evento storage.
+    window.addEventListener('storage', (e) => {
+        if (e.key !== 'pm_token' || !e.newValue || !_sessaoValida(e.newValue)) return;
+        const aviso = document.getElementById('avisoSessao');
+        if (aviso) { aviso.remove(); showToast('Sessão renovada. Já podes gravar.'); }
+    });
+
+    // Chamado quando o servidor responde 401 a um pedido feito com `tokenUsado`.
+    function _sessaoTerminou(tokenUsado) {
+        const actual = getToken();
+        // Outro separador já entrou entretanto: o pedido foi com o token velho,
+        // o próximo vai com o novo. Não se apaga nada.
+        if (actual && actual !== tokenUsado && _sessaoValida(actual)) {
+            showToast('A sessão foi renovada noutro separador. Tenta outra vez.', 'info');
+            return;
+        }
+        if (_haTrabalhoPorGravar()) {
+            if (actual === tokenUsado) localStorage.removeItem('pm_token');
+            _avisarSessaoTerminadaComTrabalho();
+            return;
+        }
+        clearAuth();
+        showToast('A sessão terminou. A recarregar…', 'error');
+        setTimeout(() => location.reload(), 1500);
+    }
+
+    // Um separador que volta a ficar visível (segunda de manhã, depois do fim
+    // de semana) verifica a sessão logo, antes de o utilizador começar a
+    // trabalhar sobre uma sessão que já acabou.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        const t = getToken();
+        if (!t || _sessaoValida(t)) return;
+        if (_haTrabalhoPorGravar()) { _avisarSessaoTerminadaComTrabalho(); return; }
+        clearAuth();
+        location.reload();
+    });
     const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_token_day'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); localStorage.removeItem('pm_user_role'); document.documentElement.classList.remove('is-viewer'); };
 
     // ── Hash-based routing ───────────────────────────────
@@ -185,13 +295,14 @@
         const res = await fetch(API_BASE + path, { ...options, headers });
         let data;
         try { data = await res.json(); } catch { throw new Error(`Erro de servidor (${res.status})`); }
-        if (res.status === 401 && path !== '/api/auth') {
-            localStorage.removeItem('pm_token');
-            localStorage.removeItem('pm_user');
-            localStorage.removeItem('pm_brands');
-            localStorage.removeItem('pm_current_brand');
-            showToast('Sessão expirada. A recarregar…', 'error');
-            setTimeout(() => location.reload(), 1500);
+        // As rotas do próprio login respondem 401 por razões que não são o fim
+        // da sessão: credenciais, ou um link mágico já usado. A comparação era
+        // exacta com '/api/auth', e a verificação do link é '/api/auth?token=…'
+        // — voltar a clicar no link do email a meio da semana apagava uma
+        // sessão ainda válida e mandava pedir outro link.
+        const rotaDeLogin = path === '/api/auth' || path.startsWith('/api/auth?token=');
+        if (res.status === 401 && !rotaDeLogin) {
+            _sessaoTerminou(token);
             throw new Error(data.error || 'Sessão expirada');
         }
         if (!res.ok) throw new Error(data.detail ? `${data.error || 'Erro'}: ${data.detail}` : (data.error || 'Erro desconhecido'));
@@ -257,6 +368,18 @@
                         <button onclick="location.reload()" class="w-full py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg">Continuar</button>`;
                 });
         } catch (e) {
+            // O link só funciona uma vez. Quem volta a clicar nele a meio da
+            // semana (o email fica na caixa de entrada) já tem uma sessão
+            // válida neste browser: entra com ela, em vez de ver um erro e ter
+            // de pedir outro link.
+            if (e.message !== 'ACCOUNT_INACTIVE' && _sessaoValida(getToken())) {
+                try { sessionStorage.setItem('pm_aviso', 'Este link já tinha sido usado. Entraste com a sessão desta semana.'); } catch {}
+                // Sem o hash: o showScreen('login') acima pôs #login no endereço,
+                // e o arranque leva quem tem marca guardada directamente para o
+                // ecrã do hash — o login, com a sessão válida.
+                location.replace(location.pathname);
+                return;
+            }
             if (e.message === 'ACCOUNT_INACTIVE') {
                 if (form) form.innerHTML = `
                     <div class="text-center space-y-3">
@@ -12465,6 +12588,22 @@ ${sections.join('\n\n')}
         html.dark .bg-violet-50, html.dark .bg-purple-50 { background-color: rgba(139,92,246,0.12) !important; }
         html.dark .bg-green-50   { background-color: rgba(16,185,129,0.10) !important; }
 
+        /* Aviso de sessão terminada com trabalho por gravar. Fica por cima de
+           tudo, incluindo modais, e com fundo opaco nos dois temas: um fundo
+           translúcido deixava ver o ecrã de baixo através do texto. */
+        #avisoSessao {
+            position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10000;
+            box-sizing: border-box; width: calc(100% - 2rem); max-width: 36rem; padding: 16px 20px;
+            border: 1px solid #fcd34d; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+            background-color: #fffbeb; color: #78350f; font-size: 14px; line-height: 1.45;
+        }
+        #avisoSessao p                { margin: 0 0 12px; }
+        #avisoSessao .aviso-titulo    { margin-bottom: 4px; font-weight: 600; }
+        #avisoSessao a                { display: inline-block; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
+                                        text-decoration: none; background-color: #002E5D; color: #fff; }
+        html.dark #avisoSessao        { background-color: #2a2110; color: #fde68a; border-color: #b45309; }
+        html.dark #avisoSessao a      { background-color: #fde68a; color: #1c1917; }
+
         /* ── Lacunas do tema escuro, medidas com uma auditoria de contraste ──
            O tema escuro é uma lista de remapeamentos escrita à mão: uma classe
            clara que não esteja aqui fica clara. As regras abaixo fecham o que
@@ -12594,7 +12733,7 @@ ${sections.join('\n\n')}
                 <div>
                     <p class="font-semibold text-slate-900">Verifica o teu email</p>
                     <p class="text-sm text-slate-500 mt-1">Enviámos-te um link de acesso para <strong id="loginSentEmail"></strong>. O link é válido durante 15 minutos.</p>
-                    <p class="text-sm text-slate-500 mt-2">Depois de entrares, o acesso fica activo até ao fim da semana. À segunda-feira é preciso pedir um link novo.</p>
+                    <p class="text-sm text-slate-500 mt-2">O link só funciona uma vez. Depois de entrares, o acesso fica activo até ao fim da semana: volta directamente a esta página, sem o link. À segunda-feira é preciso pedir um link novo.</p>
                 </div>
                 <button onclick="document.getElementById('loginSent').classList.add('hidden');document.getElementById('loginForm').classList.remove('hidden')" class="text-sm text-slate-500 hover:text-slate-800 underline">
                     Usar outro email
@@ -14069,12 +14208,15 @@ ${sections.join('\n\n')}
         // pm_token_day) que o servidor não conhecia. Foi substituída pela regra
         // semanal, que o servidor aplica a todos os pedidos — isto é só para o
         // utilizador não ver o painel antes de ser mandado embora.
-        if (token) {
-            try {
-                const _payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-                if (!_payload.exp || _payload.exp * 1000 < Date.now()) { clearAuth(); }
-            } catch { clearAuth(); }
-        }
+        //
+        // _sessaoValida olha também para o iat: um token do formato antigo (7
+        // dias) emitido antes desta segunda ainda tem o exp no futuro, e sem
+        // isto abria o painel para logo a seguir levar 401 em todos os pedidos.
+        if (token && !_sessaoValida(token)) clearAuth();
+        try {
+            const aviso = sessionStorage.getItem('pm_aviso');
+            if (aviso) { sessionStorage.removeItem('pm_aviso'); setTimeout(() => showToast(aviso, 'info'), 600); }
+        } catch {}
         const brands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
         if (getToken() && brands.length) {
             _userBrandIds = new Set(brands.map(b => b.brand_id));
