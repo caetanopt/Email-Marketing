@@ -150,9 +150,12 @@
     // antigo, e ao passar a servir a aplicação de emkt.caetano.pt todas as
     // chamadas iam para fora e falhavam com "Failed to fetch".
     const API_BASE = '';
-    const _todayStr   = () => new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
     const getToken  = () => localStorage.getItem('pm_token');
-    const setToken  = t  => { localStorage.setItem('pm_token', t); localStorage.setItem('pm_token_day', _todayStr()); };
+    // A validade da sessão vem do próprio token: o servidor põe o `exp` na
+    // segunda-feira seguinte às 00:00 de Lisboa (lib/auth.js). O pm_token_day
+    // guardava o dia do login para uma regra diária que só existia aqui — já
+    // não se grava, mas continua a ser apagado para limpar browsers antigos.
+    const setToken  = t  => { localStorage.setItem('pm_token', t); };
     const clearAuth = () => { localStorage.removeItem('pm_token'); localStorage.removeItem('pm_token_day'); localStorage.removeItem('pm_user'); localStorage.removeItem('pm_brands'); localStorage.removeItem('pm_current_brand'); localStorage.removeItem('pm_user_role'); document.documentElement.classList.remove('is-viewer'); };
 
     // ── Hash-based routing ───────────────────────────────
@@ -12591,6 +12594,7 @@ ${sections.join('\n\n')}
                 <div>
                     <p class="font-semibold text-slate-900">Verifica o teu email</p>
                     <p class="text-sm text-slate-500 mt-1">Enviámos-te um link de acesso para <strong id="loginSentEmail"></strong>. O link é válido durante 15 minutos.</p>
+                    <p class="text-sm text-slate-500 mt-2">Depois de entrares, o acesso fica activo até ao fim da semana. À segunda-feira é preciso pedir um link novo.</p>
                 </div>
                 <button onclick="document.getElementById('loginSent').classList.add('hidden');document.getElementById('loginForm').classList.remove('hidden')" class="text-sm text-slate-500 hover:text-slate-800 underline">
                     Usar outro email
@@ -14057,18 +14061,19 @@ ${sections.join('\n\n')}
         if (_magicToken) { _handleMagicToken(_magicToken); return; }
         // Check for existing session
         const token = getToken();
-        // Validate token expiry client-side before touching any screen (avoids dashboard flash)
+        // Validar a expiração antes de desenhar qualquer ecrã (evita o painel
+        // aparecer e desaparecer). O `exp` é a segunda-feira seguinte ao login,
+        // às 00:00 de Lisboa: à segunda de manhã isto manda para o login.
+        //
+        // Havia aqui uma regra DIÁRIA (dia de calendário UTC guardado em
+        // pm_token_day) que o servidor não conhecia. Foi substituída pela regra
+        // semanal, que o servidor aplica a todos os pedidos — isto é só para o
+        // utilizador não ver o painel antes de ser mandado embora.
         if (token) {
             try {
-                const _payload = JSON.parse(atob(token.split('.')[1]));
-                if (_payload.exp * 1000 < Date.now()) { clearAuth(); }
+                const _payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+                if (!_payload.exp || _payload.exp * 1000 < Date.now()) { clearAuth(); }
             } catch { clearAuth(); }
-        }
-        // Enforce daily session boundary: if the token was saved on a different calendar
-        // day, expire the session so the user must log in again today.
-        if (getToken()) {
-            const savedDay = localStorage.getItem('pm_token_day');
-            if (!savedDay || savedDay !== _todayStr()) { clearAuth(); }
         }
         const brands = (() => { try { return JSON.parse(localStorage.getItem('pm_brands')||'[]'); } catch { return []; } })();
         if (getToken() && brands.length) {

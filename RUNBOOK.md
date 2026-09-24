@@ -21,7 +21,7 @@ O esquema é gerido por ficheiros SQL numerados em `migrations/` (001 a 066 — 
 
 - **Migração por correr** — erro `42P01` (tabela/coluna em falta) ou a funcionalidade devolve dados vazios com `_migration_pending: true`. Correr o SQL da migração em falta no Supabase SQL Editor.
 - **`DATABASE_URL` inválida, em falta, ou pooler em baixo** — `lib/db.js` lança erro **no `require()`**, não por pedido; isto faz a função serverless falhar a arrancar (aparece na Vercel como `FUNCTION_INVOCATION_FAILED`, não como um JSON de erro normal) em qualquer rota que importe `lib/db.js`. Verificar a variável na Vercel e o estado do projecto no Supabase.
-- **`JWT_SECRET` alterado ou em falta** — mesmo comportamento de falha no arranque (`lib/auth.js`); todos os utilizadores são desautenticados de repente (tokens deixam de validar — sessões duram 7 dias, `expiresIn:'7d'`). Nunca alterar sem coordenar.
+- **`JWT_SECRET` alterado ou em falta** — mesmo comportamento de falha no arranque (`lib/auth.js`); todos os utilizadores são desautenticados de repente (tokens deixam de validar). As sessões terminam à segunda-feira às 00:00 de Lisboa. Nunca alterar sem coordenar.
 - **`BLOB_READ_WRITE_TOKEN` em falta** — só afecta upload de **logo/media de marca** (`api/brands/index.js`), que falha com `503 BLOB_READ_WRITE_TOKEN não configurado na Vercel`. Não afecta anexos de campanhas.
 - **Anexos de campanha grandes** — como vão em base64 dentro da própria linha da BD e depois inline no email MIME raw, campanhas com anexos volumosos/múltiplos podem ultrapassar o limite de 10MB de mensagem raw do SES e falhar o envio sem aviso claro na UI.
 
@@ -34,7 +34,7 @@ Aplicação Node.js sem framework, funções serverless puras (`module.exports =
 | Pasta / Ficheiro | Função |
 |---|---|
 | `email.html` | Frontend inteiro (SPA): editor de campanhas/templates, dashboard, gestão de contactos/listas, definições. Todo o JS embutido. |
-| `api/auth.js` | Login via magic link, sessões JWT (7 dias), gestão de utilizadores e roles (`owner`, `editor`, `viewer`) |
+| `api/auth.js` | Login via magic link, sessões JWT semanais (terminam à segunda-feira às 00:00 de Lisboa), gestão de utilizadores e roles (`owner`, `editor`, `viewer`) |
 | `api/campaigns/` | CRUD de campanhas, envio, agendamento, relatórios |
 | `api/contacts/` | CRUD de contactos, importação em massa (`import_process`, via cron) |
 | `api/lists/` | Listas de contactos (incl. listas globais/fixas) |
@@ -58,7 +58,7 @@ Aplicação Node.js sem framework, funções serverless puras (`module.exports =
 ### Regras de negócio principais
 
 - **Conta de arranque desactivada** — `admin@primemail.io`, criada pela migração 002 com papel de owner em todas as marcas, foi desactivada em produção (Setembro de 2026). Era uma conta órfã de um domínio que não é do grupo. **Não voltar a correr a migração 002** sem ler o aviso que lá está: o bloco dos papéis repunha owner numa conta que ninguém reclama. O SQL usado está em `scripts/desactivar-conta-orfa.sql`, com o procedimento de reversão.
-- **Autenticação** — **só por magic link** (não existe login por palavra-passe; não há campo de password nem hashing no schema/código). `api/auth.js` envia um link por email com token válido 15 min; a sessão resultante é um JWT válido 7 dias (`JWT_SECRET`). Roles por marca em `user_brand_roles`, valores exactos `owner`/`editor`/`viewer` (a role `admin` existiu e foi removida na migração 025).
+- **Autenticação** — **só por magic link** (não existe login por palavra-passe; não há campo de password nem hashing no schema/código). `api/auth.js` envia um link por email com token válido 15 min; a sessão resultante é um JWT (`JWT_SECRET`) que termina à segunda-feira seguinte às 00:00 de Lisboa, qualquer que seja o dia do login: todas as semanas é preciso pedir um link novo. O servidor recusa também qualquer sessão emitida antes do início da semana corrente (`lib/auth.js`, `inicioDaSemana`). Roles por marca em `user_brand_roles`, valores exactos `owner`/`editor`/`viewer` (a role `admin` existiu e foi removida na migração 025).
 - **Multi-marca** — as campanhas e os templates estão associados a uma `brand_id`; os utilizadores podem ter acesso a várias marcas com roles diferentes em cada. **As listas de email e os contactos são globais**: não pertencem a nenhuma marca (migrações 049 e 051). Um email é um contacto só, partilhado por todas as marcas — era assim que o envio já os tratava, juntando-os com `DISTINCT ON (lower(email))`. Nas APIs `/api/contacts` e `/api/sync` o `brand_id` deixou de ser obrigatório e deixou de filtrar contactos; continua a ser exigido nas acções de importação (`?action=import_*`, `?action=imports`), porque o histórico de importações é que é por marca.
 - **Cancelamentos via `DELETE /api/sync`** — com `list_id` remove a pessoa **só daquela lista** (apaga a linha de `list_members`) e não toca na supressão, por isso continua a receber das outras listas; a resposta traz `scope: "lista"`. Sem `list_id` é cancelamento total: marca o contacto `unsubscribed` e insere o email em `suppression`, que é global — deixa de receber de qualquer lista e de qualquer marca, o mesmo efeito do link de cancelamento nos emails; a resposta traz `scope: "global"`. A supressão não se desfaz pela API (só em Supressões, na aplicação).
 - **Envio de campanhas** — motor em `lib/sendCampaign.js`, via Amazon SES. Lê o rate limit em `global_settings.ses_rate_per_second` (fallback `SES_RATE_PER_SECOND`, depois 50/s), limitado também por `SES_RATE`/`SES_BATCH_SIZE` (default 500 por lote) para caber no timeout de 60s da função Vercel (`maxDuration` definido em `vercel.json` só para `campaigns/*`). Antes de cada lote verifica a quota diária do SES (e o tecto de aquecimento `SES_LIMITE_DIARIO`, se definido); se esgotada, o código **não agenda retoma nenhuma** — só marca `quotaExhausted` e devolve os destinatários a `pending`. A retoma depende inteiramente do cron externo continuar a chamar `/api/cron` depois da quota SES resetar à meia-noite UTC. **Se o cron parar, os envios ficam presos** — mas isso deixou de ser invisível: ver o pulso do agendador na secção 4.
@@ -323,7 +323,7 @@ envio em lib/sendCampaign.js via Amazon SES, com rate limiting, batching
 (60s de timeout por função) e verificação de quota diária (sem retoma
 automática — depende do cron externo continuar a chamar /api/cron).
 Autenticação é SÓ por magic link (sem password), JWT de sessão válido
-7 dias, roles por marca (owner/editor/viewer) em user_brand_roles.
+até segunda-feira às 00:00 de Lisboa, roles por marca (owner/editor/viewer) em user_brand_roles.
 Agendamento de campanhas (/api/cron, sem autenticação) e importação de
 contactos (/api/cron/import, exige header CRON_SECRET) dependem de um
 cron EXTERNO. Geração de template por IA (image-to-mjml) exige

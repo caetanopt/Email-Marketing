@@ -390,6 +390,33 @@ const provas = [
       throw new Error('voltou o filtro que so esconde linhas no DOM');
     if(!/_ultimoRefrescoLista/.test(h))
       throw new Error('a lista de campanhas volta a ser recarregada a cada lote durante o envio');`],
+  ['a sessão termina à segunda-feira às 00:00 de Lisboa, no servidor', `const fs=require('fs');
+    // Pedido: o login vale durante a semana; a cada segunda-feira pede-se um
+    // link novo. Antes eram 7 dias no servidor e um dia de calendario UTC so no
+    // browser — um token copiado abria a API a semana inteira.
+    const a=fs.readFileSync('lib/auth.js','utf8');
+    if(/expiresIn: *'7d'/.test(a))
+      throw new Error('a sessao voltou a durar 7 dias a contar do login, em vez de acabar a segunda-feira');
+    if(!/exp: Math\\.floor\\(fimDaSemana\\(\\) \\/ 1000\\)/.test(a))
+      throw new Error('o token deixou de expirar no fim da semana');
+    if(!/payload\\.iat \\* 1000 < inicioDaSemana\\(\\)/.test(a))
+      throw new Error('o servidor deixou de recusar sessoes de semanas anteriores — os tokens antigos de 7 dias voltam a passar');
+    if(!/'Europe\\/Lisbon'/.test(a))
+      throw new Error('a semana deixou de ser contada na hora de Lisboa');
+    // O calculo, com o modulo verdadeiro: segunda 00:00 local, nas duas mudancas de hora.
+    process.env.JWT_SECRET=process.env.JWT_SECRET||'x';
+    const { inicioDaSemana, fimDaSemana } = require('./lib/auth');
+    const casos=[['2026-09-27T22:59:59Z','2026-09-27T23:00:00.000Z'],['2026-10-23T10:00:00Z','2026-10-26T00:00:00.000Z'],
+                 ['2026-03-27T10:00:00Z','2026-03-29T23:00:00.000Z'],['2026-12-31T20:00:00Z','2027-01-04T00:00:00.000Z']];
+    for(const [t,fim] of casos){
+      const T=Date.parse(t);
+      if(new Date(fimDaSemana(T)).toISOString()!==fim) throw new Error('fim da semana errado para '+t+': '+new Date(fimDaSemana(T)).toISOString());
+      if(!(inicioDaSemana(T)<=T && T<fimDaSemana(T))) throw new Error('o instante '+t+' nao cai dentro da sua propria semana');
+    }
+    // No browser, a regra diaria que so existia la nao pode voltar.
+    const h=fs.readFileSync('email.html','utf8');
+    if(/savedDay !== _todayStr\\(\\)/.test(h))
+      throw new Error('voltou a regra diaria do browser — a sessao passa a acabar todos os dias em vez de a segunda-feira');`],
   ['esvaziar uma lista grande não bate no limite de tempo, e os erros ficam nos logs', `const fs=require('fs');
     const l=fs.readFileSync('api/lists/index.js','utf8');
     // Era um DELETE unico de todos os contactos da lista, numa so transaccao.
