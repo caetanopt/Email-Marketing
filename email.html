@@ -233,7 +233,11 @@
     window.addEventListener('storage', (e) => {
         if (e.key !== 'pm_token' || !e.newValue || !_sessaoValida(e.newValue)) return;
         const aviso = document.getElementById('avisoSessao');
-        if (aviso) { aviso.remove(); showToast('Sessão renovada. Já podes gravar.'); }
+        if (aviso) { aviso.remove(); showToast('Sessão renovada. Já podes gravar.'); return; }
+        // Este separador ficou no ecrã de login e o link do email abriu-se
+        // noutro: entra-se aqui também, em vez de pedir outro link.
+        const ecra = document.querySelector('.screen.active')?.id;
+        if (ecra === 'login' || ecra === 'forgotPassword') setTimeout(() => location.replace(location.pathname), 400);
     });
 
     // Chamado quando o servidor responde 401 a um pedido feito com `tokenUsado`.
@@ -14235,7 +14239,16 @@ ${sections.join('\n\n')}
             _fetchApiBrands();
             // Restore last selected brand
             const savedBrand = (() => { try { return JSON.parse(localStorage.getItem('pm_current_brand')||'null'); } catch { return null; } })();
-            const hashScreen = _screenFromHash(location.hash);
+            let hashScreen = _screenFromHash(location.hash);
+            // Com sessão válida, #login e #forgot-password não são um destino:
+            // são o endereço que fica no separador (e no histórico do browser)
+            // depois de se pedir um link. Obedecer-lhes mostrava o ecrã de login
+            // com a sessão da semana guardada, e parecia que o acesso durava um
+            // dia — voltava-se a pedir um link sem ser preciso.
+            if (hashScreen === 'login' || hashScreen === 'forgotPassword') {
+                hashScreen = null;
+                history.replaceState(null, '', location.pathname + location.search);
+            }
             if (savedBrand && hashScreen) {
                 // Restore brand state and go directly to the screen
                 _currentBrand = savedBrand;
@@ -14295,6 +14308,12 @@ ${sections.join('\n\n')}
                 }
                 // Regular screen from hash
                 const screenId = state?.screen || _screenFromHash(hash);
+                // Voltar atrás até ao #login com a sessão válida não mostra o
+                // login: esse ecrã já não tem nada a fazer.
+                if ((screenId === 'login' || screenId === 'forgotPassword') && _sessaoValida(getToken())) {
+                    if (_currentBrand) showScreen('dashboard'); else _goToDefaultBrandOrSelect();
+                    return;
+                }
                 if (screenId) showScreen(screenId);
             } finally {
                 _historyNav = false;
