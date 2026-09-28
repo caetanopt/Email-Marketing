@@ -2301,7 +2301,14 @@
     // de ninguém: vinha colado do Word/Outlook, que escreve sempre 11pt
     // (14.6667px) nos spans que cola. Esse span cobria todo o texto e ganhava
     // ao tamanho do bloco — punha-se 55 no painel e o email saía a 14.67px.
+    //
+    // Voltou, mas só como tamanho inteiro em px — o que o controlo "Tamanho"
+    // da barra escreve e o que se escreve à mão no MJML (<span
+    // style="font-size:40px">). O Word escreve 11pt ou 14.6667px, e isso
+    // continua a ser descartado; e o texto colado perde qualquer tamanho
+    // (teRichPaste chama isto com semTamanho).
     const TE_RICH_ALLOWED_STYLES = ['font-weight','font-style','text-decoration','color'];
+    const TE_RICH_TAMANHO_OK = /^\d{1,3}px$/;
     function teSafeHref(url) {
         const u = String(url || '').trim();
         return /^(https?:|mailto:|tel:)/i.test(u) ? u : '';
@@ -2315,7 +2322,7 @@
         'DIV','P','LI','UL','OL','H1','H2','H3','H4','H5','H6','BLOCKQUOTE',
         'PRE','SECTION','ARTICLE','HEADER','FOOTER','ADDRESS','FIGURE','TR','DT','DD',
     ]);
-    function teSanitizeRichText(html) {
+    function teSanitizeRichText(html, opts = {}) {
         const root = document.createElement('div');
         root.innerHTML = html || '';
         function cleanStyle(el) {
@@ -2325,6 +2332,8 @@
                 const val = el.style[camel];
                 if (val) kept.push(`${prop}:${val}`);
             });
+            const tam = el.style.fontSize;
+            if (!opts.semTamanho && tam && TE_RICH_TAMANHO_OK.test(tam)) kept.push(`font-size:${tam}`);
             return kept.join(';');
         }
         function walk(node) {
@@ -2512,7 +2521,7 @@
         if (!html && !texto) return;
         ev.preventDefault();
         const limpo = html
-            ? teSanitizeRichText(html)
+            ? teSanitizeRichText(html, { semTamanho: true })
             : escHtml(texto).replace(/\r?\n/g, '<br/>');
         document.execCommand('insertHTML', false, limpo);
         if (typeof depois === 'function') depois();
@@ -2564,6 +2573,20 @@
         const el = teRichComSelecao(blockId);
         if (!el) { showToast('Selecciona primeiro a parte do texto a formatar.', 'info'); return; }
         document.execCommand(cmd, false, null);
+        teRichInput(blockId, el);
+    }
+    // Tamanho de letra só da parte seleccionada — para, na mesma linha, ter
+    // "17.950€" grande e "+ IVA" pequeno. O resto do texto fica com o
+    // "Tamanho (px)" do bloco. Tamanhos que já estivessem dentro da selecção
+    // saem, senão o de dentro ganhava e parecia que o controlo não fazia nada.
+    function teRichSize(blockId, px) {
+        if (!px) return;
+        const el = teRichComSelecao(blockId);
+        if (!el) { showToast('Selecciona primeiro a parte do texto a que queres mudar o tamanho.', 'info'); return; }
+        teWrapSelectionStyle(el, 'fontSize', `${parseInt(px, 10)}px`);
+        const novo = window.getSelection()?.anchorNode;
+        const span = novo && (novo.nodeType === Node.ELEMENT_NODE ? novo : novo.parentElement)?.closest?.('span');
+        if (span && el.contains(span)) span.querySelectorAll('span').forEach(s => { s.style.fontSize = ''; });
         teRichInput(blockId, el);
     }
     function teRichColor(blockId, color) {
@@ -4188,6 +4211,10 @@
                     ${toolBtn('<i>I</i>','italic','Itálico')}
                     ${toolBtn('<u>U</u>','underline','Sublinhado')}
                     <input type="color" title="Cor da selecção" onchange="teRichColor('${b.id}',this.value)" class="shrink-0 w-6 h-6 border border-slate-200 rounded cursor-pointer" />
+                    <select title="Tamanho da selecção (px)" onchange="teRichSize('${b.id}',this.value);this.value=''" class="shrink-0 h-6 px-1 text-[11px] border border-slate-200 rounded bg-white cursor-pointer">
+                        <option value="">Tam.</option>
+                        ${[10,11,12,13,14,15,16,18,20,22,24,26,28,32,36,40,44,48,56,64,72].map(n => `<option value="${n}">${n}</option>`).join('')}
+                    </select>
                     <button type="button" title="Inserir ou editar link na selecção" onmousedown="event.preventDefault()" onclick="teRichLink('${b.id}')" class="shrink-0 w-6 h-6 flex items-center justify-center border border-slate-200 rounded hover:bg-slate-100">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5"/></svg>
                     </button>
@@ -4375,10 +4402,46 @@
                 // round-tripped MJML keeps rich formatting in the visual editor.
                 return { id, type:'text', text:teSanitizeRichText(el.innerHTML), bgColor, color:el.getAttribute('color')||'#475569', fontSize, fontWeight, align:el.getAttribute('align')||'left', lineHeight:parseFloat(el.getAttribute('line-height'))||1.6, uppercase, fontFamily, ...pad };
             }
-            case 'mj-button':
+            case 'mj-button': {
                 // areaBgColor é o fundo da área à volta do botão; sem ele, o
                 // bloco voltava sempre com a área branca.
-                return { id, type:'button', text:teSanitizeRichText(el.innerHTML), bgColor:el.getAttribute('background-color')||'#0f172a', areaBgColor:bg, textColor:el.getAttribute('color')||'#ffffff', fontSize:parseInt(el.getAttribute('font-size'))||14, fontWeight:el.getAttribute('font-weight')||'600', href:el.getAttribute('href')||'#', ...pad };
+                //
+                // Lê de volta TUDO o que teBlockToMjmlParts escreve no
+                // <mj-button>. Antes só vinham a cor, o tamanho, o peso e o
+                // link: um "Aplicar no visual" repunha o alinhamento, os
+                // cantos, o contorno, o espaço interior, a largura e o tipo de
+                // letra por defeito — e o botão mudava sem se ter mexido nele.
+                const at = (n) => el.getAttribute(n);
+                const btn = { id, type:'button', text:teSanitizeRichText(el.innerHTML), bgColor:at('background-color')||'#0f172a', areaBgColor:bg, textColor:at('color')||'#ffffff', fontSize:parseInt(at('font-size'))||14, fontWeight:at('font-weight')||'600', href:at('href')||'#', ...pad };
+                if (at('align')) btn.align = at('align');
+                if (at('target')) btn.target = at('target');
+                if (at('font-family')) btn.fontFamily = at('font-family');
+                // Largura: "220px" ou "100%".
+                const w = /^\s*([\d.]+)\s*(px|%)?\s*$/.exec(at('width') || '');
+                if (w) { btn.width = parseFloat(w[1]); btn.widthUnit = w[2] || 'px'; }
+                // Cantos: um valor para todos, ou quatro (sup. esq., sup. dir.,
+                // inf. dir., inf. esq. — a ordem do CSS e de TE_CANTOS).
+                if (el.hasAttribute('border-radius')) {
+                    const r = String(at('border-radius')).replace(/px/g, '').trim().split(/\s+/).map(v => parseFloat(v) || 0);
+                    if (r.length === 4 && r.some(v => v !== r[0])) {
+                        btn.borderRadiusCorners = { tl:r[0], tr:r[1], br:r[2], bl:r[3] };
+                    } else {
+                        btn.borderRadius = r[0] || 0;
+                    }
+                }
+                // Contorno: "2px solid #cccccc" ou "none". O rebordo inferior
+                // de relevo (border-bottom) é gerado a partir da cor do botão,
+                // por isso não se lê — volta sozinho.
+                const bd = /^\s*([\d.]+)px\s+\w+\s+(#[0-9a-f]{3,8}|rgba?\([^)]*\)|[a-z]+)\s*$/i.exec(at('border') || '');
+                if (bd) { btn.borderWidth = parseFloat(bd[1]); btn.borderColor = bd[2]; }
+                // Espaço interior: "12px 28px 12px 28px".
+                if (el.hasAttribute('inner-padding')) {
+                    const ip = teParsePadAttr(at('inner-padding'));
+                    btn.innerPaddingTop = ip.paddingTop; btn.innerPaddingRight = ip.paddingRight;
+                    btn.innerPaddingBottom = ip.paddingBottom; btn.innerPaddingLeft = ip.paddingLeft;
+                }
+                return btn;
+            }
             case 'mj-image':
                 // ...pad em falta aqui fazia a imagem perder sempre o padding
                 // ao voltar para o editor visual.
