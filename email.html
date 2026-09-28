@@ -2800,7 +2800,7 @@
     const teLabels = {
         header:'Cabeçalho', heading:'Título', text:'Texto', button:'Botão',
         image:'Imagem', divider:'Separador', spacer:'Espaço', footer:'Rodapé',
-        icon:'Ícone', columns2:'2 Colunas', columns3:'3 Colunas',
+        icon:'Ícone', columns2:'2 Colunas', columns3:'3 Colunas', columns4:'4 Colunas',
         quote:'Citação', linkBlock:'Bloco Link', listItems:'Lista',
         social:'Redes Sociais', hero:'Hero', accordion:'Acordeão',
         navbar:'Navegação', carousel:'Carrossel'
@@ -2986,6 +2986,7 @@
     function teMakeBlock(type) {
         if (type === 'columns2') return { id: teId(), type:'columns', cols:2, children:[[],[]] };
         if (type === 'columns3') return { id: teId(), type:'columns', cols:3, children:[[],[],[]] };
+        if (type === 'columns4') return { id: teId(), type:'columns', cols:4, children:[[],[],[],[]] };
         if (type === 'gridItems') {
             const fs = _teGlobalFontSize;
             const img = () => ({ id:teId(), type:'image', src:'https://placehold.co/280x160?text=Imagem', alt:'', width:280, align:'center', paddingTop:0, paddingRight:8, paddingBottom:8, paddingLeft:8 });
@@ -3973,7 +3974,7 @@
                 <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Largura das colunas (%)</label>
                     <p class="text-[10px] text-slate-400 mb-1.5">Não precisas de somar 100 — é ajustado automaticamente.</p>
-                    <div class="grid grid-cols-${Math.min(b.cols,3)} gap-1">
+                    <div class="grid grid-cols-${Math.min(b.cols,4)} gap-1">
                         ${teColWidthPercents(b).map((pct, idx) => `
                             <div><label class="block text-[9px] text-slate-400 mb-0.5">Col. ${idx+1}</label><input type="number" min="1" value="${pct}" oninput="teUpdateColWidth('${b.id}',${idx},this.value)" onchange="teUpdateColWidth('${b.id}',${idx},this.value)" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs" /></div>
                         `).join('')}
@@ -3999,7 +4000,7 @@
                 <div class="mb-3">
                     <label class="block text-[10px] font-medium text-slate-500 mb-1">Alinhamento vertical — por coluna</label>
                     <p class="text-[10px] text-slate-400 mb-1.5">Onde fica o conteúdo de cada coluna quando as colunas têm alturas diferentes.</p>
-                    <div class="grid grid-cols-${Math.min(b.cols,3)} gap-1">
+                    <div class="grid grid-cols-${Math.min(b.cols,4)} gap-1">
                         ${Array.from({length: b.cols}, (_, idx) => idx).map(idx => `
                             <div>
                                 <label class="block text-[9px] text-slate-400 mb-0.5">Col. ${idx+1}</label>
@@ -15355,6 +15356,11 @@ ${sections.join('\n\n')}
                                                 <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4z M10 4h4v16h-4z M16 4h4v16h-4z"/></svg>
                                                 <span class="text-[10px] pointer-events-none">3 Colunas</span>
                                             </button>
+                                            <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'columns4')" ondragend="teDragEnd()" onclick="teInsertBlock('columns4')"
+                                                    class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 4h3v16H3z M8 4h3v16H8z M13 4h3v16h-3z M18 4h3v16h-3z"/></svg>
+                                                <span class="text-[10px] pointer-events-none">4 Colunas</span>
+                                            </button>
                                             <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'gridItems')" ondragend="teDragEnd()" onclick="teInsertBlock('gridItems')"
                                                     class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                                 <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z"/></svg>
@@ -16889,6 +16895,11 @@ ${sections.join('\n\n')}
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
                                             <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4z M10 4h4v16h-4z M16 4h4v16h-4z"/></svg>
                                             <span class="text-[10px] pointer-events-none">3 Colunas</span>
+                                        </button>
+                                        <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'columns4')" ondragend="teDragEnd()" onclick="teInsertBlock('columns4')"
+                                                class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
+                                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 4h3v16H3z M8 4h3v16H8z M13 4h3v16h-3z M18 4h3v16h-3z"/></svg>
+                                            <span class="text-[10px] pointer-events-none">4 Colunas</span>
                                         </button>
                                         <button type="button" draggable="true" ondragstart="tePaletteDragStart(event,'gridItems')" ondragend="teDragEnd()" onclick="teInsertBlock('gridItems')"
                                                 class="flex flex-col items-center gap-1 p-2 rounded-lg border border-slate-100 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 transition-colors text-slate-600 cursor-grab">
