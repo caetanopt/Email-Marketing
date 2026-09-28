@@ -2196,6 +2196,7 @@
         teTemplateId = null;
         teState.blocks = [];
         teState.selected = null;
+        teState.bodyBg = TE_BODY_BG_DEFAULT;
         _teLoading = true;
         showScreen('templateEdit');
         document.querySelectorAll('#templateEdit .te-tpl-only').forEach(el => el.classList.remove('hidden'));
@@ -2942,7 +2943,7 @@
         selected: null,
         viewport: 'desktop',
         blocks: [],
-        bodyBg: '#f5f7fa'
+        bodyBg: '#ffffff'
     };
 
     // ── Tree helpers ─────────────────────────────────────────────────
@@ -3594,7 +3595,7 @@
             mBtn.classList.toggle('text-slate-500', teState.viewport !== 'mobile');
         }
         list.innerHTML = '';
-        list.style.background = teState.bodyBg || '#f5f7fa';
+        list.style.background = teState.bodyBg || TE_BODY_BG_DEFAULT;
         if (teState.blocks.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'text-center text-slate-400 text-sm italic py-12';
@@ -3906,7 +3907,7 @@
     function teUpdateBodyBg(color) {
         teState.bodyBg = color;
         const list = _teEl('canvasList');
-        if (list) list.style.background = color || '#f5f7fa';
+        if (list) list.style.background = color || TE_BODY_BG_DEFAULT;
         teRenderMjml();
         _wizScheduleApiAutoSave(true);
     }
@@ -3921,7 +3922,7 @@
                 <div class="space-y-3">
                     <div>
                         <label class="block text-[10px] font-medium text-slate-500 mb-1">Cor de fundo</label>
-                        <input type="color" value="${teState.bodyBg || '#f5f7fa'}"
+                        <input type="color" value="${teState.bodyBg || TE_BODY_BG_DEFAULT}"
                             oninput="teUpdateBodyBg(this.value)"
                             onchange="teUpdateBodyBg(this.value)"
                             class="w-full h-8 border border-slate-200 rounded cursor-pointer" />
@@ -4530,7 +4531,9 @@
     // teAplicarDefinicoesDoTemplate(). Inserir um bloco guardado no meio de um
     // template não pode mudar a cor de fundo do template que está aberto.
     let _teTemplateSettings = null;
-    const TE_BODY_BG_DEFAULT = '#f5f7fa';
+    // Branco por defeito. Um template ou campanha nova começa sempre aqui, e
+    // nunca com a cor que ficou do último template aberto no editor.
+    const TE_BODY_BG_DEFAULT = '#ffffff';
     function teAplicarDefinicoesDoTemplate() {
         teState.bodyBg = _teTemplateSettings?.bodyBg || TE_BODY_BG_DEFAULT;
     }
@@ -9233,6 +9236,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         _wizNomeAvisado.clear();
         teState.blocks = [];
         teState.selected = null;
+        teState.bodyBg = TE_BODY_BG_DEFAULT;
         showScreen('campaignCreate');
     }
     let _wizAutoSaveTimer = null;
@@ -13067,6 +13071,7 @@ ${sections.join('\n\n')}
                     _teCtx = 'te_';
                     teState.blocks = [];
                     teState.selected = null;
+                    teState.bodyBg = TE_BODY_BG_DEFAULT;
                     // Clear wizard MJML textarea so previous campaign content doesn't bleed in
                     const _wmc = document.getElementById('wiz_te_mjmlCode');
                     if (_wmc) _wmc.value = '';
