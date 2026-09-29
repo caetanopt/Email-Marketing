@@ -9298,6 +9298,7 @@ ${teSerializeBlocksComment(srcBlocks)}
         // Campanha nova é ocasião nova: um nome que já foi avisado antes volta
         // a ser avisado, porque entretanto pode ter aparecido a do colega.
         _wizNomeAvisado.clear();
+        _wizFecharAvisoImportacao();
         teState.blocks = [];
         teState.selected = null;
         teState.bodyBg = TE_BODY_BG_DEFAULT;
@@ -10573,6 +10574,14 @@ ${teSerializeBlocksComment(srcBlocks)}
     // Guardado para poder ser exportado: um número não se verifica, uma lista
     // vai-se conferir à base de dados.
     let _wizForaDetalhe = [];
+    // O aviso é de UMA campanha: ao começar outra ou abrir outra, sai, e com
+    // ele a lista para exportar. Sem isto, o aviso da importação da campanha
+    // anterior aparecia no passo Destinatários de uma campanha nova.
+    function _wizFecharAvisoImportacao() {
+        document.getElementById('wizImportFora')?.classList.add('hidden');
+        const tx = document.getElementById('wizImportForaTexto'); if (tx) tx.textContent = '';
+        _wizForaDetalhe = [];
+    }
 
     const _WIZ_MOTIVO = {
         unsubscribed: 'cancelou a subscrição',
@@ -11318,6 +11327,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             teState.selected = null;
         }
         _wizAttachments = Array.isArray(c.attachments) ? c.attachments : [];
+        _wizFecharAvisoImportacao();
     }
 
     async function _editCurrentCampaignInWizard() {
@@ -11381,6 +11391,7 @@ ${teSerializeBlocksComment(srcBlocks)}
             // Render variables panel
             _wizVarsRender();
             _wizAttachments = Array.isArray(c.attachments) ? c.attachments : [];
+            _wizFecharAvisoImportacao();
         } catch (e) { showToast(e.message, 'error'); }
     }
 
