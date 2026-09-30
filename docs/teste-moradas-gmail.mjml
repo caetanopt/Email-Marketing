@@ -1,0 +1,36 @@
+<mjml>
+  <mj-body background-color="#ffffff">
+    <mj-section background-color="#ffffff" padding="0">
+      <mj-column>
+        <mj-text color="#000000" font-size="18px" font-weight="700" align="left" padding="20px 20px 10px 20px">Teste de moradas no Gmail</mj-text>
+        <mj-text color="#000000" font-size="14px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 16px 20px">Em cada teste, verifica se a morada aparece como link (azul/sublinhado, ou abre o Google Maps ao clicar). Anota os números dos testes em que NÃO há link.</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 1 — original (controlo)</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">Rua do Barreiro 547, 4409-513 Vila Nova de Gaia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 2 — original (controlo)</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">Av. da República 50, 1050-196 Lisboa</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 3 — só rua e número</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">Rua do Barreiro 547</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 4 — só código postal e localidade</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">4409-513 Vila Nova de Gaia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 5 — invisível (word joiner) dentro de "Rua"</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">R&#8288;ua do Barreiro 547, 4409-513 Vila Nova de Gaia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 6 — invisível (word joiner) antes do hífen do código postal</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">Rua do Barreiro 547, 4409&#8288;-513 Vila Nova de Gaia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 7 — word joiner em 3 sítios (rua, código postal, localidade)</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">R&#8288;ua do Barreiro 547, 4409&#8288;-513 Vila Nova de G&#8288;aia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 8 — word joiner em 4 sítios (rua, nome da rua, código postal, localidade)</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">R&#8288;ua do Barr&#8288;eiro 547, 4409&#8288;-513 Vila Nova de G&#8288;aia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 9 — como o 7, com zero-width space</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">R&#8203;ua do Barreiro 547, 4409&#8203;-513 Vila Nova de G&#8203;aia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 10 — como o 7, com zero-width non-joiner</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">R&#8204;ua do Barreiro 547, 4409&#8204;-513 Vila Nova de G&#8204;aia</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 11 — Lisboa, word joiner em 3 sítios</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px">A&#8288;v. da República 50, 1050&#8288;-196 Lis&#8288;boa</mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 12 — morada dentro de um link nosso (para caetano.pt), com a cor do texto</mj-text>
+        <mj-text color="#000000" font-size="16px" font-weight="400" align="left" line-height="1.6" padding="0px 20px 10px 20px"><a href="https://www.caetano.pt" style="color:#000000;text-decoration:none">Rua do Barreiro 547, 4409-513 Vila Nova de Gaia</a></mj-text>
+        <mj-text color="#64748b" font-size="12px" font-weight="700" align="left" line-height="1.6" padding="10px 20px 0px 20px">TESTE 13 — num título grande (como no teu email), word joiner em 3 sítios</mj-text>
+        <mj-text color="#000000" font-size="28px" font-weight="700" align="left" line-height="1.3" padding="0px 20px 20px 20px">R&#8288;ua do Barreiro 547, 4409&#8288;-513 Vila Nova de G&#8288;aia</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>
