@@ -2535,7 +2535,14 @@
         if (!f) return;
         const clean = teSanitizeRichText(el.innerHTML);
         f.block.text = clean;
-        if (el.innerHTML !== clean) el.innerHTML = clean;
+        // Só se reescreve o campo quando a limpeza mudou mesmo alguma coisa.
+        // Comparar com a string limpa não serve: o sanitizador escreve <br/>
+        // e o browser lê <br>, e o campo era reescrito em todos os blurs de
+        // um texto com mais de uma linha. Isso apagava a selecção guardada —
+        // seleccionar texto e abrir a lista "Tam." não fazia nada.
+        const normal = document.createElement('div');
+        normal.innerHTML = clean;
+        if (el.innerHTML !== normal.innerHTML) el.innerHTML = clean;
         teRenderCanvas();
         teRenderMjml();
     }
@@ -2555,7 +2562,30 @@
         if (!el || !sel || !sel.rangeCount) return;
         const r = sel.getRangeAt(0);
         if (r.collapsed || !el.contains(r.commonAncestorContainer)) return;
-        _teRichRange = { id: blockId, range: r.cloneRange() };
+        // Além do Range, guarda-se a posição em caracteres: um Range fica
+        // vazio se o conteúdo do campo for reescrito (o blur limpa-o), e a
+        // posição no texto continua a valer.
+        _teRichRange = { id: blockId, range: r.cloneRange(), inicio: _teRichPosicao(el, r.startContainer, r.startOffset), fim: _teRichPosicao(el, r.endContainer, r.endOffset) };
+    }
+    // Número de caracteres de texto entre o início do campo e um ponto.
+    function _teRichPosicao(el, no, offset) {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        r.setEnd(no, offset);
+        return r.toString().length;
+    }
+    // Range a partir de duas posições em caracteres (o inverso do de cima).
+    function _teRichRangeDePosicoes(el, inicio, fim) {
+        const r = document.createRange();
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let conta = 0, no, achouInicio = false;
+        while ((no = walker.nextNode())) {
+            const n = no.textContent.length;
+            if (!achouInicio && inicio <= conta + n) { r.setStart(no, inicio - conta); achouInicio = true; }
+            if (achouInicio && fim <= conta + n) { r.setEnd(no, fim - conta); return r; }
+            conta += n;
+        }
+        return null;
     }
     // Devolve o campo com uma selecção válida lá dentro, ou null se não houver
     // nada seleccionado (nem agora nem guardado).
@@ -2566,8 +2596,13 @@
         const viva = sel && sel.rangeCount && !sel.isCollapsed
             && el.contains(sel.getRangeAt(0).commonAncestorContainer);
         if (viva) return el;
-        const guardada = (_teRichRange && _teRichRange.id === blockId) ? _teRichRange.range : null;
-        if (!guardada || !el.contains(guardada.commonAncestorContainer)) return null;
+        let guardada = (_teRichRange && _teRichRange.id === blockId) ? _teRichRange.range : null;
+        // O Range ficou vazio ou fora do campo (conteúdo reescrito): reconstrói-
+        // -se a partir da posição em caracteres.
+        if (_teRichRange && _teRichRange.id === blockId && (!guardada || guardada.collapsed || !el.contains(guardada.commonAncestorContainer))) {
+            guardada = _teRichRangeDePosicoes(el, _teRichRange.inicio, _teRichRange.fim);
+        }
+        if (!guardada || guardada.collapsed || !el.contains(guardada.commonAncestorContainer)) return null;
         el.focus();
         sel.removeAllRanges();
         sel.addRange(guardada);
