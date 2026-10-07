@@ -1678,6 +1678,15 @@ const provas = [
     if(/96/.test(t))throw new Error('o valor de PixelsPerInch entrou no texto: '+JSON.stringify(t));
     if(/^\\s+$/m.test(t))throw new Error('linhas só com espaços: '+JSON.stringify(t));
     if(t!=='Olá\\n\\nAdeus')throw new Error('resultado inesperado: '+JSON.stringify(t))`],
+  ['estatísticas por marca contam aberturas únicas por campanha', `const fs=require('fs');
+    const src=fs.readFileSync('api/campaigns/index.js','utf8');
+    const i=src.indexOf("action === 'global_stats'");
+    if(i<0)throw new Error('global_stats não encontrado');
+    const corpo=src.slice(i, src.indexOf('return res.status(200)', i));
+    // Únicos da marca inteira sub-contam quando a mesma lista recebe várias
+    // campanhas (Caetano a 5,4% em vez de ~28%). Têm de ser por campanha.
+    if(!/GROUP BY sc\\.brand_id, ee\\.campaign_id/.test(corpo))throw new Error('as aberturas únicas não são agrupadas por campanha');
+    if(/FROM email_events ee JOIN sc ON sc\\.id=ee\\.campaign_id\\s+GROUP BY sc\\.brand_id\\s*\\)/.test(corpo))throw new Error('voltou o COUNT(DISTINCT contact_id) da marca inteira')`],
   ['arredondamento e banda pelos helpers', `const fs=require('fs');
     const s=fs.readFileSync('email.html','utf8');
     // O arredondamento tem de passar sempre por teRadiusVal/teRadiusCss: é o

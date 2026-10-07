@@ -526,13 +526,25 @@ module.exports = async function handler(req, res) {
         FROM campaign_recipients cr JOIN sc ON sc.id=cr.campaign_id
         GROUP BY sc.brand_id
       ),
-      ev AS (
-        SELECT sc.brand_id,
-               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')::int        AS unique_opens,
-               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')::int       AS unique_clicks,
-               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe')::int AS unsubscribes
+      -- Únicos POR CAMPANHA, e depois somados por marca — a mesma conta do
+      -- relatório de cada campanha. Contava-se COUNT(DISTINCT contact_id) da
+      -- marca inteira: quem abriu as 14 campanhas da Caetano contava uma vez,
+      -- mas os 14 envios contavam 14, e a taxa saía a 5,4% em vez de ~28%.
+      -- Só acertava nas marcas com uma campanha.
+      evc AS (
+        SELECT sc.brand_id, ee.campaign_id,
+               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='open')        AS unique_opens,
+               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='click')       AS unique_clicks,
+               COUNT(DISTINCT ee.contact_id) FILTER (WHERE ee.type='unsubscribe') AS unsubscribes
         FROM email_events ee JOIN sc ON sc.id=ee.campaign_id
-        GROUP BY sc.brand_id
+        GROUP BY sc.brand_id, ee.campaign_id
+      ),
+      ev AS (
+        SELECT brand_id,
+               SUM(unique_opens)::int  AS unique_opens,
+               SUM(unique_clicks)::int AS unique_clicks,
+               SUM(unsubscribes)::int  AS unsubscribes
+        FROM evc GROUP BY brand_id
       )
       SELECT b.id, b.name, b.color, b.logo_url,
              COALESCE(cc.campaigns,0)     AS campaigns,
