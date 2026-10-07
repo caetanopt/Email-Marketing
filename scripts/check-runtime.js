@@ -1678,6 +1678,22 @@ const provas = [
     if(/96/.test(t))throw new Error('o valor de PixelsPerInch entrou no texto: '+JSON.stringify(t));
     if(/^\\s+$/m.test(t))throw new Error('linhas só com espaços: '+JSON.stringify(t));
     if(t!=='Olá\\n\\nAdeus')throw new Error('resultado inesperado: '+JSON.stringify(t))`],
+  ['os links do rodapé legal contam como cliques', `const fs=require('fs');
+    const env=fs.readFileSync('lib/sendCampaign.js','utf8');
+    const tst=fs.readFileSync('api/campaigns/[id].js','utf8');
+    // O rodapé é acrescentado depois do injectTracking do corpo: sem passar
+    // ele próprio pelo registo, as redes sociais nunca contavam.
+    if(!/injectTracking\\(unsubBlock,/.test(env))throw new Error('envio real: o rodapé não passa pelo registo de cliques');
+    if(!/replace\\('<\\/body>', rodape \\+ '<\\/body>'\\)/.test(env))throw new Error('envio real: é acrescentado o rodapé sem registo de cliques');
+    if(!/injectTrackingTest\\(unsubBlock\\)/.test(tst))throw new Error('envio de teste: o rodapé não passa pelo registo de cliques');
+    // E os domínios do rodapé têm de estar no registo, senão o
+    // redireccionador recusa esses cliques.
+    if(!/registarDestinosDoRodape\\(campaignId,/.test(env)||!/registarDestinosDoRodape\\(id, unsubBlock\\)/.test(tst))throw new Error('os domínios do rodapé não são registados');
+    const {buildLegalFooter}=require('./lib/emailFooter');const {injectTracking}=require('./lib/emailHtml');
+    const r=buildLegalFooter({variables:{facebook:'https://www.facebook.com/x'},email:'a@b.pt',unsubUrl:'https://e.pt/api/suppression?action=unsubscribe&t=1',previewUrl:'https://e.pt/v/1/t',width:600});
+    const t=injectTracking(r,{appUrl:'https://e.pt',campaignId:1,contactId:2,token:'k',utm:''});
+    if(!/api\\/track\\?type=click[^"]*facebook/.test(t))throw new Error('a rede social do rodapé não é reescrita');
+    if(/api\\/track\\?type=click[^"]*unsubscribe/.test(t))throw new Error('o cancelamento passou a ser contado como clique')`],
   ['estatísticas por marca contam aberturas únicas por campanha', `const fs=require('fs');
     const src=fs.readFileSync('api/campaigns/index.js','utf8');
     const i=src.indexOf("action === 'global_stats'");

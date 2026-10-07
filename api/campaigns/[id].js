@@ -4,7 +4,7 @@ const { getSESClient, opcoesDeEnvio } = require('../../lib/ses');
 const { SendRawEmailCommand, GetSendQuotaCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 const { sendCampaignCompletionNotification } = require('../../lib/sendCampaign');
-const { initCampaignSend, runBatch, injectPreviewText } = require('../../lib/sendCampaign');
+const { initCampaignSend, runBatch, injectPreviewText, registarDestinosDoRodape } = require('../../lib/sendCampaign');
 const { buildLegalFooter, detectContentWidth } = require('../../lib/emailFooter');
 const { semRodapeLegal, gravarRodapeLegal, bloquearCancelados } = require('../../lib/campanhas');
 const { previewToken, previewUrl } = require('../../lib/previewLink');
@@ -826,9 +826,14 @@ module.exports = async function handler(req, res) {
         rawHtml = injectTrackingTest(rawHtml);
         rawHtml = injectPreviewText(rawHtml, c.preview_text);
         rawHtml = injectTitle(rawHtml, c.subject);
+        // Como no envio real: os links do rodapé passam pelo registo de
+        // cliques (num teste, uid=0 redirecciona sem contar), e os domínios
+        // deles entram no registo de destinos se a campanha for validada.
+        await registarDestinosDoRodape(id, unsubBlock);
+        const rodapeTest = injectTrackingTest(unsubBlock);
         const finalHtml = rawHtml.includes('</body>')
-          ? rawHtml.replace('</body>', unsubBlock + '</body>')
-          : rawHtml + unsubBlock;
+          ? rawHtml.replace('</body>', rodapeTest + '</body>')
+          : rawHtml + rodapeTest;
         const testAttachments = c.attachments || [];
         try {
           let info;
