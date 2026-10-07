@@ -450,8 +450,16 @@
         const tbody = document.getElementById('statsBrandsTbody');
         if (!tbody) return;
         const brands = filteredBrand ? [filteredBrand] : (isGroupView ? d.brands : (currentBrandData ? [currentBrandData] : []));
-        const maxOpen = Math.max(...d.brands.map(x => x.openRate), 1);
-        const bar = (v, max, color) => `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0"><div class="h-1.5 rounded-full ${color}" style="width:${Math.min(v/Math.max(max,1)*100,100).toFixed(0)}%"></div></div><span>${v}%</span></div>`;
+        // Escala absoluta, de 0 a 100%: 50% enche metade da barra. Antes cada
+        // barra era medida contra a maior taxa de abertura da lista, e essa
+        // enchia sempre a barra toda (50% parecia 100%), e os cliques e
+        // rejeições apareciam maiores do que eram. É a mesma escala das
+        // barras do topo. Um valor acima de zero fica sempre com um traço
+        // visível (min-width), senão 1% não se via.
+        const bar = (v, color) => {
+            const n = Math.max(0, Math.min(Number(v) || 0, 100));
+            return `<div class="flex items-center gap-1.5"><div class="w-16 bg-slate-100 rounded-full h-1.5 flex-shrink-0 overflow-hidden"><div class="h-1.5 rounded-full ${color}" style="width:${n}%${n > 0 ? ';min-width:3px' : ''}"></div></div><span>${v}%</span></div>`;
+        };
         tbody.innerHTML = brands.map(b => {
             const brandMeta = _allBrands.find(x => x.id === b.id) || {};
             const logo = brandMeta.logo
@@ -464,10 +472,10 @@
                 <td class="px-4 py-3"><div class="flex items-center gap-2.5">${logo}<span class="font-medium text-slate-900">${b.name}</span></div></td>
                 <td class="px-4 py-3 text-slate-600 text-right">${b.campaigns}</td>
                 <td class="px-4 py-3 text-slate-600 text-right font-mono">${b.sent.toLocaleString('pt-PT')}</td>
-                <td class="px-4 py-3 text-slate-600">${bar(b.openRate,   maxOpen, 'bg-blue-400')}</td>
-                <td class="px-4 py-3 text-slate-600">${bar(b.clickRate,  maxOpen, 'bg-violet-400')}</td>
-                <td class="px-4 py-3 text-slate-600">${bar(b.bounceRate, maxOpen, 'bg-amber-400')}</td>
-                <td class="px-4 py-3 text-slate-600">${bar(b.unsubRate,  maxOpen, 'bg-red-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.openRate,   'bg-blue-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.clickRate,  'bg-violet-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.bounceRate, 'bg-amber-400')}</td>
+                <td class="px-4 py-3 text-slate-600">${bar(b.unsubRate,  'bg-red-400')}</td>
                 <td class="px-4 py-3 text-right">${verBtn}</td>
             </tr>`;
         }).join('');
