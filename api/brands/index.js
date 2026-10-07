@@ -866,18 +866,29 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST' && id && action === 'invite') {
       if (!await isAdmin(user.id, id)) return res.status(403).json({ error: 'Sem permissão' });
-      const { name, email, password, role } = req.body || {};
-      if (!name || !email || !password) return res.status(400).json({ error: 'name, email e password obrigatórios' });
+      // Sem password: a entrada é só por link de acesso enviado por email, e o
+      // ecrã da Equipa já não a pede — mas esta rota ainda a exigia, e
+      // adicionar um membro dava sempre "name, email e password
+      // obrigatórios". password_hash continua NOT NULL no esquema (001), por
+      // isso grava-se um valor aleatório que não corresponde a nada (como no
+      // upsert_admin de api/auth.js).
+      const { name, email, role } = req.body || {};
+      if (!name || !email) return res.status(400).json({ error: 'Nome e email obrigatórios' });
       const safeRole = ['owner','editor','viewer'].includes(role) ? role : 'editor';
-      const hash = bcrypt.hashSync(password, 10);
       // Get or create user
       let u = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase().trim()]);
       let userId;
-      if (u[0]) userId = u[0].id;
-      else {
+      if (u[0]) {
+        userId = u[0].id;
+        // Adicionar à equipa uma conta que tinha sido desactivada é voltar a
+        // dar-lhe acesso: sem isto ficava com os papéis mas sem conseguir
+        // entrar, e nada no ecrã o dizia.
+        await query('UPDATE users SET active=TRUE WHERE id=$1 AND active IS DISTINCT FROM TRUE', [userId]);
+      } else {
+        const inutilizavel = crypto.randomBytes(32).toString('hex');
         const r = await query(
           'INSERT INTO users (name, email, password_hash) VALUES ($1,$2,$3) RETURNING id',
-          [name, email.toLowerCase().trim(), hash]
+          [name, email.toLowerCase().trim(), inutilizavel]
         );
         userId = r[0].id;
       }
@@ -901,11 +912,12 @@ module.exports = async function handler(req, res) {
       const appUrl     = process.env.APP_URL || 'https://emkt.caetano.pt';
       const roleLabel  = { owner: 'Administrador', editor: 'Editor', viewer: 'Marketing Account' };
       const emailSubject = `Foste adicionado à equipa ${brandName} no eMKT`;
-      const emailHtml = `<p>Olá ${name},</p>
-        <p>Foste adicionado à marca <strong>${brandName}</strong> no eMKT com a função <strong>${roleLabel[safeRole] || safeRole}</strong>.</p>
-        <p>Podes aceder à plataforma em <a href="${appUrl}">${appUrl}</a> com o teu email e a password definida pelo administrador.</p>
+      const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const emailHtml = `<p>Olá ${esc(name)},</p>
+        <p>Foste adicionado à marca <strong>${esc(brandName)}</strong> no eMKT com a função <strong>${esc(roleLabel[safeRole] || safeRole)}</strong>.</p>
+        <p>Para entrar, abre <a href="${appUrl}">${appUrl}</a>, escreve o teu email e carrega em enviar: recebes um link de acesso. Não precisas de password.</p>
         <p>Bem-vindo à equipa!</p>`;
-      const emailText = `Olá ${name},\n\nForaste adicionado à marca ${brandName} no eMKT com a função ${roleLabel[safeRole] || safeRole}.\n\nAcede em: ${appUrl}\n\nBem-vindo à equipa!`;
+      const emailText = `Olá ${name},\n\nFoste adicionado à marca ${brandName} no eMKT com a função ${roleLabel[safeRole] || safeRole}.\n\nPara entrar, abre ${appUrl}, escreve o teu email e carrega em enviar: recebes um link de acesso. Não precisas de password.\n\nBem-vindo à equipa!`;
 
       if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
         try {
