@@ -1098,6 +1098,71 @@ const provas = [
       throw new Error('o relatório deixou de dizer quantos eventos foram automáticos');
     if(!/id="repAutoBox"/.test(fs.readFileSync('email.html','utf8')))
       throw new Error('o ecrã do relatório deixou de mostrar os eventos automáticos')`],
+  ['cliques de analisadores com agente de browser saem das taxas', `const fs=require('fs'); const Module=require('module');
+    // O Safe Links do Microsoft 365, o Proofpoint e o Mimecast seguem os links
+    // com um agente de Chrome normal. Na campanha 131, 16 de 18 contactos
+    // clicaram os 8 links em 0,0 a 2,7 s. É o comportamento que os denuncia —
+    // e a revisão corre no agendador, por campanha, nunca no clique.
+    const tr=fs.readFileSync('api/track.js','utf8');
+    if(/auto_reason|classificar|CLASSIFICAR/i.test(tr))throw new Error('a classificação por comportamento voltou ao api/track.js: atrasava cada redireccionamento e cada abertura');
+    const lib=require('./lib/classificarCliques');
+    // O script do histórico é gerado pelo módulo: a pré-visualização tem de ser
+    // exactamente o que o agendador decide.
+    if(fs.readFileSync('scripts/reclassificar-cliques.sql','utf8')!==lib.gerarScript())throw new Error('scripts/reclassificar-cliques.sql já não é o que lib/classificarCliques.js gera (gerarScript)');
+    const dec=lib.instrucoesDecisao(1).join('\\n'), apl=lib.instrucoesAplicar(1).join('\\n');
+    for(const k of ['links_1s >= 4',"INTERVAL '1 second' AND p.t + INTERVAL '1 second'","RANGE BETWEEN INTERVAL '10 seconds' PRECEDING AND INTERVAL '10 seconds' FOLLOWING",'links_5min >= 5','util_5min >= 2','links_60s >= 3',"RANGE BETWEEN INTERVAL '60 seconds' PRECEDING AND INTERVAL '60 seconds' FOLLOWING","sent_at - INTERVAL '5 seconds'","sent_at + INTERVAL '10 seconds'","k.created_at - INTERVAL '2 minutes'","k.created_at + INTERVAL '15 seconds'",'k.user_agent = o.user_agent','o.user_agent IS NOT NULL',"split_part(split_part(url, '#', 1), '?', 1)",'(v.util OR v.primeira_vez)','HAVING COUNT(*) > 300','/ 5)::bigint AS balde','ANALYZE _cq','ANALYZE _cp'])
+      if(!dec.includes(k))throw new Error('mudou uma regra ou um limiar sem mudar esta prova: '+k);
+    // Só se lê e desmarca o que estas regras marcaram; os marcados pelo agente
+    // (auto_reason vazio) nunca são tocados.
+    const lista="('rajada', 'varrimento', 'instantaneo')";
+    if(JSON.stringify(lib.MOTIVOS)!==JSON.stringify(['rajada','varrimento','instantaneo']))throw new Error('mudaram os motivos: rever o reverter e esta prova');
+    if((dec.split('auto_reason IN '+lista).length-1)<2||!apl.includes("AND e.auto_reason IN "+lista))throw new Error('as regras só podem ler e desmarcar o que elas próprias marcaram');
+    for(const u of apl.match(/UPDATE email_events e[\\s\\S]*?(RETURNING|$)/g)||[])if(!/e\\.campaign_id = 1\\b/.test(u))throw new Error('um UPDATE da revisão não está limitado à campanha');
+    if(!/UPDATE campaigns SET cliques_revistos_em = NOW\\(\\) WHERE id = 1\\b/.test(apl))throw new Error('a revisão tem de registar a campanha como revista');
+    const fonte=fs.readFileSync('lib/classificarCliques.js','utf8');
+    if(!/pg_try_advisory_xact_lock/.test(fonte))throw new Error('duas revisões da mesma campanha não se podem cruzar (trinco)');
+    if(!/set_config\\('statement_timeout', \\$1, true\\)/.test(fonte))throw new Error('o tecto do Postgres tem de ser local à transacção');
+    // O agendador chama-a primeiro, com orçamento, e regista o resultado.
+    const cron=fs.readFileSync('api/campaigns/index.js','utf8');
+    const iCl=cron.indexOf('await reverCampanhasPendentes({ orcamentoMs:'), iDue=cron.indexOf('due = await query(');
+    if(iCl<0||iDue<0||iCl>iDue)throw new Error('o agendador tem de rever os cliques no início, com orçamento');
+    if(!/detalheDoPulso\\(\\{ results, reconciliadas, classificacao \\}\\)/.test(cron)||/\\.slice\\(0, 8000\\)\\]/.test(cron))throw new Error('o pulso tem de gravar o resultado sem cortar o JSON a meio');
+    // A migração não muda números: só colunas, e as campanhas enviadas ficam como revistas.
+    let mig=fs.readFileSync('migrations/068_cliques_de_analisadores.sql','utf8').replace(/--[^\\n]*/g,'');
+    const bloco=(mig.match(/DO \\$\\$[\\s\\S]*?END \\$\\$;/)||[''])[0];
+    if(!/ALTER TABLE campaigns ADD COLUMN cliques_revistos_em TIMESTAMPTZ/.test(bloco)||!/UPDATE campaigns SET cliques_revistos_em = NOW\\(\\) WHERE status::text = 'sent'/.test(bloco)||!/IF NOT EXISTS/.test(bloco))throw new Error('a 068 tem de dar as campanhas enviadas como revistas, só ao criar a coluna');
+    mig=mig.replace(bloco,'');
+    const ok=[/^SET lock_timeout = '\\d+s'$/,/^ALTER TABLE email_events ADD COLUMN IF NOT EXISTS auto_reason TEXT$/,/^ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cliques_tentado_em TIMESTAMPTZ$/,/^RESET lock_timeout$/,/^COMMENT ON COLUMN (email_events\\.auto_reason|campaigns\\.cliques_revistos_em) IS '[^']*'$/];
+    for(const i of mig.split(';').map(x=>x.replace(/\\s+/g,' ').trim()).filter(Boolean))if(!ok.some(re=>re.test(i)))throw new Error('a migração 068 só pode criar colunas; tem: '+i.slice(0,80));
+    if(/UPDATE\\s+email_events/i.test(fs.readFileSync('migrations/068_cliques_de_analisadores.sql','utf8').replace(/--[^\\n]*/g,'')))throw new Error('a migração 068 não pode mudar eventos');
+    // O reverter desfaz exactamente os motivos que existem.
+    const rev=fs.readFileSync('scripts/reverter-cliques-automaticos.sql','utf8').replace(/--[^\\n]*/g,'');
+    const m=rev.match(/WHERE auto_reason IN \\(([^)]*)\\)\\s+AND type IN \\('click_auto', 'open_auto'\\)\\s+RETURNING/);
+    if(!m||m[1].split(',').map(x=>x.trim().replace(/'/g,'')).sort().join()!==[...lib.MOTIVOS].sort().join())throw new Error('o reverter tem de desfazer exactamente os motivos destas regras');
+    if(/\\bOR\\b/i.test(rev.slice(rev.indexOf('UPDATE'),rev.indexOf('RETURNING'))))throw new Error('o reverter não pode alargar o WHERE com OR');
+    // Comportamento: nunca lança e respeita o orçamento, falhe a base como falhar.
+    const ensaio=async(dbFalso,orc)=>{
+      const caminho=require.resolve('./lib/classificarCliques'); delete require.cache[caminho];
+      const orig=Module._load; Module._load=function(r){ if(/(^|\\/)db$/.test(r)) return dbFalso; return orig.apply(this,arguments); };
+      try{ const L=require('./lib/classificarCliques'); const t=Date.now(); const r=await L.reverCampanhasPendentes({orcamentoMs:orc}); return {r,ms:Date.now()-t,L}; }
+      finally{ Module._load=orig; delete require.cache[caminho]; }
+    };
+    const erro=(code)=>Object.assign(new Error('x'),{code});
+    // Uma promessa pendurada sem temporizadores deixava o Node terminar calado
+    // a meio do ensaio, e a prova passava sem ter verificado nada.
+    let terminou=false;
+    process.on('beforeExit',()=>{ if(!terminou){ console.error('Error: o ensaio da revisão não chegou ao fim (ficou pendurado)'); process.exit(1); } });
+    (async()=>{
+      let x=await ensaio({query:async()=>{throw erro('42703');},transaction:async()=>{throw erro('42703');}},1000);
+      if(!x.r.saltado)throw new Error('sem a 068 a revisão tem de se desligar sozinha');
+      x=await ensaio({query:()=>Promise.reject(undefined),transaction:()=>Promise.reject(undefined)},1000);
+      if(!x.r||typeof x.r!=='object')throw new Error('uma rejeição estranha não pode fazer a revisão lançar');
+      x=await ensaio({query:()=>new Promise(()=>{}),transaction:()=>new Promise(()=>{})},800);
+      if(x.ms>1500)throw new Error('com a base pendurada a revisão tem de desistir dentro do orçamento (demorou '+x.ms+' ms)');
+      let n=0; x=await ensaio({query:async(s)=>{n++; return /FROM campaigns/.test(s)?[{id:7}]:[];},transaction:async()=>{throw erro('57014');}},2000);
+      if(!x.r.feitas||!x.r.feitas.some(f=>f.erro))throw new Error('uma campanha que falha fica registada e não pára o agendador');
+      terminou=true;
+    })();`],
   ['avisa quando um colega já começou a campanha', `const fs=require('fs');
     // Duas pessoas criaram a mesma campanha com 53 minutos de diferença, cada
     // uma sem saber da outra. Não é deduplicação — o servidor não pode assumir

@@ -28,6 +28,21 @@ module.exports = async function handler(req, res) {
 
   const { brand_id, status, page = 1, limit = 20, action, range } = req.query;
 
+  // O detalhe do pulso vai para uma coluna jsonb. Cortar a string a 8000
+  // caracteres partia o JSON a meio, o ::jsonb falhava e o pulso inteiro não
+  // ficava gravado — o painel de saúde dizia que o agendador tinha parado. Se
+  // não couber, grava-se um resumo que é JSON válido.
+  function detalheDoPulso(o) {
+    const t = JSON.stringify(o);
+    if (t.length <= 8000) return t;
+    return JSON.stringify({
+      resumido: true,
+      campanhas: (o.results || []).map(r => ({ id: r.id, sent: r.sent, failed: r.failed, error: r.error ? String(r.error).slice(0, 200) : undefined })).slice(0, 50),
+      reconciliadas: (o.reconciliadas || []).length,
+      classificacao: o.classificacao && { saltado: o.classificacao.saltado, erro: o.classificacao.erro, feitas: (o.classificacao.feitas || []).length },
+    });
+  }
+
   // ── Cron: process scheduled campaigns ──────────────────
   if (action === 'process-scheduled') {
     // Autenticação do cron (A-1). O endpoint só processa campanhas já
@@ -84,6 +99,14 @@ module.exports = async function handler(req, res) {
     const RESERVA_LOTE_MS = parseInt(process.env.CRON_BATCH_RESERVE_MS || '12000', 10);
     const cronStart = Date.now();
     const timeLeft = () => DEADLINE_MS - (Date.now() - cronStart);
+
+    // Cliques e aberturas de analisadores de segurança (Safe Links, Proofpoint,
+    // Mimecast...) que se fazem passar por browser: cada campanha é revista
+    // 10 min depois de o envio terminar e 24 h depois. Ver
+    // lib/classificarCliques.js. Corre primeiro, com orçamento de 4 s de
+    // relógio, para nunca comer o tempo dos envios; nunca lança.
+    const { reverCampanhasPendentes } = require('../../lib/classificarCliques');
+    const classificacao = await reverCampanhasPendentes({ orcamentoMs: 4000 });
 
     // Pick up:
     //   • campaigns newly due for sending (status='scheduled')
@@ -324,7 +347,7 @@ module.exports = async function handler(req, res) {
          ON CONFLICT (id) DO UPDATE
             SET last_run_at = NOW(), elapsed_ms = EXCLUDED.elapsed_ms,
                 processed   = EXCLUDED.processed, detalhe = EXCLUDED.detalhe`,
-        [elapsedMs, results.length, JSON.stringify({ results, reconciliadas }).slice(0, 8000)]
+        [elapsedMs, results.length, detalheDoPulso({ results, reconciliadas, classificacao })]
       );
     } catch (err) {
       if (err.code !== '42P01') console.error('Cron: pulso não gravado:', err.message);
