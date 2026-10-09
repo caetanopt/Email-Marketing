@@ -1130,7 +1130,7 @@ const provas = [
     // A migração não muda números: só colunas, e as campanhas enviadas ficam como revistas.
     let mig=fs.readFileSync('migrations/068_cliques_de_analisadores.sql','utf8').replace(/--[^\\n]*/g,'');
     const bloco=(mig.match(/DO \\$\\$[\\s\\S]*?END \\$\\$;/)||[''])[0];
-    if(!/ALTER TABLE campaigns ADD COLUMN cliques_revistos_em TIMESTAMPTZ/.test(bloco)||!/UPDATE campaigns SET cliques_revistos_em = NOW\\(\\) WHERE status::text = 'sent'/.test(bloco)||!/IF NOT EXISTS/.test(bloco))throw new Error('a 068 tem de dar as campanhas enviadas como revistas, só ao criar a coluna');
+    if(!/ALTER TABLE campaigns ADD COLUMN cliques_revistos_em TIMESTAMPTZ/.test(bloco)||!/UPDATE campaigns SET cliques_revistos_em = GREATEST\\(NOW\\(\\), sent_at \\+ INTERVAL '1 day'\\) WHERE status::text = 'sent'/.test(bloco)||!/IF NOT EXISTS/.test(bloco))throw new Error('a 068 tem de dar as campanhas enviadas como revistas, só ao criar a coluna');
     mig=mig.replace(bloco,'');
     const ok=[/^SET lock_timeout = '\\d+s'$/,/^ALTER TABLE email_events ADD COLUMN IF NOT EXISTS auto_reason TEXT$/,/^ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cliques_tentado_em TIMESTAMPTZ$/,/^RESET lock_timeout$/,/^COMMENT ON COLUMN (email_events\\.auto_reason|campaigns\\.cliques_revistos_em) IS '[^']*'$/];
     for(const i of mig.split(';').map(x=>x.replace(/\\s+/g,' ').trim()).filter(Boolean))if(!ok.some(re=>re.test(i)))throw new Error('a migração 068 só pode criar colunas; tem: '+i.slice(0,80));

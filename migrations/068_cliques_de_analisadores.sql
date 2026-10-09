@@ -28,13 +28,16 @@ SET lock_timeout = '5s';
 ALTER TABLE email_events ADD COLUMN IF NOT EXISTS auto_reason TEXT;
 
 -- Quando a campanha foi revista pela última vez. As já enviadas ficam como
--- revistas, só na primeira vez que a coluna é criada.
+-- revistas, só na primeira vez que a coluna é criada — e com uma data que
+-- também as dispensa da revisão das 24 h. Com NOW(), uma campanha enviada
+-- menos de 24 h antes da migração ainda era revista sozinha ao fazer 24 h, sem
+-- pré-visualização (foi o que aconteceu à 131 na primeira instalação).
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_schema = 'public' AND table_name = 'campaigns' AND column_name = 'cliques_revistos_em') THEN
     ALTER TABLE campaigns ADD COLUMN cliques_revistos_em TIMESTAMPTZ;
-    UPDATE campaigns SET cliques_revistos_em = NOW() WHERE status::text = 'sent';
+    UPDATE campaigns SET cliques_revistos_em = GREATEST(NOW(), sent_at + INTERVAL '1 day') WHERE status::text = 'sent';
   END IF;
 END $$;
 
