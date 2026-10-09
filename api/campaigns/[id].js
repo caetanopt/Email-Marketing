@@ -149,17 +149,22 @@ module.exports = async function handler(req, res) {
          FROM pessoas`,
         [id, listIds]
       );
+      // Todos os domínios (o painel mostra 10 e o resto com deslocamento),
+      // até 1000: uma base de 130 mil contactos pode ter milhares de domínios
+      // de uma pessoa só, e não vale a pena mandá-los todos para o browser.
+      // dominios_total diz quantos há, para o painel avisar quando corta.
       const dominios = await query(
         `${BASE}
-         SELECT dominio, COUNT(*)::int AS quantos
+         SELECT dominio, COUNT(*)::int AS quantos, COUNT(*) OVER ()::int AS total
          FROM pessoas
          WHERE estado = 'active' AND NOT suprimida
          GROUP BY dominio
          ORDER BY COUNT(*) DESC, dominio
-         LIMIT 10`,
+         LIMIT 1000`,
         [id, listIds]
       );
-      return res.status(200).json({ ...(nums || {}), dominios });
+      const dominios_total = dominios[0]?.total || 0;
+      return res.status(200).json({ ...(nums || {}), dominios: dominios.map(({ total, ...d }) => d), dominios_total });
     }
 
     if (req.method === 'GET' && action === 'get_direct_recipients') {

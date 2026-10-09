@@ -9359,6 +9359,8 @@ ${teSerializeBlocksComment(srcBlocks)}
     function _wizStopAutoSave() { clearInterval(_wizAutoSaveTimer); _wizAutoSaveTimer = null; clearTimeout(_wizApiAutoSaveTimer); _wizApiAutoSaveTimer = null; }
 
     function wizShowStep(step) {
+        // A lista de domínios só se mede com o passo à vista.
+        if (step === 3) requestAnimationFrame(() => { if (typeof _wizLimitarDominios === 'function') _wizLimitarDominios(); });
         _clearFieldErrors(document.getElementById('campaignCreate'));
         if (_wizStep === 2 && step !== 2) _teCtx = 'te_';
         _wizStep = step;
@@ -10780,11 +10782,22 @@ ${teSerializeBlocksComment(srcBlocks)}
         // ficheiro que devia ser interno com 40% de gmail vê-se aqui, antes de
         // enviar. E a fatia de Gmail/Outlook/Yahoo é a que manda nas regras de
         // remetente em massa.
+        //
+        // Todos os domínios: os 10 primeiros à vista e o resto com
+        // deslocamento (a altura é medida depois de desenhar, abaixo). A
+        // percentagem é sobre quem vai receber: era sobre a soma dos 10
+        // mostrados, e com mais de 10 domínios todas saíam inflacionadas.
         const doms = r.dominios || [];
         if (doms.length) {
-            const base = doms.reduce((s, d) => s + d.quantos, 0) || 1;
+            const base = r.vao_receber || doms.reduce((s, d) => s + d.quantos, 0) || 1;
+            const totalDoms = r.dominios_total || doms.length;
+            const cortados = totalDoms - doms.length;
             html += `<div class="px-4 pt-3 pb-4">
-                <p class="pb-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Domínios mais frequentes</p>
+                <div class="flex items-baseline justify-between pb-2">
+                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Domínios mais frequentes</p>
+                    ${totalDoms > 10 ? `<span class="text-[10px] text-slate-400 tabular-nums">${n(totalDoms)} domínios</span>` : ''}
+                </div>
+                <div id="wizDominiosLista" class="pr-1" style="overflow-y:auto">
                 ${doms.map(d => {
                     const pct = d.quantos / base * 100;
                     return `<div class="mb-2">
@@ -10795,10 +10808,26 @@ ${teSerializeBlocksComment(srcBlocks)}
                         <div class="mt-1 w-full bg-slate-100 rounded-full h-1"><div class="bg-indigo-400 h-1 rounded-full" style="width:${Math.max(2, pct).toFixed(1)}%"></div></div>
                     </div>`;
                 }).join('')}
+                </div>
+                ${cortados > 0 ? `<p class="pt-2 text-[10px] text-slate-400">e mais ${n(cortados)} domínios com poucos contactos</p>` : ''}
             </div>`;
         }
 
         list.innerHTML = html;
+        _wizLimitarDominios();
+    }
+    // A lista de domínios mostra 10 linhas e desloca o resto. A altura é
+    // medida, e não escrita à mão: depende do tipo de letra e do tamanho do
+    // ecrã. Com o painel escondido (medidas a zero) fica a altura de recurso.
+    function _wizLimitarDominios() {
+        const lista = document.getElementById('wizDominiosLista');
+        if (!lista) return;
+        const linhas = lista.children;
+        if (linhas.length <= 10) { lista.style.maxHeight = ''; return; }
+        const topo = lista.getBoundingClientRect().top;
+        const decima = linhas[9].getBoundingClientRect();
+        const altura = decima.bottom - topo;
+        lista.style.maxHeight = altura > 0 ? `${Math.ceil(altura)}px` : '20rem';
     }
 
     // Garante que a campanha existe antes de lhe associar qualquer coisa.
