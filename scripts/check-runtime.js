@@ -1805,12 +1805,30 @@ const provas = [
     const iA=sy.indexOf('req.query.analytics !== undefined'), iS=sy.indexOf("rateLimit('sync'");
     if(iA<0||iS<0||iA>iS) throw new Error('o ramo das estatísticas tem de vir antes da sincronização (e do seu limite e chave)');
     if(!/rateLimit\\('analytics'/.test(sy)) throw new Error('as estatísticas precisam de limite de ritmo próprio');
+    const lib0=require('./lib/analytics');
+    function lib0Min(){ return lib0.MIN_PESSOAS_POR_LINK; }
     const codigo=fs.readFileSync('lib/analytics.js','utf8').split('\\n').filter(l=>!/^\\s*\\/\\//.test(l)).join('\\n');
     if(/\\b(ee|cr|ct|c)\\.(email|user_agent|ip|phone)\\b|\\bcontacts\\b|\\bcontact_id\\s+AS\\b/.test(codigo)) throw new Error('lib/analytics.js lê dados pessoais — esta API só devolve contagens');
     if(!/split_part\\(split_part\\(ee\\.url, '#', 1\\), '\\?', 1\\)/.test(codigo)) throw new Error('os links têm de sair sem query string (um template pode pôr o email da pessoa no link)');
     if(!/LEFT JOIN campaign_recipients cr\\s+ON cr\\.campaign_id = ee\\.campaign_id AND cr\\.contact_id = ee\\.contact_id AND cr\\.status = 'sent'/.test(codigo)||(codigo.match(/FILTER \\(WHERE ee\\.type::text='(open|click)'\\s+AND cr\\.contact_id IS NOT NULL\\)/g)||[]).length!==4)
       throw new Error('as aberturas e os cliques têm de contar só destinatários entregues, como o relatório');
     if(!/timingSafeEqual/.test(codigo)) throw new Error('a comparação da chave tem de ser em tempo constante');
+    // Um template pode pôr o email ou a matrícula no CAMINHO do link: os links
+    // de poucas pessoas vão juntos, e um caminho com @ fica só com o domínio.
+    if(!(lib0Min()>=5)||!/COUNT\\(DISTINCT contact_id\\) >= \\$2 AS mostra/.test(codigo)||!/position\\('@' IN u\\.url\\) > 0/.test(codigo))
+      throw new Error('os links clicados por menos de 5 pessoas não podem sair com o endereço');
+    // A base é a mesma do envio e dos cliques: uma ligação por pedido, no
+    // máximo duas consultas pesadas ao mesmo tempo, e um tecto por minuto que
+    // só conta depois da chave.
+    if(/Promise\\.all/.test(codigo)) throw new Error('lib/analytics.js voltou a correr consultas em paralelo: cada pedido prende várias ligações');
+    if((codigo.match(/await comVaga\\(/g)||[]).length!==2||!/pg_try_advisory_xact_lock\\(hashtext\\('analytics'\\)/.test(codigo)) throw new Error('as marcas e as listas de campanhas têm de correr dentro de uma vaga');
+    if(/pg_advisory_xact_lock\\(/.test(codigo.replace(/pg_try_advisory_xact_lock\\(/g,''))) throw new Error('quem espera por vaga não pode ficar parado dentro de uma transacção (prende uma ligação do pooler)');
+    const iAut=codigo.indexOf('await autenticar(req)'), iPes=codigo.indexOf("rateLimit('analytics-pesado'");
+    if(iAut<0||iPes<iAut) throw new Error('o limite dos pedidos pesados tem de contar só pedidos com chave');
+    if(!/date_trunc\\('hour', ee\\.created_at, 'UTC'\\)/.test(codigo)) throw new Error('a evolução por hora tem de agrupar pelo instante (UTC): na mudança da hora, duas horas caíam no mesmo balde');
+    if(!/spam_rate: taxa\\(m\\.spam_complaints, m\\.delivered \\+ m\\.spam_complaints\\)/.test(codigo)) throw new Error('a queixa tira a pessoa dos entregues: tem de voltar ao denominador da taxa de spam');
+    const html=fs.readFileSync('email.html','utf8');
+    if(!/if \\(_anTemChave !== false && !confirm\\(/.test(html)) throw new Error('gerar a chave sem saber se já existe uma tem de pedir confirmação');
     const br=fs.readFileSync('api/brands/index.js','utf8');
     const i=br.indexOf("action === 'analytics_api_key'");
     const g=br.slice(i, i+900);
@@ -1820,7 +1838,6 @@ const provas = [
       const j=br.indexOf("action === '"+a+"'");
       if(j<0||!/const ownerRow = await query\\(\\x60SELECT 1 FROM user_brand_roles WHERE user_id=\\$1 AND role='owner' LIMIT 1\\x60, \\[user\\.id\\]\\);\\s+if \\(!ownerRow\\[0\\]\\) return res\\.status\\(403\\)/.test(br.slice(j,j+400))) throw new Error(a+' tem de exigir owner logo à entrada');
     }
-    const lib0=require('./lib/analytics');
     const {chave,hash}=lib0.gerarChave();
     if(!/^pma_[0-9a-f]{64}$/.test(chave)||hash!==crypto.createHash('sha256').update(chave).digest('hex')) throw new Error('formato ou hash da chave inesperado');
     if(lib0.paraCsv([{a:'=1+1',b:'x,"y"',c:3}],['a','b','c'])!=="a,b,c\\r\\n'=1+1,\\"x,\\"\\"y\\"\\"\\",3\\r\\n") throw new Error('o CSV tem de neutralizar fórmulas e escapar vírgulas e aspas');
@@ -1832,8 +1849,9 @@ const provas = [
         if(/FROM campaign_recipients/.test(s)) return [{campaign_id:5,total_recipients:10,delivered:8,bounced:2,failed:0,suppressed:0}];
         if(/FROM email_events/.test(s)) return [{campaign_id:5,unique_opens:4,total_opens:6,unique_clicks:2,total_clicks:3,unsubscribes:0,spam_complaints:0,automated_opens:1,automated_clicks:0}];
         if(/FROM campaigns c JOIN brands b/.test(s)) return [{id:5,brand_id:'x',brand_name:'X',name:'N',subject:'S',sent_at:new Date(0),sent_at_local:'1970-01-01 01:00:00',_total:1}];
+        if(/pg_try_advisory_xact_lock/.test(s)) return [{vaga:1}];
         return [];
-      }, transaction:async()=>{throw new Error('sem transacções');}, colunaExiste:async()=>true};
+      }, transaction:async(fn)=>fn((s,p)=>dbFalso.query(s,p)), colunaExiste:async()=>true};
     const orig=Module._load; Module._load=function(r){ if(/(^|\\/)db$/.test(r)) return dbFalso; return orig.apply(this,arguments); };
     for(const k of Object.keys(require.cache)) if(/\\/(lib|api)\\//.test(k)) delete require.cache[k];
     const sync=require('./api/sync/index.js');

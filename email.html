@@ -8009,6 +8009,10 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
 
     // ── Global Settings: chave da API de estatísticas (só leitura) ─
+    // null = ainda não se sabe (o pedido falhou ou não voltou). Só uma resposta
+    // do servidor pode dizer que não há chave; até lá, gerar pede confirmação,
+    // senão substituía em silêncio a chave que o Power BI está a usar.
+    let _anTemChave = null;
     async function _anLoadApiSection() {
         try {
             const { configured, created_at } = await apiFetch('/api/brands?action=analytics_api_key');
@@ -8017,6 +8021,7 @@ ${teSerializeBlocksComment(srcBlocks)}
     }
 
     function _anShowApiKey(key, configured, createdAt) {
+        _anTemChave = !!(key || configured);
         const empty  = document.getElementById('anApiKeyEmpty');
         const filled = document.getElementById('anApiKeyFilled');
         const val    = document.getElementById('anApiKeyValue');
@@ -8055,8 +8060,7 @@ ${teSerializeBlocksComment(srcBlocks)}
 
     async function _anGenerateApiKey() {
         const btn = document.getElementById('anApiKeyGenBtn');
-        const jaHa = !document.getElementById('anApiKeyFilled')?.classList.contains('hidden');
-        if (jaHa && !confirm('Gerar uma chave nova? A atual deixa de funcionar imediatamente nas ferramentas que a usam (Power BI, Google Sheets…).')) return;
+        if (_anTemChave !== false && !confirm('Gerar uma chave nova? Se já existir uma, deixa de funcionar imediatamente nas ferramentas que a usam (Power BI, Google Sheets…).')) return;
         if (btn) btn.disabled = true;
         try {
             const { api_key } = await apiFetch('/api/brands?action=generate_analytics_api_key', { method: 'POST' });
@@ -18054,7 +18058,7 @@ ${sections.join('\n\n')}
                     <div class="flex items-start justify-between mb-4">
                         <div>
                             <h3 class="font-semibold text-slate-900 text-sm">API de estatísticas</h3>
-                            <p class="text-xs text-slate-400 mt-0.5">Chave <strong>só de leitura</strong> para ler os números das campanhas de todas as marcas noutras ferramentas (Power BI, Looker Studio, Google Sheets, Excel). Dá acesso apenas a contagens e taxas, sem contactos nem dados pessoais. É diferente da chave de sincronização.</p>
+                            <p class="text-xs text-slate-400 mt-0.5">Chave <strong>só de leitura</strong> para ler os números das campanhas de todas as marcas noutras ferramentas (Power BI, Looker Studio, Google Sheets, Excel). Dá acesso apenas a contagens e taxas, sem contactos; os links clicados por menos de 5 pessoas vêm juntos, para não identificar ninguém. É diferente da chave de sincronização.</p>
                         </div>
                         <button onclick="_anGenerateApiKey()" id="anApiKeyGenBtn" class="flex-shrink-0 ml-4 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
