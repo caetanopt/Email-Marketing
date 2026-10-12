@@ -2,6 +2,7 @@ const { query } = require('../../lib/db');
 const { cors } = require('../../lib/auth');
 const { upsertContactos, aplicarSupressao } = require('../../lib/contactos');
 const { rateLimit, clientIp } = require('../../lib/ratelimit');
+const analytics = require('../../lib/analytics');
 const crypto = require('crypto');
 
 const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,6 +55,23 @@ async function autenticar(req, res) {
 
 module.exports = async function handler(req, res) {
   if (cors(req, res)) return;
+
+  // API de estatísticas (/api/analytics/*, reescrita no vercel.json). Vive aqui
+  // para não ocupar uma das 12 funções do plano; tem chave própria, só de
+  // leitura, e um limite de ritmo à parte — as consultas são mais pesadas.
+  if (req.query && req.query.analytics !== undefined) {
+    const rlA = await rateLimit('analytics', 'ip:' + clientIp(req), 120, 60);
+    if (!rlA.ok) {
+      res.setHeader('Retry-After', String(rlA.retryAfter));
+      return res.status(429).json({ error: 'Demasiados pedidos. Tenta mais tarde.' });
+    }
+    try {
+      return await analytics.responder(req, res);
+    } catch (err) {
+      console.error('analytics error:', err?.message, err?.code);
+      return res.status(500).json({ error: 'Erro de servidor' });
+    }
+  }
 
   // S-5: API pública. Limita por IP antes de autenticar, para travar tanto
   // tentativas de adivinhar chaves como abuso de uma integração. Generoso para

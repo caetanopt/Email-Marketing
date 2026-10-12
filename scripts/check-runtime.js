@@ -1792,6 +1792,78 @@ const provas = [
     const c=codigo('api/contacts/index.js');
     if(/brand_id obrigatório'\\s*\\}\\);\\s*$/m.test(c.split('ACCOES_POR_MARCA')[0]))throw new Error('o brand_id volta a ser obrigatório em /api/contacts');
     if(!/hasAnyRole/.test(c))throw new Error('/api/contacts deixou de verificar o acesso quando não recebe marca')`],
+  ['API de estatísticas: chave própria, só leitura e sem dados pessoais', `const fs=require('fs'); const Module=require('module'); const crypto=require('crypto');
+    // Ferramentas de BI lêem os números das campanhas com uma chave pma_ que
+    // não escreve nada. A de sincronização (pmg_/pm_) cancela subscrições e lê
+    // contactos: não pode servir aqui, nem esta lá.
+    const vj=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+    const rw=Object.fromEntries((vj.rewrites||[]).map(r=>[r.source,r.destination]));
+    const esperado={'/api/analytics':'/api/sync?analytics=index','/api/analytics/brands':'/api/sync?analytics=brands','/api/analytics/campaigns':'/api/sync?analytics=campaigns','/api/analytics/campaigns/:id':'/api/sync?analytics=campaign&id=:id'};
+    for(const [s,d] of Object.entries(esperado)) if(rw[s]!==d) throw new Error('falta a rota '+s+' -> '+d+' no vercel.json (sem ela a API dá 404)');
+    if(fs.existsSync('api/analytics.js')||fs.existsSync('api/analytics')) throw new Error('a API de estatísticas não pode ser uma função à parte: o plano está no limite de 12');
+    const sy=fs.readFileSync('api/sync/index.js','utf8');
+    const iA=sy.indexOf('req.query.analytics !== undefined'), iS=sy.indexOf("rateLimit('sync'");
+    if(iA<0||iS<0||iA>iS) throw new Error('o ramo das estatísticas tem de vir antes da sincronização (e do seu limite e chave)');
+    if(!/rateLimit\\('analytics'/.test(sy)) throw new Error('as estatísticas precisam de limite de ritmo próprio');
+    const codigo=fs.readFileSync('lib/analytics.js','utf8').split('\\n').filter(l=>!/^\\s*\\/\\//.test(l)).join('\\n');
+    if(/\\b(ee|cr|ct|c)\\.(email|user_agent|ip|phone)\\b|\\bcontacts\\b|\\bcontact_id\\s+AS\\b/.test(codigo)) throw new Error('lib/analytics.js lê dados pessoais — esta API só devolve contagens');
+    if(!/split_part\\(split_part\\(ee\\.url, '#', 1\\), '\\?', 1\\)/.test(codigo)) throw new Error('os links têm de sair sem query string (um template pode pôr o email da pessoa no link)');
+    if(!/LEFT JOIN campaign_recipients cr\\s+ON cr\\.campaign_id = ee\\.campaign_id AND cr\\.contact_id = ee\\.contact_id AND cr\\.status = 'sent'/.test(codigo)||(codigo.match(/FILTER \\(WHERE ee\\.type::text='(open|click)'\\s+AND cr\\.contact_id IS NOT NULL\\)/g)||[]).length!==4)
+      throw new Error('as aberturas e os cliques têm de contar só destinatários entregues, como o relatório');
+    if(!/timingSafeEqual/.test(codigo)) throw new Error('a comparação da chave tem de ser em tempo constante');
+    const br=fs.readFileSync('api/brands/index.js','utf8');
+    const i=br.indexOf("action === 'analytics_api_key'");
+    const g=br.slice(i, i+900);
+    if(i<0||!/api_key: null/.test(g)||/json\\([^)]*hash/.test(g)) throw new Error('o estado da chave não pode devolver a chave nem o hash');
+    if(!/role='owner'/.test(g)) throw new Error('só owners vêem e geram a chave');
+    for(const a of ['analytics_api_key','generate_analytics_api_key','revoke_analytics_api_key']){
+      const j=br.indexOf("action === '"+a+"'");
+      if(j<0||!/const ownerRow = await query\\(\\x60SELECT 1 FROM user_brand_roles WHERE user_id=\\$1 AND role='owner' LIMIT 1\\x60, \\[user\\.id\\]\\);\\s+if \\(!ownerRow\\[0\\]\\) return res\\.status\\(403\\)/.test(br.slice(j,j+400))) throw new Error(a+' tem de exigir owner logo à entrada');
+    }
+    const lib0=require('./lib/analytics');
+    const {chave,hash}=lib0.gerarChave();
+    if(!/^pma_[0-9a-f]{64}$/.test(chave)||hash!==crypto.createHash('sha256').update(chave).digest('hex')) throw new Error('formato ou hash da chave inesperado');
+    if(lib0.paraCsv([{a:'=1+1',b:'x,"y"',c:3}],['a','b','c'])!=="a,b,c\\r\\n'=1+1,\\"x,\\"\\"y\\"\\"\\",3\\r\\n") throw new Error('o CSV tem de neutralizar fórmulas e escapar vírgulas e aspas');
+    // Comportamento, com uma base falsa.
+    const sqls=[]; let guardado=hash;
+    const dbFalso={query:async(s,p)=>{sqls.push(s);
+        if(/INSERT INTO rate_limits/.test(s)) return [{count:1}];
+        if(/analytics_api_key_hash FROM global_settings/.test(s)) return [{analytics_api_key_hash:guardado}];
+        if(/FROM campaign_recipients/.test(s)) return [{campaign_id:5,total_recipients:10,delivered:8,bounced:2,failed:0,suppressed:0}];
+        if(/FROM email_events/.test(s)) return [{campaign_id:5,unique_opens:4,total_opens:6,unique_clicks:2,total_clicks:3,unsubscribes:0,spam_complaints:0,automated_opens:1,automated_clicks:0}];
+        if(/FROM campaigns c JOIN brands b/.test(s)) return [{id:5,brand_id:'x',brand_name:'X',name:'N',subject:'S',sent_at:new Date(0),sent_at_local:'1970-01-01 01:00:00',_total:1}];
+        return [];
+      }, transaction:async()=>{throw new Error('sem transacções');}, colunaExiste:async()=>true};
+    const orig=Module._load; Module._load=function(r){ if(/(^|\\/)db$/.test(r)) return dbFalso; return orig.apply(this,arguments); };
+    for(const k of Object.keys(require.cache)) if(/\\/(lib|api)\\//.test(k)) delete require.cache[k];
+    const sync=require('./api/sync/index.js');
+    const chamar=(query,headers={},method='GET')=>new Promise((ok,ko)=>{const res={h:{},statusCode:200,setHeader(k,v){this.h[k]=v;},status(c){this.statusCode=c;return this;},json(o){ok({s:this.statusCode,o});return this;},send(t){ok({s:this.statusCode,t});return this;},end(){ok({s:this.statusCode});return this;}};
+      Promise.resolve(sync({method,query,headers:{'x-forwarded-for':'1.2.3.4',...headers},socket:{}},res)).catch(ko);});
+    let terminou=false;
+    process.on('beforeExit',()=>{ if(!terminou){ console.error('Error: o ensaio da API de estatísticas não chegou ao fim'); process.exit(1); } });
+    (async()=>{
+      let r=await chamar({analytics:'index'});
+      if(r.s!==401) throw new Error('sem chave tem de dar 401 (deu '+r.s+')');
+      r=await chamar({analytics:'index'},{authorization:'Bearer pmg_'+'a'.repeat(64)});
+      if(r.s!==403) throw new Error('a chave de sincronização não pode abrir as estatísticas (deu '+r.s+')');
+      r=await chamar({analytics:'index'},{authorization:'Bearer pma_'+'0'.repeat(64)});
+      if(r.s!==401) throw new Error('uma chave errada tem de dar 401 (deu '+r.s+')');
+      r=await chamar({analytics:'brands'},{authorization:'Bearer '+chave},'POST');
+      if(r.s!==405) throw new Error('as estatísticas só aceitam GET (deu '+r.s+')');
+      r=await chamar({analytics:'campaigns'},{authorization:'Bearer '+chave});
+      if(r.s!==200) throw new Error('com a chave certa tem de dar 200 (deu '+r.s+': '+JSON.stringify(r.o)+')');
+      const c=r.o.data[0];
+      if(c.open_rate!==50||c.click_rate!==25||c.ctor!==50||c.bounce_rate!==20||c.delivery_rate!==80) throw new Error('taxas inesperadas: '+JSON.stringify(c));
+      r=await chamar({analytics:'campaigns',key:chave,from:"2026-01-01' OR 1=1--"});
+      if(r.s!==400) throw new Error('um from mal formado tem de dar 400 (deu '+r.s+')');
+      if(sqls.some(s=>/OR 1=1/.test(s))) throw new Error('um parâmetro chegou ao SQL sem passar por um placeholder');
+      r=await chamar({email:'a@b.pt'},{authorization:'Bearer '+chave});
+      if(r.s!==401) throw new Error('a chave de estatísticas não pode ler contactos (deu '+r.s+')');
+      guardado=null;
+      r=await chamar({analytics:'index'},{authorization:'Bearer '+chave});
+      if(r.s!==401) throw new Error('sem chave gerada (ou depois de revogada) nenhuma chave pode entrar (deu '+r.s+')');
+      Module._load=orig; terminou=true;
+    })().catch(e=>{ console.error('Error: '+e.message); process.exit(1); });`],
   ['link da versão web', `const p=require('./lib/previewLink');const t=p.previewToken(74);
     if(!p.previewTokenValido(74,t))throw new Error('token novo recusado');
     if(!p.previewTokenValido(74,p.previewTokenLegacy(74)))throw new Error('token antigo recusado — links já enviados deixariam de abrir');

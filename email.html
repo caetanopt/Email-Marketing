@@ -8008,6 +8008,82 @@ ${teSerializeBlocksComment(srcBlocks)}
         navigator.clipboard.writeText(key).then(() => showToast('Chave copiada.')).catch(() => showToast('Erro ao copiar.', 'error'));
     }
 
+    // ── Global Settings: chave da API de estatísticas (só leitura) ─
+    async function _anLoadApiSection() {
+        try {
+            const { configured, created_at } = await apiFetch('/api/brands?action=analytics_api_key');
+            _anShowApiKey(null, configured, created_at);
+        } catch (e) { console.error('anLoadApiSection:', e); }
+    }
+
+    function _anShowApiKey(key, configured, createdAt) {
+        const empty  = document.getElementById('anApiKeyEmpty');
+        const filled = document.getElementById('anApiKeyFilled');
+        const val    = document.getElementById('anApiKeyValue');
+        const label  = document.getElementById('anApiKeyGenLabel');
+        const meta   = document.getElementById('anApiKeyMeta');
+        if (!key && !configured) {
+            empty?.classList.remove('hidden'); filled?.classList.add('hidden');
+            if (label) label.textContent = 'Gerar chave';
+            return;
+        }
+        empty?.classList.add('hidden'); filled?.classList.remove('hidden');
+        if (val) val.textContent = key || '•••••••••••• chave oculta — regenera para obteres uma nova';
+        if (label) label.textContent = 'Regenerar';
+        if (meta) {
+            const quando = createdAt ? new Date(createdAt) : (key ? new Date() : null);
+            meta.textContent = key
+                ? 'Copia-a agora: depois de saíres desta página, deixa de se ver.'
+                : (quando && !isNaN(quando) ? `Gerada a ${quando.toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })}.` : '');
+        }
+        const docsKey = key || '<A_TUA_CHAVE>';
+        const base = window.location.origin;
+        const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        set('anApiDocsBrands', `curl "${base}/api/analytics/brands?range=12m" \\\n  -H "Authorization: Bearer ${docsKey}"`);
+        set('anApiDocsCampaigns', `curl "${base}/api/analytics/campaigns?brand_id=<id_da_marca>&from=2026-01-01&to=2026-12-31" \\\n  -H "Authorization: Bearer ${docsKey}"`);
+        set('anApiDocsCampaign', `curl "${base}/api/analytics/campaigns/<id_da_campanha>" \\\n  -H "Authorization: Bearer ${docsKey}"`);
+        set('anApiDocsSheets', `=IMPORTDATA("${base}/api/analytics/campaigns?format=csv&limit=1000&key=${docsKey}"; ","; "en_US")`);
+        set('anApiDocsWebUrl', `${base}/api/analytics/campaigns?format=csv&limit=1000`);
+        const marcas = document.getElementById('anApiDocsMarcas');
+        if (marcas) {
+            const lista = (_apiBrands || []).filter(b => b && b.id != null && b.active !== false);
+            marcas.innerHTML = lista.length
+                ? lista.map(b => `<span class="px-2 py-0.5 bg-slate-100 rounded font-mono text-[11px] text-slate-600" title="${escHtml(b.name)}">${escHtml(b.id)} <span class="font-sans text-slate-400">${escHtml(b.name)}</span></span>`).join('')
+                : '<span class="text-slate-400">Vêm em <code class="font-mono">GET /api/analytics/brands</code>.</span>';
+        }
+    }
+
+    async function _anGenerateApiKey() {
+        const btn = document.getElementById('anApiKeyGenBtn');
+        const jaHa = !document.getElementById('anApiKeyFilled')?.classList.contains('hidden');
+        if (jaHa && !confirm('Gerar uma chave nova? A atual deixa de funcionar imediatamente nas ferramentas que a usam (Power BI, Google Sheets…).')) return;
+        if (btn) btn.disabled = true;
+        try {
+            const { api_key } = await apiFetch('/api/brands?action=generate_analytics_api_key', { method: 'POST' });
+            _anShowApiKey(api_key, true);
+            showToast('Chave da API de estatísticas gerada. Guarda-a num local seguro.');
+        } catch (e) { showToast('Erro ao gerar a chave: ' + e.message, 'error'); }
+        finally { if (btn) btn.disabled = false; }
+    }
+
+    async function _anRevokeApiKey() {
+        if (!confirm('Revogar a chave da API de estatísticas? Deixa de funcionar imediatamente e as ferramentas que a usam deixam de receber dados.')) return;
+        const btn = document.getElementById('anApiKeyRevokeBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await apiFetch('/api/brands?action=revoke_analytics_api_key', { method: 'POST' });
+            _anShowApiKey(null, false);
+            showToast('Chave revogada.');
+        } catch (e) { showToast('Erro ao revogar a chave: ' + e.message, 'error'); }
+        finally { if (btn) btn.disabled = false; }
+    }
+
+    function _anCopyApiKey() {
+        const key = document.getElementById('anApiKeyValue')?.textContent?.trim();
+        if (!key || key.startsWith('•')) { showToast('A chave está oculta — regenera para obteres uma nova.', 'info'); return; }
+        navigator.clipboard.writeText(key).then(() => showToast('Chave copiada.')).catch(() => showToast('Erro ao copiar.', 'error'));
+    }
+
     // ── Brand Settings: API key management ───────────────────────
     function _bsShowApiKey(key, configured) {
         const empty  = document.getElementById('bsApiKeyEmpty');
@@ -13261,7 +13337,7 @@ ${sections.join('\n\n')}
             }
             if (id === 'suppression') { _loadSuppression(1); _loadBlockedDomains(); }
             if (id === 'lists' && _currentBrand?.id) _loadLists(_currentBrand.id);
-            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadGlobalMjmlAttrs(); _loadFooterSettings(); _loadBrandsAdmin(); _gsLoadApiSection(); }
+            if (id === 'globalSettings') { _loadDomainWhitelist(); _loadGlobalTypography(); _loadGlobalMjmlAttrs(); _loadFooterSettings(); _loadBrandsAdmin(); _gsLoadApiSection(); _anLoadApiSection(); }
             // Load brand settings when entering settings screen
             if (id === 'brandSettings' && !_screenLoaded.has('brandSettings')) { _loadBrandSettings(); _screenLoaded.add('brandSettings'); }
             if (id === 'blocks' && !_screenLoaded.has('blocks')) { _loadBlocks(); _screenLoaded.add('blocks'); }
@@ -17970,6 +18046,72 @@ ${sections.join('\n\n')}
                                 </div>
                             </details>
                         </div>
+                    </div>
+                </div>
+
+                <!-- API de Estatísticas (lib/analytics.js) -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5">
+                    <div class="flex items-start justify-between mb-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-900 text-sm">API de estatísticas</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Chave <strong>só de leitura</strong> para ler os números das campanhas de todas as marcas noutras ferramentas (Power BI, Looker Studio, Google Sheets, Excel). Dá acesso apenas a contagens e taxas, sem contactos nem dados pessoais. É diferente da chave de sincronização.</p>
+                        </div>
+                        <button onclick="_anGenerateApiKey()" id="anApiKeyGenBtn" class="flex-shrink-0 ml-4 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span id="anApiKeyGenLabel">Gerar chave</span>
+                        </button>
+                    </div>
+                    <div id="anApiKeyEmpty" class="flex items-center gap-2 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        Nenhuma chave gerada. Clica em "Gerar chave" para criar uma.
+                    </div>
+                    <div id="anApiKeyFilled" class="hidden space-y-3">
+                        <div class="flex items-center gap-2">
+                            <code id="anApiKeyValue" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 truncate select-all"></code>
+                            <button onclick="_anCopyApiKey()" title="Copiar" class="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 hover:text-slate-900 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            </button>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span id="anApiKeyMeta" class="text-slate-400"></span>
+                            <button onclick="_anRevokeApiKey()" id="anApiKeyRevokeBtn" class="text-red-600 hover:text-red-700 font-medium">Revogar chave</button>
+                        </div>
+                        <details class="text-xs">
+                            <summary class="cursor-pointer text-slate-500 hover:text-slate-800 font-medium select-none">Como usar a API</summary>
+                            <div class="mt-3 space-y-3">
+                                <div>
+                                    <p class="text-slate-500 mb-1 font-medium">Totais de cada marca (últimos 12 meses, como o ecrã Estatísticas)</p>
+                                    <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="anApiDocsBrands"></code></pre>
+                                </div>
+                                <div>
+                                    <p class="text-slate-500 mb-1 font-medium">Campanhas de uma marca num período</p>
+                                    <p class="text-slate-400 mb-1">Datas em hora de Lisboa, as duas incluídas. Sem <code class="font-mono">brand_id</code>, vêm as campanhas de todas as marcas. Até 1000 por pedido (<code class="font-mono">limit</code> e <code class="font-mono">offset</code> para as seguintes).</p>
+                                    <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="anApiDocsCampaigns"></code></pre>
+                                </div>
+                                <div>
+                                    <p class="text-slate-500 mb-1 font-medium">Uma campanha em detalhe (links, evolução por hora e listas)</p>
+                                    <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="anApiDocsCampaign"></code></pre>
+                                </div>
+                                <div>
+                                    <p class="text-slate-500 mb-1 font-medium">Google Sheets (CSV)</p>
+                                    <p class="text-slate-400 mb-1">Numa célula. O <code class="font-mono">"en_US"</code> faz o Sheets ler bem as casas decimais e as datas.</p>
+                                    <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[11px] leading-relaxed"><code id="anApiDocsSheets"></code></pre>
+                                </div>
+                                <div>
+                                    <p class="text-slate-500 mb-1 font-medium">Power BI e Excel</p>
+                                    <p class="text-slate-400">Obter dados → Da Web → Avançadas. URL: <code class="font-mono break-all" id="anApiDocsWebUrl"></code>. Cabeçalho do pedido HTTP: <code class="font-mono">Authorization</code> = <code class="font-mono">Bearer</code> seguido da chave.</p>
+                                </div>
+                                <div>
+                                    <p class="text-slate-500 mb-1 font-medium">IDs das marcas (<code class="font-mono">brand_id</code>)</p>
+                                    <div id="anApiDocsMarcas" class="flex flex-wrap gap-1.5"></div>
+                                </div>
+                                <div class="text-slate-400 space-y-1">
+                                    <p>Os números são os do relatório de cada campanha. Aberturas e cliques são únicos por pessoa e só contam quem recebeu o email. Os automáticos (filtros de segurança, pré-visualização do Apple Mail) ficam de fora e vêm à parte em <code class="font-mono">automated_opens</code> e <code class="font-mono">automated_clicks</code>.</p>
+                                    <p>Taxas em percentagem: <code class="font-mono">open_rate</code> e <code class="font-mono">click_rate</code> sobre os entregues (<code class="font-mono">delivered</code>), e <code class="font-mono">ctor</code> = cliques ÷ aberturas. <code class="font-mono">GET /api/analytics</code> devolve a lista completa de campos e o que significa cada um.</p>
+                                </div>
+                                <p class="text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">Prefere o cabeçalho <code class="font-mono">Authorization</code>. A chave na URL (<code class="font-mono">?key=</code>) é só para ferramentas que não enviam cabeçalhos, como o Google Sheets, e fica registada nos acessos. Se regenerares ou revogares a chave, a anterior deixa de funcionar imediatamente.</p>
+                            </div>
+                        </details>
                     </div>
                 </div>
 

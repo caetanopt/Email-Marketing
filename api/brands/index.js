@@ -39,6 +39,7 @@ async function podeEscrever(res, userId, brandId) {
   return false;
 }
 const { buildLegalFooter, sanitizeDisclaimer, sanitizeFooterSocials } = require('../../lib/emailFooter');
+const { gerarChave: gerarChaveDeEstatisticas } = require('../../lib/analytics');
 
 const EMAIL_RE = /^[^\s@,;:]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -240,6 +241,20 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ api_key: null, configured: !!rows[0]?.configured });
         } catch (e) {
           if (e.code === '42703' || e.code === '42P01') return res.status(200).json({ api_key: null, configured: false });
+          throw e;
+        }
+      }
+
+      // Chave da API de estatísticas (lib/analytics.js) — só diz se existe e
+      // desde quando; a chave vê-se uma vez, ao ser gerada (owner only).
+      if (action === 'analytics_api_key') {
+        const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
+        if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+        try {
+          const rows = await query('SELECT analytics_api_key_hash IS NOT NULL AS configured, analytics_api_key_created_at AS created_at FROM global_settings WHERE id=1');
+          return res.status(200).json({ api_key: null, configured: !!rows[0]?.configured, created_at: rows[0]?.configured ? rows[0].created_at : null });
+        } catch (e) {
+          if (e.code === '42703' || e.code === '42P01') return res.status(200).json({ api_key: null, configured: false, created_at: null });
           throw e;
         }
       }
@@ -723,6 +738,42 @@ module.exports = async function handler(req, res) {
                      ON CONFLICT (id) DO UPDATE SET global_api_key=$1`, [newKey]);   // schema antigo
       }
       return res.status(200).json({ api_key: newKey });
+    }
+
+    // Gerar (ou regenerar) a chave da API de estatísticas — só leitura, todas
+    // as marcas (owner only). Guarda-se só o hash; a anterior deixa de valer.
+    if (req.method === 'POST' && action === 'generate_analytics_api_key') {
+      const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+      const { chave, hash } = gerarChaveDeEstatisticas();
+      const gravar = () => query(
+        `INSERT INTO global_settings (id, analytics_api_key_hash, analytics_api_key_created_at) VALUES (1, $1, NOW())
+         ON CONFLICT (id) DO UPDATE SET analytics_api_key_hash=$1, analytics_api_key_created_at=NOW()`,
+        [hash]
+      );
+      try {
+        await gravar();
+      } catch (e) {
+        // As colunas vêm da migração 069. Sem ela, criam-se aqui — só quando
+        // faltam, para não bloquear global_settings a cada geração.
+        if (e.code !== '42703') throw e;
+        await query('ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS analytics_api_key_hash TEXT');
+        await query('ALTER TABLE global_settings ADD COLUMN IF NOT EXISTS analytics_api_key_created_at TIMESTAMPTZ');
+        await gravar();
+      }
+      return res.status(200).json({ api_key: chave });
+    }
+
+    // Revogar a chave da API de estatísticas: deixa de haver chave válida.
+    if (req.method === 'POST' && action === 'revoke_analytics_api_key') {
+      const ownerRow = await query(`SELECT 1 FROM user_brand_roles WHERE user_id=$1 AND role='owner' LIMIT 1`, [user.id]);
+      if (!ownerRow[0]) return res.status(403).json({ error: 'Acesso restrito a administradores' });
+      try {
+        await query('UPDATE global_settings SET analytics_api_key_hash=NULL, analytics_api_key_created_at=NULL WHERE id=1');
+      } catch (e) {
+        if (e.code !== '42703' && e.code !== '42P01') throw e;   // nunca houve chave
+      }
+      return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'POST' && id && action === 'block') {
